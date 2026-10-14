@@ -606,3 +606,18 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 .rrow:hover .bold { color: var(--link); }
 .pcard.sel .ph { box-shadow: 0 0 0 3px var(--yellow); }
 button.pcard:hover .big, a.pcard:hover .big { color: var(--link); }
+
+/* Перетаскивание в очереди */
+.dwrap { touch-action: manipulation; border-radius: var(--r-l); outline: none; }
+.dwrap:focus-visible { box-shadow: 0 0 0 2px var(--link); }
+.dwrap .bcard { cursor: grab; }
+.dwrap.ghost .bcard { opacity: 0.35; box-shadow: none; border: 2px dashed var(--line-2); }
+.bcard.lift { cursor: grabbing; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22); transform: rotate(2deg) scale(1.03); }
+.bcol { transition: background 0.15s, box-shadow 0.15s; }
+.bcol.target { box-shadow: inset 0 0 0 2px var(--line-2); }
+.bcol.over { background: #fff6cc; box-shadow: inset 0 0 0 2px var(--yellow); }
+.dropph { border: 2px dashed var(--yellow); border-radius: var(--r-l); padding: 18px 12px; text-align: center; font-size: 13px; color: var(--amber-ink); background: rgba(255, 255, 255, 0.6); }
+.board { user-select: none; -webkit-user-select: none; }
+/* колонки тянутся на всю высоту доски — бросать можно в любое место колонки */
+.board { align-items: stretch; }
+.bcol { min-height: 420px; }
