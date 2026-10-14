@@ -511,7 +511,7 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 .opt.on { box-shadow: inset 0 0 0 2px var(--text); font-weight: 500; }
 
 /* Серая полоса-«герой» (как шапка ипотеки) с белыми блоками внутри */
-.band { background: #f5f4f2; margin: 0 -40px 32px; padding: 0 40px 32px; }
+.band { background: #f5f4f2; margin: 0 calc(50% - 50vw) 32px; padding: 0 max(40px, calc(50vw - 640px)) 40px; }
 .band .page-title { padding-top: 24px; }
 .band .card { background: #fff; border-radius: var(--r-l); padding: 20px 24px; }
 .band .card + .card { border-top: 0; padding-top: 20px; }
@@ -535,3 +535,30 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 .screen .tile:hover { background: var(--fill-hover); }
 .screen .tile.on { background: var(--dark); color: #fff; }
 .screen .tile.on .c2 { color: rgba(255, 255, 255, 0.6); }
+
+/* Методика — плитки как «Ипотечный калькулятор / Ипотека на вторичное…» */
+.mtiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin-bottom: 16px; }
+.mtile { background: #fff; border-radius: var(--r-l); padding: 14px 12px 12px; display: flex; flex-direction: column; gap: 10px; min-height: 104px; transition: box-shadow 0.15s; }
+.mtile:hover { box-shadow: var(--shadow-float); }
+.mtile span { font-size: 14px; line-height: 18px; display: flex; flex-direction: column; }
+.mtile b { font-weight: 700; font-size: 15px; margin-top: 2px; }
+/* Калькулятор — как ипотечный: белая форма слева, серый итог справа */
+.calc { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; background: #fff; border-radius: var(--r-l); padding: 8px; }
+.calc-l { padding: 16px 16px 8px; }
+.calc-r { padding: 24px; background: var(--fill); border-radius: var(--r-m); display: flex; flex-direction: column; }
+.calc-r .btn { margin-top: auto; }
+.crow { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; border-top: 1px solid var(--line); }
+.crow > span { font-size: 16px; }
+.crow i { font-style: normal; font-size: 12px; font-weight: 600; color: var(--text-2); background: var(--fill); border-radius: 6px; padding: 2px 6px; margin-left: 6px; vertical-align: 2px; }
+/* Три зоны */
+.zones3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.ztile { background: var(--fill); border-radius: var(--r-l); padding: 20px 24px; display: flex; flex-direction: column; gap: 4px; position: relative; }
+.ztile .zdot { position: absolute; top: 24px; right: 24px; width: 12px; height: 12px; }
+.ztile.red .zdot { background: var(--red); } .ztile.yellow .zdot { background: var(--amber); } .ztile.green .zdot { background: var(--green); }
+.ztile .big { font-family: var(--font-display); font-size: 40px; line-height: 44px; font-weight: 800; margin-top: 4px; }
+/* Раскрытая строка таблицы */
+.ytable tr.xrow td { background: var(--fill); border-bottom: 1px solid var(--line); cursor: default; }
+.ytable tr.xrow:hover td { background: var(--fill); }
+.xgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; padding: 4px 0; line-height: 21px; }
+.chip.fund { background: var(--red-bg); color: var(--red-ink); }
+.chip.safe { background: var(--green-bg); color: var(--green-ink); }

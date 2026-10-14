@@ -1,7 +1,7 @@
 import { ads as allAds, developers, keywordsDefault, keywordsSafe } from '../data/demo'
 import type { Ad, Complex, RiskFactor, RiskResult, Zone } from '../data/types'
 
-const FUNDS_MARKERS = ['бронь', 'бронирование', 'первый взнос', 'взнос', 'рассрочка', 'ДДУ', 'долевого участия', 'от фундамента', 'цена котлована', 'напрямую застройщику', 'переуступка', 'фиксируем цену']
+export const FUNDS_MARKERS = ['бронь', 'бронирование', 'первый взнос', 'взнос', 'рассрочка', 'ДДУ', 'долевого участия', 'от фундамента', 'цена котлована', 'напрямую застройщику', 'переуступка', 'фиксируем цену']
 const SALE_MARKERS = ['продаж', 'продаём', 'продаем', 'продается', 'продаётся', 'квартир', 'бронь', 'цена', '₸']
 
 const has = (t: string, list: string[]) => {
