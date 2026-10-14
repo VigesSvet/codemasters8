@@ -1,62 +1,47 @@
-import { useNavigate } from 'react-router-dom'
-import {
-  DataTable, Table, TableBody, TableCell, TableContainer, TableExpandHeader, TableExpandRow, TableExpandedRow, TableHead, TableHeader, TableRow,
-} from '@carbon/react'
-import { PageHeader, Score, ZoneTag, fmtDate } from '../components/ui'
+import { useState } from 'react'
+import { Cell, Modal, PageTitle, Score, ZoneTag, fmtDate } from '../components/ui'
 import { developers } from '../data/demo'
 import { scoreComplex } from '../lib/risk'
 import { useStore } from '../lib/store'
+import { IcUsers } from '../ui/icons'
 
 export default function Developers() {
   const { complexes, ads } = useStore()
-  const nav = useNavigate()
+  const [open, setOpen] = useState<string | null>(null)
   const data = developers.map((d) => {
     const objs = complexes.filter((c) => c.developerId === d.id).map((c) => ({ c, r: scoreComplex(c, ads) }))
-    const max = objs.reduce((m, x) => (!m || x.r.score > m.r.score ? x : m), objs[0])
+    const max = objs.reduce<(typeof objs)[number] | undefined>((m, x) => (!m || x.r.score > m.r.score ? x : m), undefined)
     return { d, objs, max, adsCount: ads.filter((a) => objs.some((o) => o.c.id === a.complexId)).length }
   }).sort((a, b) => (b.max?.r.score ?? 0) - (a.max?.r.score ?? 0))
-  const byId = Object.fromEntries(data.map((x) => [x.d.id, x]))
-  const headers = [{ key: 'name', header: 'Застройщик' }, { key: 'bin', header: 'БИН' }, { key: 'reg', header: 'Регистрация' }, { key: 'objects', header: 'Объектов' }, { key: 'unfinished', header: 'Незавершённых' }, { key: 'ads', header: 'Публикаций' }, { key: 'risk', header: 'Макс. риск' }]
-  const rows = data.map(({ d, max, adsCount }) => ({ id: d.id, name: d.name, bin: d.bin, reg: d.registered, objects: d.objects, unfinished: d.unfinished, ads: adsCount, risk: max?.r.score ?? 0 }))
+  const cur = data.find((x) => x.d.id === open)
 
   return (
     <>
-      <PageHeader crumbs={[['SAQ', '/'], ['Застройщики']]} title="Застройщики" sub="Портфель объектов, история завершения и максимальный риск. БИН — для сверки с реестром юрлиц. Данные демонстрационные." />
-      <DataTable rows={rows} headers={headers} isSortable>
-        {({ rows: drows, headers: dh, getHeaderProps, getRowProps, getTableProps, getExpandHeaderProps }) => (
-          <TableContainer>
-            <Table {...getTableProps()} size="lg">
-              <TableHead><TableRow><TableExpandHeader {...getExpandHeaderProps()} />{dh.map((h) => <TableHeader {...getHeaderProps({ header: h })} key={h.key}>{h.header}</TableHeader>)}</TableRow></TableHead>
-              <TableBody>
-                {drows.map((row) => {
-                  const { d, objs, max, adsCount } = byId[row.id]
-                  return [
-                    <TableExpandRow {...getRowProps({ row })} key={row.id}>
-                      <TableCell><span className="cell-title">{d.name}</span><div className="cell-sub">{d.director}</div></TableCell>
-                      <TableCell className="mono">{d.bin}</TableCell>
-                      <TableCell>{fmtDate(d.registered)}</TableCell>
-                      <TableCell>{d.objects}</TableCell>
-                      <TableCell style={{ color: d.unfinished ? 'var(--cds-support-error)' : undefined }}>{d.unfinished}</TableCell>
-                      <TableCell>{adsCount}</TableCell>
-                      <TableCell>{max && <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Score value={max.r.score} zone={max.r.zone} /><ZoneTag zone={max.r.zone} size="sm" /></div>}</TableCell>
-                    </TableExpandRow>,
-                    <TableExpandedRow key={`${row.id}-x`} colSpan={dh.length + 1}>
-                      <div className="cards" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', padding: '8px 0' }}>
-                        {objs.map(({ c, r }) => (
-                          <div key={c.id} className="pcard" onClick={() => nav(`/complexes/${c.id}`)}>
-                            <div className="ph" style={{ aspectRatio: '16/9' }}><img src={c.cover} alt="" /><Score value={r.score} zone={r.zone} /></div>
-                            <div className="b"><div className="n">ЖК «{c.name}»</div><div className="a">{c.stage} · {c.progress}% · {c.district}</div></div>
-                          </div>
-                        ))}
-                      </div>
-                    </TableExpandedRow>,
-                  ]
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-      </DataTable>
+      <PageTitle crumbs={[['Карта', '/'], ['Застройщики']]} title="Застройщики" sub="Портфель объектов, история завершения и максимальный риск. БИН — для сверки с реестром юрлиц. Данные демонстрационные." />
+      <div className="card">
+        {data.map(({ d, objs, max, adsCount }) => (
+          <button key={d.id} className="cell" onClick={() => setOpen(d.id)} style={{ display: 'grid', gridTemplateColumns: '48px minmax(0,1.5fr) repeat(3, 110px) 260px', gap: 16, minHeight: 84 }}>
+            <span className="ico" style={{ width: 48, height: 48, borderRadius: 14 }}><IcUsers size={22} /></span>
+            <div style={{ minWidth: 0 }}><div className="ttl bold">{d.name}</div><div className="sub num">БИН {d.bin} · {d.director}</div></div>
+            <div><div className="t-xs c2">Объектов</div><div className="t-h3 num">{d.objects}</div></div>
+            <div><div className="t-xs c2">Не завершены</div><div className="t-h3 num" style={{ color: d.unfinished ? 'var(--red)' : undefined }}>{d.unfinished}</div></div>
+            <div><div className="t-xs c2">Публикаций</div><div className="t-h3 num">{adsCount}</div></div>
+            <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>{max && <><ZoneTag zone={max.r.zone} /><Score value={max.r.score} zone={max.r.zone} /></>}<span className="c3 t-xs" style={{ whiteSpace: 'nowrap' }}>{objs.length} на контроле</span></div>
+          </button>
+        ))}
+      </div>
+
+      {cur && (
+        <Modal title={cur.d.name.replace('ТОО ', '')} onClose={() => setOpen(null)}>
+          {[['БИН', cur.d.bin], ['Руководитель', cur.d.director], ['Регистрация', fmtDate(cur.d.registered)], ['Сайт', cur.d.site ?? '—'], ['Instagram', cur.d.instagram ?? '—'], ['Незавершённых объектов', String(cur.d.unfinished)]].map(([k, v]) => (
+            <Cell key={k} title={<span className="c2 t-sm">{k}</span>} end={<span style={{ color: 'var(--text)' }}>{v}</span>} />
+          ))}
+          <div className="card-head" style={{ paddingTop: 16 }}><h3>Объекты на контроле</h3></div>
+          {cur.objs.map(({ c, r }) => (
+            <Cell key={c.id} inset to={`/complexes/${c.id}`} icon={<img className="th" src={c.cover} alt="" style={{ width: 48, height: 48, borderRadius: 12 }} />} title={`ЖК «${c.name}»`} sub={`${c.stage} · ${c.progress}%`} end={<Score value={r.score} zone={r.zone} />} chevron />
+          ))}
+        </Modal>
+      )}
     </>
   )
 }

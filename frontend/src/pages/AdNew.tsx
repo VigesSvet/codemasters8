@@ -1,18 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  Button, ButtonSet, FileUploaderDropContainer, Form, InlineLoading, Select, SelectItem, Stack, TextArea, TextInput, Tile, RadioButton, RadioButtonGroup,
-} from '@carbon/react'
-import { Highlight, PageHeader, Score, ZoneTag, platformMeta } from '../components/ui'
+import { Cell, Highlight, Modal, PageTitle, PlatformIcon, Score, ZoneTag, platformMeta } from '../components/ui'
 import type { Ad, Platform } from '../data/types'
 import { scoreAd } from '../lib/risk'
 import { useStore } from '../lib/store'
+import { IcBuilding, IcCheck, IcClose, IcPlus, IcSearch, IcUpload } from '../ui/icons'
 
 const SAMPLE = 'Старт продаж в новом ЖК «Тихий берег»! Квартиры у набережной, бронь от 300 000 ₸, первый взнос 15%, рассрочка от застройщика. Сдача 2027. Продаётся по договору долевого участия.'
 
+/** Ручное добавление — раскладка панели заказа такси: поля «Откуда/Куда», плитки тарифов, жёлтая кнопка внизу */
 export default function AdNew() {
   const { complexes, addAd, notify } = useStore()
   const nav = useNavigate()
+  const file = useRef<HTMLInputElement>(null)
   const [platform, setPlatform] = useState<Platform>('instagram')
   const [account, setAccount] = useState('')
   const [url, setUrl] = useState('')
@@ -21,14 +21,16 @@ export default function AdNew() {
   const [ocr, setOcr] = useState<string | undefined>()
   const [ocrBusy, setOcrBusy] = useState(false)
   const [complexId, setComplexId] = useState('')
+  const [over, setOver] = useState(false)
+  const [modal, setModal] = useState(false)
+  const [cq, setCq] = useState('')
 
   const suggestion = useMemo(() => complexes.find((c) => `${text} ${ocr ?? ''}`.toLowerCase().includes(c.name.toLowerCase())), [text, ocr, complexes])
   const linked = complexes.find((c) => c.id === (complexId || suggestion?.id))
   const draft: Ad = { id: `m${Date.now().toString(36)}`, platform, account: account || '@unknown', url, date: new Date().toISOString(), text, ocr, image: img, complexId: linked?.id, matchConfidence: complexId ? 1 : suggestion ? 0.8 : 0, source: 'manual', status: 'new' }
   const s = scoreAd(draft, linked)
 
-  const onFiles = (files: File[]) => {
-    const f = files[0]
+  const onFile = (f?: File) => {
     if (!f) return
     setImg(URL.createObjectURL(f))
     setOcrBusy(true)
@@ -38,58 +40,84 @@ export default function AdNew() {
 
   return (
     <>
-      <PageHeader crumbs={[['SAQ', '/'], ['Мониторинг рекламы', '/ads'], ['Новая публикация']]} title="Новая публикация"
+      <PageTitle crumbs={[['Карта', '/'], ['Лента публикаций', '/ads'], ['Новая публикация']]} title="Новая публикация"
         sub="Обязательный источник по ТЗ: аналитик добавляет найденную рекламу вручную. Система распознаёт текст, привязывает ЖК и сразу показывает оценку." />
-      <div className="page" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 640px) 1fr', gap: 48, alignItems: 'start' }}>
-        <Form onSubmit={(e) => e.preventDefault()}>
-          <Stack gap={6}>
-            <RadioButtonGroup legendText="Площадка" name="platform" valueSelected={platform} onChange={(v) => setPlatform(v as Platform)} orientation="horizontal">
-              {(Object.keys(platformMeta) as Platform[]).map((p) => <RadioButton key={p} id={`p-${p}`} value={p} labelText={platformMeta[p].name} />)}
-            </RadioButtonGroup>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <TextInput id="acc" labelText="Аккаунт / автор" placeholder="@account" value={account} onChange={(e) => setAccount(e.target.value)} />
-              <TextInput id="url" labelText="Ссылка на публикацию" placeholder="https://" value={url} onChange={(e) => setUrl(e.target.value)} />
-            </div>
-            <div>
-              <TextArea id="txt" labelText="Текст объявления" helperText="Текст поста, описание видео или объявления" rows={6} value={text} onChange={(e) => setText(e.target.value)} />
-              <Button kind="ghost" size="sm" onClick={() => setText(SAMPLE)} style={{ marginTop: 4 }}>Вставить пример</Button>
-            </div>
-            <div>
-              <p className="cds--file--label">Скриншот</p>
-              <p className="cds--label-description">PNG или JPG до 10 МБ. Текст на изображении распознаётся (rus/kaz).</p>
-              <FileUploaderDropContainer labelText="Перетащите файл сюда или нажмите для выбора" accept={['image/*']} onAddFiles={(_e, { addedFiles }) => onFiles(addedFiles)} />
-              {img && <img src={img} alt="" className="drop-preview" />}
-              {ocrBusy && <InlineLoading description="Распознаём текст…" />}
-              {ocr && !ocrBusy && <div className="mono" style={{ marginTop: 8 }}>OCR: <Highlight text={ocr} /></div>}
-            </div>
-            <Select id="cx" labelText="Привязка к ЖК" value={complexId} onChange={(e) => setComplexId(e.target.value)}>
-              <SelectItem value="" text={suggestion ? `Автоматически: ЖК «${suggestion.name}»` : 'Определить автоматически'} />
-              {complexes.map((c) => <SelectItem key={c.id} value={c.id} text={`ЖК «${c.name}» · ${c.district}`} />)}
-            </Select>
-            <ButtonSet>
-              <Button kind="secondary" onClick={() => nav('/ads')}>Отмена</Button>
-              <Button kind="primary" disabled={!text} onClick={() => { addAd(draft); notify('Публикация добавлена в ленту'); nav(`/ads/${draft.id}`) }}>Сохранить и оценить</Button>
-            </ButtonSet>
-          </Stack>
-        </Form>
 
-        <div className="sticky">
-          <div className="label-01" style={{ marginBottom: 8 }}>Предпросмотр анализа · обновляется по мере ввода</div>
-          <Tile>
-            {img && <img src={img} alt="" style={{ width: '100%', height: 200, objectFit: 'cover', marginBottom: 16 }} />}
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Score value={s.score} zone={s.zone} /><ZoneTag zone={s.zone} size="sm" /></div>
-              <span className="label-01">{linked ? `→ ЖК «${linked.name}»` : 'ЖК не определён'}</span>
+      <div style={{ display: 'grid', gridTemplateColumns: '520px minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
+        <div className="stack">
+          <div className="card">
+            <div className="tiles" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+              {(Object.keys(platformMeta) as Platform[]).map((p) => (
+                <button key={p} className={`tile ${platform === p ? 'on' : ''}`} onClick={() => setPlatform(p)} style={{ minHeight: 78, alignItems: 'flex-start' }}>
+                  <span className="pic" style={{ height: 30, marginBottom: 4 }}><PlatformIcon p={p} size={30} /></span>
+                  <span className="nm" style={{ fontSize: 14 }}>{platformMeta[p].name}</span>
+                </button>
+              ))}
             </div>
-            <p style={{ fontSize: 16, lineHeight: 1.5, minHeight: 120, marginTop: 16 }}>{text ? <Highlight text={text} /> : <span className="muted">Текст появится здесь с подсветкой ключевых формулировок</span>}</p>
-            <div className="facts" style={{ gridTemplateColumns: 'repeat(3, 1fr)', margin: '16px 0 0' }}>
-              <div><div className="l">Продажа</div><div className="v">{s.signals.sale.length}</div></div>
-              <div><div className="l">Сбор денег</div><div className="v" style={{ color: 'var(--zone-red)' }}>{s.signals.funds.length}</div></div>
-              <div><div className="l">Законность</div><div className="v" style={{ color: 'var(--zone-green)' }}>{s.signals.safe.length}</div></div>
+          </div>
+          <div className="card">
+            <div className="field">
+              <span className="mk"><span className="mk ring" /></span>
+              <div className="body"><label>Аккаунт или автор</label><input placeholder="@account" value={account} onChange={(e) => setAccount(e.target.value)} /></div>
             </div>
-          </Tile>
+            <div className="field">
+              <span className="mk"><span className="mk ring dark" /></span>
+              <div className="body"><label>Ссылка на публикацию</label><input placeholder="https://" value={url} onChange={(e) => setUrl(e.target.value)} /></div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="field top">
+              <div className="body"><label>Текст объявления</label><textarea placeholder="Текст поста, описание видео или объявления…" value={text} onChange={(e) => setText(e.target.value)} /></div>
+            </div>
+            {!text && <Cell icon={<span className="c2"><IcPlus /></span>} title="Вставить пример" onClick={() => setText(SAMPLE)} />}
+          </div>
+          <div className="card" style={{ padding: 8 }}>
+            <div className={`drop ${over ? 'over' : ''}`} onClick={() => file.current?.click()} onDragOver={(e) => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); onFile(e.dataTransfer.files[0]) }}>
+              {img ? <img src={img} alt="" style={{ maxHeight: 220, borderRadius: 12 }} /> : (
+                <div><IcUpload size={28} /><div className="bold" style={{ marginTop: 8 }}>Скриншот публикации</div><div className="t-sm c2" style={{ marginTop: 4 }}>Перетащите или нажмите · PNG, JPG до 10 МБ</div></div>
+              )}
+            </div>
+            <input ref={file} type="file" accept="image/*" hidden onChange={(e) => onFile(e.target.files?.[0])} />
+            {(ocrBusy || ocr) && <div className="t-sm" style={{ padding: '12px 16px 6px' }}>{ocrBusy ? <span className="c2">Распознаём текст…</span> : <><span className="c2">OCR: </span><Highlight text={ocr!} /></>}</div>}
+          </div>
+          <div className="card">
+            <Cell icon={<span className="ico"><IcBuilding size={20} /></span>} title="Объект" sub={complexId ? 'выбран вручную' : suggestion ? 'определён по тексту' : 'определится по тексту'} end={linked ? <span style={{ color: 'var(--text)' }}>{linked.name}</span> : 'не выбран'} chevron onClick={() => setModal(true)} />
+          </div>
+          <div className="card" style={{ padding: 16 }}>
+            <button className="btn y full" disabled={!text} onClick={() => { addAd(draft); notify('Публикация добавлена в ленту'); nav(`/ads/${draft.id}`) }}>{text ? 'Сохранить и оценить' : 'Введите текст объявления'}</button>
+          </div>
+        </div>
+
+        <div className="sticky stack">
+          <div className="card">
+            <div className="card-head"><h3>Предпросмотр</h3><span className="t-sm c2">обновляется по мере ввода</span></div>
+            {img && <div className="ph" style={{ height: 240, margin: '4px 8px', borderRadius: 18 }}><img src={img} alt="" /></div>}
+            <div className="card-pad">
+              <div className="row between"><div className="row" style={{ gap: 8 }}><PlatformIcon p={platform} /><span className="bold">{account || '@account'}</span></div><div className="row" style={{ gap: 8 }}><Score value={s.score} zone={s.zone} /><ZoneTag zone={s.zone} /></div></div>
+              <p style={{ fontSize: 18, lineHeight: '27px', minHeight: 110, marginTop: 16 }}>{text ? <Highlight text={text} /> : <span className="c3">Текст появится здесь с подсветкой ключевых формулировок</span>}</p>
+            </div>
+            <div className="tiles">
+              {([['Продажа', s.signals.sale.length, 'var(--text)'], ['Сбор денег', s.signals.funds.length, 'var(--red)'], ['Законность', s.signals.safe.length, 'var(--green)']] as const).map(([k, v, col]) => (
+                <div key={k} className="tile" style={{ background: 'var(--bg)', minHeight: 0 }}><span className="nm c2" style={{ fontSize: 13 }}>{k}</span><span className="vl num" style={{ fontSize: 28, color: col }}>{v}</span></div>
+              ))}
+            </div>
+          </div>
+          <div className="card">
+            <Cell icon={<span className="ico"><IcBuilding size={20} /></span>} title={linked ? `ЖК «${linked.name}»` : 'ЖК не определён'} sub={linked ? `${linked.address} · ${linked.stage}` : 'Укажите название ЖК в тексте или выберите вручную'} />
+          </div>
         </div>
       </div>
+
+      {modal && (
+        <Modal title="Выберите объект" onClose={() => setModal(false)}>
+          <div style={{ padding: '8px 16px' }}><div className="search"><IcSearch size={20} /><input autoFocus placeholder="Название ЖК" value={cq} onChange={(e) => setCq(e.target.value)} />{cq && <button onClick={() => setCq('')}><IcClose size={18} /></button>}</div></div>
+          <Cell title="Определить автоматически" end={!complexId ? <IcCheck size={22} strokeWidth={2.5} style={{ color: 'var(--text)' }} /> : undefined} onClick={() => { setComplexId(''); setModal(false) }} />
+          {complexes.filter((x) => x.name.toLowerCase().includes(cq.toLowerCase())).map((x) => (
+            <Cell key={x.id} inset icon={<img className="th" src={x.cover} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name} sub={x.address}
+              end={complexId === x.id ? <IcCheck size={22} strokeWidth={2.5} style={{ color: 'var(--text)' }} /> : undefined} onClick={() => { setComplexId(x.id); setModal(false) }} />
+          ))}
+        </Modal>
+      )}
     </>
   )
 }

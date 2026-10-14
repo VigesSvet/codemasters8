@@ -6,24 +6,22 @@
 
 ## Экраны
 
-Интерфейс собран на IBM Carbon Design System (`@carbon/react`, иконки `@carbon/icons-react`, шрифт IBM Plex). Паттерны взяты у реальных сервисов:
+Интерфейс в визуальном языке Яндекс Go (веб-версия «Такси»): шапка-плашка со скруглением 24, стопка белых карточек слева от карты, плитки как выбор тарифа, переключатели, жёлтая кнопка `#FCE000` высотой 56, модалки с серой шапкой. Собственный UI-кит — `frontend/src/styles/go.css`, иконки — `frontend/src/ui/icons.tsx`, шрифт — Onest (OFL; фирменный YS Text проприетарный и в репозиторий не включён).
 
-| Путь | Экран | Образец |
-|---|---|---|
-| `/login` | Вход сотрудника | главная SIERA (тонкая линейка с датой, знак по центру, фото) |
-| `/` | Карта объектов: поиск, фильтр по зонам, карточка объекта | 2ГИС |
-| `/ops` | Оперативная сводка: индикаторы, список, карта, графики | ArcGIS Dashboards |
-| `/complexes` | Реестр ЖК: таблица или карточки, фильтры-чипы | IBM Carbon Data table, Linear filters, Korter |
-| `/complexes/:id` | Карточка ЖК: галерея, этапы, основания, риск R1–R6 | страница ЖК Korter / BS Holding |
-| `/ads` | Мониторинг рекламы: список по статусам или карточки | список задач Linear |
-| `/ads/:id` | Разбор публикации: текст, OCR, сигналы, активность, свойства, решение | карточка задачи Linear |
-| `/ads/new` | Ручное добавление + OCR скриншота | формы Carbon |
-| `/queue` | Очередь проверки: доска с drag-and-drop | доска Linear |
-| `/developers` | Застройщики (раскрываемые строки) | Carbon Data table |
-| `/sites` | Фото-мониторинг (доп. модуль) | — |
-| `/method`, `/sources`, `/reports`, `/residents` | Методика, источники, отчёты, идея push жителям | Carbon |
-
-Тема: светлая (Carbon g10) или тёмная (g100) — кнопка в шапке.
+| Путь | Экран |
+|---|---|
+| `/login` | Вход сотрудника |
+| `/` | Карта: поиск ЖК, фильтр по зонам, список, карточка объекта, промо-плашки |
+| `/ops` | Оперативная сводка |
+| `/complexes` | Реестр ЖК: фильтры слева, список или карточки |
+| `/complexes/:id` | Карточка ЖК: галерея, ход строительства, основания, риск R1–R6 |
+| `/ads` | Лента рекламы с подсветкой формулировок |
+| `/ads/:id` | Разбор публикации: OCR, сигналы, история, решение аналитика |
+| `/ads/new` | Ручное добавление + OCR скриншота, оценка на лету |
+| `/queue` | Очередь проверки: доска с перетаскиванием |
+| `/developers` | Застройщики |
+| `/sites` | Фото-мониторинг (доп. модуль) |
+| `/method`, `/sources`, `/reports`, `/residents` | Методика, источники, отчёты, идея push жителям |
 
 ## Запуск
 
@@ -81,6 +79,6 @@ npm run dev            # http://localhost:5180, /api проксируется н
 
 ## Стек
 
-React 19 + TypeScript + Vite, IBM Carbon (`@carbon/react`), MapLibre GL (подложка CARTO / OpenStreetMap) · FastAPI, SQLAlchemy 2, PostgreSQL 16 · Tesseract OCR (rus/kaz) в Docker-образе.
+React 19 + TypeScript + Vite, собственный UI-кит, MapLibre GL (подложка CARTO / OpenStreetMap) · FastAPI, SQLAlchemy 2, PostgreSQL 16 · Tesseract OCR (rus/kaz) в Docker-образе.
 
-Шрифты: IBM Plex Sans / Mono, Cormorant Garamond (OFL, через @fontsource). Carbon и иконки Carbon — Apache-2.0. Фото: Wikimedia Commons — см. [CREDITS.md](CREDITS.md).
+Шрифт: Onest (OFL, через @fontsource). Иконки нарисованы для проекта. Фото: Wikimedia Commons — см. [CREDITS.md](CREDITS.md).

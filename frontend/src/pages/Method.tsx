@@ -1,8 +1,7 @@
 import { useState } from 'react'
-import { CodeSnippet, DismissibleTag, Tag, TextInput, Button, StructuredListBody, StructuredListCell, StructuredListHead, StructuredListRow, StructuredListWrapper } from '@carbon/react'
-import { Add } from '@carbon/icons-react'
-import { PageHeader, ZoneTag } from '../components/ui'
+import { PageTitle } from '../components/ui'
 import { keywordsDefault, keywordsSafe } from '../data/demo'
+import { IcBuilding, IcClose, IcPlus } from '../ui/icons'
 
 const FACTORS = [
   ['R1', 'Нет основания для привлечения средств', '35', 'Гарантия ЕО отсутствует и разрешение МИО/БВУ не подтверждено. Отсутствие отдельного разрешения МИО при действующей гарантии — не R1. Нет сведений → 0 баллов.'],
@@ -19,45 +18,54 @@ export default function Method() {
   const add = () => { if (nw.trim()) { setKw((x) => [...x, nw.trim()]); setNw('') } }
   return (
     <>
-      <PageHeader crumbs={[['SAQ', '/'], ['Методика скоринга']]} title="Методика скоринга" sub="Скоринг сужает фокус аналитика, но не выносит решения. Каждый балл привязан к доказательству: документу, публикации или снимку." />
-      <div className="page" style={{ maxWidth: 1200 }}>
-        <div className="facts" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginTop: 0 }}>
-          <div><ZoneTag zone="green" /><div className="v" style={{ marginTop: 12 }}>0 – 24 балла</div><div className="l" style={{ marginTop: 4 }}>Основания подтверждены, замечаний нет</div></div>
-          <div><ZoneTag zone="yellow" /><div className="v" style={{ marginTop: 12 }}>25 – 59 баллов</div><div className="l" style={{ marginTop: 4 }}>Отклонения: простой, нет в перечне, неполные сведения</div></div>
-          <div><ZoneTag zone="red" /><div className="v" style={{ marginTop: 12 }}>60+ и подтверждены R1 + R2</div><div className="l" style={{ marginTop: 4 }}>Реклама продажи без основания</div></div>
-        </div>
-
-        <h2 className="section-title">Факторы риска</h2>
-        <StructuredListWrapper aria-label="Факторы">
-          <StructuredListHead><StructuredListRow head><StructuredListCell head>Код</StructuredListCell><StructuredListCell head>Фактор</StructuredListCell><StructuredListCell head>Когда срабатывает</StructuredListCell><StructuredListCell head>Баллы</StructuredListCell></StructuredListRow></StructuredListHead>
-          <StructuredListBody>
-            {FACTORS.map(([code, t, p, d]) => (
-              <StructuredListRow key={code}><StructuredListCell className="mono">{code}</StructuredListCell><StructuredListCell noWrap>{t}</StructuredListCell><StructuredListCell>{d}</StructuredListCell><StructuredListCell className="mono">+{p}</StructuredListCell></StructuredListRow>
+      <PageTitle crumbs={[['Карта', '/'], ['Методика скоринга']]} title="Как считается риск" sub="Скоринг сужает фокус аналитика, но не выносит решения. Каждый балл привязан к доказательству: документу, публикации или снимку." />
+      <div className="stack" style={{ gap: 16 }}>
+        <div className="card">
+          <div className="tiles">
+            {([['green', 'Зелёная', '0–24 балла', 'Основания подтверждены, замечаний нет'], ['yellow', 'Жёлтая', '25–59 баллов', 'Простой, нет в перечне, неполные сведения'], ['red', 'Красная', '60+ и подтверждены R1 + R2', 'Реклама продажи без основания']] as const).map(([z, n, r, d]) => (
+              <div key={z} className="tile" style={{ background: 'var(--bg)', minHeight: 140 }}>
+                <span className="pic"><span className={`zone-pic ${z}`}><IcBuilding size={20} /></span></span>
+                <span className="vl" style={{ fontSize: 20 }}>{n} зона</span>
+                <span className="bold t-sm" style={{ marginTop: 4 }}>{r}</span>
+                <span className="t-sm c2">{d}</span>
+              </div>
             ))}
-          </StructuredListBody>
-        </StructuredListWrapper>
-
-        <h2 className="section-title">Формула</h2>
-        <CodeSnippet type="multi" feedback="Скопировано">{`score = min(100, Σ points(Rᵢ), где Rᵢ подтверждён)
-zone  = red,    если score ≥ 60 и подтверждены R1 и R2
-        yellow, если score ≥ 25
-        green,  иначе
-нет сведений по фактору → 0 баллов и отметка «Нужна проверка»`}</CodeSnippet>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48 }}>
-          <div>
-            <h2 className="section-title">Словарь продажи</h2>
-            <p className="muted" style={{ marginBottom: 16 }}>Стартовые слова от ГАСК: «строительство», «квартира», «продаём», «продаётся», цена. Расширяйте связками.</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap' }}>{kw.map((k) => <DismissibleTag key={k} type="cool-gray" text={k} title="Убрать" onClose={() => setKw((x) => x.filter((y) => y !== k))} />)}</div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', marginTop: 16 }}>
-              <TextInput id="nw" labelText="Новое слово или связка" value={nw} onChange={(e) => setNw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
-              <Button hasIconOnly renderIcon={Add} iconDescription="Добавить" onClick={add} />
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-head"><h3>Факторы</h3></div>
+          {FACTORS.map(([code, t, p, d]) => (
+            <div key={code} className="cell" style={{ alignItems: 'flex-start', paddingTop: 16, paddingBottom: 16 }}>
+              <span className="tag dark" style={{ width: 40, justifyContent: 'center' }}>{code}</span>
+              <div className="main"><div className="ttl bold">{t}</div><div className="sub" style={{ marginTop: 4, lineHeight: '20px' }}>{d}</div></div>
+              <span className="t-h3 num">+{p}</span>
+            </div>
+          ))}
+        </div>
+        <div className="card card-pad" style={{ background: 'var(--text)', color: '#fff' }}>
+          <div className="t-sm" style={{ color: 'rgba(255,255,255,.6)', marginBottom: 10 }}>Формула</div>
+          <div style={{ fontSize: 17, lineHeight: '28px' }}>
+            риск = сумма баллов подтверждённых факторов, максимум 100<br />
+            <span className="tag red" style={{ verticalAlign: 1 }}>красная</span> — 60 и больше <b>и</b> подтверждены R1 и R2 ·{' '}
+            <span className="tag yellow" style={{ verticalAlign: 1 }}>жёлтая</span> — от 25 ·{' '}
+            <span className="tag green" style={{ verticalAlign: 1 }}>зелёная</span> — меньше 25<br />
+            нет сведений по фактору → 0 баллов и отметка «Нужна проверка»
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div className="card card-pad">
+            <h3 className="t-h3">Словарь продажи</h3>
+            <p className="t-sm c2" style={{ margin: '6px 0 16px' }}>Стартовые слова ГАСК: «строительство», «квартира», «продаём», «продаётся», цена. Расширяйте связками.</p>
+            <div className="chips">{kw.map((k) => <span key={k} className="chip">{k}<button onClick={() => setKw((x) => x.filter((y) => y !== k))} aria-label="Убрать" className="c3"><IcClose size={14} /></button></span>)}</div>
+            <div className="row" style={{ marginTop: 16, gap: 8 }}>
+              <input className="input" placeholder="Новое слово или связка" value={nw} onChange={(e) => setNw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
+              <button className="btn y m" onClick={add} aria-label="Добавить"><IcPlus size={20} /></button>
             </div>
           </div>
-          <div>
-            <h2 className="section-title">Признаки законности</h2>
-            <p className="muted" style={{ marginBottom: 16 }}>Снижают оценку публикации: добросовестный застройщик обычно указывает основание.</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap' }}>{keywordsSafe.map((k) => <Tag key={k} type="green">{k}</Tag>)}</div>
+          <div className="card card-pad">
+            <h3 className="t-h3">Признаки законности</h3>
+            <p className="t-sm c2" style={{ margin: '6px 0 16px' }}>Снижают оценку публикации: добросовестный застройщик обычно указывает основание.</p>
+            <div className="chips">{keywordsSafe.map((k) => <span key={k} className="chip" style={{ background: 'var(--green-bg)', color: '#13803a' }}>{k}</span>)}</div>
           </div>
         </div>
       </div>

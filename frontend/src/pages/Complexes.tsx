@@ -1,138 +1,140 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import {
-  Button, ContentSwitcher, DataTable, IconSwitch, Pagination, Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow,
-  TableToolbar, TableToolbarContent, TableToolbarSearch,
-} from '@carbon/react'
-import { Add, Download, Grid, List } from '@carbon/icons-react'
-import FilterBar, { type Applied, type FilterDef } from '../components/FilterBar'
-import { NeedsCheck, PageHeader, Score, TriTag, ZoneTag, fmtDate } from '../components/ui'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Cell, Modal, NeedsCheck, PageTitle, Score, Seg, Toggle, ZoneTag, fmtDate } from '../components/ui'
 import { developers } from '../data/demo'
-import type { Stage } from '../data/types'
+import type { Stage, Tri, Zone } from '../data/types'
 import { scoreComplex } from '../lib/risk'
 import { useStore } from '../lib/store'
+import { IcBuilding, IcCheck, IcDownload, IcGrid, IcHelp, IcList, IcMap, IcPlus, IcSearch, IcClose, IcCrane } from '../ui/icons'
 
 const STAGES: Stage[] = ['котлован', 'фундамент', 'каркас', 'кровля', 'отделка', 'введён']
+const triCls = (v: Tri) => (v === 'yes' ? 'green' : v === 'no' ? 'red' : 'gray')
 
 export default function Complexes() {
-  const { complexes, ads } = useStore()
+  const { complexes, ads, notify } = useStore()
   const nav = useNavigate()
-  const [view, setView] = useState(0)
+  const [sp] = useSearchParams()
+  const [view, setView] = useState<'list' | 'grid'>('list')
   const [q, setQ] = useState('')
-  const [applied, setApplied] = useState<Applied[]>([])
-  const [page, setPage] = useState({ page: 1, size: 25 })
-
-  const defs: FilterDef[] = [
-    { key: 'zone', label: 'Зона', options: [{ value: 'red', label: 'Красная' }, { value: 'yellow', label: 'Жёлтая' }, { value: 'green', label: 'Зелёная' }] },
-    { key: 'district', label: 'Район', options: [...new Set(complexes.map((c) => c.district))].map((d) => ({ value: d, label: d })) },
-    { key: 'stage', label: 'Стадия', options: STAGES.map((s) => ({ value: s, label: s })) },
-    { key: 'guarantee', label: 'Гарантия ЕО', options: [{ value: 'yes', label: 'Есть' }, { value: 'no', label: 'Нет' }, { value: 'unknown', label: 'Нет сведений' }] },
-    { key: 'check', label: 'Проверка', options: [{ value: 'need', label: 'Нужна проверка' }] },
-  ]
+  const [zone, setZone] = useState<Zone | 'all'>((sp.get('zone') as Zone) || 'all')
+  const [district, setDistrict] = useState('')
+  const [stage, setStage] = useState<Stage | ''>('')
+  const [onlyCheck, setOnlyCheck] = useState(false)
+  const [noList, setNoList] = useState(false)
+  const [modal, setModal] = useState<'district' | 'stage' | null>(null)
 
   const all = useMemo(() => complexes.map((c) => ({ c, r: scoreComplex(c, ads), dev: developers.find((d) => d.id === c.developerId) })).sort((a, b) => b.r.score - a.r.score), [complexes, ads])
-  const rows = all.filter(({ c, r, dev }) => {
-    if (q && !`${c.name} ${c.address} ${dev?.name} ${dev?.bin}`.toLowerCase().includes(q.toLowerCase())) return false
-    return applied.every((a) => {
-      const v = a.key === 'zone' ? r.zone : a.key === 'district' ? c.district : a.key === 'stage' ? c.stage : a.key === 'guarantee' ? c.basis.guarantee : r.needsCheck ? 'need' : ''
-      return a.values.includes(v)
-    })
-  })
-  const byId = Object.fromEntries(rows.map((x) => [x.c.id, x]))
-  const headers = [
-    { key: 'name', header: 'Объект' }, { key: 'dev', header: 'Застройщик' }, { key: 'guarantee', header: 'Основания' }, { key: 'progress', header: 'Готовность' }, { key: 'end', header: 'Сдача' },
-    { key: 'score', header: 'Риск' }, { key: 'zone', header: 'Зона' },
-  ]
-  const pageRows = rows.slice((page.page - 1) * page.size, page.page * page.size)
-  const tableRows = pageRows.map(({ c, r }) => ({ id: c.id, name: c.name, dev: c.developerId, guarantee: c.basis.guarantee, mio: c.basis.mio, bvu: c.basis.bvu, list: c.inPublishedList, progress: c.progress, end: c.plannedEnd, score: r.score, zone: r.zone }))
+  const rows = all.filter(({ c, r, dev }) =>
+    (!q || `${c.name} ${c.address} ${dev?.name} ${dev?.bin}`.toLowerCase().includes(q.toLowerCase()))
+    && (zone === 'all' || r.zone === zone) && (!district || c.district === district) && (!stage || c.stage === stage)
+    && (!onlyCheck || r.needsCheck) && (!noList || c.inPublishedList === 'no'))
+  const districts = [...new Set(complexes.map((c) => c.district))]
+  const cnt = (z: Zone | 'all') => all.filter((x) => z === 'all' || x.r.zone === z).length
+  const dirty = zone !== 'all' || district || stage || onlyCheck || noList || q
 
   return (
     <>
-      <PageHeader crumbs={[['SAQ', '/'], ['Реестр ЖК']]} title="Реестр жилых комплексов"
-        sub={`Усть-Каменогорск · ${complexes.length} объектов · основания сверяются с перечнем ГАСК и картотекой. Отсутствие сведений не считается нарушением.`} />
+      <PageTitle crumbs={[['Карта', '/'], ['Реестр ЖК']]} title="Реестр жилых комплексов"
+        sub="Все строящиеся и недавно сданные объекты Усть-Каменогорска. Основания сверяются с перечнем ГАСК и картотекой — отсутствие сведений не считается нарушением."
+        actions={<><button className="btn g m" onClick={() => notify('Выгрузка XLSX сформирована')}><IcDownload size={20} />Экспорт</button><button className="btn y m"><IcPlus size={20} />Добавить ЖК</button></>} />
 
-      <FilterBar defs={defs} applied={applied} onChange={(a) => { setApplied(a); setPage((p) => ({ ...p, page: 1 })) }}
-        right={<>
-          <span className="label-01">{rows.length} из {complexes.length}</span>
-          <ContentSwitcher size="sm" selectedIndex={view} onChange={({ index }) => setView(index ?? 0)} style={{ width: 'auto' }}>
-            <IconSwitch name="table" text="Таблица"><List /></IconSwitch>
-            <IconSwitch name="grid" text="Карточки"><Grid /></IconSwitch>
-          </ContentSwitcher>
-        </>} />
-
-      {view === 0 ? (
-        <DataTable rows={tableRows} headers={headers} isSortable>
-          {({ rows: drows, headers: dheaders, getHeaderProps, getRowProps, getTableProps, getTableContainerProps }) => (
-            <TableContainer {...getTableContainerProps()}>
-              <TableToolbar>
-                <TableToolbarContent>
-                  <TableToolbarSearch persistent placeholder="Поиск: ЖК, адрес, застройщик, БИН" onChange={(e) => setQ(typeof e === 'string' ? '' : (e.target as HTMLInputElement).value)} />
-                  <Button kind="ghost" renderIcon={Download}>Экспорт XLSX</Button>
-                  <Button renderIcon={Add}>Добавить ЖК</Button>
-                </TableToolbarContent>
-              </TableToolbar>
-              <Table {...getTableProps()} size="lg">
-                <TableHead>
-                  <TableRow>{dheaders.map((h) => <TableHeader {...getHeaderProps({ header: h })} key={h.key}>{h.header}</TableHeader>)}</TableRow>
-                </TableHead>
-                <TableBody>
-                  {drows.map((row) => {
-                    const { c, r, dev } = byId[row.id]
-                    return (
-                      <TableRow {...getRowProps({ row })} key={row.id} onClick={() => nav(`/complexes/${c.id}`)} style={{ cursor: 'pointer' }}>
-                        <TableCell className="col-obj">
-                          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                            <img className="thumb" src={c.cover} alt="" />
-                            <div><div className="cell-title">ЖК «{c.name}»</div><div className="cell-sub">{c.address} · {c.district}</div></div>
-                          </div>
-                        </TableCell>
-                        <TableCell><div>{dev?.name}</div><div className="cell-sub mono">БИН {dev?.bin}</div></TableCell>
-                        <TableCell>
-                          <div className="basis-dots">
-                            <span title="Гарантия ЕО"><i className={c.basis.guarantee} />ЕО</span>
-                            <span title="Разрешение МИО"><i className={c.basis.mio} />МИО</span>
-                            <span title="Банк второго уровня"><i className={c.basis.bvu} />БВУ</span>
-                            <span title="Перечень ГАСК"><i className={c.inPublishedList} />ГАСК</span>
-                          </div>
-                        </TableCell>
-                        <TableCell><div className="progress"><span className="bar"><b style={{ width: `${c.progress}%` }} /></span><span className="mono">{c.progress}%</span></div><div className="cell-sub">{c.stage}</div></TableCell>
-                        <TableCell className="mono">{fmtDate(c.plannedEnd)}</TableCell>
-                        <TableCell><Score value={r.score} zone={r.zone} /></TableCell>
-                        <TableCell><div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}><ZoneTag zone={r.zone} size="sm" />{r.needsCheck && <NeedsCheck />}</div></TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-              <Pagination page={page.page} pageSize={page.size} pageSizes={[10, 25, 50]} totalItems={rows.length} onChange={({ page: p, pageSize }) => setPage({ page: p, size: pageSize })}
-                itemsPerPageText="Строк на странице:" itemRangeText={(min, max, total) => `${min}–${max} из ${total}`} pageRangeText={(_c, total) => `из ${total}`} backwardText="Назад" forwardText="Вперёд" />
-            </TableContainer>
-          )}
-        </DataTable>
-      ) : (
-        <div className="page">
-          <div className="cards">
-            {rows.map(({ c, r, dev }) => (
-              <div key={c.id} className="pcard" onClick={() => nav(`/complexes/${c.id}`)}>
-                <div className="ph">
-                  <img src={c.cover} alt="" />
-                  <div className="tags"><ZoneTag zone={r.zone} size="sm" /></div>
-                  <Score value={r.score} zone={r.zone} />
-                </div>
-                <div className="b">
-                  <div className="n">ЖК «{c.name}»</div>
-                  <div className="a">{c.address}</div>
-                  <div className="a">{c.district} · {c.stage} · сдача {new Date(c.plannedEnd).getFullYear()}</div>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
-                    <TriTag v={c.basis.guarantee} label={`Гарантия ЕО: ${c.basis.guarantee === 'yes' ? 'есть' : c.basis.guarantee === 'no' ? 'нет' : '?'}`} />
-                    {r.needsCheck && <NeedsCheck />}
-                  </div>
-                  <div className="dev">{dev?.name}</div>
-                </div>
-              </div>
-            ))}
+      <div className="cols">
+        <div className="stack sticky">
+          <div className="card">
+            <div className="field">
+              <span className="mk c2"><IcSearch /></span>
+              <div className="body"><input placeholder="ЖК, адрес, застройщик, БИН" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+              {q && <button className="c3" onClick={() => setQ('')}><IcClose size={18} /></button>}
+            </div>
           </div>
+          <div className="card">
+            <div className="tiles" style={{ gridTemplateColumns: '1fr 1fr' }}>
+              {(['all', 'red', 'yellow', 'green'] as const).map((z) => (
+                <button key={z} className={`tile ${zone === z ? 'on' : ''}`} onClick={() => setZone(z)} style={{ minHeight: 84 }}>
+                  <span className="pic" style={{ height: 30 }}><span className={`zone-pic ${z}`} style={{ width: 30, height: 30, borderRadius: 10 }}><IcBuilding size={18} /></span></span>
+                  <span className="nm">{z === 'all' ? 'Все' : z === 'red' ? 'Красная' : z === 'yellow' ? 'Жёлтая' : 'Зелёная'}</span>
+                  <span className="vl num">{cnt(z)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="card">
+            <Cell icon={<span className="ico"><IcMap size={20} /></span>} title="Район" end={district || 'любой'} chevron onClick={() => setModal('district')} inset />
+            <Cell icon={<span className="ico"><IcCrane size={20} /></span>} title="Стадия" end={stage || 'любая'} chevron onClick={() => setModal('stage')} inset />
+          </div>
+          <div className="card">
+            <Cell title="Нужна проверка" sub="Есть факторы без сведений" end={<Toggle on={onlyCheck} onChange={setOnlyCheck} />} />
+            <Cell title="Нет в перечне ГАСК" sub="Само по себе не нарушение" end={<Toggle on={noList} onChange={setNoList} />} />
+          </div>
+          {dirty && <button className="btn g full" onClick={() => { setZone('all'); setDistrict(''); setStage(''); setOnlyCheck(false); setNoList(false); setQ('') }}>Сбросить фильтры</button>}
         </div>
+
+        <div>
+          <div className="row between" style={{ padding: '4px 4px 12px' }}>
+            <span className="t-h3">{rows.length} {rows.length === 1 ? 'объект' : rows.length < 5 ? 'объекта' : 'объектов'}</span>
+            <Seg value={view} onChange={setView} items={[['list', <><IcList size={18} />Список</>], ['grid', <><IcGrid size={18} />Карточки</>]]} />
+          </div>
+          {view === 'list' ? (
+            <div className="card fade">
+              {rows.length === 0 && <div className="empty">Нет объектов под эти фильтры</div>}
+              {rows.map(({ c, r, dev }) => (
+                <button key={c.id} className="cell" onClick={() => nav(`/complexes/${c.id}`)} style={{ display: 'grid', gridTemplateColumns: '72px minmax(0,1.4fr) minmax(0,1fr) 150px 64px', gap: 18, minHeight: 96 }}>
+                  <img className="th" src={c.cover} alt="" style={{ width: 72, height: 72, borderRadius: 16 }} />
+                  <div style={{ minWidth: 0 }}>
+                    <div className="ttl bold">ЖК «{c.name}»</div>
+                    <div className="sub">{c.address} · {c.district}</div>
+                    <div className="row wrap-f" style={{ gap: 6, marginTop: 8 }}>
+                      <ZoneTag zone={r.zone} />
+                      {r.needsCheck && <NeedsCheck />}
+                    </div>
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="t-sm" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dev?.name}</div>
+                    <div className="t-xs c3 num">БИН {dev?.bin}</div>
+                    <div className="row wrap-f" style={{ gap: 4, marginTop: 8 }}>
+                      {([['ЕО', c.basis.guarantee], ['МИО', c.basis.mio], ['БВУ', c.basis.bvu], ['ГАСК', c.inPublishedList]] as const).map(([l, v]) => (
+                        <span key={l} className={`tag ${triCls(v)}`} title={l} style={{ height: 22, padding: '0 7px' }}>{v === 'yes' ? <IcCheck size={12} strokeWidth={3} /> : v === 'no' ? <IcClose size={12} strokeWidth={3} /> : <IcHelp size={12} />}{l}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="t-sm">{c.stage} · <span className="num">{c.progress}%</span></div>
+                    <div className="hbar" style={{ margin: '8px 0 6px', height: 6 }}><i style={{ width: `${c.progress}%`, background: 'var(--text)' }} /></div>
+                    <div className="t-xs c3">сдача {fmtDate(c.plannedEnd)}</div>
+                  </div>
+                  <div style={{ justifySelf: 'end' }}><Score value={r.score} zone={r.zone} /></div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="gcards fade">
+              {rows.map(({ c, r, dev }) => (
+                <div key={c.id} className="gcard" onClick={() => nav(`/complexes/${c.id}`)}>
+                  <div className="ph"><img src={c.cover} alt="" /><div className="tl"><span className="tag dark">{c.stage}</span></div><div className="tr"><Score value={r.score} zone={r.zone} /></div></div>
+                  <div className="b">
+                    <div className="t-h3">ЖК «{c.name}»</div>
+                    <div className="t-sm c2">{c.address}</div>
+                    <div className="row wrap-f" style={{ gap: 6, marginTop: 6 }}><ZoneTag zone={r.zone} />{r.needsCheck && <NeedsCheck />}</div>
+                    <div className="t-xs c3" style={{ marginTop: 'auto', paddingTop: 10 }}>{dev?.name}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {modal && (
+        <Modal title={modal === 'district' ? 'Район' : 'Стадия строительства'} onClose={() => setModal(null)}>
+          {[''].concat(modal === 'district' ? districts : STAGES).map((v) => {
+            const cur = modal === 'district' ? district : stage
+            return (
+              <Cell key={v || 'any'} title={v || (modal === 'district' ? 'Любой район' : 'Любая стадия')}
+                end={cur === v ? <IcCheck size={22} strokeWidth={2.5} /> : undefined}
+                onClick={() => { if (modal === 'district') setDistrict(v); else setStage(v as Stage); setModal(null) }} />
+            )
+          })}
+        </Modal>
       )}
     </>
   )

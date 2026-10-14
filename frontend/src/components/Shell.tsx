@@ -1,91 +1,94 @@
-import { useEffect, useState } from 'react'
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useState, type ComponentType } from 'react'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Header, HeaderGlobalAction, HeaderGlobalBar, HeaderName, SideNav, SideNavDivider, SideNavItems, SideNavLink, SkipToContent, Theme, ToastNotification,
-} from '@carbon/react'
-import {
-  Analytics, Asleep, Building, Bullhorn, Camera, DataBase, Education, Enterprise, Light, ListChecked, Logout, Map, Mobile, Notification, Report, Search, AddAlt,
-} from '@carbon/icons-react'
+  IcBell, IcBook, IcBuilding, IcCamera, IcChart, IcCheck, IcChevronDown, IcChevronRight, IcChevronUp, IcDatabase, IcDoc, IcInbox, IcLogout, IcMegaphone, IcPlus, IcSearch, IcUsers,
+} from '../ui/icons'
 import { useStore } from '../lib/store'
 
-const NAV = [
-  { to: '/', label: 'Карта объектов', icon: Map, end: true },
-  { to: '/ops', label: 'Оперативная сводка', icon: Analytics },
-  { to: '/complexes', label: 'Реестр ЖК', icon: Building },
-  { to: '/ads', label: 'Мониторинг рекламы', icon: Bullhorn, count: 'ads' as const },
-  { to: '/queue', label: 'Очередь проверки', icon: ListChecked, count: 'queue' as const },
-  { to: '/developers', label: 'Застройщики', icon: Enterprise },
-  null,
-  { to: '/ads/new', label: 'Добавить публикацию', icon: AddAlt },
-  { to: '/sites', label: 'Фото-мониторинг', icon: Camera },
-  { to: '/method', label: 'Методика скоринга', icon: Education },
-  { to: '/sources', label: 'Источники данных', icon: DataBase },
-  { to: '/reports', label: 'Отчёты', icon: Report },
-  { to: '/residents', label: 'Жителям (идея)', icon: Mobile },
+type Item = { to: string; label: string; hint?: string; icon: ComponentType<{ size?: number }>; badge?: 'queue' | 'ads' }
+const GROUPS: { key: string; label: string; items: Item[] }[] = [
+  { key: 'obj', label: 'Объекты', items: [
+    { to: '/complexes', label: 'Реестр ЖК', hint: 'Все строящиеся объекты города', icon: IcBuilding },
+    { to: '/developers', label: 'Застройщики', hint: 'Портфель и история', icon: IcUsers },
+    { to: '/sites', label: 'Фото-мониторинг', hint: 'Снимки с дрона и камер', icon: IcCamera },
+  ] },
+  { key: 'ads', label: 'Реклама', items: [
+    { to: '/ads', label: 'Лента публикаций', hint: 'Instagram, TikTok, Krisha…', icon: IcMegaphone, badge: 'ads' },
+    { to: '/queue', label: 'Очередь проверки', hint: 'Решения аналитика', icon: IcInbox, badge: 'queue' },
+    { to: '/ads/new', label: 'Добавить публикацию', hint: 'Ручной ввод + OCR', icon: IcPlus },
+  ] },
+  { key: 'an', label: 'Аналитика', items: [
+    { to: '/ops', label: 'Оперативная сводка', hint: 'Цифры за сегодня', icon: IcChart },
+    { to: '/reports', label: 'Отчёты', hint: 'Еженедельная сводка', icon: IcDoc },
+    { to: '/method', label: 'Методика скоринга', hint: 'Как считается риск', icon: IcBook },
+    { to: '/sources', label: 'Источники данных', hint: 'Откуда берём данные', icon: IcDatabase },
+  ] },
 ]
 
-function useClock() {
-  const [now, setNow] = useState(new Date())
-  useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t) }, [])
-  return now
-}
-
 export default function Shell() {
-  const { ads, theme, setTheme, toast } = useStore()
+  const { ads, toast } = useStore()
   const loc = useLocation()
   const nav = useNavigate()
-  const now = useClock()
+  const [open, setOpen] = useState<string | null>(null)
+  useEffect(() => setOpen(null), [loc.pathname])
   const counts = { ads: ads.length, queue: ads.filter((a) => a.status === 'new' || a.status === 'needs_check').length }
-  const isActive = (to: string, end?: boolean) => (end ? loc.pathname === to : loc.pathname === to || (to !== '/ads' && loc.pathname.startsWith(to + '/')) || (to === '/ads' && /^\/ads\/(?!new)/.test(loc.pathname)))
+  const inGroup = (g: (typeof GROUPS)[number]) => g.items.some((i) => loc.pathname === i.to || (i.to !== '/ads' && loc.pathname.startsWith(i.to + '/')) || (i.to === '/ads' && /^\/ads\/(?!new)/.test(loc.pathname)))
+  const isMap = loc.pathname === '/'
 
   return (
-    <Theme theme={theme}>
-      <Theme theme="g100">
-      <Header aria-label="SAQ Qurylys">
-        <SkipToContent />
-        <HeaderName as={Link} to="/" prefix="ДЭР ВКО">SAQ Qurylys</HeaderName>
-        <HeaderGlobalBar>
-          <span className="header-date">
-            {now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).toUpperCase()} · {now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} ALMT · Өскемен
-          </span>
-          <HeaderGlobalAction aria-label="Поиск"><Search size={20} /></HeaderGlobalAction>
-          <HeaderGlobalAction aria-label={theme === 'g10' ? 'Тёмная тема' : 'Светлая тема'} onClick={() => setTheme(theme === 'g10' ? 'g100' : 'g10')}>
-            {theme === 'g10' ? <Asleep size={20} /> : <Light size={20} />}
-          </HeaderGlobalAction>
-          <HeaderGlobalAction aria-label="Уведомления" onClick={() => nav('/queue')}><Notification size={20} /></HeaderGlobalAction>
-          <HeaderGlobalAction aria-label="Выйти" tooltipAlignment="end" onClick={() => nav('/login')}><Logout size={20} /></HeaderGlobalAction>
-        </HeaderGlobalBar>
-      </Header>
-      </Theme>
-        <SideNav aria-label="Навигация" isFixedNav expanded isChildOfHeader={false}>
-          <SideNavItems>
-            {NAV.map((n, i) => n === null ? <SideNavDivider key={i} /> : (
-              <SideNavLink key={n.to} as={Link} to={n.to} renderIcon={n.icon} isActive={isActive(n.to, n.end)}>
-                <span style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                  {n.label}
-                  {n.count && <span className={`count ${n.count === 'queue' ? 'alert' : ''}`}>{counts[n.count]}</span>}
-                </span>
-              </SideNavLink>
-            ))}
-          </SideNavItems>
-          <div className="side-footer">
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <span className="avatar" style={{ width: 32, height: 32 }}>ВН</span>
-              <div>
-                <div className="cell-title">Нестерова А.</div>
-                <div className="cell-sub">Аналитик · ДЭР ВКО</div>
-              </div>
+    <>
+      <header className="head">
+        <Link to="/" className="logo"><span className="mark">S</span>SAQ <span className="sub">Qurylys</span></Link>
+        <nav className="nav">
+          <NavLink to="/" end className={({ isActive }) => `nav-btn ${isActive ? 'active' : ''}`}>Карта</NavLink>
+          {GROUPS.map((g) => (
+            <div className="nav-item" key={g.key}>
+              <button className={`nav-btn ${open === g.key ? 'open' : ''} ${inGroup(g) ? 'active' : ''}`} onClick={() => setOpen(open === g.key ? null : g.key)} aria-expanded={open === g.key}>
+                {g.label}{g.key === 'ads' && counts.queue > 0 && <span className="badge">{counts.queue}</span>}
+                {open === g.key ? <IcChevronUp size={18} /> : <IcChevronDown size={18} />}
+              </button>
+              {open === g.key && (
+                <>
+                  <div className="menu-scrim" onClick={() => setOpen(null)} />
+                  <div className="menu fade" role="menu">
+                    {g.items.map((i) => (
+                      <Link key={i.to} to={i.to} role="menuitem">
+                        <span className="ic"><i.icon size={20} /></span>
+                        <span className="lbl">{i.label}<small>{i.hint}</small></span>
+                        {i.badge && <span className={`badge ${i.badge === 'ads' ? 'gray' : ''}`}>{counts[i.badge]}</span>}
+                        <IcChevronRight size={20} />
+                      </Link>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
+          ))}
+          <NavLink to="/residents" className={({ isActive }) => `nav-btn ${isActive ? 'active' : ''}`}>Жителям</NavLink>
+        </nav>
+        <div className="head-right">
+          <button className="icon-btn" aria-label="Поиск" onClick={() => nav('/complexes')}><IcSearch /></button>
+          <button className="icon-btn" aria-label="Уведомления" onClick={() => nav('/queue')}><IcBell />{counts.queue > 0 && <span className="dot" />}</button>
+          <div className="nav-item">
+            <button className="user-btn" onClick={() => setOpen(open === 'me' ? null : 'me')}><span className="ava">ВН</span><IcChevronDown size={18} /></button>
+            {open === 'me' && (
+              <>
+                <div className="menu-scrim" onClick={() => setOpen(null)} />
+                <div className="menu fade" style={{ left: 'auto', right: 0, minWidth: 280 }}>
+                  <div style={{ padding: '8px 24px 14px', borderBottom: '1px solid var(--line)', marginBottom: 6 }}>
+                    <div className="bold">Нестерова Алия</div>
+                    <div className="t-sm c2">Аналитик · ДЭР ВКО</div>
+                  </div>
+                  <Link to="/queue"><span className="ic"><IcCheck size={20} /></span><span className="lbl">Мои проверки</span><IcChevronRight size={20} /></Link>
+                  <Link to="/login"><span className="ic"><IcLogout size={20} /></span><span className="lbl">Выйти</span><IcChevronRight size={20} /></Link>
+                </div>
+              </>
+            )}
           </div>
-        </SideNav>
-      <main className="app-content" id="main-content">
-        <Outlet />
-      </main>
-      {toast && (
-        <div style={{ position: 'fixed', right: 16, top: 64, zIndex: 9000 }}>
-          <ToastNotification kind={toast.kind} title={toast.title} subtitle="Действие записано в журнал" timeout={3000} lowContrast />
         </div>
-      )}
-    </Theme>
+      </header>
+      {isMap ? <Outlet /> : <main className="screen"><div className="wrap"><Outlet /></div></main>}
+      {toast && <div className="snack"><span className="ok"><IcCheck size={14} strokeWidth={3} /></span>{toast}</div>}
+    </>
   )
 }
