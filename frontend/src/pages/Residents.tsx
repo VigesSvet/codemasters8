@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Send, ShieldCheck } from 'lucide-react'
-import { PageHead } from '../components/ui'
+import { Button, InlineNotification, Select, SelectItem, Stack, TextArea } from '@carbon/react'
+import { SendAlt } from '@carbon/icons-react'
+import { PageHeader } from '../components/ui'
 import { useStore } from '../lib/store'
 
 export default function Residents() {
@@ -8,44 +9,36 @@ export default function Residents() {
   const [cid, setCid] = useState('c2')
   const c = complexes.find((x) => x.id === cid)!
   const [msg, setMsg] = useState('')
-  const text = msg || `ЖК «${c.name}» отсутствует в перечне объектов, которым разрешено привлекать деньги дольщиков. Перед сделкой проверьте основание на saq.gov.kz.`
-
+  const text = msg || `ЖК «${c.name}» отсутствует в перечне объектов, которым разрешено привлекать деньги дольщиков. Перед сделкой проверьте основание.`
   return (
-    <div className="page">
-      <PageHead idx="M4" label="Идея для развития · не входит в MVP" title={<>Жителям — <span className="serif-i">вовремя</span></>}>
-        <p className="ink2" style={{ maxWidth: 680, marginTop: 18 }}>Вместо одних публикаций в Instagram ГАСК может предупреждать жителей push-уведомлением или в Telegram-боте, когда человек смотрит рекламу или ищет конкретный ЖК. Отправка — только после решения уполномоченного органа.</p>
-      </PageHead>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 64, alignItems: 'start' }}>
-        <div className="stack" style={{ gap: 20 }}>
-          <label className="field"><span className="label">Объект</span>
-            <select className="select" value={cid} onChange={(e) => setCid(e.target.value)}>{complexes.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
-          </label>
-          <label className="field"><span className="label">Текст уведомления</span><textarea className="textarea" value={text} onChange={(e) => setMsg(e.target.value)} /></label>
-          <div className="grid g-3" style={{ gap: 0, border: '1px solid var(--line)' }}>
-            {[['Канал', 'Push · Telegram'], ['Аудитория', 'Подписчики района, ~4 200'], ['Согласование', 'Требуется']].map(([k, v], i) => (
-              <div key={k} style={{ padding: 16, borderRight: i < 2 ? '1px solid var(--line)' : 0 }}><div className="label">{k}</div><div style={{ marginTop: 6, fontWeight: 500 }}>{v}</div></div>
-            ))}
-          </div>
-          <div className="row"><button className="btn primary" onClick={() => notify('Отправлено на согласование руководителю')}><Send size={14} />На согласование</button><span className="row muted" style={{ gap: 6 }}><ShieldCheck size={14} />Без ПДн, без автоматической отправки</span></div>
-        </div>
+    <>
+      <PageHeader crumbs={[['SAQ', '/'], ['Жителям']]} title="Уведомления жителям" sub="Идея для развития, не входит в MVP: ГАСК предупреждает жителей push-уведомлением или в Telegram-боте, а не только постом в Instagram." />
+      <div className="page" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 560px) 1fr', gap: 64 }}>
+        <Stack gap={6}>
+          <InlineNotification kind="info" lowContrast hideCloseButton title="Только после решения уполномоченного органа" subtitle="Без персональных данных и без автоматической отправки." />
+          <Select id="obj" labelText="Объект" value={cid} onChange={(e) => setCid(e.target.value)}>{complexes.map((x) => <SelectItem key={x.id} value={x.id} text={`ЖК «${x.name}»`} />)}</Select>
+          <TextArea id="msg" labelText="Текст уведомления" rows={5} value={text} onChange={(e) => setMsg(e.target.value)} maxCount={240} enableCounter />
+          <Select id="ch" labelText="Канал" defaultValue="push"><SelectItem value="push" text="Push · мобильное приложение" /><SelectItem value="tg" text="Telegram-бот" /></Select>
+          <Button renderIcon={SendAlt} onClick={() => notify('Отправлено на согласование руководителю', 'info')}>На согласование</Button>
+        </Stack>
         <div className="phone">
           <div className="phone-scr">
             <div style={{ textAlign: 'center', color: '#fff', paddingTop: 54, textShadow: '0 1px 10px rgba(0,0,0,.4)' }}>
               <div style={{ fontSize: 14 }}>среда, 15 октября</div>
               <div style={{ fontSize: 68, fontWeight: 300, lineHeight: 1 }}>09:41</div>
             </div>
-            <div className="notif fade-in" key={text} style={{ marginTop: 28 }}>
-              <div className="row" style={{ gap: 8, marginBottom: 4 }}>
-                <div style={{ width: 20, height: 20, borderRadius: 5, background: '#111', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 700 }}>SQ</div>
-                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.02em' }}>SAQ QURYLYS · ГАСК ВКО</span>
-                <span style={{ marginLeft: 'auto', fontSize: 11, color: '#666' }}>сейчас</span>
+            <div className="notif" style={{ marginTop: 28 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                <div style={{ width: 20, height: 20, borderRadius: 5, background: '#0f62fe', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 700 }}>SQ</div>
+                <span style={{ fontSize: 11, fontWeight: 600 }}>SAQ QURYLYS · ГАСК ВКО</span>
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: '#6f6f6f' }}>сейчас</span>
               </div>
-              <div style={{ fontWeight: 600 }}>Осторожно: проверьте ЖК перед сделкой</div>
-              <div style={{ color: '#333', marginTop: 2 }}>{text}</div>
+              <div style={{ fontWeight: 600 }}>Проверьте ЖК перед сделкой</div>
+              <div style={{ marginTop: 2 }}>{text}</div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }

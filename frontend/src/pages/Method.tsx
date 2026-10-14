@@ -1,70 +1,66 @@
 import { useState } from 'react'
-import { Plus, X } from 'lucide-react'
-import { PageHead } from '../components/ui'
+import { CodeSnippet, DismissibleTag, Tag, TextInput, Button, StructuredListBody, StructuredListCell, StructuredListHead, StructuredListRow, StructuredListWrapper } from '@carbon/react'
+import { Add } from '@carbon/icons-react'
+import { PageHeader, ZoneTag } from '../components/ui'
 import { keywordsDefault, keywordsSafe } from '../data/demo'
 
 const FACTORS = [
-  ['R1', 'Нет основания для привлечения средств', 35, 'Гарантия ЕО отсутствует и разрешение МИО/БВУ не подтверждено. Отсутствие отдельного разрешения МИО при действующей гарантии — не R1. Нет сведений → 0 баллов.'],
-  ['R2', 'Реклама продажи на стадии строительства', 30, 'Найдена публикация с признаками продажи квартир, объект не введён в эксплуатацию, признаков законности в тексте нет.'],
-  ['R3', 'Отсутствует в опубликованном перечне ГАСК', 10, 'Перечень ЖК, которым разрешено привлекать средства. Само по себе не доказывает нарушение.'],
+  ['R1', 'Нет основания для привлечения средств', '35', 'Гарантия ЕО отсутствует и разрешение МИО/БВУ не подтверждено. Отсутствие отдельного разрешения МИО при действующей гарантии — не R1. Нет сведений → 0 баллов.'],
+  ['R2', 'Реклама продажи на стадии строительства', '30', 'Публикация с признаками продажи квартир, объект не введён в эксплуатацию, признаков законности в тексте нет.'],
+  ['R3', 'Нет в опубликованном перечне ГАСК', '10', 'Перечень ЖК, которым разрешено привлекать средства. Само по себе не доказывает нарушение.'],
   ['R4', 'Простой строительства', '5 / 10', 'По снимкам нет активности 30+ дней (5) или 90+ дней (10).'],
-  ['R5', 'Признаки сбора денег в тексте', 10, 'Бронь, первый взнос, рассрочка от застройщика, ДДУ, «цена котлована», «от фундамента».'],
-  ['R6', 'Профиль застройщика', 10, 'Есть незавершённые объекты при небольшом портфеле.'],
-] as const
+  ['R5', 'Признаки сбора денег в тексте', '10', 'Бронь, первый взнос, рассрочка от застройщика, ДДУ, «цена котлована», «от фундамента».'],
+  ['R6', 'Профиль застройщика', '10', 'Есть незавершённые объекты при небольшом портфеле.'],
+]
 
 export default function Method() {
   const [kw, setKw] = useState<string[]>(keywordsDefault)
   const [nw, setNw] = useState('')
+  const add = () => { if (nw.trim()) { setKw((x) => [...x, nw.trim()]); setNw('') } }
   return (
-    <div className="page">
-      <PageHead idx="M2" label="Объяснимость" title={<>Как считается <span className="serif-i">риск</span></>}>
-        <p className="ink2" style={{ maxWidth: 680, marginTop: 18 }}>Скоринг сужает фокус аналитика, но не выносит решения. Каждый балл привязан к конкретному доказательству — документу, публикации или снимку.</p>
-      </PageHead>
+    <>
+      <PageHeader crumbs={[['SAQ', '/'], ['Методика скоринга']]} title="Методика скоринга" sub="Скоринг сужает фокус аналитика, но не выносит решения. Каждый балл привязан к доказательству: документу, публикации или снимку." />
+      <div className="page" style={{ maxWidth: 1200 }}>
+        <div className="facts" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginTop: 0 }}>
+          <div><ZoneTag zone="green" /><div className="v" style={{ marginTop: 12 }}>0 – 24 балла</div><div className="l" style={{ marginTop: 4 }}>Основания подтверждены, замечаний нет</div></div>
+          <div><ZoneTag zone="yellow" /><div className="v" style={{ marginTop: 12 }}>25 – 59 баллов</div><div className="l" style={{ marginTop: 4 }}>Отклонения: простой, нет в перечне, неполные сведения</div></div>
+          <div><ZoneTag zone="red" /><div className="v" style={{ marginTop: 12 }}>60+ и подтверждены R1 + R2</div><div className="l" style={{ marginTop: 4 }}>Реклама продажи без основания</div></div>
+        </div>
 
-      <div className="grid g-3" style={{ gap: 0, borderTop: '1px solid var(--line-strong)', borderBottom: '1px solid var(--line)' }}>
-        {([['green', '0 – 24', 'Зелёная', 'Основания подтверждены, замечаний нет'], ['yellow', '25 – 59', 'Жёлтая', 'Есть отклонения: медленная стройка, нет в перечне, неполные сведения'], ['red', '60+ и R1 + R2', 'Красная', 'Реклама продажи без основания — подтверждены оба признака']] as const).map(([z, range, n, d], i) => (
-          <div key={z} className={`z-${z}`} style={{ padding: '28px 24px', borderRight: i < 2 ? '1px solid var(--line)' : 0 }}>
-            <div style={{ height: 6, background: 'var(--z)', marginBottom: 22 }} />
-            <div className="label">{range}</div>
-            <div className="display d-l" style={{ margin: '10px 0' }}>{n}</div>
-            <div className="ink2">{d}</div>
-          </div>
-        ))}
-      </div>
+        <h2 className="section-title">Факторы риска</h2>
+        <StructuredListWrapper aria-label="Факторы">
+          <StructuredListHead><StructuredListRow head><StructuredListCell head>Код</StructuredListCell><StructuredListCell head>Фактор</StructuredListCell><StructuredListCell head>Когда срабатывает</StructuredListCell><StructuredListCell head>Баллы</StructuredListCell></StructuredListRow></StructuredListHead>
+          <StructuredListBody>
+            {FACTORS.map(([code, t, p, d]) => (
+              <StructuredListRow key={code}><StructuredListCell className="mono">{code}</StructuredListCell><StructuredListCell noWrap>{t}</StructuredListCell><StructuredListCell>{d}</StructuredListCell><StructuredListCell className="mono">+{p}</StructuredListCell></StructuredListRow>
+            ))}
+          </StructuredListBody>
+        </StructuredListWrapper>
 
-      <h2 className="display d-l" style={{ margin: '56px 0 8px' }}>Факторы</h2>
-      <div style={{ borderTop: '1px solid var(--line-strong)' }}>
-        {FACTORS.map(([code, title, pts, desc]) => (
-          <div key={code} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 1.4fr 90px', gap: 24, padding: '22px 0', borderBottom: '1px solid var(--line)', alignItems: 'start' }}>
-            <span className="num" style={{ fontSize: 40 }}>{code}</span>
-            <div style={{ fontSize: 18, fontWeight: 500 }}>{title}</div>
-            <div className="ink2">{desc}</div>
-            <span className="mono" style={{ textAlign: 'right', fontSize: 16 }}>+{pts}</span>
-          </div>
-        ))}
-      </div>
-      <div className="card card-pad mono" style={{ marginTop: 24, fontSize: 13 }}>
-        score = min(100, Σ points(Rᵢ) где Rᵢ подтверждён)&nbsp;&nbsp;·&nbsp;&nbsp;zone = red если score ≥ 60 ∧ R1 ∧ R2; yellow если score ≥ 25; иначе green&nbsp;&nbsp;·&nbsp;&nbsp;нет сведений → 0 и «Нужна проверка»
-      </div>
+        <h2 className="section-title">Формула</h2>
+        <CodeSnippet type="multi" feedback="Скопировано">{`score = min(100, Σ points(Rᵢ), где Rᵢ подтверждён)
+zone  = red,    если score ≥ 60 и подтверждены R1 и R2
+        yellow, если score ≥ 25
+        green,  иначе
+нет сведений по фактору → 0 баллов и отметка «Нужна проверка»`}</CodeSnippet>
 
-      <div className="grid g-2" style={{ marginTop: 56, gap: 48 }}>
-        <div>
-          <h3 className="display d-m">Словарь <span className="serif-i">продажи</span></h3>
-          <p className="muted">Стартовые слова от ГАСК: «строительство», «квартира», «продаём», «продаётся», цена. Расширяйте связками.</p>
-          <div className="row wrap" style={{ gap: 6, marginTop: 14 }}>
-            {kw.map((k) => <span key={k} className="chip">{k}<button onClick={() => setKw((x) => x.filter((y) => y !== k))} style={{ border: 0, background: 'none', padding: 0, display: 'flex' }}><X size={11} /></button></span>)}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48 }}>
+          <div>
+            <h2 className="section-title">Словарь продажи</h2>
+            <p className="muted" style={{ marginBottom: 16 }}>Стартовые слова от ГАСК: «строительство», «квартира», «продаём», «продаётся», цена. Расширяйте связками.</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap' }}>{kw.map((k) => <DismissibleTag key={k} type="cool-gray" text={k} title="Убрать" onClose={() => setKw((x) => x.filter((y) => y !== k))} />)}</div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', marginTop: 16 }}>
+              <TextInput id="nw" labelText="Новое слово или связка" value={nw} onChange={(e) => setNw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
+              <Button hasIconOnly renderIcon={Add} iconDescription="Добавить" onClick={add} />
+            </div>
           </div>
-          <div className="row" style={{ marginTop: 12 }}>
-            <input className="input" style={{ height: 34 }} placeholder="Новое слово или связка" value={nw} onChange={(e) => setNw(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && nw) { setKw((x) => [...x, nw]); setNw('') } }} />
-            <button className="btn" onClick={() => { if (nw) { setKw((x) => [...x, nw]); setNw('') } }}><Plus size={14} /></button>
+          <div>
+            <h2 className="section-title">Признаки законности</h2>
+            <p className="muted" style={{ marginBottom: 16 }}>Снижают оценку публикации: добросовестный застройщик обычно указывает основание.</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap' }}>{keywordsSafe.map((k) => <Tag key={k} type="green">{k}</Tag>)}</div>
           </div>
         </div>
-        <div>
-          <h3 className="display d-m">Признаки <span className="serif-i">законности</span></h3>
-          <p className="muted">Снижают оценку публикации: добросовестный застройщик обычно указывает основание.</p>
-          <div className="row wrap" style={{ gap: 6, marginTop: 14 }}>{keywordsSafe.map((k) => <span key={k} className="chip" style={{ borderColor: 'var(--green)', color: 'var(--green)' }}>{k}</span>)}</div>
-        </div>
       </div>
-    </div>
+    </>
   )
 }

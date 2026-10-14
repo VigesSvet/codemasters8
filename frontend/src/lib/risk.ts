@@ -87,6 +87,7 @@ export function scoreComplex(c: Complex, ads: Ad[] = allAds): RiskResult {
 }
 
 export function scoreAd(ad: Ad, complex?: Complex) {
+  if (!ad.text.trim()) return { score: 0, zone: "green" as Zone, signals: adSignals(ad) }
   const s = adSignals(ad)
   let score = Math.min(40, s.sale.length * 10) + Math.min(30, s.funds.length * 10) - s.safe.length * 25
   if (complex) {

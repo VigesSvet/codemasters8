@@ -1,7 +1,9 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ScanText, Sparkles, Upload } from 'lucide-react'
-import { Highlight, PageHead, Score, ZoneBadge, platformMeta } from '../components/ui'
+import {
+  Button, ButtonSet, FileUploaderDropContainer, Form, InlineLoading, Select, SelectItem, Stack, TextArea, TextInput, Tile, RadioButton, RadioButtonGroup,
+} from '@carbon/react'
+import { Highlight, PageHeader, Score, ZoneTag, platformMeta } from '../components/ui'
 import type { Ad, Platform } from '../data/types'
 import { scoreAd } from '../lib/risk'
 import { useStore } from '../lib/store'
@@ -11,7 +13,6 @@ const SAMPLE = 'Старт продаж в новом ЖК «Тихий бере
 export default function AdNew() {
   const { complexes, addAd, notify } = useStore()
   const nav = useNavigate()
-  const file = useRef<HTMLInputElement>(null)
   const [platform, setPlatform] = useState<Platform>('instagram')
   const [account, setAccount] = useState('')
   const [url, setUrl] = useState('')
@@ -21,82 +22,74 @@ export default function AdNew() {
   const [ocrBusy, setOcrBusy] = useState(false)
   const [complexId, setComplexId] = useState('')
 
-  const suggestion = useMemo(() => {
-    const t = `${text} ${ocr ?? ''}`.toLowerCase()
-    return complexes.find((c) => t.includes(c.name.toLowerCase()))
-  }, [text, ocr, complexes])
+  const suggestion = useMemo(() => complexes.find((c) => `${text} ${ocr ?? ''}`.toLowerCase().includes(c.name.toLowerCase())), [text, ocr, complexes])
   const linked = complexes.find((c) => c.id === (complexId || suggestion?.id))
   const draft: Ad = { id: `m${Date.now().toString(36)}`, platform, account: account || '@unknown', url, date: new Date().toISOString(), text, ocr, image: img, complexId: linked?.id, matchConfidence: complexId ? 1 : suggestion ? 0.8 : 0, source: 'manual', status: 'new' }
   const s = scoreAd(draft, linked)
 
-  const onFile = (f?: File) => {
+  const onFiles = (files: File[]) => {
+    const f = files[0]
     if (!f) return
     setImg(URL.createObjectURL(f))
     setOcrBusy(true)
-    // Имитация OCR: в бэкенде — Tesseract (rus+kaz) через /api/ocr
+    // В бэкенде: POST /api/ocr (Tesseract rus+kaz). Здесь — демо-результат.
     setTimeout(() => { setOcr('СТАРТ ПРОДАЖ · БРОНЬ · РАССРОЧКА 0% · СДАЧА 2027'); setOcrBusy(false) }, 1100)
   }
 
   return (
-    <div className="page">
-      <PageHead idx="03.1" label="Ручной ввод" title={<>Новая <span className="serif-i">публикация</span></>}>
-        <p className="ink2" style={{ maxWidth: 620, marginTop: 18 }}>Обязательный источник по ТЗ: аналитик добавляет найденную рекламу вручную — ссылку, текст и скриншот. Система распознаёт текст, привязывает ЖК и сразу показывает оценку.</p>
-      </PageHead>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48 }}>
-        <div className="stack" style={{ gap: 20 }}>
-          <div className="field"><span className="label">Площадка</span>
-            <div className="row wrap" style={{ gap: 6 }}>{(Object.keys(platformMeta) as Platform[]).map((p) => <button key={p} className={`chip ${platform === p ? 'on' : ''}`} onClick={() => setPlatform(p)}>{platformMeta[p].name}</button>)}</div>
-          </div>
-          <div className="grid g-2" style={{ gap: 16 }}>
-            <label className="field"><span className="label">Аккаунт / автор</span><input className="input" placeholder="@account" value={account} onChange={(e) => setAccount(e.target.value)} /></label>
-            <label className="field"><span className="label">Ссылка</span><input className="input" placeholder="https://" value={url} onChange={(e) => setUrl(e.target.value)} /></label>
-          </div>
-          <label className="field">
-            <span className="row" style={{ justifyContent: 'space-between' }}><span className="label">Текст объявления</span><button className="btn sm ghost" onClick={() => setText(SAMPLE)}><Sparkles size={12} />Пример</button></span>
-            <textarea className="textarea" value={text} onChange={(e) => setText(e.target.value)} placeholder="Вставьте текст поста, описание видео или объявления…" />
-          </label>
-          <div className="field"><span className="label">Скриншот / изображение</span>
-            <div className="drop" onClick={() => file.current?.click()} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); onFile(e.dataTransfer.files[0]) }}>
-              {img ? <img src={img} alt="" style={{ maxHeight: 260 }} /> : (
-                <div className="stack" style={{ alignItems: 'center' }}><Upload size={22} /><div>Перетащите файл или нажмите</div><span className="label">PNG · JPG · до 10 МБ · OCR rus/kaz</span></div>
-              )}
+    <>
+      <PageHeader crumbs={[['SAQ', '/'], ['Мониторинг рекламы', '/ads'], ['Новая публикация']]} title="Новая публикация"
+        sub="Обязательный источник по ТЗ: аналитик добавляет найденную рекламу вручную. Система распознаёт текст, привязывает ЖК и сразу показывает оценку." />
+      <div className="page" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 640px) 1fr', gap: 48, alignItems: 'start' }}>
+        <Form onSubmit={(e) => e.preventDefault()}>
+          <Stack gap={6}>
+            <RadioButtonGroup legendText="Площадка" name="platform" valueSelected={platform} onChange={(v) => setPlatform(v as Platform)} orientation="horizontal">
+              {(Object.keys(platformMeta) as Platform[]).map((p) => <RadioButton key={p} id={`p-${p}`} value={p} labelText={platformMeta[p].name} />)}
+            </RadioButtonGroup>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <TextInput id="acc" labelText="Аккаунт / автор" placeholder="@account" value={account} onChange={(e) => setAccount(e.target.value)} />
+              <TextInput id="url" labelText="Ссылка на публикацию" placeholder="https://" value={url} onChange={(e) => setUrl(e.target.value)} />
             </div>
-            <input ref={file} type="file" accept="image/*" hidden onChange={(e) => onFile(e.target.files?.[0])} />
-            {(ocrBusy || ocr) && <div className="row mono" style={{ fontSize: 12, marginTop: 6 }}><ScanText size={14} />{ocrBusy ? 'Распознаём текст…' : <>OCR: <Highlight text={ocr!} /></>}</div>}
-          </div>
-          <label className="field"><span className="label">Привязка к ЖК</span>
-            <select className="select" value={complexId} onChange={(e) => setComplexId(e.target.value)}>
-              <option value="">{suggestion ? `Авто: ${suggestion.name}` : 'Определить автоматически'}</option>
-              {complexes.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.district}</option>)}
-            </select>
-          </label>
-          <div className="row">
-            <button className="btn primary" disabled={!text} style={{ opacity: text ? 1 : 0.4 }} onClick={() => { addAd(draft); notify('Публикация добавлена в ленту'); nav(`/ads/${draft.id}`) }}>Сохранить и оценить</button>
-            <button className="btn ghost" onClick={() => nav('/ads')}>Отмена</button>
-          </div>
+            <div>
+              <TextArea id="txt" labelText="Текст объявления" helperText="Текст поста, описание видео или объявления" rows={6} value={text} onChange={(e) => setText(e.target.value)} />
+              <Button kind="ghost" size="sm" onClick={() => setText(SAMPLE)} style={{ marginTop: 4 }}>Вставить пример</Button>
+            </div>
+            <div>
+              <p className="cds--file--label">Скриншот</p>
+              <p className="cds--label-description">PNG или JPG до 10 МБ. Текст на изображении распознаётся (rus/kaz).</p>
+              <FileUploaderDropContainer labelText="Перетащите файл сюда или нажмите для выбора" accept={['image/*']} onAddFiles={(_e, { addedFiles }) => onFiles(addedFiles)} />
+              {img && <img src={img} alt="" className="drop-preview" />}
+              {ocrBusy && <InlineLoading description="Распознаём текст…" />}
+              {ocr && !ocrBusy && <div className="mono" style={{ marginTop: 8 }}>OCR: <Highlight text={ocr} /></div>}
+            </div>
+            <Select id="cx" labelText="Привязка к ЖК" value={complexId} onChange={(e) => setComplexId(e.target.value)}>
+              <SelectItem value="" text={suggestion ? `Автоматически: ЖК «${suggestion.name}»` : 'Определить автоматически'} />
+              {complexes.map((c) => <SelectItem key={c.id} value={c.id} text={`ЖК «${c.name}» · ${c.district}`} />)}
+            </Select>
+            <ButtonSet>
+              <Button kind="secondary" onClick={() => nav('/ads')}>Отмена</Button>
+              <Button kind="primary" disabled={!text} onClick={() => { addAd(draft); notify('Публикация добавлена в ленту'); nav(`/ads/${draft.id}`) }}>Сохранить и оценить</Button>
+            </ButtonSet>
+          </Stack>
+        </Form>
+
+        <div className="sticky">
+          <div className="label-01" style={{ marginBottom: 8 }}>Предпросмотр анализа · обновляется по мере ввода</div>
+          <Tile>
+            {img && <img src={img} alt="" style={{ width: '100%', height: 200, objectFit: 'cover', marginBottom: 16 }} />}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Score value={s.score} zone={s.zone} /><ZoneTag zone={s.zone} size="sm" /></div>
+              <span className="label-01">{linked ? `→ ЖК «${linked.name}»` : 'ЖК не определён'}</span>
+            </div>
+            <p style={{ fontSize: 16, lineHeight: 1.5, minHeight: 120, marginTop: 16 }}>{text ? <Highlight text={text} /> : <span className="muted">Текст появится здесь с подсветкой ключевых формулировок</span>}</p>
+            <div className="facts" style={{ gridTemplateColumns: 'repeat(3, 1fr)', margin: '16px 0 0' }}>
+              <div><div className="l">Продажа</div><div className="v">{s.signals.sale.length}</div></div>
+              <div><div className="l">Сбор денег</div><div className="v" style={{ color: 'var(--zone-red)' }}>{s.signals.funds.length}</div></div>
+              <div><div className="l">Законность</div><div className="v" style={{ color: 'var(--zone-green)' }}>{s.signals.safe.length}</div></div>
+            </div>
+          </Tile>
         </div>
-
-        <aside style={{ position: 'sticky', top: 80, alignSelf: 'start' }}>
-          <div className="label" style={{ marginBottom: 12 }}>Предпросмотр анализа · обновляется на лету</div>
-          <div className="card">
-            {img && <div className="ph-frame" style={{ height: 220 }}><img className="img" src={img} alt="" /></div>}
-            <div className="card-pad stack">
-              <div className="row" style={{ justifyContent: 'space-between' }}>
-                <div className="row"><Score value={s.score} zone={s.zone} solid /><ZoneBadge zone={s.zone} /></div>
-                <span className="label">{linked ? `→ ${linked.name}` : 'ЖК не определён'}</span>
-              </div>
-              <div style={{ fontSize: 16, lineHeight: 1.55, minHeight: 120 }}>{text ? <Highlight text={text} /> : <span className="muted">Текст появится здесь с подсветкой ключевых формулировок</span>}</div>
-              <hr className="rule" />
-              <div className="grid g-3" style={{ gap: 12 }}>
-                <div><div className="label">Продажа</div><div className="num" style={{ fontSize: 34 }}>{s.signals.sale.length}</div></div>
-                <div><div className="label">Сбор денег</div><div className="num" style={{ fontSize: 34, color: 'var(--red)' }}>{s.signals.funds.length}</div></div>
-                <div><div className="label">Законность</div><div className="num" style={{ fontSize: 34, color: 'var(--green)' }}>{s.signals.safe.length}</div></div>
-              </div>
-            </div>
-          </div>
-        </aside>
       </div>
-    </div>
+    </>
   )
 }

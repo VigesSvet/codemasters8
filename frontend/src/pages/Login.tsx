@@ -1,31 +1,36 @@
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, KeyRound } from 'lucide-react'
+import { Button, PasswordInput, TextInput, Theme } from '@carbon/react'
+import { ArrowRight, Password } from '@carbon/icons-react'
 
+/** Вход — раскладка главной SIERA: тонкая верхняя линейка с датой, центрированный знак, фото на всю ширину, курсивная строка */
 export default function Login() {
   const nav = useNavigate()
+  const now = new Date()
   return (
-    <div className="login">
-      <div className="login-img">
-        <img src="/img/city-panorama.jpg" alt="Усть-Каменогорск" />
-        <div className="veil" />
-        <div style={{ position: 'absolute', left: 48, right: 48, bottom: 48, color: '#f5f1e8' }}>
-          <div className="label" style={{ color: 'rgba(255,255,255,.7)', marginBottom: 20 }}>Өскемен · Восточно-Казахстанская область</div>
-          <h1 className="display d-xxl" style={{ color: '#fff' }}>SAQ<br /><span className="serif-i">Qurylys</span></h1>
-          <p style={{ maxWidth: 440, marginTop: 24, fontSize: 16, color: 'rgba(255,255,255,.85)' }}>Цифровой помощник уполномоченного органа: мониторинг рекламы долевого строительства и риск-скоринг жилых комплексов.</p>
+    <Theme theme="g100">
+      <div className="siera">
+        <div className="siera-bar">
+          <div className="l"><span>{now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).toUpperCase()}</span><span>{now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} ALMT ◐</span></div>
+          <div className="mark">SAQ QURYLYS</div>
+          <div className="r"><span>ДЭР · ГАСК · ВКО</span><span>RU / KZ ■</span></div>
+        </div>
+        <div className="siera-hero">
+          <img src="/img/city-panorama.jpg" alt="Усть-Каменогорск" />
+          <div className="tag">Строится под контролем.</div>
+          <form className="siera-form" onSubmit={(e) => { e.preventDefault(); nav('/') }}>
+            <div className="cap"><span>Вход для сотрудников</span><span>■</span></div>
+            <TextInput id="login" labelText="Логин" defaultValue="v.nurlanova" />
+            <PasswordInput id="pwd" labelText="Пароль" defaultValue="demo-password" showPasswordLabel="Показать" hidePasswordLabel="Скрыть" />
+            <Button type="submit" renderIcon={ArrowRight} style={{ maxWidth: 'none', width: '100%' }}>Войти</Button>
+            <Button kind="tertiary" renderIcon={Password} style={{ maxWidth: 'none', width: '100%' }} onClick={() => nav('/')}>Войти по ЭЦП (NCALayer)</Button>
+          </form>
+        </div>
+        <div className="siera-cols">
+          <div className="sq">Өскемен</div>
+          <div>Мониторинг рекламы<br />долевого строительства</div>
+          <div>Цифровой помощник уполномоченного органа. ИИ находит рекламу и считает риск, решение о нарушении принимает сотрудник.</div>
         </div>
       </div>
-      <div className="login-form">
-        <div className="row" style={{ justifyContent: 'space-between' }}><span className="label">ДЭР · ГАСК · Управление цифровизации ВКО</span><span className="label">RU · KZ</span></div>
-        <div style={{ margin: 'auto 0', maxWidth: 400, width: '100%' }} className="stack">
-          <h2 className="display d-l" style={{ marginBottom: 20 }}>Вход для <span className="serif-i">сотрудников</span></h2>
-          <label className="field"><span className="label">Логин</span><input className="input" defaultValue="v.nurlanova" /></label>
-          <label className="field"><span className="label">Пароль</span><input className="input" type="password" defaultValue="demo-password" /></label>
-          <button className="btn primary" style={{ height: 46, justifyContent: 'space-between', marginTop: 8 }} onClick={() => nav('/')}>Войти <ArrowRight size={16} /></button>
-          <button className="btn ghost" style={{ height: 46, justifyContent: 'center' }} onClick={() => nav('/')}><KeyRound size={15} />Войти по ЭЦП (NCALayer)</button>
-          <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>Внутренняя система. Решения о нарушениях принимает сотрудник; ИИ формирует рекомендацию.</p>
-        </div>
-        <div className="label">Codemasters 8.0 · Astana Hub × Oskemen · 2026</div>
-      </div>
-    </div>
+    </Theme>
   )
 }

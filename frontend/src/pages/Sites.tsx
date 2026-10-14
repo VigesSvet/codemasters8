@@ -1,63 +1,58 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Camera, Plane, Upload } from 'lucide-react'
+import { Button, Tile } from '@carbon/react'
+import { Drone, Upload } from '@carbon/icons-react'
 import Compare from '../components/Compare'
-import { PageHead, TriMark, fmtDate } from '../components/ui'
+import { PageHeader, TriTag, ZoneDot, fmtDate } from '../components/ui'
 import { useStore } from '../lib/store'
 
 export default function Sites() {
   const { complexes, notify } = useStore()
-  const withPhotos = complexes.filter((c) => c.stage !== 'введён').sort((a, b) => b.idleDays - a.idleDays)
-  const [sel, setSel] = useState(withPhotos.find((c) => c.photos.length > 2 && c.idleDays === 0)?.id ?? withPhotos[0].id)
+  const list = complexes.filter((c) => c.stage !== 'введён').sort((a, b) => b.idleDays - a.idleDays)
+  const [sel, setSel] = useState(list.find((c) => c.photos.length > 2 && c.idleDays === 0)?.id ?? list[0].id)
   const c = complexes.find((x) => x.id === sel)!
   const last = c.photos[c.photos.length - 1]
 
   return (
-    <div className="page">
-      <PageHead idx="M1" label="Дополнительный модуль · β" title={<>Фото-<span className="serif-i">мониторинг</span></>}
-        aside={<><button className="btn ghost" onClick={() => notify('Задание на облёт отправлено (демо)')}><Plane size={14} />Запросить облёт</button><button className="btn primary"><Upload size={14} />Загрузить снимки</button></>}>
-        <p className="ink2" style={{ maxWidth: 680, marginTop: 18 }}>Периодические снимки с дрона или стационарной камеры. Система сравнивает кадры во времени и отмечает простой площадки (например, нет изменений 90+ дней), а также наличие ограждения, мусорного контейнера и пункта мойки колёс. Управление дроном не входит в MVP.</p>
-      </PageHead>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 36 }}>
-        <div style={{ borderTop: '1px solid var(--line-strong)' }}>
-          {withPhotos.map((x) => (
-            <button key={x.id} onClick={() => setSel(x.id)} style={{ display: 'grid', gridTemplateColumns: '1fr auto', width: '100%', textAlign: 'left', padding: '14px 12px', border: 0, borderBottom: '1px solid var(--line)', background: sel === x.id ? 'var(--surface)' : 'transparent', borderLeft: sel === x.id ? '2px solid var(--ink)' : '2px solid transparent' }}>
-              <div><div style={{ fontWeight: 500 }}>{x.name}</div><div className="label" style={{ fontSize: 10, marginTop: 3 }}>{x.photos.length} снимков · {x.photos.at(-1) ? fmtDate(x.photos.at(-1)!.date) : 'нет данных'}</div></div>
-              <span className={`zone z-${x.idleDays >= 90 ? 'red' : x.idleDays >= 30 ? 'yellow' : 'green'}`} style={{ alignSelf: 'center' }}><i />{x.idleDays ? `${x.idleDays} дн.` : 'идёт'}</span>
+    <>
+      <PageHeader crumbs={[['SAQ', '/'], ['Фото-мониторинг']]} title="Фото-мониторинг площадок"
+        sub="Дополнительный модуль. Снимки с дрона или камеры сравниваются во времени: простой 90+ дней, ограждение, мусорный контейнер, мойка колёс. Управление дроном не входит в MVP."
+        actions={<><Button kind="tertiary" renderIcon={Drone} onClick={() => notify('Заявка на облёт отправлена (демо)', 'info')}>Заявка на облёт</Button><Button renderIcon={Upload}>Загрузить снимки</Button></>} />
+      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', minHeight: 'calc(100vh - 12rem)' }}>
+        <div style={{ borderRight: '1px solid var(--cds-border-subtle-01)', background: 'var(--cds-layer-01)' }}>
+          {list.map((x) => (
+            <button key={x.id} className="obj-row" onClick={() => setSel(x.id)} style={{ gridTemplateColumns: '56px 1fr auto', background: sel === x.id ? 'var(--cds-layer-selected-01)' : undefined, boxShadow: sel === x.id ? 'inset 3px 0 0 var(--cds-interactive)' : undefined }}>
+              <img src={x.cover} alt="" style={{ width: 56, height: 42 }} />
+              <div><div className="t">{x.name}</div><div className="a">{x.photos.length} снимков · {x.photos.at(-1) ? fmtDate(x.photos.at(-1)!.date) : 'нет данных'}</div></div>
+              <span className="label-01" style={{ display: 'flex', gap: 6, alignItems: 'center' }}><ZoneDot zone={x.idleDays >= 90 ? 'red' : x.idleDays >= 30 ? 'yellow' : 'green'} />{x.idleDays ? `${x.idleDays} дн.` : 'идёт'}</span>
             </button>
           ))}
         </div>
-
-        <div className="fade-in" key={c.id}>
-          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
-            <h2 className="display d-l">{c.name}</h2>
-            <Link to={`/complexes/${c.id}`} className="btn ghost sm">Карточка ЖК →</Link>
+        <div className="page" key={c.id}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h2 className="cds--type-productive-heading-04">ЖК «{c.name}»</h2>
+            <Button kind="ghost" size="sm" as={Link} to={`/complexes/${c.id}`}>Карточка объекта</Button>
           </div>
-          {c.photos.length >= 2 ? <Compare before={c.photos[0]} after={last} /> : c.photos.length === 1 ? (
-            <div className="ph-frame" style={{ aspectRatio: '16/10' }}><img className="img" src={c.photos[0].src} alt="" /></div>
-          ) : <div className="drop" style={{ aspectRatio: '16/10' }}><div className="stack" style={{ alignItems: 'center' }}><Camera size={22} />Снимков ещё нет</div></div>}
-
+          {c.photos.length >= 2 ? <Compare before={c.photos[0]} after={last} /> : c.photos.length === 1 ? <img src={c.photos[0].src} alt="" style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover' }} /> : <Tile>Снимков ещё нет</Tile>}
           {last && (
-            <div className="grid g-4" style={{ marginTop: 20, gap: 0, border: '1px solid var(--line)' }}>
-              {[['Активность', <span className={`zone z-${last.activity === 'есть' ? 'green' : last.activity === 'низкая' ? 'yellow' : 'red'}`}><i />{last.activity}</span>], ['Ограждение', <TriMark v={last.fence ?? 'unknown'} />], ['Мусорный контейнер', <TriMark v={last.bins ?? 'unknown'} />], ['Мойка колёс', <TriMark v={last.wheelWash ?? 'unknown'} />]].map(([k, v], i) => (
-                <div key={i} style={{ padding: 16, borderRight: i < 3 ? '1px solid var(--line)' : 0 }} className="stack"><span className="label">{k}</span>{v}</div>
-              ))}
+            <div className="facts">
+              <div><div className="l">Активность</div><div className="v" style={{ display: 'flex', gap: 8, alignItems: 'center' }}><ZoneDot zone={last.activity === 'есть' ? 'green' : last.activity === 'низкая' ? 'yellow' : 'red'} />{last.activity}</div></div>
+              <div><div className="l">Ограждение</div><div className="v"><TriTag v={last.fence ?? 'unknown'} /></div></div>
+              <div><div className="l">Мусорный контейнер</div><div className="v"><TriTag v={last.bins ?? 'unknown'} /></div></div>
+              <div><div className="l">Мойка колёс</div><div className="v"><TriTag v={last.wheelWash ?? 'unknown'} /></div></div>
             </div>
           )}
-
-          <div className="label" style={{ margin: '32px 0 14px' }}>Хронология снимков</div>
-          <div style={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: '220px', gap: 16, overflowX: 'auto', paddingBottom: 8 }}>
+          <div className="label-01" style={{ marginBottom: 8 }}>Хронология снимков</div>
+          <div style={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: '220px', gap: 16, overflowX: 'auto' }}>
             {c.photos.map((p, i) => (
-              <div key={i}>
-                <div className="ph-frame" style={{ aspectRatio: '4/3' }}><img className="img" src={p.src} alt="" /></div>
-                <div className="cap"><span className="mono">{fmtDate(p.date)}</span><span className="label">{p.source}</span></div>
-                <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>{p.note ?? '—'}</div>
+              <div key={i} className="pcard" style={{ cursor: 'default' }}>
+                <div className="ph"><img src={p.src} alt="" /></div>
+                <div className="b"><div className="n mono">{fmtDate(p.date)}</div><div className="a">{p.source} · {p.note ?? '—'}</div></div>
               </div>
             ))}
           </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }

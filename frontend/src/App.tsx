@@ -8,6 +8,7 @@ import ComplexCard from './pages/ComplexCard'
 import Complexes from './pages/Complexes'
 import Dashboard from './pages/Dashboard'
 import Developers from './pages/Developers'
+import Ops from './pages/Ops'
 import Login from './pages/Login'
 import Method from './pages/Method'
 import Queue from './pages/Queue'
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route element={<Shell />}>
             <Route index element={<Dashboard />} />
+            <Route path="ops" element={<Ops />} />
             <Route path="complexes" element={<Complexes />} />
             <Route path="complexes/:id" element={<ComplexCard />} />
             <Route path="ads" element={<Ads />} />

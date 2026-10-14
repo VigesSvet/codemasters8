@@ -1,157 +1,174 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowUpRight, Camera, ClipboardCheck, FileQuestion, Flag, MapPin } from 'lucide-react'
-import MapView from '../components/MapView'
+import {
+  Button, ProgressIndicator, ProgressStep, StructuredListBody, StructuredListCell, StructuredListHead, StructuredListRow, StructuredListWrapper,
+  Tab, TabList, TabPanel, TabPanels, Tabs, Tag, Tile,
+} from '@carbon/react'
+import { Camera, DocumentPdf, Flag, Help, Launch } from '@carbon/icons-react'
 import Compare from '../components/Compare'
-import { Disclaimer, Gauge, Highlight, NeedsCheck, PlatformTag, Score, StatusTag, TriMark, ZoneBadge, fmtDate, fmtDT } from '../components/ui'
+import MapView from '../components/MapView'
+import { Gauge, Highlight, NeedsCheck, PageHeader, PlatformIcon, StatusTag, TriTag, ZoneTag, fmtDate, fmtDT } from '../components/ui'
 import { developers } from '../data/demo'
-import type { Tri } from '../data/types'
+import type { Stage, Tri } from '../data/types'
 import { scoreComplex } from '../lib/risk'
 import { useStore } from '../lib/store'
 
+const STAGES: Stage[] = ['котлован', 'фундамент', 'каркас', 'кровля', 'отделка', 'введён']
+
+/** Карточка объекта — по образцу страниц ЖК Korter / BS Holding: галерея, факты, вкладки, боковая карточка */
 export default function ComplexCard() {
   const { id } = useParams()
   const { complexes, ads, notify } = useStore()
+  const [tab, setTab] = useState(0)
   const c = complexes.find((x) => x.id === id)
-  const [tab, setTab] = useState<'ads' | 'photos' | 'passport'>('ads')
-  if (!c) return <div className="empty">Объект не найден</div>
+  if (!c) return <div className="page">Объект не найден</div>
   const r = scoreComplex(c, ads)
   const dev = developers.find((d) => d.id === c.developerId)
   const linked = ads.filter((a) => a.complexId === c.id)
+  const photos = [c.cover, ...c.photos.map((p) => p.src), '/img/site-b.jpg', '/img/city-panorama.jpg'].filter((v, i, a) => a.indexOf(v) === i)
+  const stageIdx = STAGES.indexOf(c.stage)
 
-  const basisBox = (title: string, v: Tri, ref?: string, extra?: string) => (
-    <div style={{ padding: '18px 20px', borderRight: '1px solid var(--line)' }} className="stack">
-      <span className="label">{title}</span>
-      <div className="display d-m" style={{ color: v === 'yes' ? 'var(--green)' : v === 'no' ? 'var(--red)' : 'var(--muted)' }}>{v === 'yes' ? 'Есть' : v === 'no' ? 'Нет' : 'Нет сведений'}</div>
-      <span className="muted" style={{ fontSize: 12 }}>{ref ?? extra ?? (v === 'unknown' ? 'Запросить у уполномоченного органа' : '—')}</span>
-    </div>
+  const basisRow = (title: string, v: Tri, ref?: string, note?: string) => (
+    <StructuredListRow>
+      <StructuredListCell noWrap>{title}</StructuredListCell>
+      <StructuredListCell><TriTag v={v} /></StructuredListCell>
+      <StructuredListCell>{ref ?? (v === 'unknown' ? <span className="muted">Запросить у уполномоченного органа</span> : '—')}{note && <div className="helper">{note}</div>}</StructuredListCell>
+    </StructuredListRow>
   )
 
   return (
-    <div className="fade-in">
-      <section className="hero" style={{ height: 520 }}>
-        <img src={c.cover} alt="" />
-        <div className="over" />
-        <Link to="/complexes" className="btn sm" style={{ position: 'absolute', left: 32, top: 24, background: 'rgba(255,255,255,.9)', color: '#111', borderColor: 'transparent' }}><ArrowLeft size={13} />Реестр</Link>
-        <div className="txt">
-          <div style={{ flex: 1 }}>
-            <div className="row" style={{ marginBottom: 18 }}><ZoneBadge zone={r.zone} pill />{r.needsCheck && <span className="check" style={{ background: 'rgba(0,0,0,.4)' }}>Нужна проверка</span>}</div>
-            <div className="label" style={{ color: 'rgba(255,255,255,.7)', marginBottom: 10 }}>ЖК · {c.district} · {c.stage}</div>
-            <h1 className="display d-xxl" style={{ color: '#fff' }}>{c.name}</h1>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div className="label" style={{ color: 'rgba(255,255,255,.7)' }}>Риск-скор</div>
-            <div className="num" style={{ fontSize: 120, lineHeight: 0.85, color: '#fff' }}>{r.score}</div>
-          </div>
+    <>
+      <PageHeader crumbs={[['SAQ', '/'], ['Реестр ЖК', '/complexes'], [c.name]]} title={`ЖК «${c.name}»`}
+        sub={<>{c.address}, {c.district} · {dev?.name} · БИН <span className="mono">{dev?.bin}</span></>}
+        actions={<>
+          <Button kind="tertiary" renderIcon={DocumentPdf} onClick={() => notify('Справка по объекту сформирована')}>Справка PDF</Button>
+          <Button kind="primary" renderIcon={Flag} onClick={() => notify('Кейс создан и добавлен в очередь')}>Создать кейс</Button>
+        </>}>
+        <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
+          <ZoneTag zone={r.zone} />
+          <Tag type="cool-gray">{c.stage}</Tag>
+          <Tag type="cool-gray">Сдача {fmtDate(c.plannedEnd)}</Tag>
+          {r.needsCheck && <NeedsCheck />}
         </div>
-      </section>
+      </PageHeader>
 
-      <div className="page" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 400px', gap: 48, paddingTop: 0 }}>
-        <div>
-          {/* Метки проекта — в духе JDS */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', borderBottom: '1px solid var(--line)' }}>
-            {[['Застройщик', dev?.name], ['Адрес', c.address], ['Этажность', `${c.floors} эт. · ${c.flats} кв.`], ['Период', `${fmtDate(c.start)} — ${fmtDate(c.plannedEnd)}`], ['Готовность', `${c.progress}%`]].map(([k, v]) => (
-              <div key={k} style={{ padding: '18px 16px 18px 0' }}><div className="label">{k}</div><div style={{ marginTop: 6, fontWeight: 500 }}>{v}</div></div>
-            ))}
-          </div>
-
-          <h2 className="display d-l" style={{ margin: '44px 0 18px' }}>Основание <span className="serif-i">привлечения средств</span></h2>
-          <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)' }}>
-            {basisBox('Гарантия ЕО (КЖК)', c.basis.guarantee, c.basis.guaranteeRef)}
-            {basisBox('Разрешение МИО', c.basis.mio, c.basis.mioRef)}
-            {basisBox('Банк второго уровня', c.basis.bvu, c.basis.bank)}
-            {basisBox('Перечень ГАСК', c.inPublishedList, c.inPublishedList === 'yes' ? 'Instagram ГАСК, 01.10.2026' : undefined)}
-          </div>
-          <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>Отсутствие отдельного разрешения МИО при действующей гарантии ЕО не является признаком R1. Отсутствие сведений — 0 баллов и отметка «Нужна проверка».</p>
-
-          <div className="row" style={{ marginTop: 44, borderBottom: '1px solid var(--line-strong)', gap: 0 }}>
-            {([['ads', `Реклама · ${linked.length}`], ['photos', `Фото-мониторинг · ${c.photos.length}`], ['passport', 'Застройщик']] as const).map(([k, l]) => (
-              <button key={k} onClick={() => setTab(k)} style={{ border: 0, background: 'transparent', padding: '12px 18px 12px 0', marginRight: 18, borderBottom: tab === k ? '2px solid var(--ink)' : '2px solid transparent', marginBottom: -1, color: tab === k ? 'var(--ink)' : 'var(--muted)' }} className="mono">{l}</button>
-            ))}
-          </div>
-
-          {tab === 'ads' && (
-            <div className="fade-in">
-              {linked.length === 0 && <div className="empty">Публикаций по объекту не найдено</div>}
-              {linked.map((a) => (
-                <Link to={`/ads/${a.id}`} key={a.id} style={{ display: 'grid', gridTemplateColumns: '96px 1fr auto', gap: 18, padding: '18px 0', borderBottom: '1px solid var(--line)' }}>
-                  {a.image ? <img src={a.image} alt="" style={{ width: 96, height: 96, objectFit: 'cover', filter: 'var(--img-filter)' }} /> : <div className="feed-noimg" style={{ width: 96, height: 96 }}>Aa</div>}
-                  <div>
-                    <div className="row" style={{ marginBottom: 6 }}><PlatformTag p={a.platform} /><span className="label">{a.account}</span><span className="label">{fmtDT(a.date)}</span></div>
-                    <div className="ink2"><Highlight text={a.text} /></div>
-                  </div>
-                  <StatusTag s={a.status} />
-                </Link>
-              ))}
-            </div>
-          )}
-
-          {tab === 'photos' && (
-            <div className="fade-in" style={{ paddingTop: 24 }}>
-              {c.photos.length >= 2 ? (
-                <Compare before={c.photos[0]} after={c.photos[c.photos.length - 1]} />
-              ) : c.photos.length === 0 ? (
-                <div className="drop"><div className="stack" style={{ alignItems: 'center' }}><Camera size={22} /><div>Снимков нет. Загрузите фото с дрона или камеры</div><span className="label">JPG · PNG · дата съёмки из EXIF</span></div></div>
-              ) : null}
-              <div className="grid g-3" style={{ marginTop: 24 }}>
-                {c.photos.map((p, i) => (
-                  <div key={i}>
-                    <div className="ph-frame" style={{ aspectRatio: '4/3' }}><img className="img" src={p.src} alt="" /></div>
-                    <div className="cap"><span className="mono">{fmtDate(p.date)}</span><span className="label">{p.source}</span></div>
-                    <div className="row wrap" style={{ gap: 10, paddingTop: 8 }}>
-                      <span className={`zone z-${p.activity === 'есть' ? 'green' : p.activity === 'низкая' ? 'yellow' : 'red'}`}><i />Активность: {p.activity}</span>
-                    </div>
-                    <div className="row wrap" style={{ gap: 10, paddingTop: 6 }}>
-                      {p.fence && <TriMark v={p.fence} label="Ограждение" />}{p.bins && <TriMark v={p.bins} label="Контейнер" />}{p.wheelWash && <TriMark v={p.wheelWash} label="Мойка колёс" />}
-                    </div>
-                    {p.note && <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>{p.note}</div>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {tab === 'passport' && dev && (
-            <div className="fade-in grid g-2" style={{ paddingTop: 24 }}>
-              {[['Наименование', dev.name], ['БИН', dev.bin], ['Руководитель', dev.director], ['Дата регистрации', fmtDate(dev.registered)], ['Объектов всего', dev.objects], ['Незавершённых', dev.unfinished], ['Сайт', dev.site ?? '—'], ['Instagram', dev.instagram ?? '—']].map(([k, v]) => (
-                <div key={String(k)} className="cap"><span className="label">{k}</span><span>{v}</span></div>
-              ))}
-              <Link to="/developers" className="btn ghost" style={{ width: 'fit-content' }}>Профиль застройщика <ArrowUpRight size={14} /></Link>
-            </div>
-          )}
-        </div>
-
-        {/* Панель риска */}
-        <aside style={{ position: 'sticky', top: 80, alignSelf: 'start', paddingTop: 28 }}>
-          <div className="card card-pad stack" style={{ gap: 16 }}>
-            <div className="row" style={{ justifyContent: 'space-between' }}><span className="label">Объяснение скоринга</span><Score value={r.score} zone={r.zone} solid /></div>
-            <Gauge value={r.score} />
-            <div className="ink2">{r.summary}</div>
-            {r.needsCheck && <div><NeedsCheck /></div>}
-            <div>
-              {r.factors.map((f) => (
-                <div key={f.code} className={`factor ${f.state}`}>
-                  <span className="code">{f.code}</span>
-                  <div><div style={{ fontWeight: 500 }}>{f.title}</div><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>{f.evidence}</div></div>
-                  <span className="pts">+{f.points}</span>
+      <div className="page">
+        <div className="obj-layout">
+          <div>
+            <div className="gallery">
+              {photos.slice(0, 3).map((p, i) => (
+                <div key={i}>
+                  <img src={p} alt="" />
+                  {i === 2 && c.photos.length > 2 && <div className="more">+{c.photos.length - 2} снимка</div>}
                 </div>
               ))}
             </div>
-            <div className="stack" style={{ gap: 8 }}>
-              <button className="btn primary" style={{ justifyContent: 'center' }} onClick={() => notify('Кейс создан и добавлен в очередь проверки')}><Flag size={14} />Создать кейс проверки</button>
-              <div className="grid g-2" style={{ gap: 8 }}>
-                <button className="btn ghost sm" onClick={() => notify('Запрос сведений сформирован')}><FileQuestion size={13} />Запросить сведения</button>
-                <button className="btn ghost sm" onClick={() => notify('Отмечено как проверенное')}><ClipboardCheck size={13} />Проверено</button>
-              </div>
+
+            <div className="facts">
+              <div><div className="l">Этажность</div><div className="v">{c.floors} этажей</div></div>
+              <div><div className="l">Квартир</div><div className="v">{c.flats}</div></div>
+              <div><div className="l">Начало строительства</div><div className="v">{fmtDate(c.start)}</div></div>
+              <div><div className="l">Плановая сдача</div><div className="v">{fmtDate(c.plannedEnd)}</div></div>
             </div>
-            <Disclaimer />
+
+            <ProgressIndicator currentIndex={stageIdx} spaceEqually>
+              {STAGES.map((s, i) => <ProgressStep key={s} label={s[0].toUpperCase() + s.slice(1)} secondaryLabel={i === stageIdx ? `${c.progress}%` : undefined} complete={i < stageIdx} />)}
+            </ProgressIndicator>
+
+            <Tabs selectedIndex={tab} onChange={({ selectedIndex }) => setTab(selectedIndex)}>
+              <TabList aria-label="Разделы объекта" style={{ marginTop: 32 }}>
+                <Tab>Основания</Tab>
+                <Tab>Реклама · {linked.length}</Tab>
+                <Tab>Фото-мониторинг · {c.photos.length}</Tab>
+                <Tab>Застройщик</Tab>
+              </TabList>
+              <TabPanels>
+                <TabPanel>
+                  <StructuredListWrapper aria-label="Основания привлечения средств">
+                    <StructuredListHead>
+                      <StructuredListRow head>
+                        <StructuredListCell head>Основание</StructuredListCell>
+                        <StructuredListCell head>Статус</StructuredListCell>
+                        <StructuredListCell head>Документ / источник</StructuredListCell>
+                      </StructuredListRow>
+                    </StructuredListHead>
+                    <StructuredListBody>
+                      {basisRow('Гарантия ЕО (КЖК)', c.basis.guarantee, c.basis.guaranteeRef)}
+                      {basisRow('Разрешение МИО', c.basis.mio, c.basis.mioRef, c.basis.guarantee === 'yes' && c.basis.mio !== 'yes' ? 'При действующей гарантии ЕО отсутствие отдельного разрешения МИО не является R1' : undefined)}
+                      {basisRow('Банк второго уровня', c.basis.bvu, c.basis.bank)}
+                      {basisRow('Перечень ГАСК', c.inPublishedList, c.inPublishedList === 'yes' ? 'Instagram ГАСК ВКО, перечень от 01.10.2026' : undefined, c.inPublishedList === 'no' ? 'Отсутствие в перечне само по себе не доказывает нарушение' : undefined)}
+                    </StructuredListBody>
+                  </StructuredListWrapper>
+                </TabPanel>
+                <TabPanel>
+                  {linked.length === 0 && <p className="muted">Публикаций по объекту не найдено</p>}
+                  {linked.map((a) => (
+                    <Link key={a.id} to={`/ads/${a.id}`} style={{ display: 'grid', gridTemplateColumns: '88px 1fr auto', gap: 16, padding: '16px 0', borderBottom: '1px solid var(--cds-border-subtle-01)', textDecoration: 'none', color: 'inherit' }}>
+                      {a.image ? <img src={a.image} alt="" style={{ width: 88, height: 88, objectFit: 'cover' }} /> : <div style={{ width: 88, height: 88, background: 'var(--cds-layer-02)' }} />}
+                      <div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><PlatformIcon p={a.platform} /><span className="label-01">{a.account} · {fmtDT(a.date)}</span></div>
+                        <p style={{ marginTop: 8 }}><Highlight text={a.text} /></p>
+                      </div>
+                      <StatusTag s={a.status} />
+                    </Link>
+                  ))}
+                </TabPanel>
+                <TabPanel>
+                  {c.photos.length >= 2 ? <Compare before={c.photos[0]} after={c.photos[c.photos.length - 1]} /> : c.photos.length === 0 ? (
+                    <Tile><Camera size={24} /><p style={{ marginTop: 8 }}>Снимков нет. Загрузите фото с дрона или камеры.</p></Tile>
+                  ) : null}
+                  <div className="cards" style={{ marginTop: 16, gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+                    {c.photos.map((p, i) => (
+                      <div key={i} className="pcard" style={{ cursor: 'default' }}>
+                        <div className="ph"><img src={p.src} alt="" /></div>
+                        <div className="b">
+                          <div className="n mono">{fmtDate(p.date)}</div>
+                          <div className="a">{p.source} · активность: {p.activity}</div>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
+                            {p.fence && <TriTag v={p.fence} label="Ограждение" />}{p.bins && <TriTag v={p.bins} label="Контейнер" />}{p.wheelWash && <TriTag v={p.wheelWash} label="Мойка колёс" />}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </TabPanel>
+                <TabPanel>
+                  {dev && (
+                    <StructuredListWrapper aria-label="Застройщик">
+                      <StructuredListBody>
+                        {[['Наименование', dev.name], ['БИН', dev.bin], ['Руководитель', dev.director], ['Дата регистрации', fmtDate(dev.registered)], ['Объектов всего', dev.objects], ['Незавершённых', dev.unfinished], ['Сайт', dev.site ?? '—'], ['Instagram', dev.instagram ?? '—']].map(([k, v]) => (
+                          <StructuredListRow key={String(k)}><StructuredListCell noWrap>{k}</StructuredListCell><StructuredListCell>{v}</StructuredListCell></StructuredListRow>
+                        ))}
+                      </StructuredListBody>
+                    </StructuredListWrapper>
+                  )}
+                </TabPanel>
+              </TabPanels>
+            </Tabs>
           </div>
-          <div style={{ height: 220, marginTop: 16, position: 'relative', border: '1px solid var(--line)' }}>
-            <MapView items={[{ c, zone: r.zone, score: r.score }]} center={[c.lng, c.lat]} zoom={14} interactive={false} />
-            <span className="chip" style={{ position: 'absolute', left: 10, bottom: 10, zIndex: 2 }}><MapPin size={12} />{c.lat.toFixed(4)}, {c.lng.toFixed(4)}</span>
-          </div>
-        </aside>
+
+          <aside className="sticky">
+            <div className="risk-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span className="label-01">Риск-скоринг</span><ZoneTag zone={r.zone} size="sm" /></div>
+              <div className="risk-big"><span className="v">{r.score}</span><span className="muted">/ 100</span></div>
+              <Gauge value={r.score} />
+              <p style={{ margin: '16px 0 8px' }}>{r.summary}</p>
+              {r.factors.map((f) => (
+                <div key={f.code} className={`factor ${f.state}`}><span className="code">{f.code}</span><div>{f.title}<div className="e">{f.evidence}</div></div><span className="pts">+{f.points}</span></div>
+              ))}
+              <div style={{ display: 'grid', gap: 1, marginTop: 16 }}>
+                <Button kind="primary" renderIcon={Flag} style={{ maxWidth: 'none' }} onClick={() => notify('Кейс создан и добавлен в очередь')}>Создать кейс проверки</Button>
+                <Button kind="secondary" renderIcon={Help} style={{ maxWidth: 'none' }} onClick={() => notify('Запрос сведений сформирован', 'info')}>Запросить сведения</Button>
+                <Button kind="ghost" renderIcon={Launch} style={{ maxWidth: 'none' }} as={Link} to="/method">Как считается балл</Button>
+              </div>
+              <p className="helper" style={{ marginTop: 12 }}>ИИ даёт рекомендацию. Решение о нарушении принимает аналитик.</p>
+            </div>
+            <div style={{ height: 220, position: 'relative', marginTop: 16 }}>
+              <MapView items={[{ c, zone: r.zone, score: r.score }]} center={[c.lng, c.lat]} zoom={14} interactive={false} labels />
+            </div>
+          </aside>
+        </div>
       </div>
-    </div>
+    </>
   )
 }

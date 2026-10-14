@@ -6,24 +6,24 @@
 
 ## Экраны
 
-| Путь | Экран |
-|---|---|
-| `/login` | Вход сотрудника |
-| `/` | Карта-светофор города. Два варианта: **Карта** (карта + список) и **Сводка** (редакционная подача) |
-| `/complexes` | Реестр ЖК: фильтры, сортировка, таблица или сетка карточек |
-| `/complexes/:id` | Карточка ЖК: основания (гарантия ЕО, МИО, БВУ, перечень ГАСК), объяснение скоринга R1–R6, реклама, фото-мониторинг, застройщик |
-| `/ads` | Лента публикаций с подсветкой формулировок (лента или сетка) |
-| `/ads/:id` | Разбор публикации: OCR, сигналы, привязка ЖК, решение аналитика, журнал |
-| `/ads/new` | Ручное добавление публикации + OCR скриншота, анализ на лету |
-| `/queue` | Очередь проверки: канбан с drag-and-drop или список |
-| `/developers` | Застройщики (профиль открывается в выдвижной панели) |
-| `/sites` | Фото-мониторинг (доп. модуль): сравнение снимков «до/после», простой, ограждение / контейнер / мойка колёс |
-| `/method` | Методика скоринга и словари ключевых слов |
-| `/sources` | Источники данных |
-| `/reports` | Еженедельная сводка |
-| `/residents` | Идея: push-уведомления жителям (не входит в MVP) |
+Интерфейс собран на IBM Carbon Design System (`@carbon/react`, иконки `@carbon/icons-react`, шрифт IBM Plex). Паттерны взяты у реальных сервисов:
 
-**Варианты дизайна** переключаются в левом нижнем углу: `Fortis` (светлая, крупный гротеск), `Siera` (тёмная, антиква + гротеск), `Banda` (тёплая песочная).
+| Путь | Экран | Образец |
+|---|---|---|
+| `/login` | Вход сотрудника | главная SIERA (тонкая линейка с датой, знак по центру, фото) |
+| `/` | Карта объектов: поиск, фильтр по зонам, карточка объекта | 2ГИС |
+| `/ops` | Оперативная сводка: индикаторы, список, карта, графики | ArcGIS Dashboards |
+| `/complexes` | Реестр ЖК: таблица или карточки, фильтры-чипы | IBM Carbon Data table, Linear filters, Korter |
+| `/complexes/:id` | Карточка ЖК: галерея, этапы, основания, риск R1–R6 | страница ЖК Korter / BS Holding |
+| `/ads` | Мониторинг рекламы: список по статусам или карточки | список задач Linear |
+| `/ads/:id` | Разбор публикации: текст, OCR, сигналы, активность, свойства, решение | карточка задачи Linear |
+| `/ads/new` | Ручное добавление + OCR скриншота | формы Carbon |
+| `/queue` | Очередь проверки: доска с drag-and-drop | доска Linear |
+| `/developers` | Застройщики (раскрываемые строки) | Carbon Data table |
+| `/sites` | Фото-мониторинг (доп. модуль) | — |
+| `/method`, `/sources`, `/reports`, `/residents` | Методика, источники, отчёты, идея push жителям | Carbon |
+
+Тема: светлая (Carbon g10) или тёмная (g100) — кнопка в шапке.
 
 ## Запуск
 
@@ -81,6 +81,6 @@ npm run dev            # http://localhost:5180, /api проксируется н
 
 ## Стек
 
-React 19 + TypeScript + Vite, MapLibre GL (подложка CARTO / OpenStreetMap), lucide-react · FastAPI, SQLAlchemy 2, PostgreSQL 16 · Tesseract OCR (rus/kaz) в Docker-образе.
+React 19 + TypeScript + Vite, IBM Carbon (`@carbon/react`), MapLibre GL (подложка CARTO / OpenStreetMap) · FastAPI, SQLAlchemy 2, PostgreSQL 16 · Tesseract OCR (rus/kaz) в Docker-образе.
 
-Шрифты: Inter Tight, Cormorant Garamond, IBM Plex Mono (OFL, через @fontsource). Фото: Wikimedia Commons — см. [CREDITS.md](CREDITS.md).
+Шрифты: IBM Plex Sans / Mono, Cormorant Garamond (OFL, через @fontsource). Carbon и иконки Carbon — Apache-2.0. Фото: Wikimedia Commons — см. [CREDITS.md](CREDITS.md).

@@ -1,140 +1,139 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowDownUp, Download, Grid3x3, List, Plus, X } from 'lucide-react'
-import { NeedsCheck, PageHead, Score, TriMark, ZoneBadge } from '../components/ui'
+import {
+  Button, ContentSwitcher, DataTable, IconSwitch, Pagination, Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow,
+  TableToolbar, TableToolbarContent, TableToolbarSearch,
+} from '@carbon/react'
+import { Add, Download, Grid, List } from '@carbon/icons-react'
+import FilterBar, { type Applied, type FilterDef } from '../components/FilterBar'
+import { NeedsCheck, PageHeader, Score, TriTag, ZoneTag, fmtDate } from '../components/ui'
 import { developers } from '../data/demo'
-import type { Stage, Zone } from '../data/types'
+import type { Stage } from '../data/types'
 import { scoreComplex } from '../lib/risk'
 import { useStore } from '../lib/store'
 
-type SortKey = 'score' | 'name' | 'progress' | 'plannedEnd'
+const STAGES: Stage[] = ['котлован', 'фундамент', 'каркас', 'кровля', 'отделка', 'введён']
 
 export default function Complexes() {
   const { complexes, ads } = useStore()
   const nav = useNavigate()
-  const [view, setView] = useState<'table' | 'grid'>('table')
+  const [view, setView] = useState(0)
   const [q, setQ] = useState('')
-  const [zones, setZones] = useState<Zone[]>([])
-  const [district, setDistrict] = useState('')
-  const [stage, setStage] = useState<Stage | ''>('')
-  const [onlyCheck, setOnlyCheck] = useState(false)
-  const [sort, setSort] = useState<{ k: SortKey; dir: 1 | -1 }>({ k: 'score', dir: -1 })
+  const [applied, setApplied] = useState<Applied[]>([])
+  const [page, setPage] = useState({ page: 1, size: 25 })
 
-  const rows = useMemo(() => complexes
-    .map((c) => ({ c, r: scoreComplex(c, ads), dev: developers.find((d) => d.id === c.developerId) }))
-    .filter(({ c, r, dev }) =>
-      (!q || `${c.name} ${c.address} ${dev?.name} ${dev?.bin}`.toLowerCase().includes(q.toLowerCase())) &&
-      (zones.length === 0 || zones.includes(r.zone)) && (!district || c.district === district) && (!stage || c.stage === stage) && (!onlyCheck || r.needsCheck))
-    .sort((a, b) => {
-      const k = sort.k
-      const va = k === 'score' ? a.r.score : k === 'name' ? a.c.name : k === 'progress' ? a.c.progress : a.c.plannedEnd
-      const vb = k === 'score' ? b.r.score : k === 'name' ? b.c.name : k === 'progress' ? b.c.progress : b.c.plannedEnd
-      return (va > vb ? 1 : va < vb ? -1 : 0) * sort.dir
-    }), [complexes, ads, q, zones, district, stage, onlyCheck, sort])
+  const defs: FilterDef[] = [
+    { key: 'zone', label: 'Зона', options: [{ value: 'red', label: 'Красная' }, { value: 'yellow', label: 'Жёлтая' }, { value: 'green', label: 'Зелёная' }] },
+    { key: 'district', label: 'Район', options: [...new Set(complexes.map((c) => c.district))].map((d) => ({ value: d, label: d })) },
+    { key: 'stage', label: 'Стадия', options: STAGES.map((s) => ({ value: s, label: s })) },
+    { key: 'guarantee', label: 'Гарантия ЕО', options: [{ value: 'yes', label: 'Есть' }, { value: 'no', label: 'Нет' }, { value: 'unknown', label: 'Нет сведений' }] },
+    { key: 'check', label: 'Проверка', options: [{ value: 'need', label: 'Нужна проверка' }] },
+  ]
 
-  const districts = [...new Set(complexes.map((c) => c.district))]
-  const stages: Stage[] = ['котлован', 'фундамент', 'каркас', 'кровля', 'отделка', 'введён']
-  const th = (k: SortKey, label: string) => (
-    <th className="sortable" onClick={() => setSort((s) => ({ k, dir: s.k === k ? (s.dir === 1 ? -1 : 1) : -1 }))}>
-      {label} {sort.k === k && (sort.dir === 1 ? '↑' : '↓')}
-    </th>
-  )
-  const activeFilters = zones.length + (district ? 1 : 0) + (stage ? 1 : 0) + (onlyCheck ? 1 : 0)
+  const all = useMemo(() => complexes.map((c) => ({ c, r: scoreComplex(c, ads), dev: developers.find((d) => d.id === c.developerId) })).sort((a, b) => b.r.score - a.r.score), [complexes, ads])
+  const rows = all.filter(({ c, r, dev }) => {
+    if (q && !`${c.name} ${c.address} ${dev?.name} ${dev?.bin}`.toLowerCase().includes(q.toLowerCase())) return false
+    return applied.every((a) => {
+      const v = a.key === 'zone' ? r.zone : a.key === 'district' ? c.district : a.key === 'stage' ? c.stage : a.key === 'guarantee' ? c.basis.guarantee : r.needsCheck ? 'need' : ''
+      return a.values.includes(v)
+    })
+  })
+  const byId = Object.fromEntries(rows.map((x) => [x.c.id, x]))
+  const headers = [
+    { key: 'name', header: 'Объект' }, { key: 'dev', header: 'Застройщик' }, { key: 'guarantee', header: 'Основания' }, { key: 'progress', header: 'Готовность' }, { key: 'end', header: 'Сдача' },
+    { key: 'score', header: 'Риск' }, { key: 'zone', header: 'Зона' },
+  ]
+  const pageRows = rows.slice((page.page - 1) * page.size, page.page * page.size)
+  const tableRows = pageRows.map(({ c, r }) => ({ id: c.id, name: c.name, dev: c.developerId, guarantee: c.basis.guarantee, mio: c.basis.mio, bvu: c.basis.bvu, list: c.inPublishedList, progress: c.progress, end: c.plannedEnd, score: r.score, zone: r.zone }))
 
   return (
-    <div className="page">
-      <PageHead idx="02" label="Реестр" title={<>Жилые <span className="serif-i">комплексы</span></>}
-        aside={<><button className="btn ghost"><Download size={14} />Экспорт XLSX</button><button className="btn primary"><Plus size={14} />Добавить ЖК</button></>}>
-        <p className="ink2" style={{ maxWidth: 620, marginTop: 18 }}>Все строящиеся и недавно введённые объекты Усть-Каменогорска. Основания привлечения средств сверяются с перечнем ГАСК и картотекой; отсутствие сведений не считается нарушением.</p>
-      </PageHead>
+    <>
+      <PageHeader crumbs={[['SAQ', '/'], ['Реестр ЖК']]} title="Реестр жилых комплексов"
+        sub={`Усть-Каменогорск · ${complexes.length} объектов · основания сверяются с перечнем ГАСК и картотекой. Отсутствие сведений не считается нарушением.`} />
 
-      <div className="table-wrap">
-        <div className="toolbar">
-          <input className="input" style={{ width: 280, height: 30, padding: '0 10px' }} placeholder="Поиск: ЖК, адрес, застройщик, БИН" value={q} onChange={(e) => setQ(e.target.value)} />
-          <div className="filter">
-            <span className="k">Зона</span>
-            {(['red', 'yellow', 'green'] as Zone[]).map((z) => (
-              <button key={z} onClick={() => setZones((xs) => xs.includes(z) ? xs.filter((x) => x !== z) : [...xs, z])} style={{ background: zones.includes(z) ? 'var(--bg-2)' : undefined }}>
-                <span className={`zone z-${z}`} style={{ opacity: zones.length && !zones.includes(z) ? 0.35 : 1 }}><i /></span>
-              </button>
-            ))}
-          </div>
-          <div className="filter"><span className="k">Район</span>
-            <select value={district} onChange={(e) => setDistrict(e.target.value)} style={{ border: 0, background: 'transparent', outline: 0 }}>
-              <option value="">любой</option>{districts.map((d) => <option key={d}>{d}</option>)}
-            </select>
-          </div>
-          <div className="filter"><span className="k">Стадия</span>
-            <select value={stage} onChange={(e) => setStage(e.target.value as Stage)} style={{ border: 0, background: 'transparent', outline: 0 }}>
-              <option value="">любая</option>{stages.map((d) => <option key={d}>{d}</option>)}
-            </select>
-          </div>
-          <button className={`chip ${onlyCheck ? 'on' : ''}`} style={{ height: 30 }} onClick={() => setOnlyCheck((v) => !v)}>Только «нужна проверка»</button>
-          {activeFilters > 0 && <button className="btn sm ghost" onClick={() => { setZones([]); setDistrict(''); setStage(''); setOnlyCheck(false) }}><X size={12} />Сбросить ({activeFilters})</button>}
-          <div className="spacer" />
-          <span className="label">{rows.length} из {complexes.length}</span>
-          <div className="seg">
-            <button className={view === 'table' ? 'on' : ''} onClick={() => setView('table')}><List size={13} /></button>
-            <button className={view === 'grid' ? 'on' : ''} onClick={() => setView('grid')}><Grid3x3 size={13} /></button>
-          </div>
-        </div>
+      <FilterBar defs={defs} applied={applied} onChange={(a) => { setApplied(a); setPage((p) => ({ ...p, page: 1 })) }}
+        right={<>
+          <span className="label-01">{rows.length} из {complexes.length}</span>
+          <ContentSwitcher size="sm" selectedIndex={view} onChange={({ index }) => setView(index ?? 0)} style={{ width: 'auto' }}>
+            <IconSwitch name="table" text="Таблица"><List /></IconSwitch>
+            <IconSwitch name="grid" text="Карточки"><Grid /></IconSwitch>
+          </ContentSwitcher>
+        </>} />
 
-        {view === 'table' ? (
-          <table className="t fade-in">
-            <thead>
-              <tr>
-                <th style={{ width: 80 }} />
-                {th('name', 'Объект')}
-                <th>Застройщик</th>
-                <th>Гарантия ЕО</th>
-                <th>МИО</th>
-                <th>БВУ</th>
-                <th>Перечень</th>
-                {th('progress', 'Готовность')}
-                {th('plannedEnd', 'Сдача')}
-                {th('score', 'Риск')}
-                <th>Зона</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ c, r, dev }) => (
-                <tr key={c.id} onClick={() => nav(`/complexes/${c.id}`)}>
-                  <td><img className="thumb" src={c.cover} alt="" /></td>
-                  <td>
-                    <div className="name">{c.name}</div>
-                    <div className="label" style={{ fontSize: 10, marginTop: 3 }}>{c.address} · {c.district}</div>
-                  </td>
-                  <td><div>{dev?.name}</div><div className="label" style={{ fontSize: 10 }}>БИН {dev?.bin}</div></td>
-                  <td><TriMark v={c.basis.guarantee} /></td>
-                  <td><TriMark v={c.basis.mio} /></td>
-                  <td><TriMark v={c.basis.bvu} /></td>
-                  <td><TriMark v={c.inPublishedList} label={c.inPublishedList === 'yes' ? 'В списке' : c.inPublishedList === 'no' ? 'Нет' : '—'} /></td>
-                  <td><div className="row" style={{ gap: 8 }}><div className="progress"><b style={{ width: `${c.progress}%` }} /></div><span className="mono">{c.progress}%</span></div><div className="label" style={{ fontSize: 10, marginTop: 4 }}>{c.stage}</div></td>
-                  <td className="mono">{new Date(c.plannedEnd).toLocaleDateString('ru-RU', { month: '2-digit', year: 'numeric' })}</td>
-                  <td><Score value={r.score} zone={r.zone} /></td>
-                  <td><div className="stack" style={{ gap: 6 }}><ZoneBadge zone={r.zone} />{r.needsCheck && <NeedsCheck />}</div></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <div className="grid g-4 fade-in" style={{ paddingTop: 24 }}>
+      {view === 0 ? (
+        <DataTable rows={tableRows} headers={headers} isSortable>
+          {({ rows: drows, headers: dheaders, getHeaderProps, getRowProps, getTableProps, getTableContainerProps }) => (
+            <TableContainer {...getTableContainerProps()}>
+              <TableToolbar>
+                <TableToolbarContent>
+                  <TableToolbarSearch persistent placeholder="Поиск: ЖК, адрес, застройщик, БИН" onChange={(e) => setQ(typeof e === 'string' ? '' : (e.target as HTMLInputElement).value)} />
+                  <Button kind="ghost" renderIcon={Download}>Экспорт XLSX</Button>
+                  <Button renderIcon={Add}>Добавить ЖК</Button>
+                </TableToolbarContent>
+              </TableToolbar>
+              <Table {...getTableProps()} size="lg">
+                <TableHead>
+                  <TableRow>{dheaders.map((h) => <TableHeader {...getHeaderProps({ header: h })} key={h.key}>{h.header}</TableHeader>)}</TableRow>
+                </TableHead>
+                <TableBody>
+                  {drows.map((row) => {
+                    const { c, r, dev } = byId[row.id]
+                    return (
+                      <TableRow {...getRowProps({ row })} key={row.id} onClick={() => nav(`/complexes/${c.id}`)} style={{ cursor: 'pointer' }}>
+                        <TableCell className="col-obj">
+                          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                            <img className="thumb" src={c.cover} alt="" />
+                            <div><div className="cell-title">ЖК «{c.name}»</div><div className="cell-sub">{c.address} · {c.district}</div></div>
+                          </div>
+                        </TableCell>
+                        <TableCell><div>{dev?.name}</div><div className="cell-sub mono">БИН {dev?.bin}</div></TableCell>
+                        <TableCell>
+                          <div className="basis-dots">
+                            <span title="Гарантия ЕО"><i className={c.basis.guarantee} />ЕО</span>
+                            <span title="Разрешение МИО"><i className={c.basis.mio} />МИО</span>
+                            <span title="Банк второго уровня"><i className={c.basis.bvu} />БВУ</span>
+                            <span title="Перечень ГАСК"><i className={c.inPublishedList} />ГАСК</span>
+                          </div>
+                        </TableCell>
+                        <TableCell><div className="progress"><span className="bar"><b style={{ width: `${c.progress}%` }} /></span><span className="mono">{c.progress}%</span></div><div className="cell-sub">{c.stage}</div></TableCell>
+                        <TableCell className="mono">{fmtDate(c.plannedEnd)}</TableCell>
+                        <TableCell><Score value={r.score} zone={r.zone} /></TableCell>
+                        <TableCell><div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}><ZoneTag zone={r.zone} size="sm" />{r.needsCheck && <NeedsCheck />}</div></TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+              <Pagination page={page.page} pageSize={page.size} pageSizes={[10, 25, 50]} totalItems={rows.length} onChange={({ page: p, pageSize }) => setPage({ page: p, size: pageSize })}
+                itemsPerPageText="Строк на странице:" itemRangeText={(min, max, total) => `${min}–${max} из ${total}`} pageRangeText={(_c, total) => `из ${total}`} backwardText="Назад" forwardText="Вперёд" />
+            </TableContainer>
+          )}
+        </DataTable>
+      ) : (
+        <div className="page">
+          <div className="cards">
             {rows.map(({ c, r, dev }) => (
-              <div key={c.id} className="stack" style={{ gap: 10, cursor: 'pointer' }} onClick={() => nav(`/complexes/${c.id}`)}>
-                <div className="ph-frame" style={{ aspectRatio: '4/5' }}>
-                  <img className="img" src={c.cover} alt="" />
-                  <div className="tag"><span className={`score solid z-${r.zone}`}>{r.score}</span></div>
+              <div key={c.id} className="pcard" onClick={() => nav(`/complexes/${c.id}`)}>
+                <div className="ph">
+                  <img src={c.cover} alt="" />
+                  <div className="tags"><ZoneTag zone={r.zone} size="sm" /></div>
+                  <Score value={r.score} zone={r.zone} />
                 </div>
-                <div className="row" style={{ justifyContent: 'space-between' }}><span className="label">{c.district}</span><ZoneBadge zone={r.zone} /></div>
-                <div className="display d-m">{c.name}</div>
-                <div className="muted" style={{ fontSize: 13 }}>{dev?.name}</div>
-                <div className="row" style={{ gap: 8 }}><div className="progress" style={{ flex: 1 }}><b style={{ width: `${c.progress}%` }} /></div><span className="mono">{c.progress}%</span></div>
+                <div className="b">
+                  <div className="n">ЖК «{c.name}»</div>
+                  <div className="a">{c.address}</div>
+                  <div className="a">{c.district} · {c.stage} · сдача {new Date(c.plannedEnd).getFullYear()}</div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
+                    <TriTag v={c.basis.guarantee} label={`Гарантия ЕО: ${c.basis.guarantee === 'yes' ? 'есть' : c.basis.guarantee === 'no' ? 'нет' : '?'}`} />
+                    {r.needsCheck && <NeedsCheck />}
+                  </div>
+                  <div className="dev">{dev?.name}</div>
+                </div>
               </div>
             ))}
           </div>
-        )}
-        {rows.length === 0 && <div className="empty"><ArrowDownUp size={18} /><div>Нет объектов под эти фильтры</div></div>}
-      </div>
-    </div>
+        </div>
+      )}
+    </>
   )
 }

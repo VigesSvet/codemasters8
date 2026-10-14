@@ -1,91 +1,91 @@
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Bell, BookOpen, Building2, Camera, Database, FileText, Inbox, LogOut, Map, Megaphone, PlusSquare, Search, Smartphone, Users } from 'lucide-react'
-import { useStore, type Theme } from '../lib/store'
+import { useEffect, useState } from 'react'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import {
+  Header, HeaderGlobalAction, HeaderGlobalBar, HeaderName, SideNav, SideNavDivider, SideNavItems, SideNavLink, SkipToContent, Theme, ToastNotification,
+} from '@carbon/react'
+import {
+  Analytics, Asleep, Building, Bullhorn, Camera, DataBase, Education, Enterprise, Light, ListChecked, Logout, Map, Mobile, Notification, Report, Search, AddAlt,
+} from '@carbon/icons-react'
+import { useStore } from '../lib/store'
 
-const themes: { id: Theme; name: string; sw: string }[] = [
-  { id: 'fortis', name: 'Fortis', sw: 'linear-gradient(90deg,#f2f0eb 50%,#111 50%)' },
-  { id: 'siera', name: 'Siera', sw: 'linear-gradient(90deg,#0f100e 50%,#c9a66b 50%)' },
-  { id: 'banda', name: 'Banda', sw: 'linear-gradient(90deg,#ece4d6 50%,#6b6a3f 50%)' },
+const NAV = [
+  { to: '/', label: 'Карта объектов', icon: Map, end: true },
+  { to: '/ops', label: 'Оперативная сводка', icon: Analytics },
+  { to: '/complexes', label: 'Реестр ЖК', icon: Building },
+  { to: '/ads', label: 'Мониторинг рекламы', icon: Bullhorn, count: 'ads' as const },
+  { to: '/queue', label: 'Очередь проверки', icon: ListChecked, count: 'queue' as const },
+  { to: '/developers', label: 'Застройщики', icon: Enterprise },
+  null,
+  { to: '/ads/new', label: 'Добавить публикацию', icon: AddAlt },
+  { to: '/sites', label: 'Фото-мониторинг', icon: Camera },
+  { to: '/method', label: 'Методика скоринга', icon: Education },
+  { to: '/sources', label: 'Источники данных', icon: DataBase },
+  { to: '/reports', label: 'Отчёты', icon: Report },
+  { to: '/residents', label: 'Жителям (идея)', icon: Mobile },
 ]
 
-const titles: Record<string, string> = {
-  '': 'Карта города', complexes: 'Реестр ЖК', ads: 'Лента рекламы', queue: 'Очередь проверки', developers: 'Застройщики',
-  sites: 'Фото-мониторинг', method: 'Методика скоринга', sources: 'Источники данных', residents: 'Жителям', reports: 'Отчёты', new: 'Новая публикация',
+function useClock() {
+  const [now, setNow] = useState(new Date())
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t) }, [])
+  return now
 }
 
 export default function Shell() {
   const { ads, theme, setTheme, toast } = useStore()
   const loc = useLocation()
   const nav = useNavigate()
-  const queue = ads.filter((a) => a.status === 'new' || a.status === 'needs_check').length
-  const parts = loc.pathname.split('/').filter(Boolean)
+  const now = useClock()
+  const counts = { ads: ads.length, queue: ads.filter((a) => a.status === 'new' || a.status === 'needs_check').length }
+  const isActive = (to: string, end?: boolean) => (end ? loc.pathname === to : loc.pathname === to || (to !== '/ads' && loc.pathname.startsWith(to + '/')) || (to === '/ads' && /^\/ads\/(?!new)/.test(loc.pathname)))
 
   return (
-    <div className="shell">
-      <aside className="side">
-        <div className="brand">
-          <div className="brand-mark">SAQ <em>Qurylys</em></div>
-          <span className="label">Мониторинг долевого строительства · Өскемен</span>
-        </div>
-        <nav className="nav">
-          <div className="nav-group label">Работа</div>
-          <NavLink to="/" end><Map size={16} />Карта города</NavLink>
-          <NavLink to="/complexes"><Building2 size={16} />Реестр ЖК</NavLink>
-          <NavLink to="/ads" end><Megaphone size={16} />Лента рекламы<span className="count">{ads.length}</span></NavLink>
-          <NavLink to="/queue"><Inbox size={16} />Очередь проверки<span className="count alert">{queue}</span></NavLink>
-          <NavLink to="/developers"><Users size={16} />Застройщики</NavLink>
-          <div className="nav-group label">Модули</div>
-          <NavLink to="/ads/new"><PlusSquare size={16} />Добавить публикацию</NavLink>
-          <NavLink to="/sites"><Camera size={16} />Фото-мониторинг</NavLink>
-          <NavLink to="/method"><BookOpen size={16} />Методика скоринга</NavLink>
-          <NavLink to="/sources"><Database size={16} />Источники данных</NavLink>
-          <NavLink to="/reports"><FileText size={16} />Отчёты</NavLink>
-          <NavLink to="/residents"><Smartphone size={16} />Жителям <span className="count">β</span></NavLink>
-        </nav>
-        <div className="side-foot">
-          <div className="label">Вариант дизайна</div>
-          <div className="themes">
-            {themes.map((t) => (
-              <button key={t.id} className={theme === t.id ? 'on' : ''} onClick={() => setTheme(t.id)}>
-                <span className="sw" style={{ background: t.sw }} />{t.name}
-              </button>
+    <Theme theme={theme}>
+      <Theme theme="g100">
+      <Header aria-label="SAQ Qurylys">
+        <SkipToContent />
+        <HeaderName as={Link} to="/" prefix="ДЭР ВКО">SAQ Qurylys</HeaderName>
+        <HeaderGlobalBar>
+          <span className="header-date">
+            {now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).toUpperCase()} · {now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} ALMT · Өскемен
+          </span>
+          <HeaderGlobalAction aria-label="Поиск"><Search size={20} /></HeaderGlobalAction>
+          <HeaderGlobalAction aria-label={theme === 'g10' ? 'Тёмная тема' : 'Светлая тема'} onClick={() => setTheme(theme === 'g10' ? 'g100' : 'g10')}>
+            {theme === 'g10' ? <Asleep size={20} /> : <Light size={20} />}
+          </HeaderGlobalAction>
+          <HeaderGlobalAction aria-label="Уведомления" onClick={() => nav('/queue')}><Notification size={20} /></HeaderGlobalAction>
+          <HeaderGlobalAction aria-label="Выйти" tooltipAlignment="end" onClick={() => nav('/login')}><Logout size={20} /></HeaderGlobalAction>
+        </HeaderGlobalBar>
+      </Header>
+      </Theme>
+        <SideNav aria-label="Навигация" isFixedNav expanded isChildOfHeader={false}>
+          <SideNavItems>
+            {NAV.map((n, i) => n === null ? <SideNavDivider key={i} /> : (
+              <SideNavLink key={n.to} as={Link} to={n.to} renderIcon={n.icon} isActive={isActive(n.to, n.end)}>
+                <span style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  {n.label}
+                  {n.count && <span className={`count ${n.count === 'queue' ? 'alert' : ''}`}>{counts[n.count]}</span>}
+                </span>
+              </SideNavLink>
             ))}
-          </div>
-          <div className="user">
-            <div className="avatar">ВН</div>
-            <div style={{ lineHeight: 1.2 }}>
-              <div style={{ fontWeight: 500 }}>Нестерова А.</div>
-              <div className="label" style={{ fontSize: 10 }}>Аналитик · ДЭР ВКО</div>
+          </SideNavItems>
+          <div className="side-footer">
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <span className="avatar" style={{ width: 32, height: 32 }}>ВН</span>
+              <div>
+                <div className="cell-title">Нестерова А.</div>
+                <div className="cell-sub">Аналитик · ДЭР ВКО</div>
+              </div>
             </div>
-            <button className="btn icon sm ghost" style={{ marginLeft: 'auto', width: 28 }} onClick={() => nav('/login')} title="Выйти"><LogOut size={14} /></button>
           </div>
-        </div>
-      </aside>
-      <div className="main">
-        <div className="topbar">
-          <div className="crumbs label">
-            <span>SAQ</span>
-            {parts.length === 0 ? <span style={{ color: 'var(--ink)' }}>{titles['']}</span> : parts.map((p, i) => (
-              <span key={i} style={{ color: i === parts.length - 1 ? 'var(--ink)' : undefined }}>{titles[p] ?? p.toUpperCase()}</span>
-            ))}
-          </div>
-          <label className="search">
-            <Search size={14} className="muted" />
-            <input placeholder="ЖК, застройщик, БИН, аккаунт…" />
-            <kbd>⌘K</kbd>
-          </label>
-          <button className="btn icon ghost" title="Уведомления" style={{ position: 'relative' }}>
-            <Bell size={16} />
-            <span style={{ position: 'absolute', top: 7, right: 8, width: 7, height: 7, borderRadius: 9, background: 'var(--red)' }} />
-          </button>
-        </div>
+        </SideNav>
+      <main className="app-content" id="main-content">
         <Outlet />
-      </div>
+      </main>
       {toast && (
-        <div className="fade-in" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: 'var(--ink)', color: 'var(--bg)', padding: '12px 20px', zIndex: 100, fontSize: 13 }}>
-          {toast}
+        <div style={{ position: 'fixed', right: 16, top: 64, zIndex: 9000 }}>
+          <ToastNotification kind={toast.kind} title={toast.title} subtitle="Действие записано в журнал" timeout={3000} lowContrast />
         </div>
       )}
-    </div>
+    </Theme>
   )
 }

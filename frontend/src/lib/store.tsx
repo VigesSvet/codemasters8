@@ -2,7 +2,8 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { ads as demoAds, complexes as demoComplexes } from '../data/demo'
 import type { Ad, AdStatus, Complex } from '../data/types'
 
-export type Theme = 'fortis' | 'siera' | 'banda'
+/** Темы Carbon: g10 — светлая, g100 — тёмная */
+export type Theme = 'g10' | 'g100'
 
 interface Store {
   theme: Theme
@@ -11,8 +12,8 @@ interface Store {
   complexes: Complex[]
   setAdStatus: (id: string, s: AdStatus, assignee?: string) => void
   addAd: (a: Ad) => void
-  toast: string | null
-  notify: (msg: string) => void
+  toast: { title: string; kind: 'success' | 'info' } | null
+  notify: (title: string, kind?: 'success' | 'info') => void
 }
 
 const Ctx = createContext<Store | null>(null)
@@ -20,15 +21,12 @@ const Ctx = createContext<Store | null>(null)
 const API = import.meta.env.VITE_API_URL ?? '/api'
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('saq-theme') as Theme) || 'fortis')
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('saq-carbon-theme') as Theme) || 'g10')
   const [ads, setAds] = useState<Ad[]>(demoAds)
   const [complexes, setComplexes] = useState<Complex[]>(demoComplexes)
-  const [toast, setToast] = useState<string | null>(null)
+  const [toast, setToast] = useState<Store['toast']>(null)
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    localStorage.setItem('saq-theme', theme)
-  }, [theme])
+  useEffect(() => { localStorage.setItem('saq-carbon-theme', theme) }, [theme])
 
   // Если бэкенд FastAPI запущен — берём данные оттуда, иначе работаем на демо-наборе.
   useEffect(() => {
@@ -46,7 +44,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setAds((xs) => [a, ...xs])
       fetch(`${API}/ads`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(a) }).catch(() => {})
     },
-    notify: (msg) => { setToast(msg); setTimeout(() => setToast(null), 2600) },
+    notify: (title, kind = 'success') => { setToast({ title, kind }); setTimeout(() => setToast(null), 3000) },
   }), [theme, ads, complexes, toast])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

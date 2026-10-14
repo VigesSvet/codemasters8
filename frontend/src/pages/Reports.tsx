@@ -1,66 +1,57 @@
-import { FileDown, Printer } from 'lucide-react'
-import { PageHead, Score, ZoneBadge } from '../components/ui'
+import { Button, StructuredListBody, StructuredListCell, StructuredListHead, StructuredListRow, StructuredListWrapper, Tag, Tile } from '@carbon/react'
+import { DocumentPdf, Printer } from '@carbon/icons-react'
+import { PageHeader, Score, ZoneTag, platformMeta } from '../components/ui'
 import { developers } from '../data/demo'
 import type { Platform } from '../data/types'
 import { scoreComplex } from '../lib/risk'
 import { useStore } from '../lib/store'
-import { platformMeta } from '../components/ui'
+
+const WEEKS = [3, 5, 4, 7, 6, 9, 8, 12]
 
 export default function Reports() {
   const { complexes, ads, notify } = useStore()
   const scored = complexes.map((c) => ({ c, r: scoreComplex(c, ads) })).sort((a, b) => b.r.score - a.r.score)
   const byPlat = (Object.keys(platformMeta) as Platform[]).map((p) => ({ p, n: ads.filter((a) => a.platform === p).length })).filter((x) => x.n).sort((a, b) => b.n - a.n)
   const maxP = Math.max(...byPlat.map((x) => x.n))
-  const weeks = [3, 5, 4, 7, 6, 9, 8, 12]
-
   return (
-    <div className="page">
-      <PageHead idx="M5" label="Отчётность" title={<>Еженедельная <span className="serif-i">сводка</span></>}
-        aside={<><button className="btn ghost" onClick={() => window.print()}><Printer size={14} />Печать</button><button className="btn primary" onClick={() => notify('Отчёт сформирован (PDF, демо)')}><FileDown size={14} />Скачать PDF</button></>}>
-        <div className="label" style={{ marginTop: 18 }}>Период: 07.10.2026 — 14.10.2026 · Усть-Каменогорск</div>
-      </PageHead>
-
-      <div className="grid g-2" style={{ gap: 48 }}>
-        <div>
-          <div className="label" style={{ marginBottom: 16 }}>Публикации с признаками продажи · по неделям</div>
-          <div style={{ display: 'flex', alignItems: 'end', gap: 10, height: 220, borderBottom: '1px solid var(--line-strong)' }}>
-            {weeks.map((v, i) => (
-              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                <span className="mono" style={{ fontSize: 11 }}>{v}</span>
-                <div style={{ width: '100%', height: v * 15, background: i === weeks.length - 1 ? 'var(--accent)' : 'var(--line)' }} />
+    <>
+      <PageHeader crumbs={[['SAQ', '/'], ['Отчёты']]} title="Еженедельная сводка" sub="Период 07.10.2026 — 14.10.2026 · Усть-Каменогорск"
+        actions={<><Button kind="tertiary" renderIcon={Printer} onClick={() => window.print()}>Печать</Button><Button renderIcon={DocumentPdf} onClick={() => notify('Отчёт сформирован (PDF, демо)', 'info')}>Скачать PDF</Button></>} />
+      <div className="page">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <Tile>
+            <div className="label-01" style={{ marginBottom: 16 }}>Публикации с признаками продажи, по неделям</div>
+            <div className="bars">{WEEKS.map((v, i) => <div key={i}><span>{v}</span><b style={{ height: v * 13, opacity: i === WEEKS.length - 1 ? 1 : 0.45 }} /></div>)}</div>
+            <div className="label-01" style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}><span>нед. 34</span><span>нед. 41</span></div>
+          </Tile>
+          <Tile>
+            <div className="label-01" style={{ marginBottom: 16 }}>По площадкам</div>
+            {byPlat.map(({ p, n }) => (
+              <div key={p} style={{ display: 'grid', gridTemplateColumns: '100px 1fr 30px', gap: 12, alignItems: 'center', padding: '6px 0' }}>
+                <span>{platformMeta[p].name}</span>
+                <div style={{ height: 16, background: 'var(--cds-layer-02)' }}><div style={{ width: `${(n / maxP) * 100}%`, height: '100%', background: 'var(--cds-interactive)' }} /></div>
+                <span className="mono" style={{ textAlign: 'right' }}>{n}</span>
               </div>
             ))}
-          </div>
-          <div className="row label" style={{ justifyContent: 'space-between', marginTop: 8 }}><span>нед. 34</span><span>нед. 41</span></div>
+          </Tile>
         </div>
-        <div>
-          <div className="label" style={{ marginBottom: 16 }}>По площадкам</div>
-          {byPlat.map(({ p, n }) => (
-            <div key={p} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 30px', gap: 12, alignItems: 'center', padding: '8px 0' }}>
-              <span className="mono" style={{ fontSize: 12 }}>{platformMeta[p].name}</span>
-              <div style={{ height: 14, background: 'var(--bg-2)' }}><div style={{ width: `${(n / maxP) * 100}%`, height: '100%', background: platformMeta[p].color }} /></div>
-              <span className="mono" style={{ textAlign: 'right' }}>{n}</span>
-            </div>
-          ))}
-        </div>
+        <h2 className="section-title">Рейтинг риска</h2>
+        <StructuredListWrapper aria-label="Рейтинг">
+          <StructuredListHead><StructuredListRow head>{['#', 'ЖК', 'Застройщик', 'Факторы', 'Балл', 'Зона'].map((h) => <StructuredListCell head key={h}>{h}</StructuredListCell>)}</StructuredListRow></StructuredListHead>
+          <StructuredListBody>
+            {scored.map(({ c, r }, i) => (
+              <StructuredListRow key={c.id}>
+                <StructuredListCell className="mono">{String(i + 1).padStart(2, '0')}</StructuredListCell>
+                <StructuredListCell noWrap>ЖК «{c.name}»</StructuredListCell>
+                <StructuredListCell>{developers.find((d) => d.id === c.developerId)?.name}</StructuredListCell>
+                <StructuredListCell>{r.factors.filter((f) => f.state === 'hit').map((f) => <Tag key={f.code} size="sm" type="outline">{f.code}</Tag>)}</StructuredListCell>
+                <StructuredListCell><Score value={r.score} zone={r.zone} /></StructuredListCell>
+                <StructuredListCell><ZoneTag zone={r.zone} size="sm" /></StructuredListCell>
+              </StructuredListRow>
+            ))}
+          </StructuredListBody>
+        </StructuredListWrapper>
       </div>
-
-      <h2 className="display d-l" style={{ margin: '56px 0 16px' }}>Рейтинг <span className="serif-i">риска</span></h2>
-      <table className="t" style={{ borderTop: '1px solid var(--line-strong)' }}>
-        <thead><tr><th>#</th><th>ЖК</th><th>Застройщик</th><th>Факторы</th><th>Скор</th><th>Зона</th></tr></thead>
-        <tbody>
-          {scored.map(({ c, r }, i) => (
-            <tr key={c.id}>
-              <td className="mono">{String(i + 1).padStart(2, '0')}</td>
-              <td className="name">{c.name}</td>
-              <td>{developers.find((d) => d.id === c.developerId)?.name}</td>
-              <td><div className="row" style={{ gap: 4 }}>{r.factors.filter((f) => f.state === 'hit').map((f) => <span key={f.code} className="chip" style={{ height: 20, fontSize: 10 }}>{f.code}</span>)}</div></td>
-              <td><Score value={r.score} zone={r.zone} solid /></td>
-              <td><ZoneBadge zone={r.zone} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    </>
   )
 }
