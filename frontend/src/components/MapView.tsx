@@ -88,8 +88,7 @@ export default function MapView({ items, selected, onSelect, zoom = 11.6, center
             <button aria-label="Отдалить" onClick={() => map.current?.zoomOut()}><IcMinus size={18} /></button>
           </div>
           <div className="loc">
-            <span className="tip">Усть-Каменогорск</span>
-            <button aria-label="К центру города" onClick={() => map.current?.easeTo({ center: ll(...UKA_CENTER), zoom: 11.8 })}><IcLocate size={18} /></button>
+            <button aria-label="К центру города" title="Показать весь город" onClick={() => map.current?.easeTo({ center: ll(...UKA_CENTER), zoom: 11.8 })}><IcLocate size={18} /></button>
           </div>
         </div>
       )}
