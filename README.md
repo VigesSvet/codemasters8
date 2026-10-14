@@ -35,7 +35,22 @@ docker compose up --build
 # API    http://localhost:8000/docs
 ```
 
-### Локально
+### Локально одной командой
+
+```bash
+./dev.sh        # API :8000 (SQLite) + фронт :5180
+```
+
+Сброс демо-данных: удалить `backend/saq.db` и перезапустить.
+
+### Тесты
+
+```bash
+cd backend && .venv/bin/python -m pytest -q
+cd frontend && npx tsc -b   # проверка типов
+```
+
+### Локально вручную
 
 ```bash
 # бэкенд (без Postgres можно на SQLite)
