@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import type { AdStatus, Platform, Tri, Zone } from '../data/types'
 import { keywordsSafe } from '../data/demo'
 import { siFacebook, siInstagram, siTelegram, siTiktok } from 'simple-icons'
-import { IcCheck, IcChevronDown, IcChevronRight, IcChevronUp, IcClose, IcHelp } from '../ui/icons'
+import { IcCheck, IcChevronDown, IcChevronLeft, IcChevronRight, IcChevronUp, IcClose, IcHelp, IcInfo as IcInfoY } from '../ui/icons'
 
 export const zoneName: Record<Zone, string> = { red: 'Красная зона', yellow: 'Жёлтая зона', green: 'Зелёная зона' }
 export const zoneShort: Record<Zone, string> = { red: 'Красная', yellow: 'Жёлтая', green: 'Зелёная' }
@@ -184,6 +184,68 @@ export function FilterPop<T extends string>({ label, title, value, options, onCh
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+/** Серая шапка раздела — как на realty.yandex.ru/ipoteka: крошки, заголовок, строка с «i», плитки и главный блок */
+export function Hero({ crumb, title, info, actions, tiles, children }: { crumb: string; title: ReactNode; info?: ReactNode; actions?: ReactNode; tiles?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="band">
+      <div className="page-title" style={{ paddingBottom: 16 }}>
+        <div>
+          <div className="crumbs"><Link to="/">SAQ Qurylys</Link><span>›</span><span>{crumb}</span></div>
+          <h1 className="t-h1">{title}</h1>
+          {info && <div className="row t-body" style={{ gap: 8, marginTop: 12 }}><span style={{ color: 'var(--link)', display: 'flex' }}><IcInfoY /></span>{info}</div>}
+        </div>
+        {actions && <div className="row">{actions}</div>}
+      </div>
+      {tiles && <div className="mtiles">{tiles}</div>}
+      {children}
+    </div>
+  )
+}
+
+/** Плитка в шапке: иконка, подпись, крупное значение */
+export function HeroTile({ icon, label, value, to, onClick, active, tone }: { icon: ReactNode; label: ReactNode; value?: ReactNode; to?: string; onClick?: () => void; active?: boolean; tone?: Zone | 'blue' }) {
+  const inner = (<>{icon}<span>{label}{value !== undefined && <b className={tone ? `tone-${tone}` : ''}>{value}</b>}</span></>)
+  const cls = `mtile ${active ? 'on' : ''}`
+  if (to) return <Link to={to} className={cls}>{inner}</Link>
+  return <button className={cls} onClick={onClick} style={{ textAlign: 'left' }}>{inner}</button>
+}
+
+/** Аккордеон «Вопросы, которые задавал себе каждый» */
+export function Faq({ title, sub, items }: { title: string; sub?: string; items: [string, ReactNode][] }) {
+  const [open, setOpen] = useState<number | null>(null)
+  return (
+    <section className="faq">
+      <h2 className="t-h2">{title}</h2>
+      {sub && <p className="c2" style={{ margin: '8px 0 8px', maxWidth: 680 }}>{sub}</p>}
+      {items.map(([q, a], i) => (
+        <div key={i} className={`faq-i ${open === i ? 'on' : ''}`}>
+          <button onClick={() => setOpen(open === i ? null : i)}><span>{q}</span>{open === i ? <IcChevronUp size={16} /> : <IcChevronDown size={16} />}</button>
+          {open === i && <div className="faq-a fade">{a}</div>}
+        </div>
+      ))}
+    </section>
+  )
+}
+
+/** Колонки синих ссылок с серым количеством — как подвал выдачи Недвижимости */
+export function LinkCols({ cols }: { cols: [string, string, number][][] }) {
+  return (
+    <div className="linkcols">
+      {cols.map((col, i) => <div key={i}>{col.map(([l, to, n]) => <Link key={l} to={to}><span className="link">{l}</span><span className="c3">{n}</span></Link>)}</div>)}
+    </div>
+  )
+}
+
+/** Заголовок секции со стрелкой и кнопками карусели — «Новостройки от застройщиков ›  ‹ ›» */
+export function SectionHead({ title, to, onPrev, onNext, right }: { title: string; to?: string; onPrev?: () => void; onNext?: () => void; right?: ReactNode }) {
+  return (
+    <div className="shead">
+      {to ? <Link to={to} className="t-h2 row" style={{ gap: 4 }}>{title}<IcChevronRight size={20} /></Link> : <h2 className="t-h2">{title}</h2>}
+      <div className="row" style={{ gap: 8 }}>{right}{onPrev && <><button className="arr" onClick={onPrev} aria-label="Назад"><IcChevronLeft size={16} /></button><button className="arr" onClick={onNext} aria-label="Вперёд"><IcChevronRight size={16} /></button></>}</div>
     </div>
   )
 }

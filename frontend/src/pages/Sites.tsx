@@ -1,62 +1,96 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import Compare from '../components/Compare'
-import { Cell, PageTitle, fmtDate } from '../components/ui'
+import { Faq, Hero, HeroTile, SectionHead, Seg, fmtDate } from '../components/ui'
 import type { Tri } from '../data/types'
 import { useStore } from '../lib/store'
-import { IcCheck, IcClose, IcDrone, IcHelp, IcUpload } from '../ui/icons'
+import { IcCamera, IcCheck, IcClock, IcClose, IcCrane, IcDrone, IcHelp, IcUpload } from '../ui/icons'
 
+type F = 'all' | 'idle' | 'ok' | 'none'
+
+/** Фото-мониторинг — шапка с показателями и сравнением снимков в главном блоке, ниже карусель площадок */
 export default function Sites() {
   const { complexes, notify } = useStore()
-  const list = complexes.filter((c) => c.stage !== 'введён').sort((a, b) => b.idleDays - a.idleDays)
-  const [sel, setSel] = useState(list.find((c) => c.photos.length > 2 && c.idleDays === 0)?.id ?? list[0].id)
+  const strip = useRef<HTMLDivElement>(null)
+  const all = complexes.filter((c) => c.stage !== 'введён').sort((a, b) => b.idleDays - a.idleDays)
+  const [f, setF] = useState<F>('all')
+  const test: Record<F, (c: (typeof all)[number]) => boolean> = { all: () => true, idle: (c) => c.idleDays >= 30, ok: (c) => c.photos.length > 0 && c.idleDays < 30, none: (c) => c.photos.length === 0 }
+  const list = all.filter(test[f])
+  const [sel, setSel] = useState(all.find((c) => c.photos.length > 2 && c.idleDays === 0)?.id ?? all[0].id)
   const c = complexes.find((x) => x.id === sel)!
   const last = c.photos[c.photos.length - 1]
-  const sign = (k: string, v: Tri = 'unknown') => (
-    <div className="tile" style={{ background: 'var(--bg)', minHeight: 0 }}>
-      <span className="pic" style={{ height: 28 }}><span className={`zone-pic ${v === 'yes' ? 'green' : v === 'no' ? 'red' : 'all'}`} style={{ width: 28, height: 28, borderRadius: 9 }}>{v === 'yes' ? <IcCheck size={16} strokeWidth={3} /> : v === 'no' ? <IcClose size={16} strokeWidth={3} /> : <IcHelp size={16} />}</span></span>
-      <span className="nm c2" style={{ fontSize: 13 }}>{k}</span><span className="vl">{v === 'yes' ? 'Есть' : v === 'no' ? 'Нет' : 'Не видно'}</span>
-    </div>
-  )
+  const signs = last ? ([['Ограждение', last.fence], ['Мусорный контейнер', last.bins], ['Мойка колёс', last.wheelWash]] as [string, Tri | undefined][]) : []
+  const scroll = (d: number) => strip.current?.scrollBy({ left: d * strip.current.clientWidth, behavior: 'smooth' })
 
   return (
     <>
-      <PageTitle crumbs={[['Карта', '/'], ['Фото-мониторинг']]} title="Фото-мониторинг площадок"
-        sub="Дополнительный модуль. Снимки с дрона или камеры сравниваются во времени: простой 90+ дней, ограждение, мусорный контейнер, мойка колёс. Управление дроном не входит в MVP."
-        actions={<><button className="btn g m" onClick={() => notify('Заявка на облёт отправлена (демо)')}><IcDrone size={20} />Заявка на облёт</button><button className="btn y m"><IcUpload size={20} />Загрузить снимки</button></>} />
-      <div className="cols">
-        <div className="card sticky" style={{ maxHeight: 'calc(100vh - 120px)', overflow: 'auto' }}>
-          {list.map((x) => (
-            <Cell key={x.id} inset onClick={() => setSel(x.id)}
-              icon={<img className="th" src={x.cover} alt="" style={{ width: 48, height: 48, borderRadius: 12, outline: sel === x.id ? '3px solid var(--yellow)' : undefined }} />}
-              title={<span className={sel === x.id ? 'bold' : ''}>{x.name}</span>} sub={`${x.photos.length} снимков${x.photos.at(-1) ? ' · ' + fmtDate(x.photos.at(-1)!.date) : ''}`}
-              end={<span className={`tag ${x.idleDays >= 90 ? 'red' : x.idleDays >= 30 ? 'yellow' : 'green'}`}>{x.idleDays ? `стоит ${x.idleDays} дн.` : 'идёт'}</span>} />
+      <Hero crumb="Фото-мониторинг" title="Фото-мониторинг площадок"
+        info="Дополнительный модуль: снимки дрона и камер сравниваются во времени. Управление дроном не входит в MVP"
+        actions={<><button className="btn g m" style={{ background: '#fff' }} onClick={() => notify('Заявка на облёт отправлена (демо)')}><IcDrone />Заявка на облёт</button><button className="btn y m" onClick={() => notify('Загрузка снимков (демо)')}><IcUpload />Загрузить снимки</button></>}
+        tiles={<>
+          <HeroTile icon={<IcCrane size={32} />} label="Строящихся объектов" value={all.length} onClick={() => setF('all')} active={f === 'all'} />
+          <HeroTile icon={<IcClock size={32} />} label="Стройка стоит 30+ дн." value={all.filter(test.idle).length} tone="red" onClick={() => setF('idle')} active={f === 'idle'} />
+          <HeroTile icon={<IcCheck size={32} />} label="Работы идут" value={all.filter(test.ok).length} tone="green" onClick={() => setF('ok')} active={f === 'ok'} />
+          <HeroTile icon={<IcCamera size={32} />} label="Без снимков" value={all.filter(test.none).length} tone="yellow" onClick={() => setF('none')} active={f === 'none'} />
+          <HeroTile icon={<IcCamera size={32} />} label="Снимков всего" value={all.reduce((s, x) => s + x.photos.length, 0)} onClick={() => setF('all')} />
+          <HeroTile icon={<IcDrone size={32} />} label="Следующий облёт" value="20 окт." tone="blue" onClick={() => notify('График облётов (демо)')} />
+        </>}>
+        <div className="panel fade" key={c.id} style={{ gridTemplateColumns: 'minmax(0, 1fr) 360px' }}>
+          <div style={{ padding: 8 }}>
+            {c.photos.length >= 2 ? <Compare before={c.photos[0]} after={last} /> : c.photos.length === 1 ? <div className="ph" style={{ aspectRatio: '16/9', borderRadius: 16 }}><img src={c.photos[0].src} alt="" /></div> : <div className="drop" style={{ aspectRatio: '16/9' }}><div><IcCamera /><div className="bold" style={{ marginTop: 8 }}>Снимков ещё нет</div><div className="t-sm c2">Загрузите фото или отправьте заявку на облёт</div></div></div>}
+          </div>
+          <div className="pr">
+            <Link to={`/complexes/${c.id}?tab=photos`} className="t-h2 link" style={{ color: 'var(--text)' }}>ЖК «{c.name}»</Link>
+            <span className="t-sm c2" style={{ marginTop: 4 }}>{c.address} · {c.stage}, {c.progress}%</span>
+            <div style={{ margin: '18px 0' }}>
+              {c.idleDays >= 30
+                ? <><span className="big-num" style={{ color: c.idleDays >= 90 ? 'var(--red)' : 'var(--amber)' }}>{c.idleDays}</span><span className="c2"> дней без изменений</span></>
+                : <><span className="big-num" style={{ color: 'var(--green)' }}>{c.photos.length}</span><span className="c2"> {c.photos.length ? 'снимков · работы идут' : 'снимков'}</span></>}
+            </div>
+            {last && <div className="kv" style={{ gridTemplateColumns: '1fr auto' }}>
+              <span>Последний снимок</span><span>{fmtDate(last.date)}</span>
+              <span>Источник</span><span>{last.source}</span>
+              {signs.map(([k, v]) => [<span key={k}>{k}</span>, <span key={k + 'v'} className="row" style={{ gap: 4, color: v === 'yes' ? 'var(--green)' : v === 'no' ? 'var(--red)' : 'var(--text-3)' }}>{v === 'yes' ? <IcCheck size={14} /> : v === 'no' ? <IcClose size={14} /> : <IcHelp size={14} />}{v === 'yes' ? 'есть' : v === 'no' ? 'нет' : 'не видно'}</span>])}
+            </div>}
+            <Link to={`/complexes/${c.id}`} className="btn d full" style={{ marginTop: 'auto', paddingTop: 0 }}>Карточка объекта</Link>
+          </div>
+        </div>
+      </Hero>
+
+      <SectionHead title={`Площадки · ${list.length}`} onPrev={() => scroll(-1)} onNext={() => scroll(1)}
+        right={<Seg value={f} onChange={setF} items={[['all', 'Все'], ['idle', 'Стоят'], ['ok', 'Идут'], ['none', 'Без снимков']]} />} />
+      <div className="hscroll" ref={strip}>
+        {list.map((x) => (
+          <button key={x.id} className={`pcard ${sel === x.id ? 'sel' : ''}`} onClick={() => { setSel(x.id); window.scrollTo({ top: 0, behavior: 'smooth' }) }} style={{ textAlign: 'left' }}>
+            <div className="ph"><img src={x.photos.at(-1)?.src ?? x.cover} alt="" /><div className="tl"><span className="tag white">{x.photos.length} снимков</span></div></div>
+            <span className="big">{x.name}</span>
+            <span className="t-sm c2">{x.photos.at(-1) ? `последний ${fmtDate(x.photos.at(-1)!.date)}` : 'снимков нет'}</span>
+            <span style={{ marginTop: 6 }}><span className={`tag ${x.photos.length === 0 ? 'gray' : x.idleDays >= 90 ? 'red' : x.idleDays >= 30 ? 'yellow' : 'green'}`}>{x.photos.length === 0 ? 'нет данных' : x.idleDays ? `стоит ${x.idleDays} дн.` : 'работы идут'}</span></span>
+          </button>
+        ))}
+      </div>
+
+      {c.photos.length > 0 && <>
+        <SectionHead title={`Хронология · ЖК «${c.name}»`} />
+        <div className="gcards" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
+          {c.photos.map((p, i) => (
+            <div key={i} className="pcard">
+              <div className="ph"><img src={p.src} alt="" /><div className="tl"><span className="tag white">{p.source}</span></div></div>
+              <span className="big" style={{ fontSize: 17 }}>{fmtDate(p.date)}</span>
+              <span className="t-sm c2">{p.note ?? '—'}</span>
+              <span style={{ marginTop: 4 }}><span className={`tag ${p.activity === 'есть' ? 'green' : p.activity === 'низкая' ? 'yellow' : 'red'}`}>активность: {p.activity}</span></span>
+            </div>
           ))}
         </div>
-        <div className="stack fade" key={c.id} style={{ gap: 16 }}>
-          <div className="card card-pad">
-            <div className="row between" style={{ marginBottom: 16 }}><h2 className="t-h2">ЖК «{c.name}»</h2><span className="t-sm c2">{c.address}</span></div>
-            {c.photos.length >= 2 ? <Compare before={c.photos[0]} after={last} /> : c.photos.length === 1 ? <div className="ph" style={{ aspectRatio: '16/9', borderRadius: 20 }}><img src={c.photos[0].src} alt="" /></div> : <div className="drop">Снимков ещё нет</div>}
-          </div>
-          {last && (
-            <div className="card">
-              <div className="card-head"><h3>Последний снимок · {fmtDate(last.date)}</h3><span className={`tag ${last.activity === 'есть' ? 'green' : last.activity === 'низкая' ? 'yellow' : 'red'}`}>Активность: {last.activity}</span></div>
-              <div className="tiles" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>{sign('Ограждение', last.fence)}{sign('Мусорный контейнер', last.bins)}{sign('Мойка колёс', last.wheelWash)}</div>
-            </div>
-          )}
-          <div className="card">
-            <div className="card-head"><h3>Хронология</h3></div>
-            <div style={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: '220px', gap: 10, overflowX: 'auto', padding: '4px 16px 16px' }}>
-              {c.photos.map((p, i) => (
-                <div key={i} style={{ background: 'var(--bg)', borderRadius: 20, overflow: 'hidden' }}>
-                  <div className="ph" style={{ aspectRatio: '4/3', borderRadius: 16, margin: 4 }}><img src={p.src} alt="" /></div>
-                  <div style={{ padding: '6px 12px 12px' }}><div className="bold t-sm">{fmtDate(p.date)}</div><div className="t-xs c2">{p.source} · {p.note ?? '—'}</div></div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+      </>}
+
+      <Faq title="Как работает фото-мониторинг"
+        items={[
+          ['Откуда снимки?', 'С дронов управления цифровизации ВКО и стационарных камер на площадках. Можно загрузить и фото с выезда — дата берётся из файла.'],
+          ['Как система понимает, что стройка стоит?', 'Сравнивает соседние снимки: если техника, этажность и ограждение не меняются 30+ дней, ставится отметка «стоит». После 90 дней фактор R4 даёт 10 баллов.'],
+          ['Зачем ограждение, контейнер и мойка колёс?', 'Это обязательные элементы строительной площадки по требованиям ГАСК. Их отсутствие — повод для выезда, но в риск-скоринг ТЗ они не входят.'],
+          ['Нужно ли управлять дроном из системы?', 'Нет. В MVP только приём и сравнение снимков; заявка на облёт отправляется в управление цифровизации.'],
+        ]} />
     </>
   )
 }
-

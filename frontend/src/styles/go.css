@@ -433,7 +433,7 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 .drop svg { width: 28px; height: 28px; }
 
 /* Канбан */
-.board { display: grid; grid-template-columns: repeat(5, minmax(250px, 1fr)); gap: 12px; overflow-x: auto; align-items: start; padding-bottom: 8px; }
+.board { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; overflow-x: auto; align-items: start; padding-bottom: 8px; }
 .bcol { background: var(--fill); border-radius: var(--r-xl); padding: 8px; display: flex; flex-direction: column; gap: 8px; min-height: 240px; transition: background 0.12s; }
 .bcol.over { background: var(--fill-hover); }
 .bcol .h { display: flex; align-items: center; gap: 8px; padding: 10px 10px 6px; font-size: 15px; font-weight: 700; }
@@ -562,3 +562,47 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 .xgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; padding: 4px 0; line-height: 21px; }
 .chip.fund { background: var(--red-bg); color: var(--red-ink); }
 .chip.safe { background: var(--green-bg); color: var(--green-ink); }
+
+/* Плитки шапки: состояние, тона */
+.mtile.on { box-shadow: inset 0 0 0 2px var(--text); }
+.mtile b.tone-red { color: var(--red); } .mtile b.tone-yellow { color: var(--amber); } .mtile b.tone-green { color: var(--green); } .mtile b.tone-blue { color: var(--link); }
+.mtile b { font-family: var(--font-display); font-size: 24px; line-height: 28px; font-weight: 800; }
+.band .panel { background: #fff; border-radius: var(--r-l); padding: 8px; display: grid; gap: 16px; }
+.band .panel > .pl { padding: 16px 16px 8px; min-width: 0; }
+.band .panel > .pr { background: var(--fill); border-radius: var(--r-m); padding: 24px; display: flex; flex-direction: column; min-width: 0; }
+/* FAQ */
+.faq { margin-top: 56px; max-width: 900px; }
+.faq-i { border-bottom: 1px solid var(--line); }
+.faq-i > button { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px 0; text-align: left; font-size: 18px; font-weight: 500; }
+.faq-i > button svg { color: var(--text-3); }
+.faq-i > button:hover span { color: var(--link); }
+.faq-a { padding: 0 0 18px; color: var(--text); font-size: 15px; line-height: 22px; max-width: 760px; }
+/* Ссылки колонками */
+.linkcols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 32px; margin-top: 48px; }
+.linkcols > div { display: flex; flex-direction: column; gap: 12px; }
+.linkcols a { display: flex; gap: 6px; font-size: 15px; }
+.linkcols a:hover .link { color: var(--link-hover); }
+/* Заголовок секции и стрелки карусели */
+.shead { display: flex; align-items: center; justify-content: space-between; margin: 48px 0 16px; }
+.arr { width: 32px; height: 32px; border-radius: 10px; background: var(--fill); display: grid; place-items: center; }
+.arr:hover { background: var(--fill-hover); }
+.hscroll { display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 48px) / 4); gap: 16px; overflow-x: auto; scroll-behavior: smooth; scrollbar-width: none; }
+.hscroll::-webkit-scrollbar { display: none; }
+/* Карточка-превью в карусели (как «от 21 194 912 ₽ МИРА») */
+.pcard { display: flex; flex-direction: column; gap: 4px; }
+.pcard .ph { aspect-ratio: 16 / 11; border-radius: var(--r-m); margin-bottom: 8px; }
+.pcard .big { font-family: var(--font-display); font-size: 20px; font-weight: 700; line-height: 24px; }
+.pcard .btn { margin-top: 10px; }
+/* Логотип-аватар застройщика */
+.devlogo { width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center; color: #fff; font-family: var(--font-display); font-weight: 800; font-size: 20px; flex: none; }
+.devcard { border-radius: var(--r-l); box-shadow: inset 0 0 0 1px var(--line); padding: 20px; display: flex; flex-direction: column; gap: 14px; cursor: pointer; transition: box-shadow 0.15s; text-align: left; }
+.devcard:hover { box-shadow: inset 0 0 0 1px var(--line), var(--shadow-float); }
+.devcard .objs { display: flex; gap: 6px; }
+.devcard .objs img { width: 64px; height: 48px; border-radius: 8px; object-fit: cover; }
+.modal .shead { margin: 16px 24px 4px; }
+/* Строка рейтинга в шапке */
+.rrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.rrow img { width: 44px; height: 34px; border-radius: 8px; object-fit: cover; flex: none; }
+.rrow:hover .bold { color: var(--link); }
+.pcard.sel .ph { box-shadow: 0 0 0 3px var(--yellow); }
+button.pcard:hover .big, a.pcard:hover .big { color: var(--link); }

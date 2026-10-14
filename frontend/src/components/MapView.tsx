@@ -36,9 +36,11 @@ interface Props {
   controls?: boolean
   labels?: boolean
   padLeft?: number
+  /** вписать все объекты в видимую область */
+  fit?: boolean
 }
 
-export default function MapView({ items, selected, onSelect, zoom = 11.6, center = UKA_CENTER, interactive = true, controls = false, labels = false, padLeft = 0 }: Props) {
+export default function MapView({ items, selected, onSelect, zoom = 11.6, center = UKA_CENTER, interactive = true, controls = false, labels = false, padLeft = 0, fit = false }: Props) {
   const el = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const markers = useRef<maplibregl.Marker[]>([])
@@ -72,6 +74,13 @@ export default function MapView({ items, selected, onSelect, zoom = 11.6, center
       return new maplibregl.Marker({ element: node, anchor: 'bottom', offset: [0, -6] }).setLngLat(ll(c.lng, c.lat)).addTo(m)
     })
   }, [items, selected, onSelect, labels, ready])
+
+  useEffect(() => {
+    const m = map.current
+    if (!fit || !ready || !m || !items.length) return
+    const lngs = items.map((x) => x.c.lng), lats = items.map((x) => yLat(x.c.lat))
+    m.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: { top: 60, bottom: 40, left: 40, right: 70 }, maxZoom: 14, duration: 400 })
+  }, [fit, ready, items])
 
   useEffect(() => {
     const c = items.find((x) => x.c.id === selected)?.c
