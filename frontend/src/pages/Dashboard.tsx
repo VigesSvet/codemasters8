@@ -6,11 +6,11 @@ import { developers } from '../data/demo'
 import type { Tri, Zone } from '../data/types'
 import { scoreComplex } from '../lib/risk'
 import { useStore } from '../lib/store'
-import { IcBuilding, IcCamera, IcCheck, IcChevronLeft, IcChevronRight, IcClose, IcGlobe, IcHelp, IcInfo, IcMegaphone, IcPlus, IcUsers } from '../ui/icons'
+import { IcBuilding, IcCamera, IcCheck, IcChevronLeft, IcChevronRight, IcClose, IcHelp, IcList, IcMegaphone, IcSearch, IcTraffic, IcUsers } from '../ui/icons'
 
 type F = Zone | 'all' | 'check'
 
-/** Главная — повторяет раскладку taxi.yandex.ru: карта, слева стопка карточек, справа промо и кнопки карты */
+/** Карта: панель как у Такси слева, метки-ценники как у Недвижимости, категории как у Карт */
 export default function Dashboard() {
   const { complexes, ads } = useStore()
   const nav = useNavigate()
@@ -34,67 +34,53 @@ export default function Dashboard() {
   const dev = s && developers.find((d) => d.id === s.c.developerId)
   const linked = s ? ads.filter((a) => a.complexId === s.c.id) : []
 
-  const tiles: [F, string, Zone | 'all'][] = [['all', 'Все', 'all'], ['red', 'Красная', 'red'], ['yellow', 'Жёлтая', 'yellow'], ['green', 'Зелёная', 'green'], ['check', 'Проверка', 'yellow']]
-  const basisTile = (name: string, v: Tri) => (
-    <div className="tile" style={{ minHeight: 0, background: 'var(--bg)' }}>
-      <div className="pic" style={{ height: 28, marginBottom: 2 }}>
-        <span className={`zone-pic ${v === 'yes' ? 'green' : v === 'no' ? 'red' : 'all'}`} style={{ width: 28, height: 28, borderRadius: 9 }}>
-          {v === 'yes' ? <IcCheck size={16} strokeWidth={3} /> : v === 'no' ? <IcClose size={16} strokeWidth={3} /> : <IcHelp size={16} />}
-        </span>
-      </div>
-      <div className="nm c2" style={{ fontSize: 13 }}>{name}</div>
-      <div className="vl" style={{ fontSize: 15 }}>{v === 'yes' ? 'Есть' : v === 'no' ? 'Нет' : 'Нет сведений'}</div>
+  const cats: [F, string, string][] = [['all', 'Все', 'all'], ['red', 'Красная', 'red'], ['yellow', 'Жёлтая', 'yellow'], ['green', 'Зелёная', 'green'], ['check', 'Проверка', 'blue']]
+  const basis = (name: string, v: Tri) => (
+    <div className="tile" style={{ minHeight: 0, background: 'var(--fill)', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <span className={`zone-pic ${v === 'yes' ? 'green' : v === 'no' ? 'red' : 'gray'}`} style={{ width: 28, height: 28 }}>
+        {v === 'yes' ? <IcCheck size={14} /> : v === 'no' ? <IcClose size={14} /> : <IcHelp size={14} />}
+      </span>
+      <div><div className="t-xs c2">{name}</div><div className="bold t-sm">{v === 'yes' ? 'Есть' : v === 'no' ? 'Нет' : 'Нет сведений'}</div></div>
     </div>
   )
 
   return (
     <div className="mapscreen">
-      <MapView items={visible} selected={sel} onSelect={onSelect} controls labels={labels} padLeft={380} />
+      <MapView items={visible} selected={sel} onSelect={onSelect} controls labels={labels} padLeft={400} />
 
       <div className="left">
         {!s ? (
           <div className="scroll">
-            <div className="card">
-              <div className="field">
-                <span className="mk"><span className="mk ring" /></span>
-                <div className="body"><label>Город</label><span style={{ fontSize: 17 }}>Усть-Каменогорск</span></div>
+            <div className="card" style={{ padding: 16 }}>
+              <div className="fsearch" style={{ height: 44 }}>
+                <IcSearch size={18} />
+                <input placeholder="ЖК, адрес или БИН застройщика" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Поиск" />
+                {q && <button onClick={() => setQ('')} className="c3" aria-label="Очистить"><IcClose size={16} /></button>}
               </div>
-              <div className="field">
-                <span className="mk"><span className="mk ring dark" /></span>
-                <div className="body"><input placeholder="Найти ЖК, адрес или БИН" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Поиск" /></div>
-                {q && <button onClick={() => setQ('')} className="c3" aria-label="Очистить"><IcClose size={18} /></button>}
-              </div>
-              <Link to="/ads/new" className="field" style={{ minHeight: 64 }}>
-                <span className="mk c2"><IcPlus /></span>
-                <div className="body" style={{ fontSize: 17 }}>Добавить публикацию</div>
-              </Link>
-            </div>
-
-            <div className="card">
-              <div className="tiles">
-                {tiles.map(([k, label, z]) => (
-                  <button key={k} className={`tile ${f === k ? 'on' : ''}`} onClick={() => setF(k)}>
-                    {k === 'all' && <Link to="/method" className="i" onClick={(e) => e.stopPropagation()} aria-label="Как считается риск"><IcInfo size={18} /></Link>}
-                    <span className="pic"><span className={`zone-pic ${z}`}>{k === 'check' ? <IcHelp size={20} /> : <IcBuilding size={20} />}</span></span>
-                    <span className="nm">{label}</span>
-                    <span className="vl num">{n(k)}</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4, marginTop: 16 }}>
+                {cats.map(([k, label, color]) => (
+                  <button key={k} onClick={() => setF(k)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '6px 0', borderRadius: 12, background: f === k ? 'var(--fill)' : undefined }}>
+                    <span className={`zone-pic ${color}`} style={{ width: 44, height: 44 }}>{k === 'check' ? <IcHelp /> : k === 'all' ? <IcTraffic /> : <IcBuilding />}</span>
+                    <span className="t-xs" style={{ fontWeight: f === k ? 600 : 400 }}>{label}</span>
+                    <span className="t-xs c2 num" style={{ marginTop: -4 }}>{n(k)}</span>
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="card">
+              <div className="card-head" style={{ paddingBottom: 4 }}><h3 style={{ fontSize: 17 }}>{visible.length} объектов</h3><span className="t-xs c2">по риску</span></div>
               {visible.length === 0 && <div className="empty">Ничего не найдено</div>}
               {visible.map(({ c, r }) => (
                 <Cell key={c.id} onClick={() => setSel(c.id)} inset
-                  icon={<img className="th" src={c.cover} alt="" style={{ width: 48, height: 48, borderRadius: 12 }} />}
-                  title={c.name} sub={`${c.address} · ${c.stage}${r.needsCheck ? ' · нужна проверка' : ''}`}
+                  icon={<img className="th" src={c.cover} alt="" style={{ width: 44, height: 44, borderRadius: 10 }} />}
+                  title={<span className="bold">{c.name}</span>} sub={`${c.address} · ${c.stage}`}
                   end={<Score value={r.score} zone={r.zone} />} />
               ))}
             </div>
 
             <div className="card">
-              <Cell title="Подписи на карте" end={<Toggle on={labels} onChange={setLabels} label="Подписи" />} />
+              <Cell title="Названия на карте" end={<Toggle on={labels} onChange={setLabels} label="Названия" />} />
               <Cell title="Только с рекламой" end={<Toggle on={withAds} onChange={setWithAds} label="Только с рекламой" />} />
               <Cell title="Стройка стоит 30+ дней" end={<Toggle on={idle} onChange={setIdle} label="Простой" />} />
             </div>
@@ -103,81 +89,55 @@ export default function Dashboard() {
           <div className="scroll fade" key={s.c.id}>
             <div className="card">
               <Cell onClick={() => setSel(undefined)} icon={<IcChevronLeft />} title="Все объекты" />
-              <div className="ph" style={{ height: 190, margin: '0 8px', borderRadius: 18 }}>
+              <div className="ph" style={{ height: 180, margin: '0 12px', borderRadius: 16 }}>
                 <img src={s.c.cover} alt="" />
-                <div className="tl"><ZoneTag zone={s.zone} /></div>
+                <div className="tl"><span className="tag white">{s.c.stage}</span>{s.r.needsCheck && <span className="tag white">нужна проверка</span>}</div>
               </div>
-              <div className="card-pad">
-                <div className="row between" style={{ alignItems: 'flex-start' }}>
-                  <div>
-                    <h2 className="t-h2">ЖК «{s.c.name}»</h2>
-                    <div className="c2 t-sm" style={{ marginTop: 4 }}>{s.c.address} · {s.c.district}</div>
-                  </div>
+              <div className="card-pad" style={{ paddingTop: 14 }}>
+                <div className="t-xs c2">{dev?.name}</div>
+                <div className="row between" style={{ alignItems: 'flex-start', marginTop: 2 }}>
+                  <h2 className="t-h2">ЖК «{s.c.name}»</h2>
                   <Score value={s.score} zone={s.zone} />
                 </div>
-                <p className="t-sm" style={{ marginTop: 12, lineHeight: '20px' }}>{s.r.summary}</p>
+                <div className="t-sm c2" style={{ marginTop: 4 }}>{s.c.address} · {s.c.district}</div>
+                <div style={{ marginTop: 10 }}><ZoneTag zone={s.zone} /></div>
+                <p className="t-sm" style={{ marginTop: 10, lineHeight: '19px' }}>{s.r.summary}</p>
+              </div>
+            </div>
+            <div className="card" style={{ padding: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                {basis('Гарантия ЕО', s.c.basis.guarantee)}{basis('Разрешение МИО', s.c.basis.mio)}
+                {basis('Банк (БВУ)', s.c.basis.bvu)}{basis('Перечень ГАСК', s.c.inPublishedList)}
               </div>
             </div>
             <div className="card">
-              <div className="tiles" style={{ gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                {basisTile('Гарантия ЕО', s.c.basis.guarantee)}
-                {basisTile('Разрешение МИО', s.c.basis.mio)}
-                {basisTile('Банк (БВУ)', s.c.basis.bvu)}
-                {basisTile('Перечень ГАСК', s.c.inPublishedList)}
-              </div>
-            </div>
-            <div className="card">
-              <Cell icon={<span className="ico"><IcMegaphone size={20} /></span>} title="Реклама" sub={linked.length ? `${linked.length} публ. · последняя ${fmtShort(linked[0].date)}` : 'Не найдено'} chevron to={`/complexes/${s.c.id}?tab=ads`} inset />
-              <Cell icon={<span className="ico"><IcCamera size={20} /></span>} title="Фото-мониторинг" sub={s.c.idleDays ? `Нет активности ${s.c.idleDays} дн.` : `${s.c.photos.length} снимков · стройка идёт`} chevron to={`/complexes/${s.c.id}?tab=photos`} inset />
-              <Cell icon={<span className="ico"><IcUsers size={20} /></span>} title={dev?.name.replace('ТОО ', '') ?? '—'} sub={`БИН ${dev?.bin}`} chevron to="/developers" inset />
+              <Cell icon={<span className="ico"><IcMegaphone size={18} /></span>} title="Реклама" sub={linked.length ? `${linked.length} публ. · последняя ${fmtShort(linked[0].date)}` : 'Не найдено'} chevron to={`/complexes/${s.c.id}?tab=ads`} inset />
+              <Cell icon={<span className="ico"><IcCamera size={18} /></span>} title="Фото-мониторинг" sub={s.c.idleDays ? `Нет активности ${s.c.idleDays} дн.` : `${s.c.photos.length} снимков · стройка идёт`} chevron to={`/complexes/${s.c.id}?tab=photos`} inset />
+              <Cell icon={<span className="ico"><IcUsers size={18} /></span>} title="Застройщик" sub={`БИН ${dev?.bin}`} chevron to="/developers" inset />
             </div>
             {linked.slice(0, 2).map((a) => (
               <Link key={a.id} to={`/ads/${a.id}`} className="card card-pad" style={{ display: 'block' }}>
-                <div className="row between"><div className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={24} /><span className="t-sm c2">{a.account}</span></div><StatusTag s={a.status} /></div>
-                <p className="t-sm clamp3" style={{ marginTop: 10, lineHeight: '20px' }}><Highlight text={a.text} /></p>
+                <div className="row between"><div className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={22} /><span className="t-sm c2">{a.account}</span></div><StatusTag s={a.status} /></div>
+                <p className="t-sm clamp3" style={{ marginTop: 10, lineHeight: '19px' }}><Highlight text={a.text} /></p>
               </Link>
             ))}
           </div>
         )}
         <div className="dock">
           {s
-            ? <button className="btn y full" onClick={() => nav(`/complexes/${s.c.id}`)}>Открыть карточку объекта</button>
+            ? <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><button className="btn y" onClick={() => nav(`/complexes/${s.c.id}`)}>Карточка ЖК</button><button className="btn g" onClick={() => nav(`/complexes/${s.c.id}?tab=ads`)}>Реклама · {linked.length}</button></div>
             : <button className="btn y full" onClick={() => nav('/queue')}>Открыть очередь проверки · {queue}</button>}
         </div>
       </div>
 
-      <Link to="/queue" className="promo" style={{ left: 392, top: 104, height: 96 }}>
-        <div className="tx">
-          <div className="big num">{queue} ждут решения<IcChevronRight size={22} /></div>
-          <div className="sm">Публикации в очереди аналитика</div>
-        </div>
-        <img src="/img/site-i.jpg" alt="" style={{ width: 110, borderRadius: '0 24px 24px 0' }} />
-      </Link>
+      <Link to="/complexes" className="mapbtn" style={{ left: 412, top: 16 }}><IcList size={18} />Показать {visible.length} ЖК списком</Link>
 
-      <Link to="/ops" className="promo blue" style={{ right: 16, top: 104, width: 310 }}>
-        <div className="tx">
-          <div className="bold" style={{ fontSize: 17, lineHeight: '21px' }}>Оперативная сводка<br />по городу</div>
-          <span className="mini">Открыть</span>
+      <Link to="/queue" className="promo dark" style={{ right: 16, bottom: 32, width: 280 }}>
+        <div className="tx" style={{ padding: '18px 20px' }}>
+          <div style={{ fontSize: 22, lineHeight: '24px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '-0.01em' }}>{queue} публикаций<br />ждут решения</div>
+          <span className="mini">Открыть очередь <IcChevronRight size={14} /></span>
         </div>
-        <span style={{ marginLeft: 'auto', marginRight: 18, width: 64, height: 64, borderRadius: 20, background: 'rgba(255,255,255,.6)', display: 'grid', placeItems: 'center' }}><IcBuilding size={34} /></span>
       </Link>
-      <Link to="/complexes?zone=red" className="promo" style={{ right: 16, top: 220, width: 310 }}>
-        <div className="tx" style={{ flex: 1 }}>
-          <div className="big" style={{ fontSize: 22 }}>Красная зона<IcChevronRight size={20} /></div>
-          <div className="sm">{n('red')} объекта — реклама без основания</div>
-        </div>
-        <img src="/img/site-c.jpg" alt="" style={{ width: 96, height: 96 }} />
-      </Link>
-
-      <div className="mfoot">
-        <span className="row" style={{ gap: 6 }}><IcGlobe size={18} />Язык: Русский</span>
-        <Link to="/method">Методика скоринга</Link>
-        <Link to="/sources">Источники данных</Link>
-        <Link to="/reports">Отчёты</Link>
-        <Link to="/residents">Жителям</Link>
-        <span className="cp">© 2026 SAQ Qurylys — цифровой помощник ДЭР ВКО. Данные демонстрационные, решение принимает сотрудник.</span>
-      </div>
     </div>
   )
 }
-

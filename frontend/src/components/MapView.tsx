@@ -48,11 +48,12 @@ export default function MapView({ items, selected, onSelect, zoom = 11.8, center
       const node = document.createElement('div')
       node.className = `gpin ${zone} ${selected === c.id ? 'sel' : ''} ${labels ? 'lbl' : ''}`
       const b = document.createElement('span'); b.className = 'b'
-      const i = document.createElement('i'); i.textContent = String(score); b.append(i)
       const n = document.createElement('span'); n.className = 'n'; n.textContent = c.name
-      node.append(b, n)
+      const i = document.createElement('i'); i.textContent = String(score)
+      b.append(n, i)
+      node.append(b)
       node.addEventListener('click', (e) => { e.stopPropagation(); onSelect?.(c.id) })
-      return new maplibregl.Marker({ element: node, anchor: 'left', offset: [-17, 0] }).setLngLat([c.lng, c.lat]).addTo(m)
+      return new maplibregl.Marker({ element: node, anchor: 'bottom', offset: [0, -6] }).setLngLat([c.lng, c.lat]).addTo(m)
     })
   }, [items, selected, onSelect, labels, ready])
 
@@ -67,12 +68,12 @@ export default function MapView({ items, selected, onSelect, zoom = 11.8, center
       {controls && (
         <div className="mctrl">
           <div className="zoom">
-            <button aria-label="Приблизить" onClick={() => map.current?.zoomIn()}><IcPlus /></button>
-            <button aria-label="Отдалить" onClick={() => map.current?.zoomOut()}><IcMinus /></button>
+            <button aria-label="Приблизить" onClick={() => map.current?.zoomIn()}><IcPlus size={18} /></button>
+            <button aria-label="Отдалить" onClick={() => map.current?.zoomOut()}><IcMinus size={18} /></button>
           </div>
           <div className="loc">
             <span className="tip">Усть-Каменогорск</span>
-            <button aria-label="К центру города" onClick={() => map.current?.easeTo({ center: UKA_CENTER, zoom: 11.8 })}><IcLocate size={22} /></button>
+            <button aria-label="К центру города" onClick={() => map.current?.easeTo({ center: UKA_CENTER, zoom: 11.8 })}><IcLocate size={18} /></button>
           </div>
         </div>
       )}

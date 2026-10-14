@@ -20,7 +20,7 @@ export default function Developers() {
       <PageTitle crumbs={[['Карта', '/'], ['Застройщики']]} title="Застройщики" sub="Портфель объектов, история завершения и максимальный риск. БИН — для сверки с реестром юрлиц. Данные демонстрационные." />
       <div className="card">
         {data.map(({ d, objs, max, adsCount }) => (
-          <button key={d.id} className="cell" onClick={() => setOpen(d.id)} style={{ display: 'grid', gridTemplateColumns: '48px minmax(0,1.5fr) repeat(3, 110px) 260px', gap: 16, minHeight: 84 }}>
+          <button key={d.id} className="cell" onClick={() => setOpen(d.id)} style={{ display: 'grid', gridTemplateColumns: '48px minmax(0,1.5fr) repeat(3, 110px) 300px', gap: 16, minHeight: 84 }}>
             <span className="ico" style={{ width: 48, height: 48, borderRadius: 14 }}><IcUsers size={22} /></span>
             <div style={{ minWidth: 0 }}><div className="ttl bold">{d.name}</div><div className="sub num">БИН {d.bin} · {d.director}</div></div>
             <div><div className="t-xs c2">Объектов</div><div className="t-h3 num">{d.objects}</div></div>

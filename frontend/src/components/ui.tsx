@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { AdStatus, Platform, Tri, Zone } from '../data/types'
 import { keywordsSafe } from '../data/demo'
+import { siFacebook, siInstagram, siTelegram, siTiktok } from 'simple-icons'
 import { IcCheck, IcChevronRight, IcClose, IcHelp } from '../ui/icons'
 
 export const zoneName: Record<Zone, string> = { red: 'Красная зона', yellow: 'Жёлтая зона', green: 'Зелёная зона' }
@@ -17,25 +18,42 @@ export function TriTag({ v, label }: { v: Tri; label?: string }) {
   return <span className={`tag ${v === 'yes' ? 'green' : v === 'no' ? 'red' : 'gray'}`}>{v === 'yes' ? <IcCheck size={13} strokeWidth={3} /> : v === 'no' ? <IcClose size={13} strokeWidth={3} /> : null}{label ?? triText[v]}</span>
 }
 
-export const platformMeta: Record<Platform, { name: string; color: string; short: string }> = {
-  instagram: { name: 'Instagram', color: '#e1306c', short: 'IG' },
-  tiktok: { name: 'TikTok', color: '#21201f', short: 'TT' },
-  krisha: { name: 'Krisha.kz', color: '#f2622e', short: 'Kr' },
-  olx: { name: 'OLX', color: '#3a77ff', short: 'OL' },
-  telegram: { name: 'Telegram', color: '#2aa3e0', short: 'TG' },
-  facebook: { name: 'Facebook', color: '#1877f2', short: 'FB' },
-  '2gis': { name: '2ГИС', color: '#19aa1e', short: '2G' },
+export const platformMeta: Record<Platform, { name: string; color: string }> = {
+  instagram: { name: 'Instagram', color: '#E4405F' },
+  tiktok: { name: 'TikTok', color: '#000000' },
+  krisha: { name: 'Krisha.kz', color: '#FFD84D' },
+  olx: { name: 'OLX', color: '#23E5DB' },
+  telegram: { name: 'Telegram', color: '#26A5E4' },
+  facebook: { name: 'Facebook', color: '#0866FF' },
+  '2gis': { name: '2ГИС', color: '#19AA1E' },
 }
-export const PlatformIcon = ({ p, size = 28 }: { p: Platform; size?: number }) => (
-  <span className="plat" style={{ background: platformMeta[p].color, width: size, height: size, borderRadius: size / 3 }} title={platformMeta[p].name}>{platformMeta[p].short}</span>
-)
+
+// Логотипы: Simple Icons (CC0) для соцсетей, фавиконки сайтов для Krisha, OLX и 2ГИС
+const SI: Partial<Record<Platform, { path: string; bg: string }>> = {
+  instagram: { path: siInstagram.path, bg: 'radial-gradient(circle at 30% 107%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285AEB 90%)' },
+  tiktok: { path: siTiktok.path, bg: '#000' },
+  telegram: { path: siTelegram.path, bg: '#26A5E4' },
+  facebook: { path: siFacebook.path, bg: '#0866FF' },
+}
+const PNG: Partial<Record<Platform, string>> = { krisha: '/brands/krisha.png', olx: '/brands/olx.png', '2gis': '/brands/2gis.png' }
+
+export function PlatformIcon({ p, size = 28 }: { p: Platform; size?: number }) {
+  const r = Math.round(size * 0.28)
+  const si = SI[p]
+  if (si) return (
+    <span className="plat" style={{ width: size, height: size, borderRadius: p === 'telegram' ? '50%' : r, background: si.bg }} title={platformMeta[p].name}>
+      <svg viewBox="0 0 24 24" width={size * (p === 'telegram' ? 0.56 : 0.6)} height={size * (p === 'telegram' ? 0.56 : 0.6)} fill="#fff" style={p === 'telegram' ? { marginLeft: -size * 0.05 } : undefined}><path d={si.path} /></svg>
+    </span>
+  )
+  return <img className="plat" src={PNG[p]} alt={platformMeta[p].name} title={platformMeta[p].name} style={{ width: size, height: size, borderRadius: r }} />
+}
 
 export const statusMeta: Record<AdStatus, { name: string; tag: string; color: string }> = {
-  new: { name: 'Новая', tag: 'blue', color: '#1a6dff' },
-  needs_check: { name: 'Нужна проверка', tag: 'yellow', color: '#ff9d00' },
-  in_review: { name: 'На проверке', tag: 'violet', color: '#7a4ae0' },
-  confirmed: { name: 'Нарушение', tag: 'red', color: '#f0422f' },
-  dismissed: { name: 'Отклонено', tag: 'green', color: '#22a94f' },
+  new: { name: 'Новая', tag: 'gray', color: 'rgba(0,0,0,.32)' },
+  needs_check: { name: 'Нужна проверка', tag: 'yellow', color: '#F59D00' },
+  in_review: { name: 'На проверке', tag: 'blue', color: '#0065D9' },
+  confirmed: { name: 'Нарушение', tag: 'red', color: '#E4402D' },
+  dismissed: { name: 'Отклонено', tag: 'green', color: '#00B341' },
 }
 export const StatusTag = ({ s }: { s: AdStatus }) => <span className={`tag ${statusMeta[s].tag}`}>{statusMeta[s].name}</span>
 export const StatusDot = ({ s }: { s: AdStatus }) => <span className="zdot" style={{ background: statusMeta[s].color }} />

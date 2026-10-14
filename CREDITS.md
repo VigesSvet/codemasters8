@@ -22,3 +22,9 @@
 | facade-c.jpg | [Tiled Mid-Century Apartment Building with Balconies in Porto](https://commons.wikimedia.org/wiki/File:Tiled_Mid-Century_Apartment_Building_with_Balconies_in_Porto,_Portugal_(54821673190).jpg) | CC BY 4.0 |
 
 Карта: © OpenStreetMap contributors, © CARTO.
+
+# Иконки и логотипы
+
+- Интерфейсные иконки — `@gravity-ui/icons` (MIT, Yandex LLC).
+- Логотипы Instagram, TikTok, Telegram, Facebook — `simple-icons` (CC0). Товарные знаки принадлежат правообладателям, используются только для обозначения площадки.
+- `frontend/public/brands/krisha.png`, `olx.png`, `2gis.png` — фавиконки с сайтов krisha.kz, olx.kz, 2gis.kz; используются только для обозначения источника публикации.
