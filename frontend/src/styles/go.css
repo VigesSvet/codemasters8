@@ -1,14 +1,17 @@
 /* ───────────────────────────────────────────────────────────────────────────
    SAQ UI-кит в визуальном языке сервисов Яндекса.
    Токены сняты с realty.yandex.ru (Новостройки), taxi.yandex.ru, eda/lavka/market.
-   Иконки — Gravity UI (MIT). Шрифт — Onest (OFL) вместо проприетарного YS Text.
+   Иконки — оригинальные SVG сервисов Яндекса + Gravity UI. Шрифт — YS Text / YS Display.
    ─────────────────────────────────────────────────────────────────────────── */
-@import '@fontsource/onest/400.css';
-@import '@fontsource/onest/500.css';
-@import '@fontsource/onest/600.css';
-@import '@fontsource/onest/700.css';
-@import '@fontsource/onest/800.css';
-@import 'maplibre-gl/dist/maplibre-gl.css';
+/* Фирменные шрифты Яндекса YS Text / YS Display (файлы с yastatic.net, см. CREDITS.md) */
+@font-face { font-family: 'YS Text'; src: url('/fonts/ys/text-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'YS Text'; src: url('/fonts/ys/text-medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'YS Text'; src: url('/fonts/ys/text-bold.woff2') format('woff2'); font-weight: 600 700; font-display: swap; }
+@font-face { font-family: 'YS Text'; src: url('/fonts/ys/text-heavy.woff2') format('woff2'); font-weight: 800 900; font-display: swap; }
+@font-face { font-family: 'YS Display'; src: url('/fonts/ys/display-medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'YS Display'; src: url('/fonts/ys/display-bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'YS Display'; src: url('/fonts/ys/display-heavy.woff2') format('woff2'); font-weight: 800 900; font-display: swap; }
+@font-face { font-family: 'YS Display Cond'; src: url('/fonts/ys/display-cond-heavy.woff2') format('woff2'); font-weight: 800 900; font-display: swap; }
 
 :root {
   /* текст — как в Недвижимости: чёрный с прозрачностью */
@@ -40,7 +43,9 @@
   --r-xl: 24px; --r-l: 16px; --r-m: 12px; --r-s: 8px;
   --shadow-float: 0 4px 24px rgba(0, 0, 0, 0.12);
   --shadow-card: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 4px 16px rgba(0, 0, 0, 0.05);
-  --font: 'Onest', 'Helvetica Neue', Arial, sans-serif;
+  --font: 'YS Text', 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'YS Display', 'YS Text', Arial, sans-serif;
+  --font-cond: 'YS Display Cond', 'YS Display', Arial, sans-serif;
   --wide: 1360px;
 }
 
@@ -57,8 +62,8 @@ svg { flex: none; }
 .link { color: var(--link); } .link:hover { color: var(--link-hover); }
 
 /* ───── Типографика ───── */
-.t-h1 { font-size: 32px; line-height: 38px; font-weight: 700; letter-spacing: -0.01em; }
-.t-h2 { font-size: 24px; line-height: 30px; font-weight: 700; }
+.t-h1 { font-family: var(--font-display); font-size: 32px; line-height: 38px; font-weight: 700; }
+.t-h2 { font-family: var(--font-display); font-size: 24px; line-height: 30px; font-weight: 700; }
 .t-h3 { font-size: 20px; line-height: 26px; font-weight: 700; }
 .t-body { font-size: 15px; line-height: 20px; }
 .t-sm { font-size: 14px; line-height: 18px; }
@@ -299,7 +304,7 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 .mfoot { position: absolute; z-index: 5; left: 412px; right: 70px; bottom: 10px; display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 12px; color: var(--text-2); align-items: center; }
 
 /* Метки-ценники (как «от 19,33 млн» на карте Недвижимости) */
-.gpin { position: relative; cursor: pointer; width: max-content; }
+.gpin { cursor: pointer; width: max-content; }
 .gpin .b { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: 13px; color: #fff; font-size: 13px; font-weight: 600; white-space: nowrap; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25); }
 .gpin .b::after { content: ''; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border: 5px solid transparent; border-bottom: 0; border-top-color: var(--c); }
 .gpin.red { --c: var(--red); } .gpin.yellow { --c: var(--amber); } .gpin.green { --c: var(--green); }
@@ -352,7 +357,7 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 12px 16px; font-size: 15px; }
 .kv > :nth-child(odd) { color: var(--text-2); }
 
-.big-num { font-size: 56px; line-height: 0.9; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.big-num { font-family: var(--font-display); font-size: 56px; line-height: 0.9; font-weight: 800; font-variant-numeric: tabular-nums; }
 .gauge { height: 6px; display: grid; grid-template-columns: 25fr 35fr 40fr; gap: 3px; position: relative; }
 .gauge i { display: block; border-radius: 3px; }
 .gauge i:nth-child(1) { background: var(--green); } .gauge i:nth-child(2) { background: var(--amber); } .gauge i:nth-child(3) { background: var(--red); }
@@ -425,7 +430,7 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 /* Сводка */
 .ops { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
 .stat { padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; }
-.stat .v { font-size: 44px; line-height: 1; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.stat .v { font-family: var(--font-display); font-size: 44px; line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; }
 .bars { display: flex; align-items: flex-end; gap: 8px; height: 180px; }
 .bars > div { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
 .bars b { width: 100%; border-radius: 8px; background: var(--fill); display: block; }
@@ -438,7 +443,7 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 .login .hero img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .login .hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(0deg, rgba(0, 0, 0, 0.55), transparent 55%); }
 .login .hero .cap { position: absolute; z-index: 2; left: 40px; bottom: 40px; right: 40px; color: #fff; }
-.login .hero .cap h2 { font-size: 64px; line-height: 60px; font-weight: 800; letter-spacing: -0.03em; text-transform: uppercase; }
+.login .hero .cap h2 { font-family: var(--font-cond); font-size: 72px; line-height: 64px; font-weight: 900; text-transform: uppercase; }
 .login .side { padding: 40px 56px; display: flex; flex-direction: column; }
 .login .side form { margin: auto 0; display: flex; flex-direction: column; gap: 10px; }
 
@@ -457,3 +462,6 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
   .cols-r { grid-template-columns: minmax(0, 1fr) 340px; }
 }
 .wrap .fbar { padding: 0; max-width: none; margin: 0; }
+
+.cond { font-family: var(--font-cond); font-weight: 900; text-transform: uppercase; letter-spacing: 0; }
+.logo { font-family: var(--font-display); }

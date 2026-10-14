@@ -3,8 +3,28 @@ import * as maplibregl from 'maplibre-gl'
 import type { Complex, Zone } from '../data/types'
 import { IcLocate, IcMinus, IcPlus } from '../ui/icons'
 
-const STYLE = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json'
-export const UKA_CENTER: [number, number] = [82.615, 49.945]
+// Подложка Яндекс Карт (растровые тайлы). Яндекс режет тайлы в эллиптической проекции EPSG:3395,
+// а MapLibre рисует сетку Web Mercator (EPSG:3857) — поэтому широты объектов пересчитываем через yLat().
+const STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {
+    yandex: {
+      type: 'raster', tileSize: 256, maxzoom: 19,
+      tiles: ['https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x={x}&y={y}&z={z}&scale=2&lang=ru_RU'],
+      attribution: '© Яндекс Карты',
+    },
+  },
+  layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#f6f4ef' } }, { id: 'yandex', type: 'raster', source: 'yandex' }],
+}
+const E = 0.0818191908426
+/** Широта WGS84 → широта в сетке тайлов Яндекса, отображённой как Web Mercator */
+export const yLat = (lat: number) => {
+  const phi = (lat * Math.PI) / 180, es = E * Math.sin(phi)
+  const y = Math.log(Math.tan(Math.PI / 4 + phi / 2) * Math.pow((1 - es) / (1 + es), E / 2))
+  return ((2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180) / Math.PI
+}
+const ll = (lng: number, lat: number): [number, number] => [lng, yLat(lat)]
+export const UKA_CENTER: [number, number] = [82.62, 49.937]
 
 interface Props {
   items: { c: Complex; zone: Zone; score: number }[]
@@ -18,7 +38,7 @@ interface Props {
   padLeft?: number
 }
 
-export default function MapView({ items, selected, onSelect, zoom = 11.8, center = UKA_CENTER, interactive = true, controls = false, labels = false, padLeft = 0 }: Props) {
+export default function MapView({ items, selected, onSelect, zoom = 11.6, center = UKA_CENTER, interactive = true, controls = false, labels = false, padLeft = 0 }: Props) {
   const el = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const markers = useRef<maplibregl.Marker[]>([])
@@ -26,13 +46,9 @@ export default function MapView({ items, selected, onSelect, zoom = 11.8, center
 
   useEffect(() => {
     if (!el.current) return
-    const m = new maplibregl.Map({ container: el.current, style: STYLE, center, zoom, attributionControl: { compact: true }, interactive })
+    const m = new maplibregl.Map({ container: el.current, style: STYLE, center: ll(center[0], center[1]), zoom, attributionControl: { compact: true }, interactive })
     if (padLeft) m.setPadding({ left: padLeft, top: 80, right: 0, bottom: 0 })
-    // Тёплая подложка в тон Яндекс Карт
-    m.on('load', () => {
-      try { m.setPaintProperty('background', 'background-color', '#f3f1ec') } catch { /* слой может называться иначе */ }
-      setReady(true)
-    })
+    m.on('load', () => setReady(true))
     map.current = m
     const ro = new ResizeObserver(() => m.resize())
     ro.observe(el.current)
@@ -53,13 +69,13 @@ export default function MapView({ items, selected, onSelect, zoom = 11.8, center
       b.append(n, i)
       node.append(b)
       node.addEventListener('click', (e) => { e.stopPropagation(); onSelect?.(c.id) })
-      return new maplibregl.Marker({ element: node, anchor: 'bottom', offset: [0, -6] }).setLngLat([c.lng, c.lat]).addTo(m)
+      return new maplibregl.Marker({ element: node, anchor: 'bottom', offset: [0, -6] }).setLngLat(ll(c.lng, c.lat)).addTo(m)
     })
   }, [items, selected, onSelect, labels, ready])
 
   useEffect(() => {
     const c = items.find((x) => x.c.id === selected)?.c
-    if (c && map.current) map.current.easeTo({ center: [c.lng, c.lat], zoom: Math.max(map.current.getZoom(), 14), duration: 600 })
+    if (c && map.current) map.current.easeTo({ center: ll(c.lng, c.lat), zoom: Math.max(map.current.getZoom(), 14), duration: 600 })
   }, [selected, items])
 
   return (
@@ -73,7 +89,7 @@ export default function MapView({ items, selected, onSelect, zoom = 11.8, center
           </div>
           <div className="loc">
             <span className="tip">Усть-Каменогорск</span>
-            <button aria-label="К центру города" onClick={() => map.current?.easeTo({ center: UKA_CENTER, zoom: 11.8 })}><IcLocate size={18} /></button>
+            <button aria-label="К центру города" onClick={() => map.current?.easeTo({ center: ll(...UKA_CENTER), zoom: 11.8 })}><IcLocate size={18} /></button>
           </div>
         </div>
       )}

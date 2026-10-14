@@ -21,7 +21,17 @@
 | facade-b.jpg | [Residential Building (216845175)](https://commons.wikimedia.org/wiki/File:Residential_Building_(216845175).jpeg) | CC BY 3.0 |
 | facade-c.jpg | [Tiled Mid-Century Apartment Building with Balconies in Porto](https://commons.wikimedia.org/wiki/File:Tiled_Mid-Century_Apartment_Building_with_Balconies_in_Porto,_Portugal_(54821673190).jpg) | CC BY 4.0 |
 
-Карта: © OpenStreetMap contributors, © CARTO.
+Карта: подложка © Яндекс Карты (тайлы core-renderer-tiles.maps.yandex.net).
+
+# Ассеты Яндекса — внимание
+
+Для демонстрации интерфейс повторяет визуальный язык сервисов Яндекса и использует их оригинальные ассеты:
+
+- `frontend/src/ui/yandex-svg.ts` — SVG-иконки, снятые со страниц realty.yandex.ru, taxi.yandex.ru, yandex.ru/maps, disk.yandex.ru, eda/market/lavka.yandex.ru;
+- `frontend/public/fonts/ys/*` — шрифты YS Text / YS Display / YS Display Cond с yastatic.net;
+- подложка карты — тайлы Яндекс Карт.
+
+Всё это — собственность ООО «Яндекс», открытой лицензии на эти файлы нет. Перед публикацией репозитория или коммерческим использованием их нужно заменить (Onest вместо YS, Gravity UI Icons вместо SVG со страниц, CARTO/OSM вместо тайлов) либо получить разрешение правообладателя.
 
 # Иконки и логотипы
 

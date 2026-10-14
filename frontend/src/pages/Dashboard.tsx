@@ -134,7 +134,7 @@ export default function Dashboard() {
 
       <Link to="/queue" className="promo dark" style={{ right: 16, bottom: 32, width: 280 }}>
         <div className="tx" style={{ padding: '18px 20px' }}>
-          <div style={{ fontSize: 22, lineHeight: '24px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '-0.01em' }}>{queue} публикаций<br />ждут решения</div>
+          <div className="cond" style={{ fontSize: 26, lineHeight: '26px' }}>{queue} публикаций<br />ждут решения</div>
           <span className="mini">Открыть очередь <IcChevronRight size={14} /></span>
         </div>
       </Link>
