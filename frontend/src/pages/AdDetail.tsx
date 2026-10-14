@@ -46,9 +46,9 @@ export default function AdDetail() {
 
       <div className="cols-r">
         <div className="stack" style={{ gap: 16 }}>
-          <div className="card" style={{ display: 'grid', gridTemplateColumns: a.image ? '300px 1fr' : '1fr', gap: 24, padding: 8 }}>
+          <div className="card" style={{ display: 'grid', gridTemplateColumns: a.image ? '300px 1fr' : '1fr', gap: 28 }}>
             {a.image && <div className="ph" style={{ borderRadius: 18, aspectRatio: '1' }}><img src={a.image} alt="" /></div>}
-            <div style={{ padding: '16px 20px 16px 8px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <p style={{ fontSize: 20, lineHeight: '28px' }}><Highlight text={a.text} /></p>
               {a.ocr && (
                 <div style={{ background: 'var(--bg)', borderRadius: 16, padding: '12px 16px' }}>
@@ -66,6 +66,7 @@ export default function AdDetail() {
           </div>
 
           <div className="card">
+            <h3 className="t-h3" style={{ marginBottom: 12 }}>Что нашёл анализ текста</h3>
             <div className="tiles">
               {([['Признаки продажи', s.signals.sale, ''], ['Сбор денег', s.signals.funds, 'fund'], ['Признаки законности', s.signals.safe, 'safe']] as const).map(([t, list, cls]) => (
                 <div key={t} className="tile" style={{ background: 'var(--bg)', minHeight: 110 }}>
@@ -85,7 +86,7 @@ export default function AdDetail() {
                 <div className="main"><div className="t-sm"><b className="bold">{e.who}</b> · {e.what}</div><div className="sub t-xs">{e.at}</div></div>
               </div>
             ))}
-            <div className="row" style={{ padding: '8px 16px 16px', gap: 8 }}>
+            <div className="row" style={{ paddingTop: 12, gap: 8 }}>
               <input className="input" placeholder="Комментарий: с чем сверено, на чём основано решение" value={comment} onChange={(e) => setComment(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && comment) { setNotes((n) => [...n, { at: now(), who: ME, what: comment }]); setComment('') } }} />
               <button className="btn d m" disabled={!comment} aria-label="Отправить" onClick={() => { setNotes((n) => [...n, { at: now(), who: ME, what: comment }]); setComment('') }}><IcSend size={20} /></button>
@@ -113,7 +114,7 @@ export default function AdDetail() {
             )}
           </div>
 
-          <div className="card" style={{ padding: 16 }}>
+          <div className="card">
             <div className="stack">
               {(a.status === 'new' || a.status === 'needs_check') && <button className="btn y full" onClick={() => decide('in_review', 'Публикация взята в работу')}>Взять в работу</button>}
               <button className="btn d full" onClick={() => setModal('confirm')}>Подтвердить нарушение</button>
@@ -149,8 +150,9 @@ export default function AdDetail() {
           footer={<button className="btn y full" disabled={!reason.trim()} onClick={() => decide('confirmed', 'Нарушение подтверждено', reason)}>Подтвердить</button>}>
           <div className="cell" style={{ minHeight: 56 }}><span className="ico"><IcBuilding size={20} /></span><div className="main"><div className="ttl">{c ? `ЖК «${c.name}»` : 'ЖК не определён'}</div><div className="sub">{a.account}</div></div></div>
           <div className="cell" style={{ minHeight: 56 }}><span className="ico"><IcUsers size={20} /></span><div className="main"><div className="ttl">{ME}</div><div className="sub">решение фиксируется в журнале</div></div></div>
-          <div className="field top" style={{ marginTop: 4 }}>
-            <div className="body"><label>Основание решения</label><textarea autoFocus placeholder="Например: сверено с картотекой ГАСК, гарантии ЕО и разрешения МИО нет" value={reason} onChange={(e) => setReason(e.target.value)} /></div>
+          <div style={{ padding: '12px 24px 4px' }}>
+            <label className="t-sm c2" htmlFor="reason">Основание решения</label>
+            <textarea id="reason" className="input" style={{ marginTop: 6 }} autoFocus placeholder="Например: сверено с картотекой ГАСК, гарантии ЕО и разрешения МИО нет" value={reason} onChange={(e) => setReason(e.target.value)} />
           </div>
         </Modal>
       )}

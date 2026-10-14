@@ -103,14 +103,14 @@ export default function ComplexCard() {
             </div>
           )}
           {tab === 'ads' && (
-            <div className="stack fade">
+            <div className="fade">
               {linked.length === 0 && <div className="empty">Публикаций по объекту не найдено</div>}
               {linked.map((a) => (
-                <Link key={a.id} to={`/ads/${a.id}`} className="card" style={{ display: 'grid', gridTemplateColumns: a.image ? '120px 1fr' : '1fr', gap: 16, padding: 12 }}>
-                  {a.image && <div className="ph" style={{ borderRadius: 12, aspectRatio: '1' }}><img src={a.image} alt="" /></div>}
-                  <div style={{ padding: '4px 8px' }}>
-                    <div className="row between"><div className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={22} /><span className="t-sm c2">{a.account} · {fmtDT(a.date)}</span></div><StatusTag s={a.status} /></div>
-                    <p style={{ marginTop: 10, lineHeight: '21px' }}><Highlight text={a.text} /></p>
+                <Link key={a.id} to={`/ads/${a.id}`} className="offer" style={{ gridTemplateColumns: a.image ? '200px minmax(0,1fr)' : '1fr' }}>
+                  {a.image && <div className="ph"><img src={a.image} alt="" /></div>}
+                  <div className="body">
+                    <div className="row between"><div className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={20} /><span className="bold">{a.account}</span><span className="t-sm c2">{fmtDT(a.date)}</span></div><StatusTag s={a.status} /></div>
+                    <p className="txt" style={{ marginTop: 6 }}><Highlight text={a.text} /></p>
                   </div>
                 </Link>
               ))}

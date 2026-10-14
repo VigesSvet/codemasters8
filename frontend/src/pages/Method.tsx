@@ -42,7 +42,7 @@ export default function Method() {
             </div>
           ))}
         </div>
-        <div className="card card-pad" style={{ background: 'var(--text)', color: '#fff' }}>
+        <div className="box" style={{ background: 'var(--dark)', color: '#fff', padding: '24px 28px' }}>
           <div className="t-sm" style={{ color: 'rgba(255,255,255,.6)', marginBottom: 10 }}>Формула</div>
           <div style={{ fontSize: 17, lineHeight: '28px' }}>
             риск = сумма баллов подтверждённых факторов, максимум 100<br />

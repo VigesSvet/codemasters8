@@ -1,11 +1,11 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { NeedsCheck, Score, ZoneTag, fmtDate } from '../components/ui'
+import { FilterPop, Modal, NeedsCheck, Score, ZoneTag, fmtDate } from '../components/ui'
 import { developers } from '../data/demo'
 import type { Stage, Tri, Zone } from '../data/types'
 import { scoreComplex } from '../lib/risk'
 import { useStore } from '../lib/store'
-import { IcCheck, IcChevronDown, IcChevronRight, IcClose, IcGrid, IcHeart, IcList, IcMap, IcSearch, IcSliders } from '../ui/icons'
+import { IcChevronRight, IcClose, IcGrid, IcHeart, IcList, IcMap, IcSearch, IcSliders } from '../ui/icons'
 
 const STAGES: Stage[] = ['котлован', 'фундамент', 'каркас', 'кровля', 'отделка', 'введён']
 const triText = (v: Tri) => (v === 'yes' ? 'есть' : v === 'no' ? 'нет' : 'нет сведений')
@@ -19,12 +19,12 @@ export default function Complexes() {
   const [sp] = useSearchParams()
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [q, setQ] = useState('')
-  const [zone, setZone] = useState<Zone | ''>((sp.get('zone') as Zone) || '')
-  const [district, setDistrict] = useState('')
-  const [stage, setStage] = useState<Stage | ''>('')
+  const [zone, setZone] = useState<Zone[]>(sp.get('zone') ? [sp.get('zone') as Zone] : [])
+  const [district, setDistrict] = useState<string[]>([])
+  const [stage, setStage] = useState<Stage[]>([])
   const [chip, setChip] = useState<string>('')
   const [sort, setSort] = useState<Sort>('risk')
-  const [open, setOpen] = useState<string | null>(null)
+  const [allF, setAllF] = useState(false)
   const [fav, setFav] = useState<string[]>([])
 
   const all = useMemo(() => complexes.map((c) => ({ c, r: scoreComplex(c, ads), dev: developers.find((d) => d.id === c.developerId), nAds: ads.filter((a) => a.complexId === c.id).length })), [complexes, ads])
@@ -35,38 +35,30 @@ export default function Complexes() {
     ['ads', 'С рекламой', (x) => x.nAds > 0],
     ['built', 'Сданные', (x) => x.c.stage === 'введён'],
   ]
-  const rows = all.filter((x) =>
-    (!q || `${x.c.name} ${x.c.address} ${x.dev?.name} ${x.dev?.bin}`.toLowerCase().includes(q.toLowerCase()))
-    && (!zone || x.r.zone === zone) && (!district || x.c.district === district) && (!stage || x.c.stage === stage)
-    && (!chip || chips.find((ch) => ch[0] === chip)![2](x)))
+  const match = (x: (typeof all)[number], f: { zone?: Zone[]; district?: string[]; stage?: Stage[] } = {}) => {
+    const z = f.zone ?? zone, d = f.district ?? district, st = f.stage ?? stage
+    return (!q || `${x.c.name} ${x.c.address} ${x.dev?.name} ${x.dev?.bin}`.toLowerCase().includes(q.toLowerCase()))
+      && (!z.length || z.includes(x.r.zone)) && (!d.length || d.includes(x.c.district)) && (!st.length || st.includes(x.c.stage))
+      && (!chip || chips.find((ch) => ch[0] === chip)![2](x))
+  }
+  const rows = all.filter((x) => match(x))
     .sort((a, b) => sort === 'risk' ? b.r.score - a.r.score : sort === 'end' ? a.c.plannedEnd.localeCompare(b.c.plannedEnd) : b.c.progress - a.c.progress)
   const districts = [...new Set(complexes.map((c) => c.district))]
-  const dirty = zone || district || stage || chip || q
-
-  const drop = (key: string, label: string, value: string, opts: [string, string][], set: (v: string) => void): ReactNode => (
-    <div className="nav-item">
-      <button className={`fbtn ${value ? 'on' : ''}`} onClick={() => setOpen(open === key ? null : key)}>{value ? opts.find((o) => o[0] === value)?.[1] : label}<IcChevronDown /></button>
-      {open === key && (
-        <>
-          <div className="menu-scrim" onClick={() => setOpen(null)} />
-          <div className="menu fade" style={{ minWidth: 240 }}>
-            {[['', `Любая ${label.toLowerCase()}`] as [string, string], ...opts].map(([v, l]) => (
-              <button key={v || 'any'} onClick={() => { set(v); setOpen(null) }}><span className="lbl">{l}</span>{value === v && <IcCheck />}</button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
+  const dirty = zone.length || district.length || stage.length || chip || q
+  const reset = () => { setZone([]); setDistrict([]); setStage([]); setChip(''); setQ('') }
 
   return (
     <>
       <div className="fbar" style={{ marginTop: 12 }}>
-        <button className="fbtn gray" onClick={() => { setZone(''); setDistrict(''); setStage(''); setChip(''); setQ('') }}><IcSearch />{dirty ? 'Сбросить' : 'Все объекты'}</button>
-        <button className="fbtn icon" aria-label="Все фильтры"><IcSliders /></button>
-        {drop('zone', 'Зона', zone, [['red', 'Красная зона'], ['yellow', 'Жёлтая зона'], ['green', 'Зелёная зона']], (v) => setZone(v as Zone))}
-        {drop('district', 'Район', district, districts.map((d) => [d, d]), setDistrict)}
-        {drop('stage', 'Стадия', stage, STAGES.map((s) => [s, s[0].toUpperCase() + s.slice(1)]), (v) => setStage(v as Stage))}
+        <button className="fbtn gray" onClick={reset}><IcSearch />{dirty ? 'Сбросить' : 'Лёгкий поиск'}</button>
+        <span className="vsep" />
+        <button className="fbtn icon" aria-label="Все фильтры" onClick={() => setAllF(true)}><IcSliders /></button>
+        <FilterPop label="Зона" title="Зона риска" multi value={zone} onChange={setZone} count={(v) => all.filter((x) => match(x, { zone: v })).length}
+          options={[['red', 'Красная'], ['yellow', 'Жёлтая'], ['green', 'Зелёная']]} />
+        <FilterPop label="Район" title="Район города" multi value={district} onChange={setDistrict} count={(v) => all.filter((x) => match(x, { district: v })).length}
+          options={districts.map((d) => [d, d] as [string, string])} />
+        <FilterPop label="Стадия" title="Стадия строительства" multi value={stage} onChange={setStage} count={(v) => all.filter((x) => match(x, { stage: v })).length}
+          options={STAGES.map((s) => [s, s[0].toUpperCase() + s.slice(1)] as [Stage, string])} />
         <label className="fsearch">
           <input placeholder="ЖК, адрес, застройщик или БИН" value={q} onChange={(e) => setQ(e.target.value)} />
           {q ? <button className="c3" onClick={() => setQ('')}><IcClose size={16} /></button> : <Link to="/" className="link t-sm bold">На карте</Link>}
@@ -146,6 +138,25 @@ export default function Complexes() {
             </button>
           ))}
         </div>
+      )}
+      {allF && (
+        <Modal wide title="Все фильтры" onClose={() => setAllF(false)}
+          footer={<><button className="btn g" onClick={reset}>Сбросить</button><button className="btn y" onClick={() => setAllF(false)}>Показать {rows.length} {rows.length === 1 ? 'новостройку' : rows.length < 5 ? 'новостройки' : 'новостроек'}</button></>}>
+          <div style={{ padding: '0 24px' }}>
+            {([['Зона', ['red', 'yellow', 'green'], zone, setZone, { red: 'Красная', yellow: 'Жёлтая', green: 'Зелёная' }],
+              ['Район', districts, district, setDistrict, null],
+              ['Стадия', STAGES, stage, setStage, null]] as [string, string[], string[], (v: never[]) => void, Record<string, string> | null][]).map(([l, opts, val, set, names]) => (
+              <div className="frow top" key={l}>
+                <label>{l}</label>
+                <div className="chips">{opts.map((o) => <button key={o} className={`chip ${val.includes(o) ? 'on' : ''}`} onClick={() => set((val.includes(o) ? val.filter((x) => x !== o) : [...val, o]) as never[])}>{names?.[o] ?? o[0].toUpperCase() + o.slice(1)}</button>)}</div>
+              </div>
+            ))}
+            <div className="frow top">
+              <label>Признаки</label>
+              <div className="chips">{chips.map(([k, l, fn]) => <button key={k} className={`chip ${chip === k ? 'on' : ''}`} onClick={() => setChip(chip === k ? '' : k)}>{l}<span className="n">{all.filter(fn).length}</span></button>)}</div>
+            </div>
+          </div>
+        </Modal>
       )}
     </>
   )

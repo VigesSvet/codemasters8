@@ -1,123 +1,97 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { Cell, Highlight, PageTitle, PlatformIcon, Score, Seg, StatusDot, StatusTag, Toggle, adKey, fmtDT, platformMeta, statusMeta } from '../components/ui'
-import type { AdStatus, Platform } from '../data/types'
+import { Link } from 'react-router-dom'
+import { FilterPop, Highlight, PageTitle, PlatformIcon, Score, StatusTag, adKey, fmtDT, platformMeta, statusMeta } from '../components/ui'
+import type { AdStatus, Platform, Zone } from '../data/types'
 import { scoreAd } from '../lib/risk'
 import { useStore } from '../lib/store'
-import { IcBuilding, IcCheck, IcClose, IcGrid, IcList, IcPlus, IcRefresh, IcSearch } from '../ui/icons'
+import { IcClose, IcPlus, IcRefresh, IcSearch } from '../ui/icons'
 
 const ORDER: AdStatus[] = ['new', 'needs_check', 'in_review', 'confirmed', 'dismissed']
+type Sort = 'risk' | 'date' | 'reach'
 
+/** Лента рекламы — как выдача объявлений realty.yandex.ru/…/kupit/kvartira: фильтры сверху, строки с фото */
 export default function Ads() {
   const { ads, complexes, notify } = useStore()
-  const nav = useNavigate()
-  const [view, setView] = useState<'feed' | 'grid'>('feed')
   const [q, setQ] = useState('')
-  const [plat, setPlat] = useState<Platform | 'all'>('all')
-  const [status, setStatus] = useState<AdStatus | 'all'>('all')
-  const [risky, setRisky] = useState(false)
-  const [manual, setManual] = useState(false)
+  const [plat, setPlat] = useState<Platform[]>([])
+  const [status, setStatus] = useState<AdStatus[]>([])
+  const [zone, setZone] = useState<Zone[]>([])
+  const [chip, setChip] = useState('')
+  const [sort, setSort] = useState<Sort>('risk')
 
-  const rows = useMemo(() => ads.map((a) => { const c = complexes.find((x) => x.id === a.complexId); return { a, c, s: scoreAd(a, c) } })
-    .filter(({ a, c, s }) => (!q || `${a.text} ${a.account} ${c?.name ?? ''}`.toLowerCase().includes(q.toLowerCase()))
-      && (plat === 'all' || a.platform === plat) && (status === 'all' || a.status === status) && (!risky || s.zone !== 'green') && (!manual || a.source === 'manual'))
-    .sort((x, y) => y.s.score - x.s.score), [ads, complexes, q, plat, status, risky, manual])
+  const all = useMemo(() => ads.map((a) => { const c = complexes.find((x) => x.id === a.complexId); return { a, c, s: scoreAd(a, c) } }), [ads, complexes])
+  type R = (typeof all)[number]
+  const chips: [string, string, (x: R) => boolean][] = [
+    ['queue', 'Ждут решения', (x) => x.a.status === 'new' || x.a.status === 'needs_check'],
+    ['nocx', 'ЖК не определён', (x) => !x.c],
+    ['ocr', 'Есть текст на фото', (x) => !!x.a.ocr],
+    ['manual', 'Добавлены вручную', (x) => x.a.source === 'manual'],
+  ]
+  const match = (x: R, f: { plat?: Platform[]; status?: AdStatus[]; zone?: Zone[] } = {}) => {
+    const p = f.plat ?? plat, st = f.status ?? status, z = f.zone ?? zone
+    return (!q || `${x.a.text} ${x.a.account} ${x.c?.name ?? ''}`.toLowerCase().includes(q.toLowerCase()))
+      && (!p.length || p.includes(x.a.platform)) && (!st.length || st.includes(x.a.status)) && (!z.length || z.includes(x.s.zone))
+      && (!chip || chips.find((c) => c[0] === chip)![2](x))
+  }
+  const rows = all.filter((x) => match(x)).sort((x, y) => sort === 'risk' ? y.s.score - x.s.score : sort === 'date' ? y.a.date.localeCompare(x.a.date) : (y.a.reach ?? 0) - (x.a.reach ?? 0))
   const plats = (Object.keys(platformMeta) as Platform[]).filter((p) => ads.some((a) => a.platform === p))
+  const dirty = plat.length || status.length || zone.length || chip || q
 
   return (
     <>
-      <PageTitle crumbs={[['Карта', '/'], ['Лента публикаций']]} title="Мониторинг рекламы"
-        sub={<>Подсветка: <mark>продажа</mark>, <mark className="fund">сбор денег</mark>, <mark className="safe">признаки законности</mark>. Сортировка — по риску.</>}
-        actions={<><button className="btn g m" onClick={() => notify('Сбор публикаций запущен (демо)')}><IcRefresh size={20} />Запустить сбор</button><Link to="/ads/new" className="btn y m"><IcPlus size={20} />Добавить вручную</Link></>} />
+      <div className="fbar" style={{ marginTop: 12 }}>
+        <button className="fbtn gray" onClick={() => { setPlat([]); setStatus([]); setZone([]); setChip(''); setQ('') }}><IcSearch />{dirty ? 'Сбросить' : 'Вся реклама'}</button>
+        <span className="vsep" />
+        <FilterPop label="Площадка" title="Где опубликовано" multi value={plat} onChange={setPlat} count={(v) => all.filter((x) => match(x, { plat: v })).length}
+          options={plats.map((p) => [p, <span className="row" style={{ gap: 8 }}><PlatformIcon p={p} size={20} />{platformMeta[p].name}</span>] as [Platform, React.ReactNode])} />
+        <FilterPop label="Статус" title="Статус проверки" multi value={status} onChange={setStatus} count={(v) => all.filter((x) => match(x, { status: v })).length}
+          options={ORDER.map((s) => [s, statusMeta[s].name] as [AdStatus, string])} />
+        <FilterPop label="Оценка" title="Оценка публикации" multi value={zone} onChange={setZone} count={(v) => all.filter((x) => match(x, { zone: v })).length}
+          options={[['red', 'Красная'], ['yellow', 'Жёлтая'], ['green', 'Зелёная']]} />
+        <label className="fsearch">
+          <input placeholder="Текст объявления, аккаунт или ЖК" value={q} onChange={(e) => setQ(e.target.value)} />
+          {q && <button className="c3" onClick={() => setQ('')}><IcClose size={16} /></button>}
+        </label>
+      </div>
 
-      <div className="cols">
-        <div className="stack sticky">
-          <div className="card">
-            <div className="field">
-              <span className="mk c2"><IcSearch /></span>
-              <div className="body"><input placeholder="Текст, аккаунт или ЖК" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-              {q && <button className="c3" onClick={() => setQ('')}><IcClose size={18} /></button>}
-            </div>
-          </div>
-          <div className="card">
-            <div className="tiles">
-              <button className={`tile ${plat === 'all' ? 'on' : ''}`} onClick={() => setPlat('all')} style={{ minHeight: 84 }}>
-                <span className="pic" style={{ height: 28 }}><span className="zone-pic all" style={{ width: 28, height: 28, borderRadius: 9 }}><IcGrid size={16} /></span></span>
-                <span className="nm">Все</span><span className="vl num">{ads.length}</span>
-              </button>
-              {plats.map((p) => (
-                <button key={p} className={`tile ${plat === p ? 'on' : ''}`} onClick={() => setPlat(p)} style={{ minHeight: 84 }}>
-                  <span className="pic" style={{ height: 28 }}><PlatformIcon p={p} /></span>
-                  <span className="nm">{platformMeta[p].name}</span><span className="vl num">{ads.filter((a) => a.platform === p).length}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="card">
-            {(['all', ...ORDER] as const).map((st) => (
-              <Cell key={st} onClick={() => setStatus(st)} icon={st === 'all' ? <span className="zdot" style={{ background: 'var(--text-3)' }} /> : <StatusDot s={st} />}
-                title={st === 'all' ? 'Все статусы' : statusMeta[st].name}
-                end={<><span className="num">{st === 'all' ? ads.length : ads.filter((a) => a.status === st).length}</span>{status === st && <IcCheck size={20} strokeWidth={2.5} style={{ color: 'var(--text)' }} />}</>} />
-            ))}
-          </div>
-          <div className="card">
-            <Cell title="Только с риском" sub="Жёлтая и красная оценка" end={<Toggle on={risky} onChange={setRisky} />} />
-            <Cell title="Добавлены вручную" end={<Toggle on={manual} onChange={setManual} />} />
-          </div>
-        </div>
+      <PageTitle title="Реклама новостроек в Усть-Каменогорске"
+        sub={<>Подсветка: <mark>продажа</mark>, <mark className="fund">сбор денег</mark>, <mark className="safe">признаки законности</mark></>}
+        actions={<><button className="btn g m" onClick={() => notify('Сбор публикаций запущен (демо)')}><IcRefresh />Запустить сбор</button><Link to="/ads/new" className="btn y m"><IcPlus />Добавить вручную</Link></>} />
+      <div className="chips" style={{ marginTop: -8, marginBottom: 24 }}>
+        {chips.map(([k, l, fn]) => <button key={k} className={`chip ${chip === k ? 'on' : ''}`} onClick={() => setChip(chip === k ? '' : k)}>{l}<span className="n">{all.filter(fn).length}</span></button>)}
+      </div>
 
-        <div>
-          <div className="row between" style={{ padding: '4px 4px 12px' }}>
-            <span className="t-h3">{rows.length} публикаций</span>
-            <Seg value={view} onChange={setView} items={[['feed', <><IcList size={18} />Лента</>], ['grid', <><IcGrid size={18} />Карточки</>]]} />
-          </div>
-          {rows.length === 0 && <div className="card empty">Ничего не найдено</div>}
-          {view === 'feed' ? (
-            <div className="stack fade">
-              {rows.map(({ a, c, s }) => (
-                <Link key={a.id} to={`/ads/${a.id}`} className="card" style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 20, padding: 8 }}>
-                  {a.image ? <div className="ph" style={{ borderRadius: 18, aspectRatio: '1' }}><img src={a.image} alt="" /></div>
-                    : <div style={{ borderRadius: 18, aspectRatio: '1', background: 'var(--bg)', display: 'grid', placeItems: 'center' }}><PlatformIcon p={a.platform} size={44} /></div>}
-                  <div style={{ padding: '10px 16px 10px 0', display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
-                    <div className="row between">
-                      <div className="row" style={{ gap: 8, minWidth: 0 }}>
-                        <PlatformIcon p={a.platform} size={24} />
-                        <span className="t-sm bold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.account}</span>
-                        <span className="t-sm c3">{fmtDT(a.date)}</span>
-                      </div>
-                      <span className="t-xs c3 num">{adKey(a.id)}</span>
-                    </div>
-                    <p className="clamp3" style={{ lineHeight: '22px' }}><Highlight text={a.text} /></p>
-                    <div className="row wrap-f" style={{ gap: 8, marginTop: 'auto' }}>
-                      <Score value={s.score} zone={s.zone} />
-                      <StatusTag s={a.status} />
-                      <span className="tag gray"><IcBuilding size={13} />{c ? c.name : 'ЖК не определён'}</span>
-                      {a.source === 'manual' && <span className="tag outline">вручную</span>}
-                      {a.reach && <span className="t-xs c3" style={{ marginLeft: 'auto' }}>охват ~{(a.reach / 1000).toFixed(1)} тыс.</span>}
-                    </div>
-                  </div>
-                </Link>
-              ))}
+      <div className="sorter">
+        <b>{rows.length} публикаций:</b>
+        {([['risk', 'по риску'], ['date', 'по дате'], ['reach', 'по охвату']] as const).map(([k, l]) => <button key={k} className={sort === k ? 'on' : ''} onClick={() => setSort(k)}>{l}</button>)}
+      </div>
+
+      {rows.length === 0 && <div className="empty">Ничего не найдено</div>}
+      <div className="fade">
+        {rows.map(({ a, c, s }) => (
+          <Link key={a.id} to={`/ads/${a.id}`} className="offer">
+            <div className="ph">
+              {a.image ? <img src={a.image} alt="" /> : <div className="noimg"><PlatformIcon p={a.platform} size={48} /></div>}
+              <div className="tl"><span className="tag white">{platformMeta[a.platform].name}</span>{a.source === 'manual' && <span className="tag white">вручную</span>}</div>
             </div>
-          ) : (
-            <div className="gcards fade">
-              {rows.map(({ a, c, s }) => (
-                <div key={a.id} className="gcard" onClick={() => nav(`/ads/${a.id}`)}>
-                  <div className="ph">
-                    {a.image ? <img src={a.image} alt="" /> : <div style={{ height: '100%', display: 'grid', placeItems: 'center' }}><PlatformIcon p={a.platform} size={48} /></div>}
-                    <div className="tl"><PlatformIcon p={a.platform} /></div>
-                    <div className="tr"><Score value={s.score} zone={s.zone} /></div>
-                  </div>
-                  <div className="b">
-                    <div className="t-sm c2">{a.account}</div>
-                    <p className="t-sm clamp3" style={{ lineHeight: '20px' }}><Highlight text={a.text} /></p>
-                    <div className="row between" style={{ marginTop: 'auto', paddingTop: 10 }}><span className="t-xs c3">{c?.name ?? '—'}</span><StatusTag s={a.status} /></div>
-                  </div>
-                </div>
-              ))}
+            <div className="body">
+              <div className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={20} /><span className="bold">{a.account}</span><span className="c2 t-sm">{fmtDT(a.date)}</span></div>
+              <div className="nm">{c ? `ЖК «${c.name}»` : 'ЖК не определён'}</div>
+              <p className="txt clamp3"><Highlight text={a.text} /></p>
+              <div className="row wrap-f" style={{ gap: 6, marginTop: 'auto' }}>
+                <StatusTag s={a.status} />
+                {a.price && <span className="tag gray">{a.price}</span>}
+                {a.ocr && <span className="tag gray">текст на фото</span>}
+              </div>
             </div>
-          )}
-        </div>
+            <div className="side">
+              <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}><span className="c2 t-sm">оценка</span><Score value={s.score} zone={s.zone} /></div>
+              <div className="t-sm c2" style={{ textAlign: 'right' }}>{a.reach ? `охват ~${(a.reach / 1000).toFixed(1)} тыс.` : 'охват неизвестен'}</div>
+              <div className="t-xs c3" style={{ textAlign: 'right' }}>{adKey(a.id)}</div>
+              <span className="btn g m" style={{ marginTop: 'auto' }}>Разобрать</span>
+            </div>
+          </Link>
+        ))}
       </div>
     </>
   )

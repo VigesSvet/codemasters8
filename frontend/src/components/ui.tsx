@@ -1,9 +1,9 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { AdStatus, Platform, Tri, Zone } from '../data/types'
 import { keywordsSafe } from '../data/demo'
 import { siFacebook, siInstagram, siTelegram, siTiktok } from 'simple-icons'
-import { IcCheck, IcChevronRight, IcClose, IcHelp } from '../ui/icons'
+import { IcCheck, IcChevronDown, IcChevronRight, IcChevronUp, IcClose, IcHelp } from '../ui/icons'
 
 export const zoneName: Record<Zone, string> = { red: 'Красная зона', yellow: 'Жёлтая зона', green: 'Зелёная зона' }
 export const zoneShort: Record<Zone, string> = { red: 'Красная', yellow: 'Жёлтая', green: 'Зелёная' }
@@ -125,7 +125,7 @@ export function Seg<T extends string>({ value, onChange, items, full }: { value:
   )
 }
 
-export function Modal({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
+export function Modal({ title, onClose, children, footer, wide }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', k)
@@ -133,10 +133,13 @@ export function Modal({ title, onClose, children, footer }: { title: string; onC
   }, [onClose])
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
-        <div className="modal-h"><span />{title}<button className="x-btn" onClick={onClose} aria-label="Закрыть"><IcClose size={16} strokeWidth={3} /></button></div>
-        <div className="modal-b">{children}</div>
-        {footer && <div className="modal-f">{footer}</div>}
+      <div className="modal-wrap" onClick={(e) => e.stopPropagation()} style={wide ? { width: 'min(1040px, calc(100vw - 120px))' } : undefined}>
+        <button className="x-btn" onClick={onClose} aria-label="Закрыть"><IcClose /></button>
+        <div className="modal" role="dialog" aria-label={title}>
+          <div className="modal-h">{title}</div>
+          <div className="modal-b">{children}</div>
+          {footer && <div className="modal-f">{footer}</div>}
+        </div>
       </div>
     </div>
   )
@@ -155,3 +158,32 @@ export const fmtDate = (d: string) => new Date(d).toLocaleDateString('ru-RU', { 
 export const fmtDT = (d: string) => new Date(d).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 export const fmtShort = (d: string) => new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
 export const adKey = (id: string) => `AD-${id.replace(/\D/g, '').padStart(3, '0')}`
+
+/** Кнопка фильтра с поповером — как «Комнат ⌄» на realty.yandex.ru: круглые варианты и жёлтая кнопка «Показать N» */
+export function FilterPop<T extends string>({ label, title, value, options, onChange, count, multi }: {
+  label: string; title: string; value: T[]; options: [T, ReactNode][]; onChange: (v: T[]) => void; count: (v: T[]) => number; multi?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState<T[]>(value)
+  useEffect(() => { if (open) setDraft(value) }, [open, value])
+  const toggle = (v: T) => setDraft((d) => (d.includes(v) ? d.filter((x) => x !== v) : multi ? [...d, v] : [v]))
+  const shown = value.length ? (value.length === 1 ? options.find((o) => o[0] === value[0])?.[1] : `${label}: ${value.length}`) : label
+  return (
+    <div className="nav-item">
+      <button className={`fbtn ${open ? 'open' : ''} ${value.length && !open ? 'on' : ''}`} onClick={() => setOpen(!open)}>{shown}{open ? <IcChevronUp /> : <IcChevronDown />}</button>
+      {open && (
+        <>
+          <div className="menu-scrim" onClick={() => setOpen(false)} />
+          <div className="pop fade">
+            <h5>{title}</h5>
+            <div className="opts">{options.map(([v, l]) => <button key={v} className={`opt ${draft.includes(v) ? 'on' : ''}`} onClick={() => toggle(v)}>{l}</button>)}</div>
+            <div className="row" style={{ gap: 8 }}>
+              {draft.length > 0 && <button className="btn g" onClick={() => setDraft([])}>Сбросить</button>}
+              <button className="btn y" style={{ flex: 1 }} onClick={() => { onChange(draft); setOpen(false) }}>Показать {count(draft)}</button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}

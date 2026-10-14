@@ -109,6 +109,7 @@ svg { flex: none; }
 .fbtn { height: 40px; padding: 0 10px 0 12px; border-radius: var(--r-l); background: #fff; box-shadow: inset 0 0 0 1px var(--line-2); display: inline-flex; align-items: center; gap: 4px; font-size: 15px; font-weight: 500; white-space: nowrap; }
 .fbtn:hover { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.24); }
 .fbtn.on { background: var(--dark); color: #fff; box-shadow: none; }
+.fbtn.open { box-shadow: inset 0 0 0 2px var(--yellow); }
 .fbtn.gray { background: var(--fill); box-shadow: none; }
 .fbtn.gray:hover { background: var(--fill-hover); }
 .fbtn.icon { width: 40px; padding: 0; justify-content: center; }
@@ -140,15 +141,24 @@ svg { flex: none; }
 .sorter button.on { color: var(--text); }
 
 /* ───── Карточки и ячейки ───── */
-.card { background: var(--card); border-radius: var(--r-xl); box-shadow: var(--shadow-card); }
+.card { background: var(--card); border-radius: var(--r-xl); }
+.screen .card { border-radius: 0; }
+.screen .stack > .card + .card { border-top: 1px solid var(--line); padding-top: 20px; }
 .card.flat { box-shadow: none; background: var(--fill); }
 .card.sh { box-shadow: var(--shadow-float); }
 .card-pad { padding: 20px 24px; }
+.screen .card-pad { padding: 0; }
 .card-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px 8px; }
-.card-head h3 { font-size: 20px; font-weight: 700; line-height: 26px; }
+.screen .card-head { padding: 8px 0 8px; }
+.card-head h3 { font-family: var(--font-display); font-size: 22px; font-weight: 700; line-height: 28px; }
 
 .cell { display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 10px 24px; width: 100%; text-align: left; position: relative; }
 .cell + .cell::before { content: ''; position: absolute; top: 0; left: 24px; right: 24px; height: 1px; background: var(--line); }
+.screen .cell { padding-left: 0; padding-right: 0; }
+.screen .cell + .cell::before { left: 0; right: 0; }
+.screen .cell.inset + .cell.inset::before { left: 54px; }
+.screen button.cell:hover, .screen a.cell:hover { background: transparent; }
+.screen button.cell:hover .ttl, .screen a.cell:hover .ttl { color: var(--link); }
 .cell.inset + .cell.inset::before { left: 78px; }
 button.cell:hover, a.cell:hover { background: rgba(0, 0, 0, 0.025); }
 .cell .main { flex: 1; min-width: 0; }
@@ -174,8 +184,11 @@ button.cell:hover, a.cell:hover { background: rgba(0, 0, 0, 0.025); }
 .field .mk.ring { width: 12px; height: 12px; border-radius: 50%; border: 3px solid var(--pin); margin: 0 5px; }
 .field .mk.ring.dark { border-color: #000; }
 
-.input { height: 48px; border-radius: var(--r-l); background: var(--fill); border: 0; outline: 0; padding: 0 16px; font-size: 16px; width: 100%; }
-.input:focus { box-shadow: inset 0 0 0 2px var(--text); background: #fff; }
+.input { height: 44px; border-radius: var(--r-m); background: #fff; border: 0; box-shadow: inset 0 0 0 1px var(--line-2); outline: 0; padding: 0 12px; font-size: 16px; width: 100%; }
+.input:hover { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.24); }
+.input:focus { box-shadow: inset 0 0 0 2px var(--yellow); }
+textarea.input { height: auto; min-height: 120px; padding: 10px 12px; line-height: 22px; resize: vertical; }
+select.input { appearance: none; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M3.3 5.3a1 1 0 0 1 1.4 0L8 8.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4'/%3E%3C/svg%3E") no-repeat right 12px center; padding-right: 36px; }
 .search { display: flex; align-items: center; gap: 8px; height: 44px; border-radius: var(--r-m); background: var(--fill); padding: 0 12px; }
 .search input { flex: 1; border: 0; outline: 0; background: transparent; font-size: 15px; }
 
@@ -241,7 +254,7 @@ button.cell:hover, a.cell:hover { background: rgba(0, 0, 0, 0.025); }
 
 /* Чипы категорий («На старте продаж 15») */
 .chips { display: flex; gap: 8px; flex-wrap: wrap; }
-.chip { height: 32px; padding: 0 12px; border-radius: 10px; background: var(--fill); font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.chip { height: 36px; padding: 0 16px; border-radius: 18px; background: var(--fill); font-size: 15px; font-weight: 400; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .chip:hover { background: var(--fill-hover); }
 .chip.on { background: var(--dark); color: #fff; }
 .chip .n { color: var(--text-3); font-weight: 400; }
@@ -318,13 +331,15 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 
 /* ───── Модалка ───── */
 .scrim { position: fixed; inset: 0; z-index: 90; background: rgba(0, 0, 0, 0.4); display: grid; place-items: center; padding: 24px; animation: fade 0.15s ease; }
-.modal { width: min(540px, 100%); max-height: calc(100vh - 48px); overflow: auto; background: #fff; border-radius: var(--r-xl); animation: pop 0.18s ease; }
-.modal-h { position: sticky; top: 0; z-index: 2; background: #fff; height: 64px; display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; padding: 0 12px; text-align: center; font-size: 18px; font-weight: 700; border-bottom: 1px solid var(--line); }
-.x-btn { width: 32px; height: 32px; border-radius: 50%; background: var(--fill); color: var(--text); display: grid; place-items: center; justify-self: end; }
-.x-btn:hover { background: var(--fill-hover); }
-.x-btn svg { width: 16px; height: 16px; }
+.modal { position: relative; width: 100%; max-height: calc(100vh - 48px); overflow: auto; background: #fff; border-radius: var(--r-xl); animation: pop 0.18s ease; }
+.modal-wrap { position: relative; width: min(560px, calc(100vw - 120px)); }
+.modal-h { position: sticky; top: 0; z-index: 2; background: #fff; padding: 24px 24px 8px; font-family: var(--font-display); font-size: 24px; line-height: 30px; font-weight: 700; }
+.x-btn { position: absolute; top: 0; right: -48px; width: 40px; height: 40px; color: #fff; display: grid; place-items: center; }
+.x-btn:hover { opacity: 0.8; }
+.x-btn svg { width: 22px; height: 22px; }
 .modal-b { padding: 8px 0 12px; }
-.modal-f { padding: 8px 16px 16px; display: grid; gap: 8px; }
+.modal-b .cell { padding-left: 24px; padding-right: 24px; }
+.modal-f { position: sticky; bottom: 0; background: #fff; border-top: 1px solid var(--line); padding: 12px 24px; display: flex; justify-content: flex-end; gap: 8px; }
 @keyframes pop { from { transform: scale(0.97); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
@@ -454,8 +469,13 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 .empty { padding: 48px 24px; text-align: center; color: var(--text-2); }
 .fade { animation: fade 0.2s ease; }
 ::selection { background: var(--yellow); }
-.foot { border-top: 1px solid var(--line); margin-top: 48px; }
-.foot .wrap { padding-top: 24px; padding-bottom: 32px; display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13px; color: var(--text-2); }
+.foot { background: #000; color: rgba(255, 255, 255, 0.6); margin-top: 64px; }
+.foot .wrap { padding-top: 40px; padding-bottom: 40px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; font-size: 13px; }
+.foot h6 { margin: 0 0 12px; font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; }
+.foot a { display: block; line-height: 24px; color: rgba(255, 255, 255, 0.6); }
+.foot a:hover { color: #fff; }
+.foot .blue { color: #3d98ff; }
+.foot .copy { grid-column: 1 / -1; border-top: 1px solid rgba(255, 255, 255, 0.12); padding-top: 20px; display: flex; justify-content: space-between; }
 
 @media (max-width: 1280px) {
   .ytabs { gap: 16px; } .ytab { font-size: 15px; }
@@ -465,3 +485,53 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 
 .cond { font-family: var(--font-cond); font-weight: 900; text-transform: uppercase; letter-spacing: 0; }
 .logo { font-family: var(--font-display); }
+
+/* ───── Таблица (как список программ на realty.yandex.ru/ipoteka) ───── */
+.ytable { width: 100%; border-collapse: collapse; }
+.ytable th { text-align: left; font-weight: 400; font-size: 14px; color: var(--text-2); padding: 12px 16px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.ytable td { padding: 16px; border-bottom: 1px solid var(--line); font-size: 15px; vertical-align: middle; }
+.ytable td.r, .ytable th.r { text-align: right; }
+.ytable td.b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ytable tbody tr { cursor: pointer; }
+.ytable tbody tr:hover td { background: rgba(0, 0, 0, 0.02); }
+.ytable a.link, .ytable .link { color: var(--link); }
+
+/* Строка формы (как «Все фильтры»: подпись слева, поле справа) */
+.frow { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 16px; align-items: center; padding: 10px 0; }
+.frow.top { align-items: start; } .frow.top > label { padding-top: 10px; }
+.frow > label { font-size: 16px; }
+.fsection { font-family: var(--font-display); font-size: 22px; font-weight: 700; margin: 24px 0 8px; }
+
+/* Поповер фильтра («Количество комнат») */
+.pop { position: absolute; top: calc(100% + 8px); left: 0; z-index: 60; background: #fff; border-radius: var(--r-l); box-shadow: var(--shadow-float); padding: 16px; min-width: 320px; }
+.pop h5 { margin: 0 0 14px; font-size: 16px; font-weight: 500; }
+.pop .opts { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; }
+.opt { height: 48px; min-width: 60px; padding: 0 16px; border-radius: 24px; box-shadow: inset 0 0 0 1px var(--line-2); font-size: 16px; display: inline-flex; align-items: center; justify-content: center; }
+.opt:hover { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3); }
+.opt.on { box-shadow: inset 0 0 0 2px var(--text); font-weight: 500; }
+
+/* Серая полоса-«герой» (как шапка ипотеки) с белыми блоками внутри */
+.band { background: #f5f4f2; margin: 0 -40px 32px; padding: 0 40px 32px; }
+.band .page-title { padding-top: 24px; }
+.band .card { background: #fff; border-radius: var(--r-l); padding: 20px 24px; }
+.band .card + .card { border-top: 0; padding-top: 20px; }
+
+/* Серые блоки внутри контента (плитки «Скидки и акции») */
+.box { background: var(--fill); border-radius: var(--r-l); padding: 20px 24px; }
+.screen .card.flat { background: var(--fill); border-radius: var(--r-l); padding: 16px 20px; border-top: 0; }
+
+/* Строка объявления (выдача «Купить квартиру» на realty.yandex.ru) */
+.offer { display: grid; grid-template-columns: 280px minmax(0, 1fr) 200px; gap: 24px; padding: 24px 0; border-bottom: 1px solid var(--line); }
+.offer:first-child { padding-top: 0; }
+.offer .ph { aspect-ratio: 4 / 3; border-radius: var(--r-l); }
+.offer .noimg { height: 100%; display: grid; place-items: center; }
+.offer .body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.offer .nm { font-family: var(--font-display); font-size: 20px; font-weight: 700; line-height: 24px; margin-top: 4px; }
+.offer:hover .nm { color: var(--link); }
+.offer .txt { font-size: 15px; line-height: 21px; }
+.offer .side { display: flex; flex-direction: column; gap: 6px; }
+.screen .tiles { padding: 0; gap: 8px; }
+.screen .tile { background: var(--fill); }
+.screen .tile:hover { background: var(--fill-hover); }
+.screen .tile.on { background: var(--dark); color: #fff; }
+.screen .tile.on .c2 { color: rgba(255, 255, 255, 0.6); }

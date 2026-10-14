@@ -31,7 +31,7 @@ export default function Ops() {
       <PageTitle crumbs={[['Карта', '/'], ['Оперативная сводка']]} title="Оперативная сводка" sub={`Усть-Каменогорск · на ${new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 16 }}>
         {stats.map(([l, v, s, col, to], i) => (
-          <Link key={l} to={to} className="card stat" style={i === 4 ? { background: 'var(--yellow)' } : undefined}>
+          <Link key={l} to={to} className="box stat" style={i === 4 ? { background: 'var(--yellow)' } : undefined}>
             <div className="row between"><span className="t-sm" style={{ color: i === 4 ? 'var(--text)' : 'var(--text-2)' }}>{l}</span><IcChevronRight size={18} /></div>
             <span className="v" style={{ color: col }}>{v}</span>
             <span className="t-xs" style={{ color: i === 4 ? 'var(--text)' : 'var(--text-2)' }}>{s}</span>
@@ -39,18 +39,18 @@ export default function Ops() {
         ))}
       </div>
       <div className="ops">
-        <div className="card" style={{ gridColumn: 'span 8', height: 460, position: 'relative', overflow: 'hidden' }}>
+        <div className="ph" style={{ gridColumn: 'span 8', height: 460, borderRadius: 16 }}>
           <MapView items={scored} onSelect={(id) => nav(`/complexes/${id}`)} labels zoom={11.6} controls />
         </div>
-        <div className="card" style={{ gridColumn: 'span 4', height: 460, overflow: 'auto' }}>
+        <div className="card" style={{ gridColumn: 'span 4', height: 460, overflow: 'auto', borderTop: 0, paddingTop: 0 }}>
           <div className="card-head"><h3>Риск по объектам</h3></div>
           {scored.map(({ c, r }) => <Cell key={c.id} to={`/complexes/${c.id}`} title={c.name} sub={`${c.district} · ${c.stage}`} end={<Score value={r.score} zone={r.zone} />} />)}
         </div>
-        <div className="card card-pad" style={{ gridColumn: 'span 5' }}>
+        <div className="box" style={{ gridColumn: 'span 5' }}>
           <h3 className="t-h3" style={{ marginBottom: 20 }}>Реклама с признаками продажи</h3>
           <div className="bars">{WEEKS.map((v, i) => <div key={i}><span className="num">{v}</span><b style={{ height: v * 11 }} /><span className="t-xs c3">н{34 + i}</span></div>)}</div>
         </div>
-        <div className="card card-pad" style={{ gridColumn: 'span 4' }}>
+        <div className="box" style={{ gridColumn: 'span 4' }}>
           <h3 className="t-h3" style={{ marginBottom: 16 }}>По площадкам</h3>
           {byPlat.map(({ p, n }) => (
             <div key={p} style={{ display: 'grid', gridTemplateColumns: '28px 90px 1fr 24px', gap: 10, alignItems: 'center', padding: '6px 0' }}>
@@ -59,13 +59,13 @@ export default function Ops() {
             </div>
           ))}
         </div>
-        <div className="card" style={{ gridColumn: 'span 3' }}>
+        <div className="box" style={{ gridColumn: 'span 3' }}>
           <div className="card-head"><h3>Стройка стоит</h3></div>
           {idle.map(({ c }) => <Cell key={c.id} to={`/complexes/${c.id}?tab=photos`} title={c.name} end={<span className={`tag ${c.idleDays >= 90 ? 'red' : 'yellow'}`}>{c.idleDays} дн.</span>} />)}
         </div>
-        <div className="card" style={{ gridColumn: 'span 12' }}>
+        <div className="card" style={{ gridColumn: 'span 12', marginTop: 16 }}>
           <div className="card-head"><h3>Последние публикации</h3><Link to="/ads" className="t-sm c2 row" style={{ gap: 4 }}>Вся лента<IcChevronRight size={16} /></Link></div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', columnGap: 32 }}>
             {ads.slice(0, 8).map((a) => {
               const c = complexes.find((x) => x.id === a.complexId); const s = scoreAd(a, c)
               return <Cell key={a.id} to={`/ads/${a.id}`} icon={<PlatformIcon p={a.platform} />} title={c?.name ?? 'ЖК не определён'} sub={`${a.account} · ${fmtShort(a.date)}`} end={<Score value={s.score} zone={s.zone} />} />

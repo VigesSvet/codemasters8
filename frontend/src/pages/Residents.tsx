@@ -14,19 +14,17 @@ export default function Residents() {
   return (
     <>
       <PageTitle crumbs={[['Карта', '/'], ['Жителям']]} title="Предупредить жителей" sub="Идея для развития, не входит в MVP: ГАСК предупреждает жителей push-уведомлением или в Telegram-боте, а не только постом в Instagram." />
-      <div style={{ display: 'grid', gridTemplateColumns: '520px 1fr', gap: 48, alignItems: 'start' }}>
-        <div className="stack">
-          <div className="card card-pad row" style={{ background: 'var(--blue-card)', alignItems: 'flex-start' }}>
-            <IcInfo /><div><div className="bold">Только после решения органа</div><div className="t-sm" style={{ marginTop: 4, opacity: 0.8 }}>Без персональных данных и без автоматической отправки.</div></div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 360px', gap: 64, alignItems: 'start' }}>
+        <div>
+          <div className="row t-sm" style={{ gap: 8, marginBottom: 16 }}><span style={{ color: 'var(--link)', display: 'flex' }}><IcInfo /></span>Отправка только после решения уполномоченного органа, без персональных данных</div>
+          <div className="frow"><label>Объект</label>
+            <button className="input row between" onClick={() => setPick(true)}><span>ЖК «{c.name}»</span><span className="c2"><IcBuilding size={16} /></span></button>
           </div>
-          <div className="card">
-            <Cell icon={<span className="ico"><IcBuilding size={20} /></span>} title="Объект" end={<span style={{ color: 'var(--text)' }}>{c.name}</span>} chevron onClick={() => setPick(true)} />
+          <div className="frow top"><label>Текст уведомления</label>
+            <div><textarea className="input" maxLength={240} value={text} onChange={(e) => setMsg(e.target.value)} /><div className="t-xs c2" style={{ marginTop: 4, textAlign: 'right' }}>{text.length} / 240</div></div>
           </div>
-          <div className="card">
-            <div className="field top"><div className="body"><label>Текст уведомления · {text.length}/240</label><textarea maxLength={240} value={text} onChange={(e) => setMsg(e.target.value)} /></div></div>
-          </div>
-          <div className="card" style={{ padding: 8 }}><Seg full value={ch} onChange={setCh} items={[['push', 'Push в приложении'], ['tg', 'Telegram-бот']]} /></div>
-          <div className="card" style={{ padding: 16 }}><button className="btn y full" onClick={() => notify('Отправлено на согласование руководителю')}><IcSend size={20} />Отправить на согласование</button></div>
+          <div className="frow"><label>Канал</label><Seg value={ch} onChange={setCh} items={[['push', 'Push в приложении'], ['tg', 'Telegram-бот']]} /></div>
+          <div className="frow"><span /><button className="btn y" style={{ justifySelf: 'start' }} onClick={() => notify('Отправлено на согласование руководителю')}><IcSend />Отправить на согласование</button></div>
         </div>
         <div className="phone" style={{ justifySelf: 'center' }}>
           <div className="phone-scr">

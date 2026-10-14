@@ -1,5 +1,5 @@
 import { useState, type ComponentType } from 'react'
-import { Cell, PageTitle, Toggle } from '../components/ui'
+import { PageTitle, Toggle } from '../components/ui'
 import { publishedListMeta } from '../data/demo'
 import { useStore } from '../lib/store'
 import { IcDatabase, IcDoc, IcGlobe, IcMap, IcMegaphone, IcPhone, IcPlus, IcRefresh } from '../ui/icons'
@@ -23,13 +23,19 @@ export default function Sources() {
     <>
       <PageTitle crumbs={[['Карта', '/'], ['Источники данных']]} title="Источники данных" sub="Система работает без закрытых государственных API. Обязательные источники — локальные данные и ручной ввод, парсеры соцсетей подключаются дополнительно."
         actions={<button className="btn g m" onClick={() => notify('Синхронизация запущена')}><IcRefresh size={20} />Обновить всё</button>} />
-      <div className="card" style={{ maxWidth: 900 }}>
-        {SRC.map((s) => (
-          <Cell key={s.id} inset icon={<span className="ico"><s.icon size={20} /></span>}
-            title={<span className="row" style={{ gap: 8 }}>{s.name}{s.req && <span className="tag dark">ТЗ</span>}</span>} sub={s.note}
-            end={<><span className={`tag ${stTag[s.st][0]}`}>{stTag[s.st][1]}</span>{s.st !== 'plan' && <Toggle on={on[s.id]} onChange={(v) => { setOn((x) => ({ ...x, [s.id]: v })); notify(`${s.name}: сбор ${v ? 'включён' : 'выключен'}`) }} />}</>} />
-        ))}
-      </div>
+      <table className="ytable">
+        <thead><tr><th>Источник</th><th>Что берём</th><th>Статус</th><th className="r">Сбор</th></tr></thead>
+        <tbody>
+          {SRC.map((s) => (
+            <tr key={s.id} style={{ cursor: 'default' }}>
+              <td><div className="row" style={{ gap: 14 }}><span className="zone-pic gray" style={{ width: 40, height: 40 }}><s.icon size={18} /></span><div><div className="bold row" style={{ gap: 8 }}>{s.name}{s.req && <span className="tag dark">ТЗ</span>}</div></div></div></td>
+              <td className="c2">{s.note}</td>
+              <td><span className={`tag ${stTag[s.st][0]}`}>{stTag[s.st][1]}</span></td>
+              <td className="r">{s.st !== 'plan' ? <span style={{ display: 'inline-flex' }}><Toggle on={on[s.id]} onChange={(v) => { setOn((x) => ({ ...x, [s.id]: v })); notify(`${s.name}: сбор ${v ? 'включён' : 'выключен'}`) }} /></span> : <span className="c3 t-sm">—</span>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </>
   )
 }

@@ -76,9 +76,11 @@ export default function Shell() {
         <>
           <main className="screen"><div className="wrap"><Outlet /></div></main>
           <footer className="foot"><div className="wrap">
-            <span>© 2026 SAQ Qurylys — цифровой помощник ДЭР ВКО</span>
-            <Link to="/method">Методика скоринга</Link><Link to="/sources">Источники данных</Link><Link to="/residents">Жителям</Link>
-            <span style={{ marginLeft: 'auto' }}>Данные демонстрационные. Решение о нарушении принимает сотрудник.</span>
+            <div><h6>Объекты</h6><Link to="/complexes">Новостройки</Link><Link to="/developers">Застройщики</Link><Link to="/sites">Фото-мониторинг</Link><Link to="/" className="blue">На карте</Link></div>
+            <div><h6>Реклама</h6><Link to="/ads">Лента публикаций</Link><Link to="/queue">Очередь проверки</Link><Link to="/ads/new">Добавить вручную</Link></div>
+            <div><h6>Аналитика</h6><Link to="/ops">Оперативная сводка</Link><Link to="/reports">Отчёты</Link><Link to="/method">Методика скоринга</Link><Link to="/sources">Источники данных</Link></div>
+            <div><h6>О сервисе</h6><Link to="/residents">Жителям</Link><a>ДЭР ВКО · ГАСК</a><a>Поддержка аналитиков</a></div>
+            <div className="copy"><span>© 2026 SAQ Qurylys — цифровой помощник ДЭР ВКО</span><span>Данные демонстрационные. Решение о нарушении принимает сотрудник.</span></div>
           </div></footer>
         </>
       )}
