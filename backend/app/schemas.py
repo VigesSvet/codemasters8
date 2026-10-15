@@ -1,10 +1,47 @@
-from typing import List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import (AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints, ValidationInfo,
+                      field_validator, model_serializer)
 from pydantic.alias_generators import to_camel
+from pydantic_core import PydanticCustomError
 
 Tri = Literal["yes", "no", "unknown"]
+Zone = Literal["green", "yellow", "red"]
 AdStatus = Literal["new", "needs_check", "in_review", "confirmed", "dismissed"]
+AppealStatus = Literal["verified", "pending", "rejected"]
+SignalStatus = Literal["new", "confirmed", "returned"]
+FactorState = Literal["hit", "clear", "unknown"]
+EvidenceKind = Literal["ad", "document", "photo", "appeal", "readiness", "deadline"]
+AuditKind = Literal["system", "data", "status", "link", "comment", "request", "signal", "export"]
+# Темы внутреннего запроса сведений по ЖК (POST /api/complexes/{id}/requests)
+InfoTopic = Literal["basis", "readiness", "appeals", "list", "other"]
+
+NUL_MSG = "недопустимый символ NUL (\\0)"
+
+
+def no_nul(v: Any) -> Any:
+    """NUL (\\x00) в тексте — 422: PostgreSQL не хранит его в text/varchar, иначе была бы ошибка БД (500)."""
+    if isinstance(v, str) and "\x00" in v:
+        raise PydanticCustomError("value_error", NUL_MSG)
+    return v
+
+
+# Обязательная строка: после strip не пустая, иначе 422
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128), AfterValidator(no_nul)]
+Comment = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000), AfterValidator(no_nul)]
+Note = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000), AfterValidator(no_nul)]
+
+
+def _blank_to_none(v: Any) -> Any:
+    return None if isinstance(v, str) and not v.strip() else v
+
+
+# Необязательные строки: пустая или из пробелов — то же, что не указана; длина — как у обязательных
+OptName = Annotated[Optional[Name], BeforeValidator(_blank_to_none)]
+OptComment = Annotated[Optional[Comment], BeforeValidator(_blank_to_none)]
+OptNote = Annotated[Optional[Note], BeforeValidator(_blank_to_none)]
+# Уверенность привязки публикации к ЖК: 0…1 (факт — от thresholds.linkConfirmed или после подтверждения аналитиком)
+Confidence = Annotated[float, Field(ge=0, le=1)]
 
 
 class Camel(BaseModel):
@@ -40,18 +77,59 @@ class ComplexOut(Camel):
     start: str
     planned_end: str
     basis: dict
+    readiness: dict = {"declared": None, "confirmed": None}
     in_published_list: Tri
     cover: str
     photos: list
     idle_days: int
 
 
+class AppealOut(Camel):
+    id: str
+    complex_id: str
+    date: str
+    collective: bool
+    applicants: int
+    status: AppealStatus
+    verified_at: Optional[str] = None
+    subject: str
+    source: str
+
+
 class AdIn(Camel):
-    id: Optional[str] = None
+    """Ручное добавление публикации. author — кто добавил (в журнал); без него — «Система».
+    Длины строк — как у столбцов БД: на PostgreSQL более длинное значение было бы ошибкой БД (500), а не понятным 422."""
+
+    id: Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]],
+                  BeforeValidator(_blank_to_none)] = None
+    platform: str = Field(max_length=16)
+    account: str = Field(max_length=255)
+    url: str = Field("", max_length=512)
+    date: Optional[str] = Field(None, max_length=32)
+    text: str
+    ocr: Optional[str] = None
+    image: Optional[str] = Field(None, max_length=512)
+    complex_id: Optional[str] = Field(None, max_length=32)
+    match_confidence: Confidence = 0
+    price: Optional[str] = Field(None, max_length=64)
+    source: str = Field("manual", max_length=16)
+    # Только статусы до решения: «На проверке», «Нарушение подтверждено», «Отклонено» — через PATCH /api/ads/{id}/status
+    # (автор, основание, событие в журнале). Иначе подтверждённая при создании публикация давала бы R2/R3 без следа решения.
+    status: Literal["new", "needs_check"] = "new"
+    author: OptName = None
+
+    @field_validator("*")
+    @classmethod
+    def _no_nul(cls, v: Any) -> Any:
+        return no_nul(v)
+
+
+class AdOut(Camel):
+    id: str
     platform: str
     account: str
     url: str = ""
-    date: Optional[str] = None
+    date: str
     text: str
     ocr: Optional[str] = None
     image: Optional[str] = None
@@ -60,48 +138,190 @@ class AdIn(Camel):
     price: Optional[str] = None
     source: str = "manual"
     status: AdStatus = "new"
-
-
-class AdOut(AdIn):
-    id: str
-    date: str
     assignee: Optional[str] = None
     reach: Optional[int] = None
 
 
+class AdComplexIn(Camel):
+    """Привязка публикации к ЖК аналитиком: complexId — ЖК (привязка становится фактом) или null — снять привязку."""
+
+    complex_id: Optional[Name]
+    author: Name
+
+
 class StatusIn(Camel):
+    """Смена статуса публикации: автор обязателен; для «Нарушение подтверждено» — и основание решения (comment)."""
+
     status: AdStatus
-    assignee: Optional[str] = None
-    comment: Optional[str] = None
+    author: Name
+    assignee: OptName = None
+    comment: OptComment = Field(None, validate_default=True)
+
+    @field_validator("comment")
+    @classmethod
+    def _basis_for_confirmed(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:
+        if v is None and info.data.get("status") == "confirmed":
+            raise PydanticCustomError("value_error", "для подтверждения нарушения укажите основание решения")
+        return v
 
 
-class RiskFactor(Camel):
+class CommentIn(Camel):
+    author: Name
+    text: Note
+
+
+class InfoRequestIn(Camel):
+    """Внутренний запрос сведений по ЖК: только запись в журнале объекта, во внешние органы не отправляется."""
+
+    author: Name
+    topics: List[InfoTopic] = Field(min_length=1, max_length=5)
+    comment: OptNote = None
+
+
+class AnalystOut(Camel):
+    id: str
+    name: str
+    full_name: str
+    short: str
+    role: str
+
+
+# ---------- риск ----------
+
+class EvidenceItemOut(Camel):
+    kind: EvidenceKind
+    ref: Optional[str] = None
+    label: Optional[str] = None
+    quote: Optional[str] = None
+    marker: Optional[str] = None
+    source: Optional[str] = None
+    date: Optional[str] = None
+    url: Optional[str] = None
+    value: Optional[Union[int, float, str]] = None
+
+    @model_serializer(mode="wrap")
+    def _drop_empty(self, handler) -> Dict[str, Any]:
+        # как в движке: отсутствующие поля не выводятся (EvidenceItem в types.ts — все поля необязательные)
+        return {k: v for k, v in handler(self).items() if v is not None}
+
+
+class RiskFactorOut(Camel):
     code: str
     title: str
     points: int
-    state: Literal["hit", "clear", "unknown"]
+    state: FactorState
+    reason: str
     evidence: str
+    items: List[EvidenceItemOut] = []
+
+
+class ObservationOut(Camel):
+    code: str
+    title: str
+    state: Literal["ok", "flag", "unknown"]
+    text: str
 
 
 class RiskOut(Camel):
     score: int
-    zone: Literal["green", "yellow", "red"]
+    zone: Zone
     needs_check: bool
-    factors: List[RiskFactor]
+    factors: List[RiskFactorOut]
+    observations: List[ObservationOut]
     summary: str
+    model_version: str
+
+
+class RiskRowOut(RiskOut):
+    complex_id: str
+
+
+class AdSignalsOut(Camel):
+    sale: List[str]
+    funds: List[str]
+    safe: List[str]
 
 
 class AdScoreOut(Camel):
     score: int
-    zone: Literal["green", "yellow", "red"]
-    sale: List[str]
-    funds: List[str]
-    safe: List[str]
+    zone: Zone
+    needs_check: bool
+    factors: List[RiskFactorOut]
+    signals: AdSignalsOut
     complex_id: Optional[str] = None
     match_confidence: float = 0
 
 
 class AuditOut(Camel):
+    id: int
     at: str
     who: str
     what: str
+    kind: AuditKind
+    ad_id: Optional[str] = None
+    complex_id: Optional[str] = None
+    signal_id: Optional[int] = None
+
+
+# ---------- сигналы (модуль 05) ----------
+
+class SignalAdOut(Camel):
+    id: str
+    platform: str
+    account: str
+    url: str
+    date: str
+    status: AdStatus
+    match_confidence: float
+    text: str
+    ocr: Optional[str] = None
+    image: Optional[str] = None
+    price: Optional[str] = None
+    signals: AdSignalsOut
+
+
+class SignalEvidenceOut(Camel):
+    complex: ComplexOut
+    developer: Optional[DeveloperOut] = None
+    ads: List[SignalAdOut] = []
+    appeals: List[AppealOut] = []
+    photos: list = []
+    documents: List[EvidenceItemOut] = []
+
+
+class SignalSummaryOut(Camel):
+    id: int
+    code: str
+    complex_id: str
+    complex_name: str
+    status: SignalStatus
+    score: int
+    zone: Zone
+    needs_check: bool
+    hits: List[str]
+    created_at: str
+    created_by: str
+    decided_at: Optional[str] = None
+    decided_by: Optional[str] = None
+
+
+class SignalOut(SignalSummaryOut):
+    summary: str
+    factors: List[RiskFactorOut]
+    observations: List[ObservationOut]
+    evidence: SignalEvidenceOut
+    model_version: str
+    decision_comment: Optional[str] = None
+    file_name: str
+    exported_at: Optional[str] = None
+    journal: List[AuditOut] = []
+
+
+class SignalCreateIn(Camel):
+    complex_id: Name
+    author: Name
+
+
+class SignalDecisionIn(Camel):
+    author: Name
+    comment: Comment

@@ -1,0 +1,91 @@
+/* ───── Сигнальная карточка (модуль 05): панель в карточке ЖК, карточка сигнала, печатная версия A4 ───── */
+
+/* Шапка с семью плитками (Сводка, Очередь — плитка сигналов) — в один ряд */
+.mtiles:has(> :nth-child(7)) { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; }
+
+/* Панель в карточке ЖК: прошлые сигналы объекта */
+.sigrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.sigrow:first-of-type { border-top: 0; }
+.sigrow:hover .bold { color: var(--link); }
+
+/* Карточка сигнала */
+.sig-h { font-size: 15px; font-weight: 500; color: var(--text-2); margin: 20px 0 8px; }
+.sig-obj { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 24px; align-items: start; }
+.sig-obj > img { width: 168px; height: 126px; border-radius: var(--r-m); object-fit: cover; }
+.sig-obj:not(:has(> img)) { grid-template-columns: minmax(0, 1fr); }
+.sig-obj .kv { grid-template-columns: 120px minmax(0, 1fr); gap: 10px 16px; }
+.sig-score { display: flex; align-items: center; gap: 32px; flex-wrap: wrap; }
+.sig-drift { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; padding: 10px 14px; border-radius: var(--r-m); background: var(--blue-bg); font-size: 14px; }
+.sig-ad { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 16px; padding: 14px 0; }
+.sig-ad + .sig-ad { border-top: 1px solid var(--line); }
+.sig-ad > .ph { aspect-ratio: 1; border-radius: var(--r-m); }
+.sig-ad .noimg { height: 100%; display: grid; place-items: center; }
+.sig-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px 12px; }
+.sig-photos figure { margin: 0; }
+.sig-photos .ph { aspect-ratio: 4 / 3; border-radius: var(--r-m); }
+.sig-photos figcaption { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; font-size: 13px; line-height: 16px; color: var(--text-2); }
+.sig-photos figcaption b { font-size: 14px; font-weight: 500; color: var(--text); }
+
+/* Сводка: свежие сигналы на решении */
+.sigmini { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+.sigmini > a { background: var(--fill); border-radius: var(--r-l); padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; transition: box-shadow 0.15s; }
+.sigmini > a:hover { box-shadow: var(--shadow-float); }
+.sigmini > a:hover .bold { color: var(--link); }
+
+/* ───── Печатная версия: белый лист A4 по центру, ч/б (@page — в SignalPrint, только пока она открыта) ───── */
+.sigprint { min-height: 100vh; background: var(--fill); padding: 24px 16px 48px; }
+.sigprint-bar { width: 210mm; max-width: 100%; margin: 0 auto 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sheet { width: 210mm; max-width: 100%; min-height: 297mm; margin: 0 auto; padding: 14mm; background: #fff; color: #000; box-shadow: var(--shadow-card); font-size: 13px; line-height: 1.4; }
+.sheet h1 { font-family: var(--font-display); font-size: 22px; line-height: 1.2; font-weight: 700; margin: 2px 0 4px; }
+.sheet h2 { font-size: 15px; font-weight: 700; margin: 18px 0 6px; padding-bottom: 3px; border-bottom: 1.5px solid #000; }
+.sheet h3 { font-size: 13px; font-weight: 700; margin: 10px 0 4px; }
+.sheet p { margin: 0 0 4px; }
+.sheet ul { margin: 2px 0 0; padding-left: 16px; }
+.sheet li { margin: 2px 0; }
+.sheet b, .sheet th { font-weight: 600; }
+.sheet .tag { background: none; color: inherit; padding: 0; height: auto; font-size: inherit; font-weight: 600; }
+.sheet mark { background: none; color: inherit; font-weight: 600; text-decoration: underline; padding: 0; }
+.sheet-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
+.sheet-org { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #444; }
+.sheet-sub { font-size: 14px; }
+.sheet-meta { display: grid; grid-template-columns: auto auto; gap: 2px 10px; margin: 0; font-size: 12px; white-space: nowrap; }
+.sheet-meta dt { color: #444; }
+.sheet-meta dd { margin: 0; }
+.sheet-note { margin-top: 10px; padding: 6px 10px; border: 1px solid #000; font-size: 12px; font-weight: 600; }
+.sheet-small { font-size: 12px; color: #444; }
+.sheet-url { font-size: 11px; color: #444; overflow-wrap: anywhere; }
+.sheet table { width: 100%; border-collapse: collapse; }
+.sheet-kv th { width: 34%; text-align: left; vertical-align: top; font-weight: 400; color: #444; padding: 3px 10px 3px 0; }
+.sheet-kv td { vertical-align: top; padding: 3px 0; }
+.sheet-grid th, .sheet-grid td { text-align: left; vertical-align: top; padding: 4px 6px; border-bottom: 1px solid #bbb; }
+.sheet-grid thead th { border-bottom: 1px solid #000; }
+.sheet .nowrap { white-space: nowrap; }
+.sheet-risk { display: grid; grid-template-columns: 38mm minmax(0, 1fr); gap: 12px; align-items: start; }
+.sheet-score { border: 1.5px solid #000; padding: 6px 10px; }
+.sheet-score b { font-family: var(--font-display); font-size: 30px; line-height: 1; font-weight: 800; }
+.sheet-zone { font-weight: 700; text-transform: uppercase; font-size: 12px; margin-top: 4px; }
+.pf { display: grid; grid-template-columns: 12mm minmax(0, 1fr) 28mm 18mm; gap: 8px; padding: 6px 0; border-bottom: 1px solid #bbb; }
+.pf.head { font-weight: 600; border-bottom: 1px solid #000; padding: 3px 0; }
+.pf.total { border-bottom: 0; }
+.pf > :last-child { text-align: right; }
+.pf.hit > :nth-child(3) { font-weight: 700; }
+.pf-e { color: #333; }
+.sheet-sign .sign-choice { display: flex; gap: 28px; margin: 6px 0 12px; }
+.sheet-sign .sign-choice span { display: inline-flex; align-items: center; gap: 8px; }
+.sheet-sign .sign-choice i { width: 12px; height: 12px; border: 1.5px solid #000; display: inline-block; }
+.sign-line { display: flex; align-items: flex-end; gap: 8px; min-height: 26px; margin-top: 6px; }
+.sign-line > span { font-size: 12px; color: #444; white-space: nowrap; }
+.sign-line > i { flex: 1; border-bottom: 1px solid #000; min-width: 20mm; }
+.sign-row { display: grid; grid-template-columns: 1.4fr 1fr 0.8fr; gap: 16px; margin-top: 8px; }
+.sheet-foot { margin-top: 18px; padding-top: 6px; border-top: 1px solid #bbb; font-size: 11px; color: #444; }
+
+@media print {
+  :root:has(.sigprint), :root:has(.sigprint) body { background: #fff !important; }
+  .no-print { display: none !important; }
+  .sigprint { min-height: 0; padding: 0; background: none; }
+  .sheet { width: auto; max-width: none; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+  .sheet * { box-shadow: none !important; }
+  .sheet a { color: inherit; text-decoration: none; }
+  .sheet .pf, .sheet .keep, .sheet tr, .sheet li, .sheet-head, .sheet-risk { break-inside: avoid; page-break-inside: avoid; }
+  .sheet h2, .sheet h3 { break-after: avoid; page-break-after: avoid; }
+}

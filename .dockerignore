@@ -1,0 +1,12 @@
+# Контекст сборки api — корень репозитория; нужны только backend/ и shared/
+.git
+docs
+frontend
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/*.pyc
+**/*.db
+**/dist
+.env

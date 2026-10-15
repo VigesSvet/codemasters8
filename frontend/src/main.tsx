@@ -2,6 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './styles/go.css'
+import './styles/signal.css'
+import './styles/audit.css'
 import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(

@@ -1,30 +1,50 @@
 import { useMemo, useState } from 'react'
 import { Cell, Faq, Hero, HeroTile, Modal, Score, Seg } from '../components/ui'
-import type { Zone } from '../data/types'
-import { scoreComplex } from '../lib/risk'
+import type { Complex, Zone } from '../data/types'
+import { model } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcBell, IcBuilding, IcCheck, IcChevronDown, IcPhone, IcSend, IcShield, IcUsers } from '../ui/icons'
 
-type Tpl = 'warn' | 'idle' | 'ok'
-const TPL: Record<Tpl, [string, (n: string) => string]> = {
-  warn: ['Проверьте ЖК перед сделкой', (n) => `ЖК «${n}» нет в перечне объектов, которым разрешено привлекать деньги дольщиков. Перед сделкой проверьте основание.`],
-  idle: ['Стройка приостановлена', (n) => `На площадке ЖК «${n}» нет работ больше трёх месяцев. Уточните сроки у застройщика, прежде чем вносить деньги.`],
-  ok: ['Объект в перечне ГАСК', (n) => `ЖК «${n}» есть в перечне объектов с гарантией. Договор долевого участия заключайте только с номером гарантии.`],
+const T = model.thresholds
+type Tpl = 'basis' | 'idle' | 'ok'
+interface TplDef { label: string; title: string; text: (c: Complex) => string; fits: (c: Complex) => boolean; why: string }
+// Шаблоны не утверждают нарушение: только проверяемый факт по объекту и совет жителю. fits — факт есть в данных объекта
+const TPL: Record<Tpl, TplDef> = {
+  basis: {
+    label: 'Проверьте основание', title: 'Проверьте основание перед оплатой',
+    text: (c) => `Перед бронью или взносом в ЖК «${c.name}» попросите у застройщика номер гарантии ЕО или разрешения МИО и сверьте его в ГАСК. Не вносите деньги без договора с этими реквизитами.`,
+    fits: (c) => c.stage !== model.builtStage, why: 'объект уже введён в эксплуатацию',
+  },
+  idle: {
+    label: 'Стройка стоит', title: 'Стройка приостановлена',
+    text: (c) => `По снимкам на площадке ЖК «${c.name}» нет работ ${c.idleDays} дн. Уточните сроки у застройщика, прежде чем вносить деньги.`,
+    fits: (c) => c.stage !== model.builtStage && c.idleDays >= T.idleDays
+      && c.photos.filter((p) => p.date && T.idleActivities.includes(p.activity)).length >= T.idlePhotosMin,
+    why: `простой от ${T.idleDays} дн. не подтверждён снимками`,
+  },
+  ok: {
+    label: 'Есть в перечне', title: 'Объект в перечне ГАСК',
+    text: (c) => `ЖК «${c.name}» есть в опубликованном перечне ГАСК. Договор долевого участия заключайте только с номером гарантии ЕО или разрешения МИО.`,
+    fits: (c) => c.inPublishedList === 'yes', why: 'объекта нет в опубликованном перечне ГАСК или перечень не сверен',
+  },
 }
+const TPLS = Object.keys(TPL) as Tpl[]
+const firstFit = (c: Complex, cur?: Tpl): Tpl => (cur && TPL[cur].fits(c) ? cur : TPLS.find((k) => TPL[k].fits(c)) ?? 'basis')
 
 /** Жителям — шапка с главным блоком «конструктор уведомления + превью на телефоне», ниже аудитория и FAQ */
 export default function Residents() {
-  const { complexes, ads, notify } = useStore()
-  const scored = useMemo(() => complexes.map((c) => ({ c, r: scoreComplex(c, ads) })).sort((a, b) => b.r.score - a.r.score), [complexes, ads])
+  const { complexes, notify, riskOf } = useStore()
+  const scored = useMemo(() => complexes.map((c) => ({ c, r: riskOf(c) })).sort((a, b) => b.r.score - a.r.score), [complexes, riskOf])
   const [cid, setCid] = useState(scored[0].c.id)
   const [pick, setPick] = useState(false)
   const [ch, setCh] = useState<'push' | 'tg'>('push')
-  const [tpl, setTpl] = useState<Tpl>('warn')
+  const [tpl, setTpl] = useState<Tpl>(() => firstFit(scored[0].c))
   const [msg, setMsg] = useState('')
   const cur = scored.find((x) => x.c.id === cid)!
   const c = cur.c
-  const title = TPL[tpl][0]
-  const text = msg || TPL[tpl][1](c.name)
+  const title = TPL[tpl].title
+  const text = msg || TPL[tpl].text(c)
+  const fits = TPL[tpl].fits(c)
   const reach = { push: 4200, tg: 1350 }[ch]
   const count = (z: Zone) => scored.filter((x) => x.r.zone === z).length
 
@@ -46,13 +66,14 @@ export default function Residents() {
             <div className="frow"><label>Объект</label>
               <button className="input row between" onClick={() => setPick(true)} style={{ textAlign: 'left' }}><span className="row" style={{ gap: 8 }}>ЖК «{c.name}»<Score value={cur.r.score} zone={cur.r.zone} /></span><IcChevronDown size={16} /></button>
             </div>
-            <div className="frow"><label>Шаблон</label><Seg value={tpl} onChange={(v) => { setTpl(v); setMsg('') }} items={[['warn', 'Нет в перечне'], ['idle', 'Стройка стоит'], ['ok', 'Всё в порядке']]} /></div>
+            <div className="frow"><label>Шаблон</label><Seg value={tpl} onChange={(v) => { setTpl(v); setMsg('') }} items={TPLS.map((k) => [k, TPL[k].label])} /></div>
+            {!fits && <div className="frow"><span /><span className="t-sm" style={{ color: 'var(--amber-ink)' }}>Шаблон не подходит к объекту: {TPL[tpl].why}. Выберите другой.</span></div>}
             <div className="frow top"><label>Текст</label>
               <div><textarea className="input" maxLength={240} value={text} onChange={(e) => setMsg(e.target.value)} /><div className="t-xs c2" style={{ marginTop: 4, textAlign: 'right' }}>{text.length} / 240</div></div>
             </div>
             <div className="frow"><label>Канал</label><Seg value={ch} onChange={setCh} items={[['push', 'Push в приложении'], ['tg', 'Telegram-бот']]} /></div>
             <div className="frow"><label>Кому</label><span>жителям района <b className="bold">{c.district}</b> · ~{reach.toLocaleString('ru')} человек</span></div>
-            <div className="frow"><span /><button className="btn y" style={{ justifySelf: 'start' }} onClick={() => notify('Отправлено на согласование руководителю')}><IcSend />Отправить на согласование</button></div>
+            <div className="frow"><span /><button className="btn y" style={{ justifySelf: 'start' }} disabled={!fits} onClick={() => notify('Отправлено на согласование руководителю')}><IcSend />Отправить на согласование</button></div>
           </div>
           <div className="pr" style={{ alignItems: 'center', justifyContent: 'center', padding: 20 }}>
             <div className="phone" style={{ width: 260, height: 530, boxShadow: 'none' }}>
@@ -86,7 +107,7 @@ export default function Residents() {
       {pick && (
         <Modal title="Выберите объект" onClose={() => setPick(false)}>
           {scored.map(({ c: x, r }) => <Cell key={x.id} inset icon={<img className="th" src={x.cover} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name} sub={x.address}
-            end={<><Score value={r.score} zone={r.zone} />{x.id === cid && <IcCheck size={18} style={{ color: 'var(--text)' }} />}</>} onClick={() => { setCid(x.id); setMsg(''); setPick(false) }} />)}
+            end={<><Score value={r.score} zone={r.zone} />{x.id === cid && <IcCheck size={18} style={{ color: 'var(--text)' }} />}</>} onClick={() => { setCid(x.id); setTpl(firstFit(x, tpl)); setMsg(''); setPick(false) }} />)}
         </Modal>
       )}
     </>

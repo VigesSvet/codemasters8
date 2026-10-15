@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { AdStatus, Platform, Tri, Zone } from '../data/types'
-import { keywordsSafe } from '../data/demo'
+import { MARKERS } from '../lib/risk'
 import { siFacebook, siInstagram, siTelegram, siTiktok } from 'simple-icons'
 import { IcCheck, IcChevronDown, IcChevronLeft, IcChevronRight, IcChevronUp, IcClose, IcHelp, IcInfo as IcInfoY } from '../ui/icons'
 
@@ -58,19 +58,21 @@ export const statusMeta: Record<AdStatus, { name: string; tag: string; color: st
 export const StatusTag = ({ s }: { s: AdStatus }) => <span className={`tag ${statusMeta[s].tag}`}>{statusMeta[s].name}</span>
 export const StatusDot = ({ s }: { s: AdStatus }) => <span className="zdot" style={{ background: statusMeta[s].color }} />
 
-const FUND = ['бронь', 'бронирование', 'первый взнос', 'взнос', 'рассрочка', 'ДДУ', 'долевого участия', 'долевом участии', 'от фундамента', 'цена котлована', 'напрямую застройщику', 'переуступка', 'фиксируем цену']
-const SALE = ['старт продаж', 'продаём', 'продаем', 'продается', 'продаётся', 'продажа', 'продаж', 'квартиры', 'квартира', 'строительство']
+// Словари подсветки — из модели риска: money → R2, sale → R3, safe — только подсветка. Длинные маркеры раньше коротких
+const HL = ([[MARKERS.money, 'fund'], [MARKERS.sale, ''], [MARKERS.safe, 'safe']] as const)
+  .flatMap(([ws, cls]) => ws.map((w) => [w, cls] as const)).sort((a, b) => b[0].length - a[0].length)
+// Маркер — основа слова: «рассрочк» подсвечивает «рассрочка» целиком
+const HL_RE = new RegExp(`(${HL.map(([w]) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + (/\p{L}$/u.test(w) ? '\\p{L}*' : '')).join('|')})`, 'giu')
 
-/** Подсветка: красным — сбор денег, жёлтым — продажа, зелёным — признаки законности */
+/** Подсветка: красным — предложение денег, жёлтым — продажа, зелёным — признаки законности */
 export function Highlight({ text }: { text: string }) {
-  const all = [...keywordsSafe.map((k) => [k, 'safe'] as const), ...FUND.map((k) => [k, 'fund'] as const), ...SALE.map((k) => [k, 'sale'] as const)]
-  const re = new RegExp(`(${all.map(([k]) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi')
   return (
     <>
-      {text.split(re).map((p, i) => {
-        const hit = all.find(([k]) => k.toLowerCase() === p.toLowerCase())
-        if (!hit) return <span key={i}>{p}</span>
-        return <mark key={i} className={hit[1] === 'sale' ? '' : hit[1]}>{p}</mark>
+      {text.split(HL_RE).map((p, i) => {
+        if (i % 2 === 0) return <span key={i}>{p}</span>
+        const low = p.toLowerCase()
+        const cls = HL.find(([w]) => low.startsWith(w.toLowerCase()))?.[1]
+        return <mark key={i} className={cls || undefined}>{p}</mark>
       })}
     </>
   )

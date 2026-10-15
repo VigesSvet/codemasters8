@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Faq, Hero, HeroTile, Score, Seg, Toggle, ZoneTag } from '../components/ui'
-import { developers } from '../data/demo'
-import { scoreComplex } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcCheck, IcClock, IcDoc, IcDownload, IcMegaphone, IcTraffic } from '../ui/icons'
 
@@ -13,10 +11,10 @@ const PERIOD = { w: '7–14 октября 2026', m: 'июль — октябр�
 /** Отчёты — шапка с конструктором отчёта (как ипотечный калькулятор), ниже рейтинг и FAQ */
 export default function Reports() {
   const nav = useNavigate()
-  const { complexes, ads, notify } = useStore()
+  const { complexes, ads, developers, notify, riskOf } = useStore()
   const [period, setPeriod] = useState<'w' | 'm' | 'q'>('w')
   const [parts, setParts] = useState({ map: true, rating: true, ads: true, photos: false, method: true })
-  const scored = complexes.map((c) => ({ c, r: scoreComplex(c, ads) })).sort((a, b) => b.r.score - a.r.score)
+  const scored = complexes.map((c) => ({ c, r: riskOf(c) })).sort((a, b) => b.r.score - a.r.score)
   const confirmed = ads.filter((a) => a.status === 'confirmed').length
   const red = scored.filter((x) => x.r.zone === 'red').length
   const series = SERIES[period]
@@ -56,6 +54,7 @@ export default function Reports() {
       </Hero>
 
       <h2 className="t-h2" style={{ marginBottom: 4 }}>Рейтинг риска</h2>
+      <p className="t-sm c2">В колонке «Факторы» серым — подтверждённые, жёлтым — нужна проверка (0 баллов, пока не проверено)</p>
       <table className="ytable">
         <thead><tr><th>#</th><th>Жилой комплекс</th><th>Застройщик</th><th>Факторы</th><th className="r">Балл</th></tr></thead>
         <tbody>
@@ -64,7 +63,10 @@ export default function Reports() {
               <td className="c3 num">{i + 1}</td>
               <td><div className="row" style={{ gap: 12 }}><img src={c.cover} alt="" style={{ width: 56, height: 42, borderRadius: 8, objectFit: 'cover' }} /><div><span className="link">ЖК «{c.name}»</span><div className="t-sm c2">{c.district} · {c.stage}</div></div></div></td>
               <td className="t-sm c2">{developers.find((d) => d.id === c.developerId)?.name}</td>
-              <td><div className="row wrap-f" style={{ gap: 4 }}>{r.factors.filter((f) => f.state === 'hit').map((f) => <span key={f.code} className="tag gray">{f.code}</span>)}{!r.factors.some((f) => f.state === 'hit') && <span className="c3">—</span>}</div></td>
+              <td><div className="row wrap-f" style={{ gap: 4 }}>
+                {r.factors.filter((f) => f.state !== 'clear').map((f) => <span key={f.code} className={`tag ${f.state === 'hit' ? 'gray' : 'yellow'}`} title={f.evidence}>{f.code}{f.state === 'unknown' && '?'}</span>)}
+                {r.factors.every((f) => f.state === 'clear') && <span className="c3">—</span>}
+              </div></td>
               <td className="r"><div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}><ZoneTag zone={r.zone} /><Score value={r.score} zone={r.zone} /></div></td>
             </tr>
           ))}

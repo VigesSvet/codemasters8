@@ -38,3 +38,9 @@
 - Интерфейсные иконки — `@gravity-ui/icons` (MIT, Yandex LLC).
 - Логотипы Instagram, TikTok, Telegram, Facebook — `simple-icons` (CC0). Товарные знаки принадлежат правообладателям, используются только для обозначения площадки.
 - `frontend/public/brands/krisha.png`, `olx.png`, `2gis.png` — фавиконки с сайтов krisha.kz, olx.kz, 2gis.kz; используются только для обозначения источника публикации.
+
+# PDF сигнальной карточки и тесты
+
+- `backend/app/fonts/NotoSans-Regular.ttf`, `NotoSans-Bold.ttf` — Noto Sans, © The Noto Project Authors, SIL Open Font License 1.1 (текст лицензии — `backend/app/fonts/OFL.txt`). Используется в PDF сигнальной карточки: кириллица, казахские буквы, ₸.
+- `reportlab` (BSD, ReportLab Inc.) — сборка PDF сигнальной карточки на бэкенде.
+- `vitest` (MIT) — dev-зависимость фронтенда: проверка паритета TS-движка риска с эталоном Python.

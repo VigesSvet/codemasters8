@@ -1,24 +1,45 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { AuditList } from '../components/Audit'
 import MapView from '../components/MapView'
-import { Faq, Hero, HeroTile, Highlight, LinkCols, PlatformIcon, Score, SectionHead, StatusTag, fmtShort, platformMeta } from '../components/ui'
-import type { Platform, Zone } from '../data/types'
-import { scoreAd, scoreComplex } from '../lib/risk'
+import { Faq, Hero, HeroTile, Highlight, LinkCols, PlatformIcon, Score, SectionHead, StatusTag, fmtDT, fmtShort, platformMeta } from '../components/ui'
+import type { AuditEvent, Platform, Zone } from '../data/types'
+import { errorText } from '../lib/api'
+import { HUMAN_KINDS, SYSTEM } from '../lib/audit'
 import { useStore } from '../lib/store'
-import { IcBuilding, IcClock, IcHelp, IcInbox, IcTraffic } from '../ui/icons'
+import { IcBuilding, IcClock, IcFlag, IcHelp, IcInbox, IcTraffic } from '../ui/icons'
 
 const WEEKS = [3, 5, 4, 7, 6, 9, 8, 12]
+const RECENT = 8
+/** Сколько событий нужных видов брать: среди них бывают автопривязки от «Системы» (по одной на публикацию сида) */
+const RECENT_WINDOW = 40
+/** Действия людей — без системных событий сбора и сверки данных и без автоматической привязки */
+const human = (e: AuditEvent) => e.kind !== 'system' && e.kind !== 'data' && e.who !== SYSTEM
 
 /** Оперативная сводка — шапка с показателями, карта с рейтингом прямо в шапке, ниже карусель свежей рекламы */
 export default function Ops() {
-  const { complexes, ads } = useStore()
+  const { complexes, ads, riskOf, adScoreOf, signals, mode, getAudit, revision } = useStore()
   const nav = useNavigate()
   const [zone, setZone] = useState<Zone | 'all'>('all')
+  const [recent, setRecent] = useState<{ events?: AuditEvent[]; err?: string } | null>(null)
+  const [ver, setVer] = useState(0)
+  // последние действия аналитиков: сервер отбирает виды действий людей (иначе поток системных событий — ручные
+  // добавления, автопривязки — вытеснит их из окна), «Систему» отсекаем здесь; после изменений и восстановления связи — заново
+  useEffect(() => {
+    if (mode !== 'api') return
+    let alive = true
+    getAudit({ kind: HUMAN_KINDS, limit: RECENT_WINDOW }).then(
+      (xs) => { if (alive) setRecent({ events: xs.filter(human).slice(-RECENT).reverse() }) },
+      (e: unknown) => { if (alive) setRecent((r) => ({ events: r?.events, err: errorText(e) })) },
+    )
+    return () => { alive = false }
+  }, [mode, revision, ver]) // eslint-disable-line react-hooks/exhaustive-deps
   const strip = useRef<HTMLDivElement>(null)
-  const scored = useMemo(() => complexes.map((c) => { const r = scoreComplex(c, ads); return { c, r, zone: r.zone, score: r.score } }).sort((a, b) => b.score - a.score), [complexes, ads])
+  const scored = useMemo(() => complexes.map((c) => { const r = riskOf(c); return { c, r, zone: r.zone, score: r.score } }).sort((a, b) => b.score - a.score), [complexes, riskOf])
   const shown = scored.filter((x) => zone === 'all' || x.zone === zone)
   const count = (z: Zone) => scored.filter((x) => x.zone === z).length
   const queue = ads.filter((a) => a.status === 'new' || a.status === 'needs_check')
+  const waiting = signals.filter((s) => s.status === 'new')
   const byPlat = (Object.keys(platformMeta) as Platform[]).map((p) => ({ p, n: ads.filter((a) => a.platform === p).length })).filter((x) => x.n).sort((a, b) => b.n - a.n)
   const maxP = Math.max(...byPlat.map((x) => x.n))
   const idle = scored.filter((x) => x.c.idleDays >= 30).sort((a, b) => b.c.idleDays - a.c.idleDays)
@@ -35,6 +56,7 @@ export default function Ops() {
           <HeroTile icon={<IcTraffic size={32} />} label="Жёлтая зона" value={count('yellow')} tone="yellow" onClick={() => setZone('yellow')} active={zone === 'yellow'} />
           <HeroTile icon={<IcTraffic size={32} />} label="Зелёная зона" value={count('green')} tone="green" onClick={() => setZone('green')} active={zone === 'green'} />
           <HeroTile icon={<IcInbox size={32} />} label="Ждут решения" value={queue.length} tone="blue" to="/queue" />
+          <HeroTile icon={<IcFlag size={32} />} label="Сигналы ждут решения" value={waiting.length} tone={waiting.length ? 'red' : undefined} to="/signals?status=new" />
           <HeroTile icon={<IcClock size={32} />} label="Стройка стоит 30+ дн." value={idle.length} to="/sites" />
         </>}>
         <div className="panel" style={{ gridTemplateColumns: 'minmax(0, 1fr) 380px' }}>
@@ -55,10 +77,34 @@ export default function Ops() {
         </div>
       </Hero>
 
+      {waiting.length > 0 && (
+        <>
+          <SectionHead title="Сигналы ждут решения" to="/signals?status=new" />
+          <div className="sigmini">
+            {waiting.slice(0, 5).map((s) => (
+              <Link key={s.id} to={`/signals/${s.id}`}>
+                <span className="row between"><span className="t-sm c2 num">{s.code}</span><Score value={s.score} zone={s.zone} /></span>
+                <span className="bold clamp2">ЖК «{s.complexName}»</span>
+                <span className="t-xs c2">{s.createdBy} · {fmtDT(s.createdAt)}</span>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+
+      {mode === 'api' && (
+        <>
+          <SectionHead title="Последние действия" right={<span className="t-sm c2">кто, что и когда — из журнала</span>} />
+          {recent?.err && <div className="alog-err t-sm">Журнал не загрузился: {recent.err} <button className="link" onClick={() => setVer((v) => v + 1)}>Повторить</button></div>}
+          {!recent ? <div className="t-sm c2 alist-empty">Загружаем журнал…</div>
+            : recent.events && <div className="alog-grid"><AuditList events={recent.events} links={['ad', 'signal', 'complex']} empty="Действий аналитиков пока нет" /></div>}
+        </>
+      )}
+
       <SectionHead title="Свежая реклама" to="/ads" onPrev={() => scroll(-1)} onNext={() => scroll(1)} />
       <div className="hscroll" ref={strip}>
         {fresh.map((a) => {
-          const c = complexes.find((x) => x.id === a.complexId); const s = scoreAd(a, c)
+          const c = complexes.find((x) => x.id === a.complexId); const s = adScoreOf(a)
           return (
             <Link key={a.id} to={`/ads/${a.id}`} className="pcard">
               <div className="ph">{a.image ? <img src={a.image} alt="" /> : <div style={{ height: '100%', display: 'grid', placeItems: 'center' }}><PlatformIcon p={a.platform} size={44} /></div>}<div className="tl"><span className="tag white">{platformMeta[a.platform].name}</span></div><div className="tr"><Score value={s.score} zone={s.zone} /></div></div>
@@ -100,13 +146,14 @@ export default function Ops() {
         items={[
           ['Почему объект в жёлтой зоне, хотя балл выше 60?', <>Красная зона ставится только при подтверждённых R1 и R2 одновременно. Высокий балл без этой пары — повод проверить, но не нарушение. Подробнее — в <Link className="link" to="/method">методике</Link>.</>],
           ['Что значит «Ждут решения»?', 'Публикации со статусом «Новая» или «Нужна проверка». Их разбирает аналитик в очереди: подтверждает нарушение, отклоняет или запрашивает сведения.'],
-          ['Откуда «Стройка стоит»?', 'Из фото-мониторинга: если на снимках дрона или камеры нет изменений 30 дней и больше. Это дополнительный модуль — он усиливает риск, но сам нарушением не считается.'],
+          ['Что значит «Сигналы ждут решения»?', 'Сигнальные карточки по ЖК, по которым аналитик ещё не решил: подтвердить или вернуть на доработку. Сигнал формируется из карточки ЖК и фиксирует риск и доказательства на момент создания.'],
+          ['Откуда «Стройка стоит»?', <>Из фото-мониторинга: на снимках дрона или камеры нет изменений. Простой 30–89 дней — наблюдение вне балла: аналитик его видит, но балл не меняется. От 90 дней, если это подтверждают два снимка и больше с активностью «нет» или «низкая», — фактор R6 (+5 баллов); если таких снимков меньше двух, R6 помечается «Нужна проверка». R6 также ставится при просрочке срока сдачи на 180 дней и больше. Подробнее — в <Link className="link" to="/method">методике</Link>.</>],
           ['Как часто обновляются данные?', 'Публикации — при каждом сборе и ручном вводе, снимки — после облёта, перечень ГАСК — при его обновлении в Instagram.'],
         ]} />
 
       <LinkCols cols={[
         [['Объекты в красной зоне', '/complexes?zone=red', count('red')], ['Объекты в жёлтой зоне', '/complexes?zone=yellow', count('yellow')], ['Объекты в зелёной зоне', '/complexes?zone=green', count('green')]],
-        [['Очередь проверки', '/queue', queue.length], ['Вся реклама', '/ads', ads.length], ['Добавлены вручную', '/ads', ads.filter((a) => a.source === 'manual').length]],
+        [['Очередь проверки', '/queue', queue.length], ['Сигналы на решении', '/signals?status=new', waiting.length], ['Вся реклама', '/ads', ads.length], ['Добавлены вручную', '/ads', ads.filter((a) => a.source === 'manual').length]],
         [['Фото-мониторинг', '/sites', idle.length], ['Застройщики', '/developers', 7], ['Отчёт для руководства', '/reports', 1]],
       ]} />
       <div className="row t-sm c2" style={{ gap: 6, marginTop: 24 }}><IcHelp size={16} />Данные демонстрационные. Решение о нарушении принимает сотрудник.</div>

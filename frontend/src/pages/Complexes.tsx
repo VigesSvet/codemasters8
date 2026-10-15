@@ -1,9 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { FilterPop, Modal, NeedsCheck, Score, ZoneTag, fmtDate } from '../components/ui'
-import { developers } from '../data/demo'
 import type { Stage, Tri, Zone } from '../data/types'
-import { scoreComplex } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcChevronRight, IcClose, IcGrid, IcHeart, IcList, IcMap, IcSearch, IcSliders } from '../ui/icons'
 
@@ -14,7 +12,7 @@ type Sort = 'risk' | 'end' | 'progress'
 
 /** Выдача ЖК по образцу realty.yandex.ru/…/novostrojka: полоса фильтров, чипы, сортировка, карточки */
 export default function Complexes() {
-  const { complexes, ads } = useStore()
+  const { complexes, ads, developers, riskOf } = useStore()
   const nav = useNavigate()
   const [sp] = useSearchParams()
   const [view, setView] = useState<'grid' | 'list'>('grid')
@@ -27,7 +25,7 @@ export default function Complexes() {
   const [allF, setAllF] = useState(false)
   const [fav, setFav] = useState<string[]>([])
 
-  const all = useMemo(() => complexes.map((c) => ({ c, r: scoreComplex(c, ads), dev: developers.find((d) => d.id === c.developerId), nAds: ads.filter((a) => a.complexId === c.id).length })), [complexes, ads])
+  const all = useMemo(() => complexes.map((c) => ({ c, r: riskOf(c), dev: developers.find((d) => d.id === c.developerId), nAds: ads.filter((a) => a.complexId === c.id).length })), [complexes, ads, developers, riskOf])
   const chips: [string, string, (x: (typeof all)[number]) => boolean][] = [
     ['check', 'Нужна проверка', (x) => x.r.needsCheck],
     ['nolist', 'Нет в перечне ГАСК', (x) => x.c.inPublishedList === 'no'],

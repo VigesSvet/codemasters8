@@ -2,9 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import MapView from '../components/MapView'
 import { Cell, Highlight, PlatformIcon, Score, StatusTag, Toggle, ZoneTag, fmtShort } from '../components/ui'
-import { developers } from '../data/demo'
 import type { Tri, Zone } from '../data/types'
-import { scoreComplex } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcCamera, IcCheck, IcChevronLeft, IcChevronRight, IcClose, IcHelp, IcList, IcMegaphone, IcSearch, IcTraffic, IcUsers } from '../ui/icons'
 
@@ -12,7 +10,7 @@ type F = Zone | 'all' | 'check'
 
 /** Карта: панель как у Такси слева, метки-ценники как у Недвижимости, категории как у Карт */
 export default function Dashboard() {
-  const { complexes, ads } = useStore()
+  const { complexes, ads, developers, riskOf } = useStore()
   const nav = useNavigate()
   const [q, setQ] = useState('')
   const [f, setF] = useState<F>('all')
@@ -21,12 +19,12 @@ export default function Dashboard() {
   const [withAds, setWithAds] = useState(false)
   const [idle, setIdle] = useState(false)
 
-  const scored = useMemo(() => complexes.map((c) => { const r = scoreComplex(c, ads); return { c, r, zone: r.zone, score: r.score } }).sort((a, b) => b.score - a.score), [complexes, ads])
+  const scored = useMemo(() => complexes.map((c) => { const r = riskOf(c); return { c, r, zone: r.zone, score: r.score } }).sort((a, b) => b.score - a.score), [complexes, riskOf])
   const visible = useMemo(() => scored.filter((x) =>
     (f === 'all' || (f === 'check' ? x.r.needsCheck : x.zone === f))
     && (!q || `${x.c.name} ${x.c.address} ${developers.find((d) => d.id === x.c.developerId)?.bin}`.toLowerCase().includes(q.toLowerCase()))
     && (!withAds || ads.some((a) => a.complexId === x.c.id && a.status !== 'dismissed'))
-    && (!idle || x.c.idleDays >= 30)), [scored, f, q, withAds, idle, ads])
+    && (!idle || x.c.idleDays >= 30)), [scored, f, q, withAds, idle, ads, developers])
   const n = (z: F) => scored.filter((x) => (z === 'all' ? true : z === 'check' ? x.r.needsCheck : x.zone === z)).length
   const queue = ads.filter((a) => a.status === 'new' || a.status === 'needs_check').length
   const s = scored.find((x) => x.c.id === sel)

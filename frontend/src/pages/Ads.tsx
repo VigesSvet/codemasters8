@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { FilterPop, Highlight, PageTitle, PlatformIcon, Score, StatusTag, adKey, fmtDT, platformMeta, statusMeta } from '../components/ui'
 import type { AdStatus, Platform, Zone } from '../data/types'
-import { scoreAd } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcClose, IcPlus, IcRefresh, IcSearch } from '../ui/icons'
 
@@ -11,7 +10,7 @@ type Sort = 'risk' | 'date' | 'reach'
 
 /** Лента рекламы — как выдача объявлений realty.yandex.ru/…/kupit/kvartira: фильтры сверху, строки с фото */
 export default function Ads() {
-  const { ads, complexes, notify } = useStore()
+  const { ads, complexes, notify, adScoreOf } = useStore()
   const [q, setQ] = useState('')
   const [plat, setPlat] = useState<Platform[]>([])
   const [status, setStatus] = useState<AdStatus[]>([])
@@ -19,7 +18,7 @@ export default function Ads() {
   const [chip, setChip] = useState('')
   const [sort, setSort] = useState<Sort>('risk')
 
-  const all = useMemo(() => ads.map((a) => { const c = complexes.find((x) => x.id === a.complexId); return { a, c, s: scoreAd(a, c) } }), [ads, complexes])
+  const all = useMemo(() => ads.map((a) => { const c = complexes.find((x) => x.id === a.complexId); return { a, c, s: adScoreOf(a) } }), [ads, complexes, adScoreOf])
   type R = (typeof all)[number]
   const chips: [string, string, (x: R) => boolean][] = [
     ['queue', 'Ждут решения', (x) => x.a.status === 'new' || x.a.status === 'needs_check'],
@@ -55,7 +54,7 @@ export default function Ads() {
       </div>
 
       <PageTitle title="Реклама новостроек в Усть-Каменогорске"
-        sub={<>Подсветка: <mark>продажа</mark>, <mark className="fund">сбор денег</mark>, <mark className="safe">признаки законности</mark></>}
+        sub={<>Подсветка: <mark>продажа</mark>, <mark className="fund">предложение денег (R2)</mark>, <mark className="safe">признаки законности</mark></>}
         actions={<><button className="btn g m" onClick={() => notify('Сбор публикаций запущен (демо)')}><IcRefresh />Запустить сбор</button><Link to="/ads/new" className="btn y m"><IcPlus />Добавить вручную</Link></>} />
       <div className="chips" style={{ marginTop: -8, marginBottom: 24 }}>
         {chips.map(([k, l, fn]) => <button key={k} className={`chip ${chip === k ? 'on' : ''}`} onClick={() => setChip(chip === k ? '' : k)}>{l}<span className="n">{all.filter(fn).length}</span></button>)}

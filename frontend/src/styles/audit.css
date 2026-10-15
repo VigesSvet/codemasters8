@@ -1,0 +1,62 @@
+/* ───── Блок C: вход, связь с сервером, журнал действий ───── */
+
+/* Индикатор режима в шапке: точка + подпись; клик — поповер с адресом API и проверкой связи */
+.conn { height: 32px; padding: 0 12px 0 10px; border-radius: 10px; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; white-space: nowrap; background: var(--fill); color: var(--text-2); }
+.conn:hover { background: var(--fill-hover); color: var(--text); }
+.conn.down { background: var(--red-bg); color: var(--red-ink); }
+.conn.demo { background: var(--amber-bg); color: var(--amber-ink); }
+.cdot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; background: var(--text-3); }
+.cdot.green { background: var(--green); box-shadow: 0 0 0 3px var(--green-bg); }
+.cdot.yellow { background: var(--amber); }
+.cdot.red { background: var(--red); }
+.conn.loading .cdot { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.3; } }
+.conn-pop { left: auto; right: 0; width: 380px; display: flex; flex-direction: column; gap: 12px; }
+.conn-pop h5 { margin: 0; }
+.conn-pop .kv { grid-template-columns: 116px minmax(0, 1fr); gap: 6px 12px; font-size: 13px; }
+
+/* Баннер ошибки под шапкой: что не получилось, почему, «Повторить» и «Скрыть» */
+.api-banner { background: var(--red-bg); color: var(--red-ink); border-bottom: 1px solid rgba(194, 45, 27, 0.16); }
+.api-banner .wrap { min-height: 48px; padding-top: 8px; padding-bottom: 8px; gap: 12px; }
+.api-banner .txt { flex: 1; min-width: 0; font-size: 14px; line-height: 18px; }
+.api-banner .txt b { font-weight: 600; }
+.api-banner .c2 { color: rgba(194, 45, 27, 0.7); }
+
+/* Вход: карточки демо-сотрудников */
+.who-list { display: flex; flex-direction: column; gap: 8px; }
+.cell.who { border-radius: var(--r-l); box-shadow: inset 0 0 0 1px var(--line-2); padding: 10px 16px; min-height: 64px; }
+.cell.who + .cell.who::before { display: none; }
+.cell.who:hover { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.24); }
+.cell.who.on { box-shadow: inset 0 0 0 2px var(--yellow); }
+.cell.who .ava { width: 40px; height: 40px; font-size: 14px; }
+
+/* Журнал: автор, что сделано, когда, вид события, ссылки */
+.alist { display: flex; flex-direction: column; }
+.aitem { display: flex; align-items: flex-start; gap: 14px; padding: 12px 0; }
+.aitem + .aitem { border-top: 1px solid var(--line); }
+.aitem .ava { margin-top: 1px; }
+.ava.sys { background: var(--fill); color: var(--text-2); }
+.aitem .main { flex: 1; min-width: 0; }
+.aitem .what { line-height: 19px; overflow-wrap: anywhere; }
+.aitem .meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.aitem .meta .tag { height: 22px; font-size: 12px; }
+.aitem .meta a.tag:hover { color: var(--link); box-shadow: inset 0 0 0 1px var(--link); }
+.alist-empty { padding: 12px 0; }
+.alog-note { padding: 10px 14px; margin-bottom: 8px; border-radius: var(--r-m); line-height: 18px; color: var(--amber-ink); }
+.alog-err { padding: 8px 12px; margin: 4px 0 8px; border-radius: var(--r-m); background: var(--red-bg); color: var(--red-ink); }
+.alog-err .link { margin-left: 6px; }
+
+/* Сводка: последние действия в две колонки */
+.alog-grid .alist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px; }
+.alog-grid .aitem + .aitem { border-top: 0; }
+.alog-grid .aitem { border-bottom: 1px solid var(--line); }
+@media (max-width: 900px) { .alog-grid .alist { grid-template-columns: minmax(0, 1fr); } }
+
+/* Счётчики в сегменте фильтра журнала: на тёмной активной кнопке — светлые */
+.seg button.on .c3 { color: rgba(255, 255, 255, 0.56); }
+
+/* Чекбоксы тем запроса сведений */
+.cell.chk-row { min-height: 48px; }
+.chk { width: 22px; height: 22px; border-radius: 6px; flex: none; display: grid; place-items: center; box-shadow: inset 0 0 0 1.5px var(--line-2); background: #fff; color: #fff; transition: background 0.12s; }
+.chk.on { background: var(--dark); box-shadow: none; }
+.cell.chk-row:hover .chk:not(.on) { box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, 0.4); }

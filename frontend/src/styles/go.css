@@ -390,6 +390,17 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 .factor .p { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .factor.clear .p, .factor.unknown .p { color: var(--text-3); text-decoration: line-through; font-weight: 400; }
 
+/* Доказательства к факторам: публикации с цитатами, документы, обращения, снимки */
+.ev-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.ev { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px 12px; border-radius: var(--r-m); background: var(--bg); font-size: 13px; line-height: 17px; }
+.ev > svg { color: var(--text-2); }
+a.ev:hover { background: var(--fill-hover); }
+.ev .meta { color: var(--text-2); }
+.ev .q { margin-top: 2px; color: var(--text); }
+.ev img.th { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; }
+.obs { display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; padding: 10px 0; align-items: start; }
+.obs + .obs { border-top: 1px solid var(--line); }
+
 .steps { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
 .steps div { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--text-3); }
 .steps div::before { content: ''; height: 4px; border-radius: 2px; background: var(--fill); }
@@ -621,3 +632,19 @@ button.pcard:hover .big, a.pcard:hover .big { color: var(--link); }
 /* колонки тянутся на всю высоту доски — бросать можно в любое место колонки */
 .board { align-items: stretch; }
 .bcol { min-height: 420px; }
+
+/* Риск по модели §5: методика (кейсы ТЗ, словари) и карточка ЖК (нужна проверка, готовность, обращения) */
+.cases .promo-tile { gap: 8px; }
+.calc-line { font-family: var(--font-display); font-size: 20px; line-height: 24px; font-weight: 700; }
+.case-live { display: flex; align-items: center; gap: 8px; background: #fff; border-radius: var(--r-m); padding: 8px 12px; margin-top: auto; }
+.chips.static .chip { cursor: default; }
+.chips.static .chip:not(.fund):not(.safe):hover { background: var(--fill); }
+.box.warn { background: var(--amber-bg); }
+.box.warn .wf { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; padding: 8px 0; align-items: start; }
+.box.warn .wf + .wf { border-top: 1px solid rgba(154, 97, 0, 0.16); }
+.box.warn .wf .code { height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: #fff; color: var(--amber-ink); }
+.src-line { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; font-size: 14px; line-height: 18px; color: var(--text-2); }
+.src-line > svg { flex: none; margin-top: 1px; }
+.src-line.none { color: var(--amber-ink); }
+.promo-tile .big { font-family: var(--font-display); font-size: 32px; line-height: 36px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.promo-tile.empty-v .big { color: var(--text-3); }

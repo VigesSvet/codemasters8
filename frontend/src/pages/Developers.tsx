@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Cell, Faq, Hero, HeroTile, LinkCols, Modal, Score, SectionHead, Seg, ZoneTag, fmtDate } from '../components/ui'
-import { developers } from '../data/demo'
-import { scoreComplex } from '../lib/risk'
+import { model } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcCrane, IcMegaphone, IcSearch, IcUsers, IcWarning } from '../ui/icons'
 
@@ -11,15 +10,15 @@ type F = 'all' | 'risk' | 'unfinished' | 'ads'
 
 /** Застройщики — шапка с поиском по БИН, карточки-профили, FAQ «Как проверить застройщика» */
 export default function Developers() {
-  const { complexes, ads } = useStore()
+  const { complexes, ads, developers, riskOf } = useStore()
   const [open, setOpen] = useState<string | null>(null)
   const [q, setQ] = useState('')
   const [f, setF] = useState<F>('all')
   const data = useMemo(() => developers.map((d, i) => {
-    const objs = complexes.filter((c) => c.developerId === d.id).map((c) => ({ c, r: scoreComplex(c, ads) }))
+    const objs = complexes.filter((c) => c.developerId === d.id).map((c) => ({ c, r: riskOf(c) }))
     const max = objs.reduce<(typeof objs)[number] | undefined>((m, x) => (!m || x.r.score > m.r.score ? x : m), undefined)
     return { d, objs, max, color: COLORS[i % COLORS.length], adsCount: ads.filter((a) => objs.some((o) => o.c.id === a.complexId)).length }
-  }).sort((a, b) => (b.max?.r.score ?? 0) - (a.max?.r.score ?? 0)), [complexes, ads])
+  }).sort((a, b) => (b.max?.r.score ?? 0) - (a.max?.r.score ?? 0)), [complexes, ads, developers, riskOf])
   type D = (typeof data)[number]
   const test: Record<F, (x: D) => boolean> = { all: () => true, risk: (x) => x.max?.r.zone === 'red', unfinished: (x) => x.d.unfinished > 0, ads: (x) => x.adsCount > 0 }
   const rows = data.filter((x) => test[f](x) && (!q || `${x.d.name} ${x.d.bin} ${x.d.director}`.toLowerCase().includes(q.toLowerCase())))
@@ -70,16 +69,16 @@ export default function Developers() {
 
       <Faq title="Как проверить застройщика" sub="Что смотреть, прежде чем отправлять объект на проверку."
         items={[
-          ['Где взять сведения о компании по БИН?', 'В открытом реестре юрлиц: дата регистрации, руководитель, учредители. Молодая компания с одним незавершённым объектом — повод присмотреться внимательнее (фактор R6).'],
+          ['Где взять сведения о компании по БИН?', 'В открытом реестре юрлиц: дата регистрации, руководитель, учредители. Молодая компания с одним незавершённым объектом — повод присмотреться внимательнее, но не факт нарушения: это наблюдение вне балла O2.'],
           ['Как понять, может ли застройщик привлекать деньги дольщиков?', 'Нужна гарантия Казахстанской жилищной компании (ЕО) либо разрешение МИО вместе с проектным финансированием банка. Перечень таких ЖК ГАСК публикует в Instagram.'],
           ['Что делать, если у застройщика несколько объектов?', 'Откройте профиль: риск считается по каждому ЖК отдельно, в карточке видно, какой объект тянет балл вверх.'],
-          ['Почему у застройщика с хорошей историей может быть красная зона?', 'Зона считается по объекту, а не по компании. Если новый ЖК рекламируется без гарантии ЕО — это R1 + R2, независимо от прошлых сданных домов.'],
+          ['Почему у застройщика с хорошей историей может быть красная зона?', 'Зона считается по объекту, а не по компании. Красная — когда по новому ЖК установлено отсутствие основания (R1) и есть прямое предложение внести деньги (R2), независимо от прошлых сданных домов.'],
         ]} />
 
       <LinkCols cols={[
         [['С объектами в красной зоне', '/complexes?zone=red', data.filter(test.risk).length], ['С незавершёнными объектами', '/developers', data.filter(test.unfinished).length]],
         [['Новостройки на контроле', '/complexes', complexes.length], ['Реклама застройщиков', '/ads', ads.length]],
-        [['Очередь проверки', '/queue', ads.filter((a) => a.status === 'new' || a.status === 'needs_check').length], ['Методика скоринга', '/method', 6]],
+        [['Очередь проверки', '/queue', ads.filter((a) => a.status === 'new' || a.status === 'needs_check').length], ['Методика скоринга', '/method', model.factors.length]],
       ]} />
 
       {cur && (

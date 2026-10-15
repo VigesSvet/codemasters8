@@ -1,17 +1,19 @@
 import { useState } from 'react'
 import { DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Faq, Modal, Hero, HeroTile, Highlight, PlatformIcon, Score, StatusDot, Seg, adKey, fmtShort, statusMeta } from '../components/ui'
 import type { Ad, AdStatus, Complex } from '../data/types'
+import { initialsOf } from '../lib/audit'
 import { scoreAd } from '../lib/risk'
 import { useStore } from '../lib/store'
-import { IcCheck, IcClock, IcClose, IcHelp, IcInbox, IcUsers } from '../ui/icons'
+import { IcCheck, IcClock, IcClose, IcFlag, IcHelp, IcInbox, IcUsers } from '../ui/icons'
 
 const COLS: AdStatus[] = ['new', 'needs_check', 'in_review', 'confirmed', 'dismissed']
 type Item = { a: Ad; c?: Complex; s: ReturnType<typeof scoreAd> }
 
 function QCard({ x, overlay }: { x: Item; overlay?: boolean }) {
   const { a, c, s } = x
+  const { analysts } = useStore()
   return (
     <div className={`bcard ${overlay ? 'lift' : ''}`}>
       <div className="row between">
@@ -22,7 +24,7 @@ function QCard({ x, overlay }: { x: Item; overlay?: boolean }) {
       <div className="t-sm c2 clamp2" style={{ lineHeight: '19px' }}>{a.text}</div>
       <div className="row between">
         <span className="t-xs c3">{fmtShort(a.date)}</span>
-        {a.assignee ? <span className="ava sm" title={a.assignee}>ВН</span> : <span className="ava sm ghost" title="Без исполнителя" />}
+        {a.assignee ? <span className="ava sm" title={a.assignee}>{initialsOf(a.assignee, analysts)}</span> : <span className="ava sm ghost" title="Без исполнителя" />}
       </div>
     </div>
   )
@@ -53,16 +55,19 @@ function Column({ st, items, dragging, fromSt, onOpen }: { st: AdStatus; items: 
 
 /** Очередь проверки: доска по статусам, карточки перетаскиваются между колонками */
 export default function Queue() {
-  const { ads, complexes, setAdStatus, notify } = useStore()
+  const { ads, complexes, setAdStatus, notify, adScoreOf, signals, user } = useStore()
   const nav = useNavigate()
   const [drag, setDrag] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<Item | null>(null)
-  const [reason, setReason] = useState('')
+  // черновик основания — по публикации: при ошибке сохранения не теряется
+  const [reasons, setReasons] = useState<Record<string, string>>({})
+  const reason = confirm ? reasons[confirm.a.id] ?? '' : ''
   // мышь: начинаем тащить после сдвига на 6px, чтобы клик по карточке открывал её; тач — после удержания
   const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: 6 } }), useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }), useSensor(KeyboardSensor))
   const [who, setWho] = useState<'all' | 'me' | 'none'>('all')
-  const items = ads.map((a) => { const c = complexes.find((x) => x.id === a.complexId); return { a, c, s: scoreAd(a, c) } })
-    .filter(({ a }) => who === 'all' || (who === 'me' ? !!a.assignee : !a.assignee))
+  const me = user?.name
+  const items = ads.map((a) => { const c = complexes.find((x) => x.id === a.complexId); return { a, c, s: adScoreOf(a) } })
+    .filter(({ a }) => who === 'all' || (who === 'me' ? !!a.assignee && a.assignee === me : !a.assignee))
     .sort((x, y) => y.s.score - x.s.score)
   const n = (st: AdStatus) => ads.filter((a) => a.status === st).length
   const dragItem = items.find((x) => x.a.id === drag)
@@ -70,11 +75,22 @@ export default function Queue() {
     setDrag(null)
     const it = items.find((x) => x.a.id === e.active.id), to = e.over?.id as AdStatus | undefined
     if (!it || !to || to === it.a.status) return
-    if (to === 'confirmed') { setReason(''); setConfirm(it); return }
-    setAdStatus(it.a.id, to, 'Нестерова А.')
-    notify(`${adKey(it.a.id)} → «${statusMeta[to].name}»`)
+    if (to === 'confirmed') { setConfirm(it); return }
+    // перенос виден сразу; при ошибке стор вернёт карточку и покажет баннер
+    setAdStatus(it.a.id, to, { assignee: me }).then((ok) => { if (ok) notify(`${adKey(it.a.id)} → «${statusMeta[to].name}»`) })
+  }
+  const confirmIt = (x: Item, why: string) => {
+    setConfirm(null)
+    setAdStatus(x.a.id, 'confirmed', { assignee: me, comment: why }).then((ok) => {
+      if (!ok) return
+      setReasons((r) => ({ ...r, [x.a.id]: '' }))
+      notify('Нарушение подтверждено, основание записано в журнал')
+    })
   }
   const top = items.find((x) => x.a.status === 'new' || x.a.status === 'needs_check')
+  // карточка открывается сразу (статус виден оптимистично); её журнал перечитается, когда PATCH сохранится — по revision стора
+  const take = (x: Item) => { void setAdStatus(x.a.id, 'in_review', { assignee: me }); nav(`/ads/${x.a.id}`) }
+  const sigNew = signals.filter((x) => x.status === 'new').length
 
   return (
     <>
@@ -88,6 +104,7 @@ export default function Queue() {
           <HeroTile icon={<IcCheck size={32} />} label="Нарушение подтверждено" value={n('confirmed')} tone="red" />
           <HeroTile icon={<IcClose size={32} />} label="Отклонено" value={n('dismissed')} tone="green" />
           <HeroTile icon={<IcUsers size={32} />} label="Без исполнителя" value={ads.filter((a) => !a.assignee && a.status !== 'dismissed').length} onClick={() => setWho('none')} active={who === 'none'} />
+          <HeroTile icon={<IcFlag size={32} />} label="Сигналы на решении" value={sigNew} tone={sigNew ? 'red' : undefined} to="/signals?status=new" />
         </>}>
         {top && (
           <div className="panel" style={{ gridTemplateColumns: 'minmax(0, 1fr) 320px' }}>
@@ -101,7 +118,7 @@ export default function Queue() {
             </div>
             <div className="pr" style={{ justifyContent: 'center', gap: 8 }}>
               <div className="row between"><span className="c2 t-sm">Оценка</span><Score value={top.s.score} zone={top.s.zone} /></div>
-              <button className="btn y full" onClick={() => { setAdStatus(top.a.id, 'in_review', 'Нестерова А.'); nav(`/ads/${top.a.id}`) }}>Взять в работу</button>
+              <button className="btn y full" onClick={() => take(top)}>Взять в работу</button>
             </div>
           </div>
         )}
@@ -117,14 +134,14 @@ export default function Queue() {
 
       {confirm && (
         <Modal title="Подтвердить нарушение?" onClose={() => setConfirm(null)}
-          footer={<><button className="btn g" onClick={() => setConfirm(null)}>Отмена</button><button className="btn y" disabled={!reason.trim()} onClick={() => { setAdStatus(confirm.a.id, 'confirmed', 'Нестерова А.'); notify('Нарушение подтверждено, решение записано в журнал'); setConfirm(null); setReason('') }}>Подтвердить</button></>}>
+          footer={<><button className="btn g" onClick={() => setConfirm(null)}>Отмена</button><button className="btn y" disabled={!reason.trim()} onClick={() => confirmIt(confirm, reason.trim())}>Подтвердить</button></>}>
           <div className="row" style={{ gap: 14, padding: '4px 24px 8px' }}>
             {confirm.a.image ? <img src={confirm.a.image} alt="" style={{ width: 72, height: 54, borderRadius: 10, objectFit: 'cover' }} /> : <PlatformIcon p={confirm.a.platform} size={48} />}
             <div style={{ minWidth: 0 }}><div className="bold">{confirm.c ? `ЖК «${confirm.c.name}»` : 'ЖК не определён'}</div><div className="t-sm c2">{confirm.a.account} · оценка {confirm.s.score}</div></div>
           </div>
           <div style={{ padding: '8px 24px 4px' }}>
             <label className="t-sm c2" htmlFor="qreason">Основание решения — попадёт в журнал</label>
-            <textarea id="qreason" className="input" style={{ marginTop: 6 }} autoFocus placeholder="Например: сверено с картотекой ГАСК, гарантии ЕО и разрешения МИО нет" value={reason} onChange={(e) => setReason(e.target.value)} />
+            <textarea id="qreason" className="input" style={{ marginTop: 6 }} autoFocus maxLength={2000} placeholder="Например: сверено с картотекой ГАСК, гарантии ЕО и разрешения МИО нет" value={reason} onChange={(e) => setReasons((r) => ({ ...r, [confirm.a.id]: e.target.value }))} />
           </div>
         </Modal>
       )}
@@ -134,6 +151,7 @@ export default function Queue() {
           ['В каком порядке разбирать?', 'Сверху вниз: карточки отсортированы по оценке. Кнопка «Взять в работу» в шапке открывает самую рискованную необработанную публикацию.'],
           ['Можно ли подтвердить нарушение перетаскиванием?', 'Да, но при переносе в «Нарушение» система попросит основание решения — оно попадёт в журнал. Без основания статус не сменится.'],
           ['Что делать, если ЖК не определён?', 'Откройте публикацию и привяжите объект вручную — оценка пересчитается.'],
+          ['Как из публикации дойти до сигнала?', <>Откройте публикацию → привязанный ЖК → «Сформировать сигнал» (или сразу в публикации: «Сформировать сигнал по ЖК»). В сигнал попадут риск объекта и все его публикации, обращения и снимки на этот момент. Решение по сигналу — подтвердить или вернуть на доработку — в разделе <Link className="link" to="/signals">Сигналы</Link>.</>],
         ]} />
     </>
   )

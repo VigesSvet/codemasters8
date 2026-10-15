@@ -13,7 +13,9 @@ services:
       retries: 20
 
   api:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://saq:saq@db:5432/saq
     ports: ["8000:8000"]
@@ -26,7 +28,8 @@ services:
     command: sh -c "npm ci && npx vite --host 0.0.0.0 --port 5180"
     environment:
       API_PROXY: http://api:8000
-    volumes: [./frontend:/app, /app/node_modules]
+    # ../shared из /app → /shared: фронтенд импортирует общую модель риска и сид
+    volumes: [./frontend:/app, /app/node_modules, ./shared:/shared:ro]
     ports: ["5180:5180"]
     depends_on: [api]
 

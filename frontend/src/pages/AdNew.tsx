@@ -2,10 +2,12 @@ import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Cell, Highlight, Modal, PageTitle, PlatformIcon, Score, ZoneTag, platformMeta } from '../components/ui'
 import type { Ad, Platform } from '../data/types'
-import { scoreAd } from '../lib/risk'
+import { model, scoreAd } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcCheck, IcChevronDown, IcClose, IcSearch, IcUpload } from '../ui/icons'
 
+// Подсказка по названию в тексте — гипотеза (ниже порога linkConfirmed); выбор ЖК вручную — факт
+const AUTO_LINK = model.thresholds.autoLinkConfidence
 const SAMPLE = 'Старт продаж в новом ЖК «Тихий берег»! Квартиры у набережной, бронь от 300 000 ₸, первый взнос 15%, рассрочка от застройщика. Сдача 2027. Продаётся по договору долевого участия.'
 
 /** Ручное добавление — раскладка панели заказа такси: поля «Откуда/Куда», плитки тарифов, жёлтая кнопка внизу */
@@ -24,11 +26,24 @@ export default function AdNew() {
   const [over, setOver] = useState(false)
   const [modal, setModal] = useState(false)
   const [cq, setCq] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const suggestion = useMemo(() => complexes.find((c) => `${text} ${ocr ?? ''}`.toLowerCase().includes(c.name.toLowerCase())), [text, ocr, complexes])
   const linked = complexes.find((c) => c.id === (complexId || suggestion?.id))
-  const draft: Ad = { id: `m${Date.now().toString(36)}`, platform, account: account || '@unknown', url, date: new Date().toISOString(), text, ocr, image: img, complexId: linked?.id, matchConfidence: complexId ? 1 : suggestion ? 0.8 : 0, source: 'manual', status: 'new' }
+  // id и дата — в момент сохранения; на оценку черновика они не влияют
+  const draft: Ad = { id: '', platform, account: account || '@unknown', url, date: '', text, ocr, image: img, complexId: linked?.id, matchConfidence: complexId ? 1 : suggestion ? AUTO_LINK : 0, source: 'manual', status: 'new' }
   const s = scoreAd(draft, linked)
+  // открываем разбор только после сохранения: при ошибке форма остаётся заполненной, причина — в баннере
+  const save = () => {
+    const ad: Ad = { ...draft, id: `m${Date.now().toString(36)}`, date: new Date().toISOString() }
+    setSaving(true)
+    addAd(ad).then((ok) => {
+      setSaving(false)
+      if (!ok) return
+      notify('Публикация добавлена в ленту')
+      nav(`/ads/${ad.id}`)
+    })
+  }
 
   const onFile = (f?: File) => {
     if (!f) return
@@ -81,7 +96,7 @@ export default function AdNew() {
             <label>Жилой комплекс</label>
             <button className="input row between" style={{ textAlign: 'left' }} onClick={() => setModal(true)}>
               <span>{linked ? `ЖК «${linked.name}»` : <span className="c3">Определится по тексту</span>}</span>
-              <span className="row c2 t-sm" style={{ gap: 6 }}>{complexId ? 'выбран вручную' : suggestion ? 'найден в тексте' : ''}<IcChevronDown size={16} /></span>
+              <span className="row c2 t-sm" style={{ gap: 6 }}>{complexId ? 'выбран вручную' : suggestion ? `найден в тексте · ${Math.round(AUTO_LINK * 100)}%, гипотеза` : ''}<IcChevronDown size={16} /></span>
             </button>
           </div>
         </div>
@@ -98,7 +113,7 @@ export default function AdNew() {
               <span>Признаки законности</span><span className="bold num" style={{ color: 'var(--green)' }}>{s.signals.safe.length}</span>
               <span>Объект</span><span>{linked ? linked.name : '—'}</span>
             </div>
-            <button className="btn y full" style={{ marginTop: 20 }} disabled={!text} onClick={() => { addAd(draft); notify('Публикация добавлена в ленту'); nav(`/ads/${draft.id}`) }}>{text ? 'Сохранить и оценить' : 'Введите текст объявления'}</button>
+            <button className="btn y full" style={{ marginTop: 20 }} disabled={!text || saving} onClick={save}>{saving ? 'Сохраняем…' : text ? 'Сохранить и оценить' : 'Введите текст объявления'}</button>
           </div>
         </aside>
       </div>
