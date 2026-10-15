@@ -1,57 +1,82 @@
-import { Button, StructuredListBody, StructuredListCell, StructuredListHead, StructuredListRow, StructuredListWrapper, Tag, Tile } from '@carbon/react'
-import { DocumentPdf, Printer } from '@carbon/icons-react'
-import { PageHeader, Score, ZoneTag, platformMeta } from '../components/ui'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Faq, Hero, HeroTile, Score, Seg, Toggle, ZoneTag } from '../components/ui'
 import { developers } from '../data/demo'
-import type { Platform } from '../data/types'
 import { scoreComplex } from '../lib/risk'
 import { useStore } from '../lib/store'
+import { IcCheck, IcClock, IcDoc, IcDownload, IcMegaphone, IcTraffic } from '../ui/icons'
 
-const WEEKS = [3, 5, 4, 7, 6, 9, 8, 12]
+const SERIES = { w: [3, 5, 4, 7, 6, 9, 8, 12], m: [14, 18, 22, 31], q: [41, 56, 67] }
+const LABELS = { w: ['н34', 'н35', 'н36', 'н37', 'н38', 'н39', 'н40', 'н41'], m: ['июль', 'авг', 'сен', 'окт'], q: ['II кв', 'III кв', 'IV кв'] }
+const PERIOD = { w: '7–14 октября 2026', m: 'июль — октябрь 2026', q: 'II — IV квартал 2026' }
 
+/** Отчёты — шапка с конструктором отчёта (как ипотечный калькулятор), ниже рейтинг и FAQ */
 export default function Reports() {
+  const nav = useNavigate()
   const { complexes, ads, notify } = useStore()
+  const [period, setPeriod] = useState<'w' | 'm' | 'q'>('w')
+  const [parts, setParts] = useState({ map: true, rating: true, ads: true, photos: false, method: true })
   const scored = complexes.map((c) => ({ c, r: scoreComplex(c, ads) })).sort((a, b) => b.r.score - a.r.score)
-  const byPlat = (Object.keys(platformMeta) as Platform[]).map((p) => ({ p, n: ads.filter((a) => a.platform === p).length })).filter((x) => x.n).sort((a, b) => b.n - a.n)
-  const maxP = Math.max(...byPlat.map((x) => x.n))
+  const confirmed = ads.filter((a) => a.status === 'confirmed').length
+  const red = scored.filter((x) => x.r.zone === 'red').length
+  const series = SERIES[period]
+  const max = Math.max(...series)
+  const pages = 1 + Object.values(parts).filter(Boolean).length
+  const part = (k: keyof typeof parts, label: string, sub: string) => (
+    <div className="crow"><span>{label}<span className="t-sm c2" style={{ display: 'block' }}>{sub}</span></span><Toggle on={parts[k]} onChange={(v) => setParts((p) => ({ ...p, [k]: v }))} /></div>
+  )
+
   return (
     <>
-      <PageHeader crumbs={[['SAQ', '/'], ['Отчёты']]} title="Еженедельная сводка" sub="Период 07.10.2026 — 14.10.2026 · Усть-Каменогорск"
-        actions={<><Button kind="tertiary" renderIcon={Printer} onClick={() => window.print()}>Печать</Button><Button renderIcon={DocumentPdf} onClick={() => notify('Отчёт сформирован (PDF, демо)', 'info')}>Скачать PDF</Button></>} />
-      <div className="page">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <Tile>
-            <div className="label-01" style={{ marginBottom: 16 }}>Публикации с признаками продажи, по неделям</div>
-            <div className="bars">{WEEKS.map((v, i) => <div key={i}><span>{v}</span><b style={{ height: v * 13, opacity: i === WEEKS.length - 1 ? 1 : 0.45 }} /></div>)}</div>
-            <div className="label-01" style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}><span>нед. 34</span><span>нед. 41</span></div>
-          </Tile>
-          <Tile>
-            <div className="label-01" style={{ marginBottom: 16 }}>По площадкам</div>
-            {byPlat.map(({ p, n }) => (
-              <div key={p} style={{ display: 'grid', gridTemplateColumns: '100px 1fr 30px', gap: 12, alignItems: 'center', padding: '6px 0' }}>
-                <span>{platformMeta[p].name}</span>
-                <div style={{ height: 16, background: 'var(--cds-layer-02)' }}><div style={{ width: `${(n / maxP) * 100}%`, height: '100%', background: 'var(--cds-interactive)' }} /></div>
-                <span className="mono" style={{ textAlign: 'right' }}>{n}</span>
-              </div>
-            ))}
-          </Tile>
+      <Hero crumb="Отчёты" title="Отчёт для руководства" info={`Период: ${PERIOD[period]} · Усть-Каменогорск`}
+        tiles={<>
+          <HeroTile icon={<IcMegaphone size={32} />} label="Новых публикаций" value={ads.length} to="/ads" />
+          <HeroTile icon={<IcCheck size={32} />} label="Подтверждено нарушений" value={confirmed} tone="red" to="/queue" />
+          <HeroTile icon={<IcTraffic size={32} />} label="Объектов в красной зоне" value={red} tone="red" to="/complexes?zone=red" />
+          <HeroTile icon={<IcClock size={32} />} label="Среднее время решения" value="1,4 дн." to="/queue" />
+          <HeroTile icon={<IcDoc size={32} />} label="Отчётов за месяц" value={4} onClick={() => notify('Архив отчётов (демо)')} />
+          <HeroTile icon={<IcDownload size={32} />} label="Скачиваний" value={11} onClick={() => notify('Статистика (демо)')} />
+        </>}>
+        <div className="panel" style={{ gridTemplateColumns: 'minmax(0, 1fr) 380px' }}>
+          <div className="pl">
+            <div className="row between" style={{ marginBottom: 8 }}><h2 className="t-h2">Соберите отчёт</h2><Seg value={period} onChange={setPeriod} items={[['w', 'Неделя'], ['m', 'Месяц'], ['q', 'Квартал']]} /></div>
+            {part('map', 'Карта-светофор', 'Все объекты города по зонам риска')}
+            {part('rating', 'Рейтинг риска', 'Объекты по убыванию балла с факторами')}
+            {part('ads', 'Реклама за период', 'Публикации с признаками продажи и решения')}
+            {part('photos', 'Фото-мониторинг', 'Простой площадок по снимкам')}
+            {part('method', 'Методика', 'Как считается балл — для приложения')}
+          </div>
+          <div className="pr">
+            <span className="c2 t-sm">Реклама с признаками продажи</span>
+            <div className="row" style={{ alignItems: 'flex-end', gap: 8, margin: '8px 0 16px' }}><span className="big-num">{series[series.length - 1]}</span><span className="tag red" style={{ marginBottom: 8 }}>+{Math.round((series[series.length - 1] / series[series.length - 2] - 1) * 100)}%</span></div>
+            <div className="bars" style={{ height: 130 }}>{series.map((v, i) => <div key={i}><b style={{ height: (v / max) * 100, background: i === series.length - 1 ? 'var(--yellow)' : '#fff' }} /><span className="t-xs c3">{LABELS[period][i]}</span></div>)}</div>
+            <button className="btn y full" style={{ marginTop: 20 }} onClick={() => notify(`Отчёт сформирован: ${pages} стр. (PDF, демо)`)}><IcDownload />Скачать PDF · {pages} стр.</button>
+          </div>
         </div>
-        <h2 className="section-title">Рейтинг риска</h2>
-        <StructuredListWrapper aria-label="Рейтинг">
-          <StructuredListHead><StructuredListRow head>{['#', 'ЖК', 'Застройщик', 'Факторы', 'Балл', 'Зона'].map((h) => <StructuredListCell head key={h}>{h}</StructuredListCell>)}</StructuredListRow></StructuredListHead>
-          <StructuredListBody>
-            {scored.map(({ c, r }, i) => (
-              <StructuredListRow key={c.id}>
-                <StructuredListCell className="mono">{String(i + 1).padStart(2, '0')}</StructuredListCell>
-                <StructuredListCell noWrap>ЖК «{c.name}»</StructuredListCell>
-                <StructuredListCell>{developers.find((d) => d.id === c.developerId)?.name}</StructuredListCell>
-                <StructuredListCell>{r.factors.filter((f) => f.state === 'hit').map((f) => <Tag key={f.code} size="sm" type="outline">{f.code}</Tag>)}</StructuredListCell>
-                <StructuredListCell><Score value={r.score} zone={r.zone} /></StructuredListCell>
-                <StructuredListCell><ZoneTag zone={r.zone} size="sm" /></StructuredListCell>
-              </StructuredListRow>
-            ))}
-          </StructuredListBody>
-        </StructuredListWrapper>
-      </div>
+      </Hero>
+
+      <h2 className="t-h2" style={{ marginBottom: 4 }}>Рейтинг риска</h2>
+      <table className="ytable">
+        <thead><tr><th>#</th><th>Жилой комплекс</th><th>Застройщик</th><th>Факторы</th><th className="r">Балл</th></tr></thead>
+        <tbody>
+          {scored.map(({ c, r }, i) => (
+            <tr key={c.id} onClick={() => nav(`/complexes/${c.id}`)}>
+              <td className="c3 num">{i + 1}</td>
+              <td><div className="row" style={{ gap: 12 }}><img src={c.cover} alt="" style={{ width: 56, height: 42, borderRadius: 8, objectFit: 'cover' }} /><div><span className="link">ЖК «{c.name}»</span><div className="t-sm c2">{c.district} · {c.stage}</div></div></div></td>
+              <td className="t-sm c2">{developers.find((d) => d.id === c.developerId)?.name}</td>
+              <td><div className="row wrap-f" style={{ gap: 4 }}>{r.factors.filter((f) => f.state === 'hit').map((f) => <span key={f.code} className="tag gray">{f.code}</span>)}{!r.factors.some((f) => f.state === 'hit') && <span className="c3">—</span>}</div></td>
+              <td className="r"><div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}><ZoneTag zone={r.zone} /><Score value={r.score} zone={r.zone} /></div></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <Faq title="Вопросы об отчёте"
+        items={[
+          ['Кому отправлять отчёт?', 'Руководителю департамента и в ГАСК. Отчёт — внутренний документ: в нём рекомендации системы и решения аналитиков, автоматически в госорганы он не уходит.'],
+          ['Можно ли использовать отчёт как доказательство нарушения?', 'Нет. Отчёт показывает приоритеты для проверки. Нарушение подтверждает сотрудник по документам: картотеке ГАСК, гарантиям ЕО, разрешениям МИО.'],
+          ['Почему цифры за неделю и месяц не совпадают с лентой?', 'В отчёт попадают публикации, собранные за выбранный период. Лента показывает всё, что есть в базе сейчас.'],
+        ]} />
     </>
   )
 }

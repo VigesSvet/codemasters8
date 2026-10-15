@@ -6,24 +6,28 @@
 
 ## Экраны
 
-Интерфейс собран на IBM Carbon Design System (`@carbon/react`, иконки `@carbon/icons-react`, шрифт IBM Plex). Паттерны взяты у реальных сервисов:
+Интерфейс собран в визуальном языке сервисов Яндекса. Основной образец — Яндекс Недвижимость (раздел «Новостройки»): шапка с вкладками, полоса фильтров «Комнат ⌄», выдача ЖК карточками, страница ЖК с панелью «Об объекте», метки-ценники на карте. Панель на карте — как у Яндекс Go, круглые цветные категории — как у Яндекс Карт. Палитра: текст `rgba(0,0,0,.92)`, серые кнопки `#F3F1F1`, жёлтый `#FED42B`, ссылки `#0065D9`, семантика зелёный `#00B341` / оранжевый `#F59D00` / красный `#E4402D`.
 
-| Путь | Экран | Образец |
-|---|---|---|
-| `/login` | Вход сотрудника | главная SIERA (тонкая линейка с датой, знак по центру, фото) |
-| `/` | Карта объектов: поиск, фильтр по зонам, карточка объекта | 2ГИС |
-| `/ops` | Оперативная сводка: индикаторы, список, карта, графики | ArcGIS Dashboards |
-| `/complexes` | Реестр ЖК: таблица или карточки, фильтры-чипы | IBM Carbon Data table, Linear filters, Korter |
-| `/complexes/:id` | Карточка ЖК: галерея, этапы, основания, риск R1–R6 | страница ЖК Korter / BS Holding |
-| `/ads` | Мониторинг рекламы: список по статусам или карточки | список задач Linear |
-| `/ads/:id` | Разбор публикации: текст, OCR, сигналы, активность, свойства, решение | карточка задачи Linear |
-| `/ads/new` | Ручное добавление + OCR скриншота | формы Carbon |
-| `/queue` | Очередь проверки: доска с drag-and-drop | доска Linear |
-| `/developers` | Застройщики (раскрываемые строки) | Carbon Data table |
-| `/sites` | Фото-мониторинг (доп. модуль) | — |
-| `/method`, `/sources`, `/reports`, `/residents` | Методика, источники, отчёты, идея push жителям | Carbon |
+- UI-кит: `frontend/src/styles/go.css`
+- Иконки: оригинальные SVG сервисов Яндекса (`frontend/src/ui/yandex-svg.ts`), недостающие — [Gravity UI Icons](https://gravity-ui.com/icons)
+- Логотипы площадок: Simple Icons (CC0) для Instagram, TikTok, Telegram, Facebook; фавиконки сайтов Krisha, OLX, 2ГИС (`frontend/public/brands`)
+- Шрифт: YS Text / YS Display (файлы Яндекса, см. CREDITS.md)
+- Карта: тайлы Яндекс Карт в MapLibre GL (широты пересчитаны под проекцию EPSG:3395)
 
-Тема: светлая (Carbon g10) или тёмная (g100) — кнопка в шапке.
+| Путь | Экран |
+|---|---|
+| `/login` | Вход сотрудника |
+| `/` | Карта: поиск ЖК, фильтр по зонам, список, карточка объекта, промо-плашки |
+| `/ops` | Оперативная сводка |
+| `/complexes` | Реестр ЖК: фильтры слева, список или карточки |
+| `/complexes/:id` | Карточка ЖК: галерея, ход строительства, основания, риск R1–R6 |
+| `/ads` | Лента рекламы с подсветкой формулировок |
+| `/ads/:id` | Разбор публикации: OCR, сигналы, история, решение аналитика |
+| `/ads/new` | Ручное добавление + OCR скриншота, оценка на лету |
+| `/queue` | Очередь проверки: доска с перетаскиванием |
+| `/developers` | Застройщики |
+| `/sites` | Фото-мониторинг (доп. модуль) |
+| `/method`, `/sources`, `/reports`, `/residents` | Методика, источники, отчёты, идея push жителям |
 
 ## Запуск
 
@@ -81,6 +85,6 @@ npm run dev            # http://localhost:5180, /api проксируется н
 
 ## Стек
 
-React 19 + TypeScript + Vite, IBM Carbon (`@carbon/react`), MapLibre GL (подложка CARTO / OpenStreetMap) · FastAPI, SQLAlchemy 2, PostgreSQL 16 · Tesseract OCR (rus/kaz) в Docker-образе.
+React 19 + TypeScript + Vite, собственный UI-кит, MapLibre GL (подложка CARTO / OpenStreetMap) · FastAPI, SQLAlchemy 2, PostgreSQL 16 · Tesseract OCR (rus/kaz) в Docker-образе.
 
-Шрифты: IBM Plex Sans / Mono, Cormorant Garamond (OFL, через @fontsource). Carbon и иконки Carbon — Apache-2.0. Фото: Wikimedia Commons — см. [CREDITS.md](CREDITS.md).
+Шрифт: Onest (OFL, через @fontsource). Иконки нарисованы для проекта. Фото: Wikimedia Commons — см. [CREDITS.md](CREDITS.md).

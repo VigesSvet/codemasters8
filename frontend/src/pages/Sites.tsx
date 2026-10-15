@@ -1,58 +1,96 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Button, Tile } from '@carbon/react'
-import { Drone, Upload } from '@carbon/icons-react'
 import Compare from '../components/Compare'
-import { PageHeader, TriTag, ZoneDot, fmtDate } from '../components/ui'
+import { Faq, Hero, HeroTile, SectionHead, Seg, fmtDate } from '../components/ui'
+import type { Tri } from '../data/types'
 import { useStore } from '../lib/store'
+import { IcCamera, IcCheck, IcClock, IcClose, IcCrane, IcDrone, IcHelp, IcUpload } from '../ui/icons'
 
+type F = 'all' | 'idle' | 'ok' | 'none'
+
+/** Фото-мониторинг — шапка с показателями и сравнением снимков в главном блоке, ниже карусель площадок */
 export default function Sites() {
   const { complexes, notify } = useStore()
-  const list = complexes.filter((c) => c.stage !== 'введён').sort((a, b) => b.idleDays - a.idleDays)
-  const [sel, setSel] = useState(list.find((c) => c.photos.length > 2 && c.idleDays === 0)?.id ?? list[0].id)
+  const strip = useRef<HTMLDivElement>(null)
+  const all = complexes.filter((c) => c.stage !== 'введён').sort((a, b) => b.idleDays - a.idleDays)
+  const [f, setF] = useState<F>('all')
+  const test: Record<F, (c: (typeof all)[number]) => boolean> = { all: () => true, idle: (c) => c.idleDays >= 30, ok: (c) => c.photos.length > 0 && c.idleDays < 30, none: (c) => c.photos.length === 0 }
+  const list = all.filter(test[f])
+  const [sel, setSel] = useState(all.find((c) => c.photos.length > 2 && c.idleDays === 0)?.id ?? all[0].id)
   const c = complexes.find((x) => x.id === sel)!
   const last = c.photos[c.photos.length - 1]
+  const signs = last ? ([['Ограждение', last.fence], ['Мусорный контейнер', last.bins], ['Мойка колёс', last.wheelWash]] as [string, Tri | undefined][]) : []
+  const scroll = (d: number) => strip.current?.scrollBy({ left: d * strip.current.clientWidth, behavior: 'smooth' })
 
   return (
     <>
-      <PageHeader crumbs={[['SAQ', '/'], ['Фото-мониторинг']]} title="Фото-мониторинг площадок"
-        sub="Дополнительный модуль. Снимки с дрона или камеры сравниваются во времени: простой 90+ дней, ограждение, мусорный контейнер, мойка колёс. Управление дроном не входит в MVP."
-        actions={<><Button kind="tertiary" renderIcon={Drone} onClick={() => notify('Заявка на облёт отправлена (демо)', 'info')}>Заявка на облёт</Button><Button renderIcon={Upload}>Загрузить снимки</Button></>} />
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', minHeight: 'calc(100vh - 12rem)' }}>
-        <div style={{ borderRight: '1px solid var(--cds-border-subtle-01)', background: 'var(--cds-layer-01)' }}>
-          {list.map((x) => (
-            <button key={x.id} className="obj-row" onClick={() => setSel(x.id)} style={{ gridTemplateColumns: '56px 1fr auto', background: sel === x.id ? 'var(--cds-layer-selected-01)' : undefined, boxShadow: sel === x.id ? 'inset 3px 0 0 var(--cds-interactive)' : undefined }}>
-              <img src={x.cover} alt="" style={{ width: 56, height: 42 }} />
-              <div><div className="t">{x.name}</div><div className="a">{x.photos.length} снимков · {x.photos.at(-1) ? fmtDate(x.photos.at(-1)!.date) : 'нет данных'}</div></div>
-              <span className="label-01" style={{ display: 'flex', gap: 6, alignItems: 'center' }}><ZoneDot zone={x.idleDays >= 90 ? 'red' : x.idleDays >= 30 ? 'yellow' : 'green'} />{x.idleDays ? `${x.idleDays} дн.` : 'идёт'}</span>
-            </button>
+      <Hero crumb="Фото-мониторинг" title="Фото-мониторинг площадок"
+        info="Дополнительный модуль: снимки дрона и камер сравниваются во времени. Управление дроном не входит в MVP"
+        actions={<><button className="btn g m" style={{ background: '#fff' }} onClick={() => notify('Заявка на облёт отправлена (демо)')}><IcDrone />Заявка на облёт</button><button className="btn y m" onClick={() => notify('Загрузка снимков (демо)')}><IcUpload />Загрузить снимки</button></>}
+        tiles={<>
+          <HeroTile icon={<IcCrane size={32} />} label="Строящихся объектов" value={all.length} onClick={() => setF('all')} active={f === 'all'} />
+          <HeroTile icon={<IcClock size={32} />} label="Стройка стоит 30+ дн." value={all.filter(test.idle).length} tone="red" onClick={() => setF('idle')} active={f === 'idle'} />
+          <HeroTile icon={<IcCheck size={32} />} label="Работы идут" value={all.filter(test.ok).length} tone="green" onClick={() => setF('ok')} active={f === 'ok'} />
+          <HeroTile icon={<IcCamera size={32} />} label="Без снимков" value={all.filter(test.none).length} tone="yellow" onClick={() => setF('none')} active={f === 'none'} />
+          <HeroTile icon={<IcCamera size={32} />} label="Снимков всего" value={all.reduce((s, x) => s + x.photos.length, 0)} onClick={() => setF('all')} />
+          <HeroTile icon={<IcDrone size={32} />} label="Следующий облёт" value="20 окт." tone="blue" onClick={() => notify('График облётов (демо)')} />
+        </>}>
+        <div className="panel fade" key={c.id} style={{ gridTemplateColumns: 'minmax(0, 1fr) 360px' }}>
+          <div style={{ padding: 8 }}>
+            {c.photos.length >= 2 ? <Compare before={c.photos[0]} after={last} /> : c.photos.length === 1 ? <div className="ph" style={{ aspectRatio: '16/9', borderRadius: 16 }}><img src={c.photos[0].src} alt="" /></div> : <div className="drop" style={{ aspectRatio: '16/9' }}><div><IcCamera /><div className="bold" style={{ marginTop: 8 }}>Снимков ещё нет</div><div className="t-sm c2">Загрузите фото или отправьте заявку на облёт</div></div></div>}
+          </div>
+          <div className="pr">
+            <Link to={`/complexes/${c.id}?tab=photos`} className="t-h2 link" style={{ color: 'var(--text)' }}>ЖК «{c.name}»</Link>
+            <span className="t-sm c2" style={{ marginTop: 4 }}>{c.address} · {c.stage}, {c.progress}%</span>
+            <div style={{ margin: '18px 0' }}>
+              {c.idleDays >= 30
+                ? <><span className="big-num" style={{ color: c.idleDays >= 90 ? 'var(--red)' : 'var(--amber)' }}>{c.idleDays}</span><span className="c2"> дней без изменений</span></>
+                : <><span className="big-num" style={{ color: 'var(--green)' }}>{c.photos.length}</span><span className="c2"> {c.photos.length ? 'снимков · работы идут' : 'снимков'}</span></>}
+            </div>
+            {last && <div className="kv" style={{ gridTemplateColumns: '1fr auto' }}>
+              <span>Последний снимок</span><span>{fmtDate(last.date)}</span>
+              <span>Источник</span><span>{last.source}</span>
+              {signs.map(([k, v]) => [<span key={k}>{k}</span>, <span key={k + 'v'} className="row" style={{ gap: 4, color: v === 'yes' ? 'var(--green)' : v === 'no' ? 'var(--red)' : 'var(--text-3)' }}>{v === 'yes' ? <IcCheck size={14} /> : v === 'no' ? <IcClose size={14} /> : <IcHelp size={14} />}{v === 'yes' ? 'есть' : v === 'no' ? 'нет' : 'не видно'}</span>])}
+            </div>}
+            <Link to={`/complexes/${c.id}`} className="btn d full" style={{ marginTop: 'auto', paddingTop: 0 }}>Карточка объекта</Link>
+          </div>
+        </div>
+      </Hero>
+
+      <SectionHead title={`Площадки · ${list.length}`} onPrev={() => scroll(-1)} onNext={() => scroll(1)}
+        right={<Seg value={f} onChange={setF} items={[['all', 'Все'], ['idle', 'Стоят'], ['ok', 'Идут'], ['none', 'Без снимков']]} />} />
+      <div className="hscroll" ref={strip}>
+        {list.map((x) => (
+          <button key={x.id} className={`pcard ${sel === x.id ? 'sel' : ''}`} onClick={() => { setSel(x.id); window.scrollTo({ top: 0, behavior: 'smooth' }) }} style={{ textAlign: 'left' }}>
+            <div className="ph"><img src={x.photos.at(-1)?.src ?? x.cover} alt="" /><div className="tl"><span className="tag white">{x.photos.length} снимков</span></div></div>
+            <span className="big">{x.name}</span>
+            <span className="t-sm c2">{x.photos.at(-1) ? `последний ${fmtDate(x.photos.at(-1)!.date)}` : 'снимков нет'}</span>
+            <span style={{ marginTop: 6 }}><span className={`tag ${x.photos.length === 0 ? 'gray' : x.idleDays >= 90 ? 'red' : x.idleDays >= 30 ? 'yellow' : 'green'}`}>{x.photos.length === 0 ? 'нет данных' : x.idleDays ? `стоит ${x.idleDays} дн.` : 'работы идут'}</span></span>
+          </button>
+        ))}
+      </div>
+
+      {c.photos.length > 0 && <>
+        <SectionHead title={`Хронология · ЖК «${c.name}»`} />
+        <div className="gcards" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
+          {c.photos.map((p, i) => (
+            <div key={i} className="pcard">
+              <div className="ph"><img src={p.src} alt="" /><div className="tl"><span className="tag white">{p.source}</span></div></div>
+              <span className="big" style={{ fontSize: 17 }}>{fmtDate(p.date)}</span>
+              <span className="t-sm c2">{p.note ?? '—'}</span>
+              <span style={{ marginTop: 4 }}><span className={`tag ${p.activity === 'есть' ? 'green' : p.activity === 'низкая' ? 'yellow' : 'red'}`}>активность: {p.activity}</span></span>
+            </div>
           ))}
         </div>
-        <div className="page" key={c.id}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h2 className="cds--type-productive-heading-04">ЖК «{c.name}»</h2>
-            <Button kind="ghost" size="sm" as={Link} to={`/complexes/${c.id}`}>Карточка объекта</Button>
-          </div>
-          {c.photos.length >= 2 ? <Compare before={c.photos[0]} after={last} /> : c.photos.length === 1 ? <img src={c.photos[0].src} alt="" style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover' }} /> : <Tile>Снимков ещё нет</Tile>}
-          {last && (
-            <div className="facts">
-              <div><div className="l">Активность</div><div className="v" style={{ display: 'flex', gap: 8, alignItems: 'center' }}><ZoneDot zone={last.activity === 'есть' ? 'green' : last.activity === 'низкая' ? 'yellow' : 'red'} />{last.activity}</div></div>
-              <div><div className="l">Ограждение</div><div className="v"><TriTag v={last.fence ?? 'unknown'} /></div></div>
-              <div><div className="l">Мусорный контейнер</div><div className="v"><TriTag v={last.bins ?? 'unknown'} /></div></div>
-              <div><div className="l">Мойка колёс</div><div className="v"><TriTag v={last.wheelWash ?? 'unknown'} /></div></div>
-            </div>
-          )}
-          <div className="label-01" style={{ marginBottom: 8 }}>Хронология снимков</div>
-          <div style={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: '220px', gap: 16, overflowX: 'auto' }}>
-            {c.photos.map((p, i) => (
-              <div key={i} className="pcard" style={{ cursor: 'default' }}>
-                <div className="ph"><img src={p.src} alt="" /></div>
-                <div className="b"><div className="n mono">{fmtDate(p.date)}</div><div className="a">{p.source} · {p.note ?? '—'}</div></div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      </>}
+
+      <Faq title="Как работает фото-мониторинг"
+        items={[
+          ['Откуда снимки?', 'С дронов управления цифровизации ВКО и стационарных камер на площадках. Можно загрузить и фото с выезда — дата берётся из файла.'],
+          ['Как система понимает, что стройка стоит?', 'Сравнивает соседние снимки: если техника, этажность и ограждение не меняются 30+ дней, ставится отметка «стоит». После 90 дней фактор R4 даёт 10 баллов.'],
+          ['Зачем ограждение, контейнер и мойка колёс?', 'Это обязательные элементы строительной площадки по требованиям ГАСК. Их отсутствие — повод для выезда, но в риск-скоринг ТЗ они не входят.'],
+          ['Нужно ли управлять дроном из системы?', 'Нет. В MVP только приём и сравнение снимков; заявка на облёт отправляется в управление цифровизации.'],
+        ]} />
     </>
   )
 }

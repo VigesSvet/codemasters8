@@ -1,36 +1,34 @@
 import { useNavigate } from 'react-router-dom'
-import { Button, PasswordInput, TextInput, Theme } from '@carbon/react'
-import { ArrowRight, Password } from '@carbon/icons-react'
+import { IcBuilding, IcKey } from '../ui/icons'
 
-/** Вход — раскладка главной SIERA: тонкая верхняя линейка с датой, центрированный знак, фото на всю ширину, курсивная строка */
+/** Вход — как страницы входа сервисов Яндекса: фото слева, справа короткая форма с жёлтой кнопкой */
 export default function Login() {
   const nav = useNavigate()
-  const now = new Date()
   return (
-    <Theme theme="g100">
-      <div className="siera">
-        <div className="siera-bar">
-          <div className="l"><span>{now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).toUpperCase()}</span><span>{now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} ALMT ◐</span></div>
-          <div className="mark">SAQ QURYLYS</div>
-          <div className="r"><span>ДЭР · ГАСК · ВКО</span><span>RU / KZ ■</span></div>
-        </div>
-        <div className="siera-hero">
-          <img src="/img/city-panorama.jpg" alt="Усть-Каменогорск" />
-          <div className="tag">Строится под контролем.</div>
-          <form className="siera-form" onSubmit={(e) => { e.preventDefault(); nav('/') }}>
-            <div className="cap"><span>Вход для сотрудников</span><span>■</span></div>
-            <TextInput id="login" labelText="Логин" defaultValue="v.nurlanova" />
-            <PasswordInput id="pwd" labelText="Пароль" defaultValue="demo-password" showPasswordLabel="Показать" hidePasswordLabel="Скрыть" />
-            <Button type="submit" renderIcon={ArrowRight} style={{ maxWidth: 'none', width: '100%' }}>Войти</Button>
-            <Button kind="tertiary" renderIcon={Password} style={{ maxWidth: 'none', width: '100%' }} onClick={() => nav('/')}>Войти по ЭЦП (NCALayer)</Button>
-          </form>
-        </div>
-        <div className="siera-cols">
-          <div className="sq">Өскемен</div>
-          <div>Мониторинг рекламы<br />долевого строительства</div>
-          <div>Цифровой помощник уполномоченного органа. ИИ находит рекламу и считает риск, решение о нарушении принимает сотрудник.</div>
+    <div className="login">
+      <div className="hero">
+        <img src="/img/city-panorama.jpg" alt="Усть-Каменогорск" />
+        <div className="cap">
+          <span className="tag white" style={{ marginBottom: 16 }}>ДЭР · ГАСК · ВКО</span>
+          <h2>Строится<br />под контролем</h2>
+          <p style={{ marginTop: 14, maxWidth: 520, fontSize: 17, lineHeight: '23px', opacity: 0.9 }}>Мониторинг рекламы долевого строительства и риск-скоринг жилых комплексов Өскемена</p>
         </div>
       </div>
-    </Theme>
+      <div className="side">
+        <div className="row between">
+          <div className="logo"><span className="mark"><IcBuilding /></span>SAQ Qurylys</div>
+          <span className="t-sm c2">RU · KZ</span>
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); nav('/') }}>
+          <h1 className="t-h1">Войдите в рабочее место</h1>
+          <p className="c2" style={{ margin: '4px 0 20px', lineHeight: '21px' }}>Для сотрудников уполномоченного органа. ИИ находит рекламу и считает риск — решение принимаете вы.</p>
+          <input className="input" defaultValue="v.nurlanova" aria-label="Логин" />
+          <input className="input" type="password" defaultValue="demo-password" aria-label="Пароль" />
+          <button type="submit" className="btn y full" style={{ marginTop: 6 }}>Войти</button>
+          <button type="button" className="btn g full" onClick={() => nav('/')}><IcKey />Войти по ЭЦП (NCALayer)</button>
+        </form>
+        <div className="t-xs c3">© 2026 SAQ Qurylys · данные демонстрационные</div>
+      </div>
+    </div>
   )
 }
