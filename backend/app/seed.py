@@ -10,7 +10,7 @@ from sqlalchemy.engine import Engine
 from . import models
 from .db import Base, SessionLocal, engine as default_engine
 from .pdf import PLATFORMS
-from .risk_model import ALMATY, SHARED, T
+from .risk_model import ALMATY, SHARED
 from .schemas import AuditKind
 
 log = logging.getLogger("saq")
@@ -54,18 +54,22 @@ def _applicants(n: int) -> str:
 
 
 def _ad_events(ad: Dict[str, Any], names: Dict[str, str]) -> Iterator[Dict[str, Any]]:
+    """Сбор публикации, гипотеза ИИ о ЖК (при сборе) и — если было — подтверждение привязки аналитиком."""
     at = utc(ad["date"])
     cid = ad.get("complexId") if ad.get("complexId") in names else None
     platform = PLATFORMS.get(ad["platform"], ad["platform"])
     yield {"kind": "system", "at": at, "complex_id": cid,
            "what": AD_SOURCES.get(ad.get("source") or "manual", AD_SOURCES["manual"]).format(platform=platform)}
-    if cid:
-        conf = ad.get("matchConfidence") or 0
-        verdict = "факт" if conf >= T["linkConfirmed"] else "гипотеза, нужна проверка аналитиком"
-        what = f"Привязка к ЖК «{names[cid]}» по совпадению: уверенность {int(conf * 100 + 0.5)}% — {verdict}"
-    else:
-        what = "ЖК не определён — нужна ручная привязка"
-    yield {"kind": "link", "at": at, "complex_id": cid, "what": what}
+    if not cid:
+        yield {"kind": "link", "at": at, "complex_id": None, "what": "ЖК не определён — нужна ручная привязка"}
+        return
+    conf = int((ad.get("matchConfidence") or 0) * 100 + 0.5)
+    when = "при добавлении публикации" if (ad.get("source") or "manual") == "manual" else "при сборе публикации"
+    yield {"kind": "ai", "at": at, "complex_id": cid,
+           "what": f"Гипотеза ИИ: ЖК «{names[cid]}», уверенность {conf}% (совпадение {when}) — нужна проверка аналитиком"}
+    if ad.get("linkConfirmedBy") and ad.get("linkConfirmedAt"):
+        yield {"kind": "link", "at": utc(ad["linkConfirmedAt"]), "complex_id": cid, "who": ad["linkConfirmedBy"],
+               "what": f"Привязка к ЖК «{names[cid]}» подтверждена аналитиком"}
 
 
 def _complex_events(c: Dict[str, Any], appeals: List[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
@@ -95,7 +99,7 @@ def _complex_events(c: Dict[str, Any], appeals: List[Dict[str, Any]]) -> Iterato
 def journal(data: Dict[str, Any]) -> List[models.AuditEvent]:
     """Исходный журнал демо-БД, детерминированно: публикации (сбор и привязка), сведения по ЖК, явные события seed.audit."""
     names = {c["id"]: c["name"] for c in data["complexes"]}
-    out = [models.AuditEvent(ad_id=ad["id"], who=SYSTEM, **e) for ad in data["ads"] for e in _ad_events(ad, names)]
+    out = [models.AuditEvent(ad_id=ad["id"], **{"who": SYSTEM, **e}) for ad in data["ads"] for e in _ad_events(ad, names)]
     for c in data["complexes"]:
         appeals = [a for a in data.get("appeals", []) if a["complexId"] == c["id"]]
         out += [models.AuditEvent(complex_id=c["id"], kind="data", who=SYSTEM, **e) for e in _complex_events(c, appeals)]
@@ -116,7 +120,8 @@ def seed(db) -> None:
     db.flush()
     db.add_all(_row(models.Complex, c) for c in data["complexes"])
     db.flush()
-    db.add_all(_row(models.Ad, a) for a in data["ads"])
+    times = ("linkConfirmedAt", "termsReviewAt")  # время решений аналитика — в DateTime (UTC), как у записей из API
+    db.add_all(_row(models.Ad, {**a, **{k: utc(a[k]) for k in times if a.get(k)}}) for a in data["ads"])
     db.add_all(_row(models.Appeal, a) for a in data.get("appeals", []))
     db.flush()
     db.add_all(journal(data))

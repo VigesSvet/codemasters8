@@ -44,3 +44,9 @@
 - `backend/app/fonts/NotoSans-Regular.ttf`, `NotoSans-Bold.ttf` — Noto Sans, © The Noto Project Authors, SIL Open Font License 1.1 (текст лицензии — `backend/app/fonts/OFL.txt`). Используется в PDF сигнальной карточки: кириллица, казахские буквы, ₸.
 - `reportlab` (BSD, ReportLab Inc.) — сборка PDF сигнальной карточки на бэкенде.
 - `vitest` (MIT) — dev-зависимость фронтенда: проверка паритета TS-движка риска с эталоном Python.
+
+# ИИ-анализ и OCR
+
+- [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) (Apache License 2.0) — распознавание скриншотов объявлений. Ставится в Docker-образ API пакетами Debian `tesseract-ocr`, `tesseract-ocr-rus`, `tesseract-ocr-kaz` вместе с языковыми данными tessdata (Apache License 2.0) и вызывается как отдельная программа; в репозиторий не входит.
+- `pillow` (MIT-CMU) — проверка и предобработка изображения перед OCR.
+- Извлечение условий оплаты и сопоставление публикаций с ЖК — собственный код (`backend/app/ai/`), без сторонних моделей и внешних API.

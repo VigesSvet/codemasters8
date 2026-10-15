@@ -224,7 +224,7 @@ export default function ComplexCard() {
                     <div className="row between">
                       <div className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={20} /><span className="bold">{a.account}</span><span className="t-sm c2">{fmtDT(a.date)}</span></div>
                       <div className="row" style={{ gap: 6 }}>
-                        {!linkConfirmed(a) && <span className="tag yellow" title="Гипотеза ИИ: аналитик ещё не подтвердил, что публикация про этот ЖК">привязка {Math.round((a.matchConfidence || 0) * 100)}% — гипотеза</span>}
+                        {!linkConfirmed(a) && <span className="tag yellow" title="Гипотеза ИИ: аналитик ещё не подтвердил, что публикация про этот ЖК, — в балл не входит">привязка — гипотеза ИИ {Math.round((a.matchConfidence || 0) * 100)}%</span>}
                         <StatusTag s={a.status} />
                       </div>
                     </div>

@@ -8,7 +8,8 @@
 Правила:
 - балл = min(100, сумма весов подтверждённых факторов);
 - неизвестные сведения → 0 баллов и «Нужна проверка» (state = "unknown");
-- привязка публикации к ЖК с уверенностью ниже порога — гипотеза, а не факт;
+- привязка публикации к ЖК — факт только после подтверждения аналитиком; уверенность ИИ — гипотеза, а не факт;
+- решение аналитика «это не предложение внести деньги» снимает R2 по публикации (R3 не затрагивается);
 - при действующей гарантии ЕО отсутствие отдельного разрешения МИО — не R1;
 - красная зона только при score ≥ 60 и подтверждённых R1 + R2.
 """
@@ -58,8 +59,14 @@ def quote(text: Optional[str], marker: str) -> Optional[str]:
 
 
 def link_confirmed(ad: Obj) -> bool:
-    """Привязка к ЖК — факт, если уверенность не ниже порога или аналитик подтвердил публикацию."""
-    return ad.get("status") == "confirmed" or (ad.get("matchConfidence") or 0) >= T["linkConfirmed"]
+    """Привязка к ЖК — факт только после решения аналитика: он подтвердил привязку или саму публикацию.
+    Уверенность сопоставления (matchConfidence) — оценка ИИ: сколь угодно высокая, она остаётся гипотезой."""
+    return ad.get("status") == "confirmed" or bool((ad.get("linkConfirmedBy") or "").strip())
+
+
+def terms_rejected(ad: Obj) -> bool:
+    """Аналитик отклонил условия оплаты: «это не предложение внести деньги» — публикация не даёт R2."""
+    return ad.get("termsReview") == "rejected"
 
 
 def _pct(x: float) -> int:
@@ -91,8 +98,11 @@ def _factor(code: str, state: str, reason: str, values: Optional[Obj] = None, it
 
 
 def _ad_item(ad: Obj, marker: str) -> Obj:
+    # цитата — из текста публикации, иначе из распознанного скриншота; quoteFrom говорит, откуда она взята
+    in_text = quote(ad.get("text"), marker)
+    q = in_text or quote(ad.get("ocr"), marker)
     return _item(kind="ad", ref=ad["id"], label=ad.get("account"), source=ad.get("platform"), date=ad.get("date"),
-                 url=ad.get("url"), marker=marker, quote=quote(ad.get("text"), marker) or quote(ad.get("ocr"), marker))
+                 url=ad.get("url"), marker=marker, quote=q, quoteFrom=("text" if in_text else "ocr") if q else None)
 
 
 def _by_date_desc(xs: List[Obj]) -> List[Obj]:
@@ -134,19 +144,29 @@ def factor_r1(c: Obj) -> Obj:
 
 
 def _ads_factor(code: str, built: bool, linked: List[Obj], pick) -> Obj:
-    """R2/R3: подтверждённая привязка → hit, только гипотеза привязки → unknown."""
+    """R2/R3: подтверждённая привязка → hit, только гипотеза привязки → unknown.
+    R2 не дают публикации, по которым аналитик отклонил условия оплаты («это не предложение внести деньги»).
+    В доказательства «отклонено аналитиком» идут только публикации, привязанные к ЖК фактом: отклонённая публикация
+    с привязкой-гипотезой к этому объекту не относится (она и так R2 не даёт) — её не показываем и не считаем."""
     if built:
         return _factor(code, "clear", "built")
     hit_reason, unlinked_reason = ("offer", "offer_unlinked") if code == "R2" else ("ads", "ads_unlinked")
-    conf, unconf = [], []
+    conf, unconf, rejected = [], [], []
     for a in linked:
         marker = pick(ad_signals(a))
-        if marker:
+        if not marker:
+            continue
+        if code == "R2" and terms_rejected(a):
+            if link_confirmed(a):
+                rejected.append(_ad_item(a, marker))
+        else:
             (conf if link_confirmed(a) else unconf).append(_ad_item(a, marker))
     if conf:
         return _factor(code, "hit", hit_reason, {"count": len(conf)}, conf)
     if unconf:
-        return _factor(code, "unknown", unlinked_reason, {"threshold": _pct(T["linkConfirmed"])}, unconf)
+        return _factor(code, "unknown", unlinked_reason, {"count": len(unconf)}, unconf)
+    if rejected:
+        return _factor(code, "clear", "offer_rejected", {"count": len(rejected)}, rejected)
     return _factor(code, "clear", "none")
 
 
@@ -272,8 +292,12 @@ def score_ad(ad: Obj, c: Optional[Obj]) -> Obj:
     if built:
         r2, r3 = _factor("R2", "clear", "built"), _factor("R3", "clear", "built")
     else:
-        r2 = (_factor("R2", "hit", "R2_offer", items=[_ad_item(ad, money)], text=r["R2_offer"]) if money
-              else _factor("R2", "clear", "none", text=r["none"]))
+        if not money:
+            r2 = _factor("R2", "clear", "none", text=r["none"])
+        elif terms_rejected(ad):
+            r2 = _factor("R2", "clear", "R2_rejected", {"marker": money}, [_ad_item(ad, money)], r["R2_rejected"])
+        else:
+            r2 = _factor("R2", "hit", "R2_offer", items=[_ad_item(ad, money)], text=r["R2_offer"])
         r3 = (_factor("R3", "hit", "R3_ads", items=[_ad_item(ad, adv)], text=r["R3_ads"]) if adv
               else _factor("R3", "clear", "none", text=r["none"]))
     if built:
@@ -290,13 +314,3 @@ def score_ad(ad: Obj, c: Optional[Obj]) -> Obj:
     factors = [r1, r2, r3]
     t = _total(factors)
     return {"score": t["score"], "zone": t["zone"], "needsCheck": t["needsCheck"], "factors": factors, "signals": s}
-
-
-def match_complex(text: str, complexes: List[Any]) -> Optional[Any]:
-    """Простейшая привязка по названию (будет заменена сопоставлением с гипотезами, T-22)."""
-    t = text.lower()
-    for c in complexes:
-        name = c["name"] if isinstance(c, dict) else c.name
-        if name.lower() in t:
-            return c
-    return None

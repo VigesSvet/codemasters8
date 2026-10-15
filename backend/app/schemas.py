@@ -1,9 +1,12 @@
+from datetime import datetime
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import (AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints, ValidationInfo,
                       field_validator, model_serializer)
 from pydantic.alias_generators import to_camel
 from pydantic_core import PydanticCustomError
+
+from .models import iso
 
 Tri = Literal["yes", "no", "unknown"]
 Zone = Literal["green", "yellow", "red"]
@@ -12,7 +15,10 @@ AppealStatus = Literal["verified", "pending", "rejected"]
 SignalStatus = Literal["new", "confirmed", "returned"]
 FactorState = Literal["hit", "clear", "unknown"]
 EvidenceKind = Literal["ad", "document", "photo", "appeal", "readiness", "deadline"]
-AuditKind = Literal["system", "data", "status", "link", "comment", "request", "signal", "export"]
+AuditKind = Literal["system", "data", "status", "link", "comment", "request", "signal", "export", "ai"]
+TermsReview = Literal["accepted", "rejected"]
+TermKind = Literal["booking", "deposit", "down_payment", "installment", "ddu", "direct_payment", "price", "investment"]
+ReasonFeature = Literal["name", "translit", "address", "account", "phone", "history", "district"]
 # Темы внутреннего запроса сведений по ЖК (POST /api/complexes/{id}/requests)
 InfoTopic = Literal["basis", "readiness", "appeals", "list", "other"]
 
@@ -40,8 +46,12 @@ def _blank_to_none(v: Any) -> Any:
 OptName = Annotated[Optional[Name], BeforeValidator(_blank_to_none)]
 OptComment = Annotated[Optional[Comment], BeforeValidator(_blank_to_none)]
 OptNote = Annotated[Optional[Note], BeforeValidator(_blank_to_none)]
-# Уверенность привязки публикации к ЖК: 0…1 (факт — от thresholds.linkConfirmed или после подтверждения аналитиком)
+# Уверенность ИИ в привязке публикации к ЖК: 0…1, информативно — фактом привязку делает только подтверждение аналитика
 Confidence = Annotated[float, Field(ge=0, le=1)]
+# Текст объявления и распознанный скриншот: с запасом для любого поста, но с пределом — их анализирует ИИ (время анализа)
+AD_TEXT_MAX = 20000
+# Время из БД (datetime, в SQLite — наивное UTC) → ISO 8601 с UTC-смещением
+IsoTime = Annotated[Optional[str], BeforeValidator(lambda v: iso(v) if isinstance(v, datetime) else v)]
 
 
 class Camel(BaseModel):
@@ -60,6 +70,7 @@ class DeveloperOut(Camel):
     unfinished: int
     site: Optional[str] = None
     instagram: Optional[str] = None
+    phones: List[str] = []
 
 
 class ComplexOut(Camel):
@@ -106,8 +117,8 @@ class AdIn(Camel):
     account: str = Field(max_length=255)
     url: str = Field("", max_length=512)
     date: Optional[str] = Field(None, max_length=32)
-    text: str
-    ocr: Optional[str] = None
+    text: str = Field(max_length=AD_TEXT_MAX)
+    ocr: Optional[str] = Field(None, max_length=AD_TEXT_MAX)
     image: Optional[str] = Field(None, max_length=512)
     complex_id: Optional[str] = Field(None, max_length=32)
     match_confidence: Confidence = 0
@@ -117,11 +128,22 @@ class AdIn(Camel):
     # (автор, основание, событие в журнале). Иначе подтверждённая при создании публикация давала бы R2/R3 без следа решения.
     status: Literal["new", "needs_check"] = "new"
     author: OptName = None
+    # true — аналитик сам выбрал ЖК в форме: привязка сразу факт (linkConfirmedBy = author); иначе — гипотеза ИИ
+    link_confirmed: bool = False
 
     @field_validator("*")
     @classmethod
     def _no_nul(cls, v: Any) -> Any:
         return no_nul(v)
+
+    @field_validator("link_confirmed")
+    @classmethod
+    def _confirmed_needs_author(cls, v: bool, info: ValidationInfo) -> bool:
+        if v and not info.data.get("complex_id"):
+            raise PydanticCustomError("value_error", "подтвердить можно только выбранный ЖК (complexId)")
+        if v and not info.data.get("author"):
+            raise PydanticCustomError("value_error", "для подтверждённой привязки укажите автора (author)")
+        return v
 
 
 class AdOut(Camel):
@@ -135,6 +157,12 @@ class AdOut(Camel):
     image: Optional[str] = None
     complex_id: Optional[str] = None
     match_confidence: float = 0
+    link_confirmed_by: Optional[str] = None
+    link_confirmed_at: IsoTime = None
+    rejected_links: Annotated[List[str], BeforeValidator(lambda v: v or [])] = []
+    terms_review: Optional[TermsReview] = None
+    terms_review_by: Optional[str] = None
+    terms_review_at: IsoTime = None
     price: Optional[str] = None
     source: str = "manual"
     status: AdStatus = "new"
@@ -143,7 +171,7 @@ class AdOut(Camel):
 
 
 class AdComplexIn(Camel):
-    """Привязка публикации к ЖК аналитиком: complexId — ЖК (привязка становится фактом) или null — снять привязку."""
+    """Привязка публикации к ЖК аналитиком: complexId — ЖК (привязка — факт, подтвердил author) или null — снять привязку."""
 
     complex_id: Optional[Name]
     author: Name
@@ -193,6 +221,7 @@ class EvidenceItemOut(Camel):
     ref: Optional[str] = None
     label: Optional[str] = None
     quote: Optional[str] = None
+    quote_from: Optional[Literal["text", "ocr"]] = None
     marker: Optional[str] = None
     source: Optional[str] = None
     date: Optional[str] = None
@@ -273,6 +302,9 @@ class SignalAdOut(Camel):
     date: str
     status: AdStatus
     match_confidence: float
+    link_confirmed_by: Optional[str] = None
+    link_confirmed_at: Optional[str] = None
+    terms_review: Optional[TermsReview] = None
     text: str
     ocr: Optional[str] = None
     image: Optional[str] = None
@@ -325,3 +357,144 @@ class SignalCreateIn(Camel):
 class SignalDecisionIn(Camel):
     author: Name
     comment: Comment
+
+
+# ---------- ИИ-анализ публикаций (ТЗ §6) ----------
+
+def _drop_none(handler, self) -> Dict[str, Any]:
+    return {k: v for k, v in handler(self).items() if v is not None}
+
+
+class AnalyzeIn(Camel):
+    """Что анализировать: текст объявления, распознанный скриншот, аккаунт, площадка, ссылка. В БД ничего не пишется."""
+
+    text: str = Field("", max_length=AD_TEXT_MAX)
+    ocr: Optional[str] = Field(None, max_length=AD_TEXT_MAX)
+    account: Optional[str] = Field(None, max_length=255)
+    platform: Optional[str] = Field(None, max_length=16)
+    url: Optional[str] = Field(None, max_length=512)
+
+    @field_validator("*")
+    @classmethod
+    def _no_nul(cls, v: Any) -> Any:
+        return no_nul(v)
+
+
+class TermOut(Camel):
+    """Условие оплаты — гипотеза ИИ: вид, значения, дословная цитата, источник (текст или скриншот), уверенность."""
+
+    kind: TermKind
+    label: str
+    amount: Optional[Union[int, float]] = None
+    currency: Optional[Literal["KZT", "USD", "RUB"]] = None
+    unit: Optional[Literal["m2"]] = None
+    percent: Optional[Union[int, float]] = None
+    months: Optional[Union[int, float]] = None
+    quote: str
+    from_: Literal["text", "ocr"] = Field(alias="from")
+    confidence: float
+    low: bool
+    money: bool
+
+    @model_serializer(mode="wrap")
+    def _out(self, handler) -> Dict[str, Any]:
+        return _drop_none(handler, self)
+
+
+class ReasonOut(Camel):
+    feature: ReasonFeature
+    detail: str
+    weight: float
+
+
+class LinkHypothesisOut(Camel):
+    complex_id: str
+    complex_name: str
+    confidence: float
+    low: bool
+    reasons: List[ReasonOut]
+    quote: Optional[str] = None
+
+    @model_serializer(mode="wrap")
+    def _out(self, handler) -> Dict[str, Any]:
+        return _drop_none(handler, self)
+
+
+class AnalysisOut(Camel):
+    engine: str
+    terms: List[TermOut]
+    hypotheses: List[LinkHypothesisOut]
+    signals: AdSignalsOut
+    phones: List[str]
+    addresses: List[str]
+    note: Optional[str] = None
+
+
+class AdAnalysisOut(AnalysisOut):
+    """Анализ сохранённой публикации: без отклонённых гипотез и с решениями аналитика."""
+
+    terms_review: Optional[TermsReview] = None
+    terms_review_by: Optional[str] = None
+    terms_review_at: Optional[str] = None
+    link_confirmed_by: Optional[str] = None
+    link_confirmed_at: Optional[str] = None
+    rejected_links: List[str] = []
+
+
+class HypothesisIn(Camel):
+    author: Name
+    complex_id: Name
+
+
+class HypothesisRejectIn(HypothesisIn):
+    comment: OptNote = None
+
+
+class TermsReviewIn(Camel):
+    """Решение аналитика по условиям оплаты, найденным ИИ: rejected — «это не предложение внести деньги» (R2 не учитывается)."""
+
+    author: Name
+    decision: TermsReview
+    comment: OptNote = None
+
+
+class OcrOut(Camel):
+    text: str
+    engine: Literal["tesseract", "none"]
+    confidence: Optional[float] = None
+    languages: List[str] = []
+    duration_ms: int
+    version: Optional[str] = None
+    preprocess: List[str] = []
+    detail: Optional[str] = None
+
+    @model_serializer(mode="wrap")
+    def _out(self, handler) -> Dict[str, Any]:
+        return _drop_none(handler, self)
+
+
+class OcrStatusOut(Camel):
+    available: bool
+    engine: Literal["tesseract", "none"]
+    version: Optional[str] = None
+    languages: List[str] = []
+    detail: Optional[str] = None
+
+    @model_serializer(mode="wrap")
+    def _out(self, handler) -> Dict[str, Any]:
+        return _drop_none(handler, self)
+
+
+class AiMetricsOut(Camel):
+    terms_found: int
+    terms_expected: int
+    terms_precision: float
+    link_top1: float
+    link_cases: int
+    false_positives: int
+
+
+class AiEvalOut(Camel):
+    engine: str
+    cases: List[Dict[str, Any]]
+    metrics: AiMetricsOut

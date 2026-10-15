@@ -78,18 +78,19 @@ def test_risk_endpoints_agree_with_engine(client):
 def test_manual_ad_and_status_journal(client):
     ad = client.post("/api/ads", json={"platform": "instagram", "account": "@test",
                                        "text": "Старт продаж ЖК Алтай Резиденс, бронь"}).json()
-    # совпадение по названию — гипотеза (ниже порога факта): R1 объекта в оценку публикации не входит
-    assert ad["complexId"] == "c2" and ad["matchConfidence"] == T["autoLinkConfidence"] == 0.6
-    assert T["autoLinkConfidence"] < T["linkConfirmed"]
+    # ИИ нашёл название ЖК → привязка-гипотеза с уверенностью ИИ; фактом она не становится: R1 объекта в оценку не входит
+    assert ad["complexId"] == "c2" and ad["matchConfidence"] == 0.8 and ad["linkConfirmedBy"] is None
+    assert T["lowConfidence"] <= ad["matchConfidence"] and "linkConfirmed" not in T and "autoLinkConfidence" not in T
     s = client.get(f"/api/ads/{ad['id']}/score").json()
     assert (s["score"], s["zone"], s["needsCheck"]) == (35, "yellow", True)
-    assert s["complexId"] == "c2" and s["matchConfidence"] == 0.6
+    assert s["complexId"] == "c2" and s["matchConfidence"] == 0.8
     assert [f["code"] for f in s["factors"]] == ["R1", "R2", "R3"] and "бронь" in s["signals"]["funds"]
     assert (_f(s, "R1")["state"], _f(s, "R1")["reason"]) == ("unknown", "R1_link_unconfirmed")
 
     # аналитик подтвердил привязку → факт: R1 объекта входит в оценку, кейс B — красная 70
     r = client.patch(f"/api/ads/{ad['id']}/complex", json={"complexId": "c2", "author": "Тест"})
     assert r.status_code == 200 and (r.json()["complexId"], r.json()["matchConfidence"]) == ("c2", 1)
+    assert r.json()["linkConfirmedBy"] == "Тест" and r.json()["linkConfirmedAt"].endswith("+00:00")
     s = client.get(f"/api/ads/{ad['id']}/score").json()
     assert (s["score"], s["zone"], s["needsCheck"], s["matchConfidence"]) == (70, "red", False, 1)
 
@@ -97,18 +98,20 @@ def test_manual_ad_and_status_journal(client):
                                                            "comment": "Сверено с картотекой ГАСК"}).json()
     assert r["status"] == "confirmed" and r["assignee"] == "Тест"
     log = client.get(f"/api/ads/{ad['id']}/audit").json()
-    assert [(e["kind"], e["who"]) for e in log] == [("system", "Система"), ("system", "Система"), ("link", "Тест"),
+    assert [(e["kind"], e["who"]) for e in log] == [("system", "Система"), ("ai", "Система"), ("link", "Тест"),
                                                     ("status", "Тест")]
     assert log[0]["what"] == "Публикация добавлена вручную"
-    assert "Автопривязка к ЖК «Алтай Резиденс»" in log[1]["what"] and "гипотеза" in log[1]["what"]
+    assert log[1]["what"] == "Гипотеза ИИ: ЖК «Алтай Резиденс», уверенность 80% (название) — нужна проверка аналитиком"
     assert log[2]["what"] == "Привязка к ЖК «Алтай Резиденс» подтверждена аналитиком"
     assert log[3]["what"] == ("Статус: «Новая» → «Нарушение подтверждено» · ответственный: Тест. "
                               "Основание: Сверено с картотекой ГАСК")
     assert all(e["at"].endswith("+00:00") and e["adId"] == ad["id"] and e["complexId"] == "c2" for e in log)
 
-    # без совпадения по названию — без привязки
+    # без признаков ЖК — без привязки, в журнале — что ЖК не определён
     ad = client.post("/api/ads", json={"platform": "olx", "account": "@x", "text": "Продаю гараж"}).json()
-    assert ad["complexId"] is None and ad["matchConfidence"] == 0
+    assert ad["complexId"] is None and ad["matchConfidence"] == 0 and ad["linkConfirmedBy"] is None
+    assert [(e["kind"], e["what"]) for e in client.get(f"/api/ads/{ad['id']}/audit").json()][-1] == (
+        "ai", "ИИ: ЖК не определён — нужна ручная привязка")
     assert client.post("/api/ads", json={"platform": "olx", "account": "@x", "text": "x",
                                          "matchConfidence": 1.5}).status_code == 422
 
@@ -139,12 +142,13 @@ def test_link_ad_to_complex(client):
 
     # гипотеза из сида (a9 → c12, 54%) подтверждается тем же вызовом
     assert _f(_risk(client, "c12"), "R3")["state"] == "unknown"
-    link("a9", "c12")
+    assert link("a9", "c12").json()["linkConfirmedBy"] == "Тест"
     assert _f(_risk(client, "c12"), "R3")["state"] == "hit"
 
-    # снятие привязки
+    # снятие привязки сбрасывает и подтверждение
     r = link("a12", None)
     assert r.status_code == 200 and (r.json()["complexId"], r.json()["matchConfidence"]) == (None, 0)
+    assert (r.json()["linkConfirmedBy"], r.json()["linkConfirmedAt"]) == (None, None)
     assert journal("a12")[-1] == ("Тест", "Привязка к ЖК снята")
     assert client.get("/api/ads/a12/score").json()["complexId"] is None
 
@@ -215,13 +219,33 @@ def test_not_found(client):
 
 
 def test_manual_ad_with_suggested_link_is_hypothesis(client):
-    # форма ручного ввода сама передаёт подсказку по названию с уверенностью ниже порога — это гипотеза, и она в журнале
-    ad = client.post("/api/ads", json={"platform": "instagram", "account": "@form", "text": "Старт продаж ЖК Ульба Ривер, бронь",
-                                       "complexId": "c3", "matchConfidence": T["autoLinkConfidence"]}).json()
-    assert ad["complexId"] == "c3"
-    assert any("гипотеза" in e["what"] for e in client.get(f"/api/ads/{ad['id']}/audit").json())
-    # выбор ЖК вручную (уверенность 1) — не гипотеза
+    def log(aid):
+        return [(e["kind"], e["who"], e["what"]) for e in client.get(f"/api/ads/{aid}/audit").json()]
+
+    # форма передаёт выбранную гипотезу ИИ — это гипотеза (в журнале kind ai), даже с высокой уверенностью
+    for conf in (0.6, 1):
+        body = {"platform": "instagram", "account": "@form", "complexId": "c3", "matchConfidence": conf,
+                "text": "Старт продаж ЖК Ульба Ривер, бронь"}
+        ad = client.post("/api/ads", json=body).json()
+        assert (ad["complexId"], ad["matchConfidence"], ad["linkConfirmedBy"]) == ("c3", conf, None)
+        assert log(ad["id"])[-1] == ("ai", "Система", f"Гипотеза ИИ: ЖК «Ульба Ривер», уверенность {int(conf * 100)}% "
+                                                      "(название) — нужна проверка аналитиком")
+    # без уверенности от формы — берётся уверенность анализа; ЖК, которого ИИ не предлагал, — «выбран в форме»
+    ad = client.post("/api/ads", json={"platform": "instagram", "account": "@form", "text": "ЖК Ульба Ривер",
+                                       "complexId": "c3"}).json()
+    assert ad["matchConfidence"] == 0.8
     ad = client.post("/api/ads", json={"platform": "instagram", "account": "@form", "text": "Старт продаж, бронь",
-                                       "complexId": "c3", "matchConfidence": 1}).json()
-    assert not any("гипотеза" in e["what"] for e in client.get(f"/api/ads/{ad['id']}/audit").json())
+                                       "complexId": "c7"}).json()
+    assert ad["matchConfidence"] == 0 and "(выбран в форме ручного ввода)" in log(ad["id"])[-1][2]
+    # аналитик выбрал ЖК сам (linkConfirmed) — привязка сразу факт, с автором и временем
+    ad = client.post("/api/ads", json={"platform": "instagram", "account": "@form", "text": "Старт продаж, бронь",
+                                       "complexId": "c3", "linkConfirmed": True, "author": "Тест"}).json()
+    assert (ad["matchConfidence"], ad["linkConfirmedBy"]) == (1, "Тест") and ad["linkConfirmedAt"].endswith("+00:00")
+    assert log(ad["id"]) == [("system", "Тест", "Публикация добавлена вручную"),
+                             ("link", "Тест", "Привязка к ЖК «Ульба Ривер» подтверждена аналитиком")]
+    assert _f(client.get(f"/api/ads/{ad['id']}/score").json(), "R1")["reason"] != "R1_link_unconfirmed"
+    # подтвердить можно только выбранный ЖК и только от имени автора
+    for bad in ({"complexId": "c3", "linkConfirmed": True}, {"linkConfirmed": True, "author": "Тест"}):
+        r = client.post("/api/ads", json={"platform": "instagram", "account": "@x", "text": "т", **bad})
+        assert r.status_code == 422 and r.json()["detail"][0]["loc"][-1] == "linkConfirmed", bad
     assert client.post("/api/ads", json={"platform": "instagram", "account": "@x", "text": "т", "complexId": "nope"}).status_code == 404

@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { Quote } from '../components/Factors'
 import { SignalGate, SignalStatusTag, SignalTime } from '../components/SignalPanel'
 import { platformMeta, statusMeta, zoneName } from '../components/ui'
-import type { EvidenceItem, FactorState, ObservationState, Platform, ReadinessValue, Signal } from '../data/types'
+import type { EvidenceItem, FactorState, ObservationState, Platform, ReadinessValue, Signal, SignalAd } from '../data/types'
 import { fmtDate as day, linkConfirmed } from '../lib/risk'
 import { IcChevronLeft } from '../ui/icons'
 
@@ -13,10 +13,14 @@ const DOC: Record<string, string> = { yes: 'есть', no: 'нет', unknown: '�
 const APPEAL: Record<string, string> = { verified: 'проверено', pending: 'на проверке', rejected: 'отклонено' }
 const join = (...xs: (string | number | null | undefined | false)[]) => xs.filter((x) => x || x === 0).join(' · ')
 const plat = (p?: string) => (p && p in platformMeta ? platformMeta[p as Platform].name : p)
+/** Привязка к ЖК: факт — только после подтверждения аналитиком, иначе гипотеза ИИ */
+const linkLabel = (a: SignalAd) => linkConfirmed(a)
+  ? `привязка — факт${a.linkConfirmedBy ? ` (подтвердил ${a.linkConfirmedBy})` : ''}`
+  : `привязка — гипотеза ИИ ${Math.round(a.matchConfidence * 100)}%, в балл не входит`
 
 /** Доказательство одной строкой — как в PDF */
 function Item({ x }: { x: EvidenceItem }) {
-  if (x.kind === 'ad') return <>{x.quote ? <Quote text={x.quote} marker={x.marker} /> : 'Публикация'} — {join(plat(x.source), x.label, x.date && day(x.date))}</>
+  if (x.kind === 'ad') return <>{x.quote ? <Quote text={x.quote} marker={x.marker} /> : 'Публикация'} — {join(x.quote && x.quoteFrom === 'ocr' && 'из скриншота (OCR)', plat(x.source), x.label, x.date && day(x.date))}</>
   if (x.kind === 'document') return <><b>{x.label}</b>: {DOC[String(x.value)] ?? x.value ?? '—'}{(x.quote || x.source || x.date) && <> — {join(x.quote && `реквизит: ${x.quote}`, x.source, x.date && `сверено ${day(x.date)}`)}</>}</>
   if (x.kind === 'appeal') return <>Обращение: {x.label} — {join(APPEAL[String(x.value)] ?? x.value, x.source, x.date && day(x.date))}</>
   if (x.kind === 'readiness') return <>{x.label}: {x.value}% — {join(x.source, x.date && day(x.date))}</>
@@ -135,7 +139,7 @@ function Sheet({ sig, at }: { sig: Signal; at: string }) {
             <ul>
               {ev.ads.map((a) => (
                 <li key={a.id}>
-                  <b>{join(platformMeta[a.platform]?.name ?? a.platform, a.account, day(a.date), statusMeta[a.status]?.name.toLowerCase(), `привязка ${Math.round(a.matchConfidence * 100)}% — ${linkConfirmed(a) ? 'факт' : 'гипотеза, в балл не входит'}`)}</b>
+                  <b>{join(platformMeta[a.platform]?.name ?? a.platform, a.account, day(a.date), statusMeta[a.status]?.name.toLowerCase(), linkLabel(a))}</b>
                   <div>{a.text}</div>
                   {a.url && <div className="sheet-url">{a.url}</div>}
                 </li>

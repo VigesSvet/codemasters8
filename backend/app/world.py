@@ -3,13 +3,15 @@
 Движок (app.risk) работает только со словарями; здесь — загрузка данных из БД и вызовы score_complex / score_ad.
 """
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models, schemas
+from .ai.matching import Catalog, build_catalog
+from .models import iso
 from .risk import score_ad, score_complex
 
 Obj = Dict[str, Any]
@@ -18,14 +20,6 @@ Obj = Dict[str, Any]
 def by_id(rows):
     """Естественный порядок id: c1, c2, …, c10 (как в сиде), а не c1, c10, c11."""
     return sorted(rows, key=lambda r: (len(r.id), r.id))
-
-
-def iso(dt: Optional[datetime]) -> Optional[str]:
-    """ISO 8601 с UTC-смещением; наивные значения (SQLite) считаются UTC."""
-    if dt is None:
-        return None
-    dt = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
-    return dt.isoformat(timespec="seconds")
 
 
 def _out(schema, row) -> Obj:
@@ -92,6 +86,12 @@ def risk_all(db: Session, as_of: Optional[date] = None) -> List[Obj]:
     """[{complexId, ...RiskResult}] по всем ЖК — одним запросом для списков на фронте."""
     w = load(db)
     return [{"complexId": c["id"], **w.risk(c, as_of)} for c in w.complexes]
+
+
+def catalog(db: Session, exclude_ad: Optional[str] = None) -> Catalog:
+    """Справочник для ИИ-сопоставления из БД: ЖК, застройщики, история аккаунтов (подтверждённые привязки, кроме exclude_ad)."""
+    w = load(db)
+    return build_catalog(w.complexes, w.developers.values(), w.ads, exclude_ad)
 
 
 def ad_score(db: Session, ad: models.Ad) -> Obj:

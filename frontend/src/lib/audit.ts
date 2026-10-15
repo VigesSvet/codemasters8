@@ -1,6 +1,6 @@
 // Журнал действий (T-16, T-17): подписи видов событий, темы запроса сведений, формат времени, инициалы авторов.
 import type { AdStatus, Analyst, AuditEvent, AuditKind, Complex } from '../data/types'
-import { IcBolt, IcCheck, IcComment, IcDatabase, IcDownload, IcFlag, IcLink, IcSend } from '../ui/icons'
+import { IcBolt, IcCheck, IcComment, IcDatabase, IcDownload, IcFlag, IcLink, IcSend, IcSparkSearch } from '../ui/icons'
 
 export const SYSTEM = 'Система'
 
@@ -14,6 +14,7 @@ export const AUDIT_KIND: Record<AuditKind, { name: string; tag: string; Icon: ty
   request: { name: 'запрос сведений', tag: 'yellow', Icon: IcSend },
   signal: { name: 'сигнал', tag: 'red', Icon: IcFlag },
   export: { name: 'выгрузка', tag: 'gray', Icon: IcDownload },
+  ai: { name: 'ИИ', tag: 'blue', Icon: IcSparkSearch },
 }
 export const kindOf = (e: Pick<AuditEvent, 'kind'>) => AUDIT_KIND[e.kind] ?? AUDIT_KIND.system
 
@@ -58,22 +59,24 @@ export function linkLine(from?: Pick<Complex, 'id' | 'name'>, to?: Pick<Complex,
   return from && from.id !== to.id ? `Привязка изменена: «${from.name}» → «${to.name}»` : `Привязка к ЖК «${to.name}» подтверждена аналитиком`
 }
 
-/** Действия людей для «Последних действий»: решения, привязки, комментарии, запросы, сигналы, выгрузки */
-export const HUMAN_KINDS: AuditKind[] = ['status', 'link', 'comment', 'request', 'signal', 'export']
+/** Действия людей для «Последних действий»: решения, привязки, решения по гипотезам ИИ, комментарии, запросы, сигналы, выгрузки.
+ *  Гипотезы, которые ИИ записал сам от имени «Система», отсекает сервер (human), — иначе ручные добавления вытеснят людей из окна */
+export const HUMAN_KINDS: AuditKind[] = ['status', 'link', 'ai', 'comment', 'request', 'signal', 'export']
 
-/** Фильтр журнала: публикация, ЖК, сигнал, вид события (один или несколько), последние N */
-export interface AuditScope { adId?: string; complexId?: string; signalId?: number; kind?: AuditKind | AuditKind[]; limit?: number }
+/** Фильтр журнала: публикация, ЖК, сигнал, вид события (один или несколько), только действия людей (без «Системы»
+ *  и без событий сбора и сверки данных — фильтр на сервере, до лимита), последние N */
+export interface AuditScope { adId?: string; complexId?: string; signalId?: number; kind?: AuditKind | AuditKind[]; human?: boolean; limit?: number }
 
 /** Путь журнала: у публикации, ЖК, сигнала — свой; с фильтрами — общий /audit (несколько видов — через запятую) */
-export function auditPath({ adId, complexId, signalId, kind, limit }: AuditScope) {
+export function auditPath({ adId, complexId, signalId, kind, human, limit }: AuditScope) {
   const kinds = kind === undefined ? [] : Array.isArray(kind) ? kind : [kind]
-  const only = [adId, complexId, signalId].filter((x) => x !== undefined).length === 1 && !kinds.length && limit === undefined
+  const only = [adId, complexId, signalId].filter((x) => x !== undefined).length === 1 && !kinds.length && !human && limit === undefined
   const enc = encodeURIComponent
   if (only && adId !== undefined) return `/ads/${enc(adId)}/audit`
   if (only && complexId !== undefined) return `/complexes/${enc(complexId)}/audit`
   if (only && signalId !== undefined) return `/signals/${signalId}/audit`
   const q = new URLSearchParams()
-  for (const [k, v] of Object.entries({ adId, complexId, signalId, kind: kinds.join(','), limit })) if (v !== undefined && v !== '') q.set(k, String(v))
+  for (const [k, v] of Object.entries({ adId, complexId, signalId, kind: kinds.join(','), human: human ? 'true' : undefined, limit })) if (v !== undefined && v !== '') q.set(k, String(v))
   const s = q.toString()
   return s ? `/audit?${s}` : '/audit'
 }

@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Ad, AdScore, Appeal, Complex, Developer, RiskResult } from '../data/types'
-import { model, quote, scoreAd, scoreComplex, zoneFor } from './risk'
+import { linkConfirmed, model, quote, scoreAd, scoreComplex, termsRejected, zoneFor } from './risk'
 
 const shared = (name: string) => fileURLToPath(new URL(`../../../shared/${name}`, import.meta.url))
 const read = <T>(name: string): T => JSON.parse(readFileSync(shared(name), 'utf-8')) as T
@@ -70,6 +70,34 @@ describe('контрольные кейсы и правила §5', () => {
     expect(zoneFor(70, ['R1', 'R2'])).toBe('red')
     expect(zoneFor(70, ['R1', 'R3', 'R4'])).toBe('yellow')
     expect(zoneFor(24, [])).toBe('green')
+  })
+  it('привязка — факт только после подтверждения аналитиком, уверенность ИИ не в счёт', () => {
+    for (const matchConfidence of [0.79, 0.8, 0.97, 1]) {
+      expect(linkConfirmed({ status: 'new', matchConfidence } as Ad)).toBe(false)
+    }
+    expect(linkConfirmed({ status: 'new', linkConfirmedBy: 'Нестерова А.' })).toBe(true)
+    expect(linkConfirmed({ status: 'confirmed', linkConfirmedBy: null })).toBe(true)
+    // пустое имя — не подтверждение; пробелы — те же, что отрезает str.strip() в risk.py
+    for (const blank of ['', '  ', '\u00a0\u3000\t\n']) expect(linkConfirmed({ status: 'new', linkConfirmedBy: blank })).toBe(false)
+    expect(model.thresholds).not.toHaveProperty('linkConfirmed')
+    expect(model.thresholds).not.toHaveProperty('autoLinkConfidence')
+  })
+  it('вето аналитика на условия оплаты снимает только R2', () => {
+    expect([termsRejected({ termsReview: 'rejected' }), termsRejected({ termsReview: 'accepted' }), termsRejected({})])
+      .toEqual([true, false, false])
+    const a = { ...seed.ads.find((x) => x.id === 'a1')!, termsReview: 'rejected' } as Ad
+    const base = scoreAd(seed.ads.find((x) => x.id === 'a1')!, cxs.get('c2')), r = scoreAd(a, cxs.get('c2'))
+    expect(r.factors.map((f) => [f.code, f.state, f.reason])).toEqual([['R1', 'hit', 'absent'], ['R2', 'clear', 'R2_rejected'], ['R3', 'hit', 'R3_ads']])
+    expect(r.factors[2]).toEqual(base.factors[2])
+    expect([r.score, r.zone]).toEqual([45, 'yellow'])
+  })
+  it('отклонённая публикация с привязкой-гипотезой не попадает в R2 ЖК', () => {
+    // a4 привязана к c8 гипотезой ИИ (71%), a8 — фактом; аналитик отклонил условия оплаты у обеих
+    const ads = seed.ads.map((a) => (a.id === 'a4' || a.id === 'a8' ? { ...a, termsReview: 'rejected' } as Ad : a))
+    const c = cxs.get('c8')!
+    const r2 = scoreComplex(c, devs.get(c.developerId), ads, seed.appeals, golden.asOf).factors.find((f) => f.code === 'R2')!
+    expect([r2.state, r2.reason, r2.items.map((i) => i.ref)]).toEqual(['clear', 'offer_rejected', ['a8']])
+    expect(r2.evidence).toMatch(/^Аналитик отклонил условия оплаты в публикациях: 1 /)
   })
   it('цитата: длинное предложение обрезается вокруг маркера', () => {
     const text = 'Раз два три четыре пять шесть семь восемь девять десять одиннадцать двенадцать бронь тринадцать ' +

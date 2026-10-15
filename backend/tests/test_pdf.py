@@ -45,7 +45,7 @@ def _story_text(c, sid) -> str:
 def test_many_linked_ads(client):
     for i in range(40):
         r = client.post("/api/ads", json={
-            "platform": "instagram", "account": f"@altai.sale{i}", "complexId": "c2", "matchConfidence": 0.9,
+            "platform": "instagram", "account": f"@altai.sale{i}", "complexId": "c2", "linkConfirmed": True, "author": AUTHOR,
             "url": f"https://instagram.com/p/altai{i}", "date": f"2026-10-{1 + i % 14:02d}T10:00",
             "text": f"ЖК «Алтай Резиденс», квартира №{i}: бронь от 500 000 ₸, первый взнос 30%. Старт продаж!"})
         assert r.status_code == 201
@@ -95,9 +95,10 @@ def test_readiness_wording(client):
     text = _story_text(client, _create(client, "c14")["id"])
     assert "подтверждённая готовность" not in text.lower()
     assert "котлован; готовность по карточке объекта 3%, без источника" in text and "Подтверждено: нет данных" in text
-    # привязка публикации: факт (a10, 86%) и гипотеза (50%) подписаны по-разному
-    assert "привязка 86% — факт" in text and "привязка 50% — гипотеза, в балл не входит" in text
-    assert "Привязка к ЖК — факт при уверенности от 80% или после подтверждения аналитиком" in text
+    # привязка публикации: факт (a10 — подтвердил аналитик, кто и когда) и гипотеза ИИ (50%) подписаны по-разному
+    assert "привязка — факт (подтвердил Исаев Т., 09.10.2026 11:40)" in text
+    assert "привязка — гипотеза ИИ 50%, в балл не входит" in text
+    assert "Привязка к ЖК — факт только после подтверждения аналитиком; гипотеза ИИ (с уверенностью) в балл не входит" in text
 
     # c1: подтверждённая готовность — из readiness.confirmed, с источником и датой
     text = _story_text(client, _create(client, "c1")["id"])

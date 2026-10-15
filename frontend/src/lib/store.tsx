@@ -1,8 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { adKey } from '../components/ui'
 import * as demo from '../data/demo'
-import type { Ad, AdScore, AdStatus, Analyst, Appeal, AuditEvent, Complex, Developer, RiskResult, Signal, SignalSummary } from '../data/types'
-import { API, ApiError, apiGet, apiPatch, apiPost, onReach } from './api'
+import type {
+  Ad, AdAnalysis, AdScore, AdStatus, AiEval, Analysis, AnalyzeInput, Analyst, Appeal, AuditEvent, Complex, Developer, OcrResult, OcrStatus,
+  RiskResult, Signal, SignalSummary, TermsReview,
+} from '../data/types'
+import { decisionPatch } from './ai'
+import { API, ApiError, apiGet, apiPatch, apiPost, apiUpload, onReach } from './api'
 import { auditPath, linkLine, statusLine, type AuditScope, type RequestTopic } from './audit'
 import { scoreAd, scoreComplex } from './risk'
 import { onSessionChange, readSession, writeSession, type User } from './session'
@@ -50,9 +54,25 @@ interface Store {
   setAdStatus: (id: string, s: AdStatus, opts?: { assignee?: string; comment?: string }) => Promise<boolean>
   /** Новая публикация. false — не сохранена: убрана из ленты, ошибка в apiError */
   addAd: (a: Ad) => Promise<boolean>
-  /** Привязка публикации к ЖК аналитиком (null — снять): уверенность 1 / 0, событие в журнале.
+  /** Привязка публикации к ЖК аналитиком (null — снять): привязка становится фактом от имени user.name, событие в журнале.
    *  false — не сохранено: привязка откатана, ошибка в apiError */
   linkAd: (id: string, complexId: string | null) => Promise<boolean>
+  // ИИ-анализ (ТЗ §6) — выполняется на сервере; в demo методы отклоняются с ApiError(0, …) без баннера
+  /** Анализ черновика без записи: условия оплаты, гипотезы ЖК */
+  analyze: (input: AnalyzeInput) => Promise<Analysis>
+  /** Анализ сохранённой публикации: без отклонённых гипотез, с решениями аналитика */
+  getAnalysis: (adId: string) => Promise<AdAnalysis>
+  /** Принять гипотезу ИИ: привязать публикацию к ЖК и подтвердить привязку от имени user.name */
+  acceptHypothesis: (adId: string, complexId: string) => Promise<Ad>
+  /** Отклонить гипотезу: ИИ больше не предлагает этот ЖК; текущая неподтверждённая привязка к нему снимается */
+  rejectHypothesis: (adId: string, complexId: string, comment?: string) => Promise<Ad>
+  /** Решение по условиям оплаты: rejected — «это не предложение внести деньги», R2 публикации не засчитывается */
+  reviewTerms: (adId: string, decision: TermsReview, comment?: string) => Promise<Ad>
+  /** Распознать скриншот (413/415/422 — ошибка файла, её показывает страница) */
+  ocr: (file: File) => Promise<OcrResult>
+  ocrStatus: () => Promise<OcrStatus>
+  /** Прогон ИИ на новых текстах (shared/ai_cases.json) */
+  aiEval: () => Promise<AiEval>
   /** Журнал с сервера (по возрастанию времени); в demo — ApiError(0, …) */
   getAudit: (scope: AuditScope) => Promise<AuditEvent[]>
   /** Комментарий к публикации; в demo — только в журнал этой сессии */
@@ -79,6 +99,9 @@ const Ctx = createContext<Store | null>(null)
 const NO_SIGNALS = 'Сигналы сохраняются на сервере — запустите бэкенд (./dev.sh)'
 const NO_AUDIT = 'Журнал хранится на сервере — в демо-режиме без бэкенда он недоступен (запустите ./dev.sh)'
 const NO_USER = 'Войдите, чтобы действовать от своего имени'
+const NO_AI = 'Анализ ИИ и OCR выполняются на сервере — в демо-режиме без бэкенда они недоступны (запустите ./dev.sh)'
+/** Ошибки файла скриншота: формат, размер, битое изображение — их показывает форма */
+const FILE_ERRORS = new Set([413, 415, 422])
 
 type RiskRow = RiskResult & { complexId: string }
 const riskMap = (rows: RiskRow[]) => new Map<string, RiskResult>(rows.map(({ complexId, ...r }) => [complexId, r]))
@@ -222,6 +245,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     }
     const needApi = () => { if (!live) throw new ApiError(0, NO_SIGNALS) }
+    const needAi = () => { if (!live) throw new ApiError(0, NO_AI) }
     /** Изменение сохранено на сервере (и записано в журнал) — страницы перечитают свои загрузки */
     const changed = () => setRevision((v) => v + 1)
     const saved = <T,>(p: Promise<T>) => p.then((v) => { changed(); return v })
@@ -246,6 +270,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!(e instanceof ApiError && expected?.(e))) fail(what, e)
         throw e
       }
+    }
+    /** Решение аналитика по выводу ИИ: из ответа сервера берём только поля привязки и решения по условиям (как linkAd) —
+     *  параллельная смена статуса и скриншот этой вкладки остаются; затем журнал (revision) и риск ЖК */
+    const decided = async (what: string, p: () => Promise<Ad>) => {
+      const got = await track(guarded(what, p))
+      patchAd(got.id, decisionPatch(got))
+      changed()
+      await refreshRisk()
+      return got
     }
 
     return {
@@ -317,9 +350,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           logLocal({ kind: 'system', adId: a.id, complexId: a.complexId ?? null, what: 'Публикация добавлена вручную' })
           return true
         }
+        // linkConfirmed — ЖК выбран аналитиком вручную: привязка сразу факт; иначе гипотеза ИИ.
+        // Локальный скриншот (blob:) живёт только в этой вкладке — на сервер его адрес не отправляем, в сессии показываем
+        const local = a.image?.startsWith('blob:') ? a.image : undefined
+        const body = {
+          id: a.id, platform: a.platform, account: a.account, url: a.url, date: a.date, text: a.text, ocr: a.ocr, image: local ? undefined : a.image,
+          price: a.price, complexId: a.complexId, matchConfidence: a.matchConfidence, source: a.source, status: a.status, author: user.name,
+          linkConfirmed: !!a.linkConfirmedBy,
+        }
         try {
-          const got = await track(apiPost<Ad>('/ads', { ...a, author: user.name }))
-          setAds((xs) => xs.map((x) => (x.id === a.id ? got : x)))
+          const got = await track(apiPost<Ad>('/ads', body))
+          setAds((xs) => xs.map((x) => (x.id === a.id ? (local && !got.image ? { ...got, image: local } : got) : x)))
           changed()
         } catch (e) {
           setAds((xs) => xs.filter((x) => x.id !== a.id))
@@ -332,7 +373,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       linkAd: async (id, complexId) => {
         const prev = ads.find((a) => a.id === id)
         if (!user || !prev) { notify(user ? 'Публикация не найдена' : NO_USER); return false }
-        patchAd(id, { complexId: complexId ?? undefined, matchConfidence: complexId ? 1 : 0 })
+        const confirmed = complexId ? { linkConfirmedBy: user.name, linkConfirmedAt: stamp() } : { linkConfirmedBy: null, linkConfirmedAt: null }
+        patchAd(id, { complexId: complexId ?? undefined, matchConfidence: complexId ? 1 : 0, ...confirmed })
         if (!live) {
           const from = prev.complexId ? complexById.get(prev.complexId) : undefined
           const to = complexId ? complexById.get(complexId) : undefined
@@ -345,13 +387,52 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           changed()
         } catch (e) {
           // откатываем только поля привязки — параллельная смена статуса остаётся
-          patchAd(id, { complexId: prev.complexId, matchConfidence: prev.matchConfidence })
+          patchAd(id, { complexId: prev.complexId, matchConfidence: prev.matchConfidence, linkConfirmedBy: prev.linkConfirmedBy, linkConfirmedAt: prev.linkConfirmedAt })
           fail(`Привязка ${adKey(id)} не сохранена — изменение отменено`, e)
           return false
         }
-        patchAd(id, { complexId: got.complexId ?? undefined, matchConfidence: got.matchConfidence })
+        patchAd(id, { complexId: got.complexId ?? undefined, matchConfidence: got.matchConfidence, linkConfirmedBy: got.linkConfirmedBy ?? null, linkConfirmedAt: got.linkConfirmedAt ?? null })
         await refreshRisk()
         return true
+      },
+      analyze: async (input) => {
+        needAi()
+        return guarded('Анализ ИИ не выполнен', () => apiPost<Analysis>('/analyze', input))
+      },
+      getAnalysis: async (adId) => {
+        needAi()
+        return guarded(`Анализ ИИ ${adKey(adId)} не загрузился`, () => apiGet<AdAnalysis>(`/ads/${enc(adId)}/analysis`))
+      },
+      acceptHypothesis: async (adId, complexId) => {
+        needAi()
+        const who = author()
+        return decided('Гипотеза ИИ не принята', () => apiPost<Ad>(`/ads/${enc(adId)}/hypotheses/accept`, { author: who, complexId }))
+      },
+      rejectHypothesis: async (adId, complexId, comment) => {
+        needAi()
+        const who = author()
+        return decided('Гипотеза ИИ не отклонена', () =>
+          apiPost<Ad>(`/ads/${enc(adId)}/hypotheses/reject`, { author: who, complexId, comment: comment?.trim() || undefined }))
+      },
+      reviewTerms: async (adId, decision, comment) => {
+        needAi()
+        const who = author()
+        return decided('Решение по условиям оплаты не сохранено', () =>
+          apiPost<Ad>(`/ads/${enc(adId)}/terms-review`, { author: who, decision, comment: comment?.trim() || undefined }))
+      },
+      ocr: async (file) => {
+        needAi()
+        const form = new FormData()
+        form.append('file', file)
+        return guarded('Скриншот не распознан', () => apiUpload<OcrResult>('/ocr', form), (e) => FILE_ERRORS.has(e.status))
+      },
+      ocrStatus: async () => {
+        needAi()
+        return guarded('Не удалось узнать, работает ли OCR на сервере', () => apiGet<OcrStatus>('/ocr/status'))
+      },
+      aiEval: async () => {
+        needAi()
+        return guarded('Проверка ИИ на новых данных не загрузилась', () => apiGet<AiEval>('/ai/eval'))
       },
       getAudit: async (scope) => {
         if (!live) throw new ApiError(0, NO_AUDIT)

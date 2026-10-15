@@ -21,9 +21,10 @@ export interface RiskModel {
   version: string; title: string; disclaimer: string; formula: string; maxScore: number; builtStage: string
   documents: { key: string; label: string; refField: string }[]
   thresholds: {
-    linkConfirmed: number; autoLinkConfidence: number; readinessGap: number; idleDays: number; idlePhotosMin: number
-    idleActivities: string[]; overdueDays: number; idleShortDays: number; quoteMaxWords: number; quoteWordsBefore: number
-    quoteWordsAfter: number
+    readinessGap: number; idleDays: number; idlePhotosMin: number; idleActivities: string[]; overdueDays: number
+    idleShortDays: number; quoteMaxWords: number; quoteWordsBefore: number; quoteWordsAfter: number
+    /** ИИ-анализ: ниже lowConfidence — пометка «низкая уверенность», ниже hypothesisMin гипотезу не показываем, топ hypothesesTop */
+    lowConfidence: number; hypothesisMin: number; hypothesesTop: number
   }
   zones: { yellowFrom: number; redFrom: number; redRequires: string[]; items: ModelZone[] }
   factors: ModelFactor[]
@@ -63,6 +64,7 @@ const today = () => new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10)
 const WS = '\\t\\n\\v\\f\\r\\x1c-\\x20\\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000'
 const SENTENCE = new RegExp(`(?<=[.!?…])[${WS}]+|\\n+`)
 const WORDS = new RegExp(`[${WS}]+`)
+const BLANK = new RegExp(`^[${WS}]*$`)
 const words = (s: string) => s.split(WORDS).filter(Boolean)
 
 /** Подставляет {ключ} из values; неизвестные ключи оставляет как есть (как fill() в risk_model.py) */
@@ -110,9 +112,15 @@ export function quote(text: string | null | undefined, marker: string): string |
   return undefined
 }
 
-/** Привязка к ЖК — факт, если уверенность не ниже порога или аналитик подтвердил публикацию */
-export const linkConfirmed = (ad: Pick<Ad, 'status' | 'matchConfidence'>) =>
-  ad.status === 'confirmed' || (ad.matchConfidence || 0) >= T.linkConfirmed
+/** Решения аналитика по публикации, от которых зависит риск */
+export interface AdDecisions { status?: string; linkConfirmedBy?: string | null; termsReview?: string | null }
+
+/** Привязка к ЖК — факт только после решения аналитика: он подтвердил привязку или саму публикацию.
+ *  Уверенность сопоставления (matchConfidence) — оценка ИИ: сколь угодно высокая, она остаётся гипотезой */
+export const linkConfirmed = (ad: AdDecisions) => ad.status === 'confirmed' || !BLANK.test(ad.linkConfirmedBy ?? '')
+
+/** Аналитик отклонил условия оплаты: «это не предложение внести деньги» — публикация не даёт R2 */
+export const termsRejected = (ad: AdDecisions) => ad.termsReview === 'rejected'
 
 // ---------- сборка результата ----------
 
@@ -124,10 +132,14 @@ function factor(code: string, state: FactorState, reason: string, values?: Value
   return { code, title: f.title, points: f.weight, state, reason, evidence: fill(text ?? f.reasons[reason], values), items: items ?? [] }
 }
 
-const adItem = (ad: Ad, marker: string) => item({
-  kind: 'ad', ref: ad.id, label: ad.account, source: ad.platform, date: ad.date, url: ad.url, marker,
-  quote: quote(ad.text, marker) || quote(ad.ocr, marker),
-})
+/** Цитата — из текста публикации, иначе из распознанного скриншота; quoteFrom говорит, откуда она взята */
+function adItem(ad: Ad, marker: string): EvidenceItem {
+  const inText = quote(ad.text, marker), q = inText || quote(ad.ocr, marker)
+  return item({
+    kind: 'ad', ref: ad.id, label: ad.account, source: ad.platform, date: ad.date, url: ad.url, marker, quote: q,
+    quoteFrom: q ? (inText ? 'text' : 'ocr') : undefined,
+  })
+}
 
 /** По дате убыв., при равной дате — по id возр. (как двойная стабильная сортировка в risk.py) */
 const byDateDesc = <X extends { id: string; date?: string | null }>(xs: X[]) =>
@@ -156,17 +168,24 @@ export function factorR1(c: Complex): RiskFactor {
 const moneyMarker = (s: AdSignals): string | undefined => s.funds[0]
 const advMarker = (s: AdSignals): string | undefined => s.sale[0] ?? s.funds[0]
 
-/** R2/R3: подтверждённая привязка → hit, только гипотеза привязки → unknown */
+/** R2/R3: подтверждённая привязка → hit, только гипотеза привязки → unknown.
+ *  R2 не дают публикации, по которым аналитик отклонил условия оплаты («это не предложение внести деньги»).
+ *  В доказательства «отклонено аналитиком» идут только публикации, привязанные к ЖК фактом: отклонённая публикация
+ *  с привязкой-гипотезой к этому объекту не относится (она и так R2 не даёт) — её не показываем и не считаем */
 function adsFactor(code: 'R2' | 'R3', built: boolean, linked: Ad[], pick: (s: AdSignals) => string | undefined): RiskFactor {
   if (built) return factor(code, 'clear', 'built')
   const [hitReason, unlinkedReason] = code === 'R2' ? ['offer', 'offer_unlinked'] : ['ads', 'ads_unlinked']
-  const conf: EvidenceItem[] = [], unconf: EvidenceItem[] = []
+  const conf: EvidenceItem[] = [], unconf: EvidenceItem[] = [], rejected: EvidenceItem[] = []
   for (const a of linked) {
     const marker = pick(adSignals(a))
-    if (marker) (linkConfirmed(a) ? conf : unconf).push(adItem(a, marker))
+    if (!marker) continue
+    if (code === 'R2' && termsRejected(a)) {
+      if (linkConfirmed(a)) rejected.push(adItem(a, marker))
+    } else (linkConfirmed(a) ? conf : unconf).push(adItem(a, marker))
   }
   if (conf.length) return factor(code, 'hit', hitReason, { count: conf.length }, conf)
-  if (unconf.length) return factor(code, 'unknown', unlinkedReason, { threshold: pct(T.linkConfirmed) }, unconf)
+  if (unconf.length) return factor(code, 'unknown', unlinkedReason, { count: unconf.length }, unconf)
+  if (rejected.length) return factor(code, 'clear', 'offer_rejected', { count: rejected.length }, rejected)
   return factor(code, 'clear', 'none')
 }
 
@@ -277,7 +296,9 @@ export function scoreAd(ad: Ad, c?: Complex | null): AdScore {
     r2 = factor('R2', 'clear', 'built')
     r3 = factor('R3', 'clear', 'built')
   } else {
-    r2 = money ? factor('R2', 'hit', 'R2_offer', null, [adItem(ad, money)], r.R2_offer) : factor('R2', 'clear', 'none', null, [], r.none)
+    r2 = !money ? factor('R2', 'clear', 'none', null, [], r.none)
+      : termsRejected(ad) ? factor('R2', 'clear', 'R2_rejected', { marker: money }, [adItem(ad, money)], r.R2_rejected)
+      : factor('R2', 'hit', 'R2_offer', null, [adItem(ad, money)], r.R2_offer)
     r3 = adv ? factor('R3', 'hit', 'R3_ads', null, [adItem(ad, adv)], r.R3_ads) : factor('R3', 'clear', 'none', null, [], r.none)
   }
   if (built) r1 = factor('R1', 'clear', 'built')

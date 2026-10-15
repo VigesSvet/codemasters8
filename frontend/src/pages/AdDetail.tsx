@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
-import { FactorList } from '../components/Factors'
+import { FactorList, Quote } from '../components/Factors'
+import { AiBadge, Confidence, HypothesisItem, OcrTag, TermList } from '../components/Hypothesis'
 import { SignalAction } from '../components/SignalPanel'
 import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Score, StatusDot, ZoneTag, adKey, fmtDT, platformMeta, statusMeta } from '../components/ui'
-import type { AdStatus, AuditEvent, Complex } from '../data/types'
+import type { Ad, AdAnalysis, AdScore, AdStatus, AuditEvent, Complex, LinkHypothesis } from '../data/types'
+import { linkConf, linkText, pct, visibleHypotheses, type LinkConf } from '../lib/ai'
 import { errorText } from '../lib/api'
-import { initialsOf } from '../lib/audit'
-import { linkConfirmed } from '../lib/risk'
+import { fmtStamp, initialsOf } from '../lib/audit'
+import { linkConfirmed, model } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcCheck, IcClose, IcExternal, IcSearch, IcSend, IcUsers } from '../ui/icons'
 
@@ -28,12 +30,15 @@ const isDecision = (m: string | null): m is Decision => !!m && m in DECISION
 
 /** Журнал публикации с сервера: id — чья запись; при ошибке перечитывания остаются прежние события */
 type Log = { id: string; events?: AuditEvent[]; err?: string }
+/** Анализ ИИ публикации с сервера: id — чей; при ошибке перечитывания остаётся прежний */
+type AiLoad = { id: string; data?: AdAnalysis; err?: string }
 
 /** Разбор публикации: слева сама реклама и история, справа — решение аналитика */
 export default function AdDetail() {
   const { id } = useParams()
-  const { mode, ads, complexes, setAdStatus, linkAd, addComment, getAudit, sessionLog, notify, riskOf, adScoreOf, user, analysts, revision } = useStore()
+  const { mode, ads, complexes, setAdStatus, linkAd, acceptHypothesis, getAnalysis, addComment, getAudit, sessionLog, notify, riskOf, adScoreOf, user, analysts, revision } = useStore()
   const a = ads.find((x) => x.id === id)
+  const found = !!a
   const [comment, setComment] = useState('')
   const [sending, setSending] = useState(false)
   const [modal, setModal] = useState<'status' | 'cx' | Decision | null>(null)
@@ -42,6 +47,8 @@ export default function AdDetail() {
   const [linking, setLinking] = useState(false)
   const [log, setLog] = useState<Log | null>(null)
   const [ver, setVer] = useState(0)
+  const [aiLoad, setAiLoad] = useState<AiLoad | null>(null)
+  const [aiVer, setAiVer] = useState(0)
   const live = mode === 'api'
 
   // журнал — с сервера; revision растёт после каждого сохранённого изменения (статус, привязка, комментарий —
@@ -56,13 +63,30 @@ export default function AdDetail() {
     return () => { alive = false }
   }, [id, live, ver, revision]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // анализ ИИ — один на страницу: по нему и карточка «Анализ ИИ», и уверенность в текущей привязке в панели справа.
+  // Решения меняют revision — анализ перечитывается (отклонённые гипотезы уходят, решение по условиям приходит с сервера)
+  useEffect(() => {
+    if (!live || !id || !found) return
+    let alive = true
+    getAnalysis(id).then(
+      (data) => { if (alive) setAiLoad({ id, data }) },
+      (e: unknown) => { if (alive) setAiLoad((l) => ({ id, data: l?.id === id ? l.data : undefined, err: errorText(e) })) },
+    )
+    return () => { alive = false }
+  }, [id, live, found, aiVer, revision]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!a) return <div className="empty">Публикация не найдена</div>
   // ЖК — только сохранённая привязка из стора (с бэкендом — PATCH /ads/{id}/complex, событие в журнале)
   const c = a.complexId ? complexes.find((x) => x.id === a.complexId) : undefined
   const s = adScoreOf(a)
   const cr = c ? riskOf(c) : null
   const fact = linkConfirmed(a)
-  const conf = Math.round((a.matchConfidence || 0) * 100)
+  const ai = live && aiLoad?.id === a.id ? aiLoad : null
+  // уверенность в привязке-гипотезе — по текущему анализу (она сохранится при принятии); записанная при сборе — отдельно
+  const lc = linkConf(a, ai?.data)
+  // цитаты-основания R2/R3 этой публикации (с пометкой, если взяты со скриншота)
+  const quotes = s.factors.filter((f) => f.code === 'R2' || f.code === 'R3')
+    .flatMap((f) => f.items.filter((x) => x.kind === 'ad' && x.quote).slice(0, 1).map((x) => ({ f, x })))
   const ME = user?.name ?? ''
   const demo = mode === 'demo'
   const reload = () => setVer((v) => v + 1)
@@ -75,7 +99,7 @@ export default function AdDetail() {
   const dm = isDecision(modal) ? modal : null
   const reason = dm ? reasons[dm] ?? '' : ''
 
-  /** to — новый ЖК (null — снять привязку); подтверждение гипотезы — тот же ЖК с уверенностью 100% */
+  /** to — новый ЖК (null — снять привязку): выбор аналитика — привязка становится фактом с его именем */
   const link = (to: Complex | null) => {
     setModal(null)
     const same = !!to && to.id === a.complexId
@@ -85,6 +109,15 @@ export default function AdDetail() {
     linkAd(a.id, to?.id ?? null).then((ok) => {
       if (ok) notify(demo ? `${msg} — демо-режим, на сервере не сохранено` : `${msg}, оценка пересчитана, событие в журнале`)
     }).finally(() => setLinking(false))
+  }
+  /** Подтвердить текущую гипотезу ИИ: с бэкендом — «Принять» (уверенность ИИ сохраняется, событие ИИ в журнале), в демо — локально */
+  const confirmLink = (to: Complex) => {
+    if (!live) { link(to); return }
+    setLinking(true)
+    acceptHypothesis(a.id, to.id).then(
+      () => notify(`Гипотеза принята: привязка к ЖК «${to.name}» теперь факт, риск объекта пересчитан`),
+      (e: unknown) => notify(`Привязка не подтверждена: ${errorText(e)}`),
+    ).finally(() => setLinking(false))
   }
 
   /** Смена статуса с основанием; при ошибке статус откатан, основание остаётся в черновике */
@@ -134,7 +167,8 @@ export default function AdDetail() {
           </div>
 
           <div className="card">
-            <h3 className="t-h3" style={{ marginBottom: 12 }}>Что нашёл анализ текста</h3>
+            <h3 className="t-h3" style={{ marginBottom: 4 }}>Словарь модели: маркеры в тексте</h3>
+            <p className="t-sm c2" style={{ marginBottom: 12 }}>Детерминированное правило модели риска, не гипотеза: маркер предложения денег даёт R2, маркер продажи — R3. Цитаты-основания — под плитками: из текста или со скриншота (OCR).</p>
             <div className="tiles">
               {([['Признаки продажи', s.signals.sale, ''], ['Предложение денег · R2', s.signals.funds, 'fund'], ['Признаки законности', s.signals.safe, 'safe']] as const).map(([t, list, cls]) => (
                 <div key={t} className="tile" style={{ background: 'var(--bg)', minHeight: 110 }}>
@@ -144,7 +178,27 @@ export default function AdDetail() {
                 </div>
               ))}
             </div>
+            {quotes.length > 0 && (
+              <div className="ev-list" style={{ marginTop: 14 }}>
+                {quotes.map(({ f, x }) => (
+                  <div key={f.code} className="ev" style={{ gridTemplateColumns: '28px minmax(0, 1fr)' }}>
+                    <span className="bold">{f.code}</span>
+                    <div>
+                      <div className="q"><Quote text={x.quote ?? ''} marker={x.marker} /></div>
+                      {(x.quoteFrom === 'ocr' || f.state !== 'hit') && (
+                        <div className="row wrap-f" style={{ gap: 6, marginTop: 4 }}>
+                          {x.quoteFrom === 'ocr' && <OcrTag />}
+                          {f.state !== 'hit' && <span className="tag gray" title={f.evidence}>в балл не входит</span>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+
+          <AiCard key={a.id} a={a} s={s} c={c} load={ai} lc={lc} retry={() => setAiVer((v) => v + 1)} />
 
           <div className="card">
             <div className="card-head"><h3>История</h3>{mine?.events && <span className="t-sm c2">{mine.events.length} · журнал сервера</span>}</div>
@@ -168,11 +222,13 @@ export default function AdDetail() {
             <Cell title="Статус" end={<><StatusDot s={a.status} /><span style={{ color: 'var(--text)' }}>{statusMeta[a.status].name}</span></>} chevron onClick={() => setModal('status')} />
             <Cell title="Ответственный" end={a.assignee ? <><span className="ava sm">{initialsOf(a.assignee, analysts)}</span><span style={{ color: 'var(--text)' }}>{a.assignee}</span></> : 'не назначен'} />
             <Cell title="Объект" end={<span style={{ color: 'var(--text)', maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c ? c.name : 'не определён'}</span>} chevron onClick={() => setModal('cx')}
-              sub={c && !fact ? <span className="tag yellow" style={{ marginTop: 4 }} title="Уверенность ниже порога — пока аналитик не подтвердит, публикация не даёт баллов объекту">привязка {conf}% — гипотеза</span> : undefined} />
+              sub={c ? <span className={`tag ${fact ? 'green' : 'yellow'}`} style={{ marginTop: 4 }}
+                title={fact ? `Привязка к ЖК — ${linkText(a, lc)}` : `Привязка к ЖК — ${linkText(a, lc)}. Пока аналитик не подтвердит, публикация не даёт баллов объекту`}>{linkText(a, lc, true)}</span> : undefined} />
             {c && !fact && (
               <div style={{ padding: '4px 24px 20px' }}>
-                <button className="btn g m full" disabled={linking} onClick={() => link(c)}><IcCheck size={20} />{linking ? 'Сохраняем…' : 'Подтвердить привязку'}</button>
-                <p className="t-xs c2" style={{ marginTop: 8, lineHeight: '17px' }}>Привязка найдена автоматически. Пока она гипотеза, публикация не даёт объекту баллов R2/R3, а R1 объекта не входит в её оценку.</p>
+                <button className="btn g m full" disabled={linking} onClick={() => confirmLink(c)}><IcCheck size={20} />{linking ? 'Сохраняем…' : 'Подтвердить привязку'}</button>
+                <p className="t-xs c2" style={{ marginTop: 8, lineHeight: '17px' }}>Привязку предложил ИИ — это гипотеза, аналитик её не подтвердил. Пока так, публикация не даёт объекту баллов R2/R3, а R1 объекта не входит в её оценку.
+                  {live && lc.now && ` При подтверждении сохранится уверенность по текущему анализу — ${pct(lc.now.confidence)}${lc.differs ? ` (${lc.when} — ${pct(lc.saved)})` : ''}.`}</p>
               </div>
             )}
           </div>
@@ -186,7 +242,7 @@ export default function AdDetail() {
             {c && cr && (
               <Link to={`/complexes/${c.id}`} className="row" style={{ marginTop: 18, background: 'var(--bg)', borderRadius: 16, padding: 8, gap: 12 }}>
                 <img src={c.cover} alt="" style={{ width: 52, height: 52, borderRadius: 12, objectFit: 'cover' }} />
-                <div style={{ flex: 1, minWidth: 0 }}><div className="bold t-sm">ЖК «{c.name}»</div><div className="t-xs c2">риск объекта · привязка {conf}%{fact ? '' : ', гипотеза'}</div></div>
+                <div style={{ flex: 1, minWidth: 0 }}><div className="bold t-sm">ЖК «{c.name}»</div><div className="t-xs c2">риск объекта · привязка — {fact ? 'факт' : linkText(a, lc, true)}</div></div>
                 <Score value={cr.score} zone={cr.zone} />
               </Link>
             )}
@@ -220,7 +276,7 @@ export default function AdDetail() {
           {a.complexId && <Cell icon={<span className="ico"><IcClose size={20} /></span>} title="Снять привязку" sub="Публикация останется без ЖК — нужна ручная привязка" onClick={() => link(null)} />}
           {complexes.filter((x) => x.name.toLowerCase().includes(cq.toLowerCase())).map((x) => (
             <Cell key={x.id} inset icon={<img className="th" src={x.cover} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name}
-              sub={x.id === a.complexId ? (fact ? 'привязка подтверждена' : `привязка ${conf}% — гипотеза, выбор подтвердит её`) : x.address}
+              sub={x.id === a.complexId ? (fact ? 'привязка подтверждена' : `${linkText(a, lc, true)} — выбор подтвердит её`) : x.address}
               end={x.id === a.complexId ? <IcCheck size={22} strokeWidth={2.5} style={{ color: 'var(--text)' }} /> : undefined}
               onClick={() => (x.id === a.complexId && fact ? setModal(null) : link(x))} />
           ))}
@@ -242,5 +298,160 @@ export default function AdDetail() {
         </Modal>
       )}
     </>
+  )
+}
+
+/** saved — гипотеза по сохранённой привязке, которой нет в текущей выдаче: её уверенность — записанная при сборе или добавлении */
+type AiModal = { kind: 'reject'; h: LinkHypothesis; saved?: boolean } | { kind: 'terms' }
+/** Черновик «почему» — свой у каждого решения: текст, набранный и отменённый для одного ЖК, не уходит в журнал с другим решением */
+const whyKey = (m: AiModal) => (m.kind === 'reject' ? `r:${m.h.complexId}` : 't')
+const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1)
+
+/** «Анализ ИИ» (ТЗ §6): гипотезы ЖК и условия оплаты с цитатами и уверенностью; принять или отклонить — решение аналитика в журнал.
+ *  load — анализ страницы (AdDetail), lc — уверенность в текущей привязке по нему же */
+function AiCard({ a, s, c, load, lc, retry }: { a: Ad; s: AdScore; c?: Complex; load: AiLoad | null; lc: LinkConf; retry: () => void }) {
+  const { mode, complexes, acceptHypothesis, rejectHypothesis, reviewTerms, notify } = useStore()
+  const live = mode === 'api'
+  const [busy, setBusy] = useState<string | null>(null)
+  const [modal, setModal] = useState<AiModal | null>(null)
+  const [whys, setWhys] = useState<Record<string, string>>({})
+
+  const data = load?.data
+  const fact = linkConfirmed(a)
+  // решения аналитика — из публикации в сторе (обновляется сразу после ответа), иначе из анализа: пока анализ перечитывается,
+  // отклонённая гипотеза не висит в списке с активными кнопками
+  const review = a.termsReview !== undefined ? a.termsReview : data?.termsReview ?? null
+  const reviewBy = a.termsReviewBy ?? data?.termsReviewBy
+  const reviewAt = a.termsReviewAt ?? data?.termsReviewAt
+  const { rejected: rejectedIds, hypotheses: hyps } = visibleHypotheses(a, data)
+  const rejected = rejectedIds.map((id) => complexes.find((x) => x.id === id)?.name ?? id)
+  const moneyFound = !!data?.terms.some((t) => t.money) || s.signals.funds.length > 0
+  // текущая привязка-гипотеза, которой нет среди гипотез по тексту (например, получена при сборе публикации), — решение по ней здесь же
+  const conf = a.matchConfidence || 0
+  const orphan: LinkHypothesis | null = c && !fact && data && !hyps.some((h) => h.complexId === c.id)
+    ? { complexId: c.id, complexName: c.name, confidence: conf, low: conf < model.thresholds.lowConfidence, reasons: [] } : null
+  const wk = modal ? whyKey(modal) : ''
+
+  /** wk — черновик комментария этого решения: после успеха очищается, при ошибке остаётся для повтора */
+  const act = (k: string, p: () => Promise<unknown>, done: string, key?: string) => {
+    setBusy(k)
+    setModal(null)
+    // ошибка — в баннере (стор) и коротко в тосте
+    p().then(() => { if (key) setWhys((w) => ({ ...w, [key]: '' })); notify(done) }, (e: unknown) => notify(`Не сохранено: ${errorText(e)}`)).finally(() => setBusy(null))
+  }
+  const accept = (h: LinkHypothesis) => act(`a:${h.complexId}`, () => acceptHypothesis(a.id, h.complexId),
+    `Гипотеза принята: привязка к ЖК «${h.complexName}» теперь факт, риск объекта пересчитан`)
+  const reject = (m: Extract<AiModal, { kind: 'reject' }>) => {
+    const key = whyKey(m)
+    act(`r:${m.h.complexId}`, () => rejectHypothesis(a.id, m.h.complexId, whys[key]), `Гипотеза отклонена: ЖК «${m.h.complexName}» ИИ больше не предлагает`, key)
+  }
+  const terms = (d: 'accepted' | 'rejected') => act(`t:${d}`, () => reviewTerms(a.id, d, d === 'rejected' ? whys.t : undefined),
+    d === 'accepted' ? 'Условия оплаты подтверждены — решение в журнале' : 'Отмечено: это не предложение внести деньги — R2 по публикации не засчитывается',
+    d === 'rejected' ? 't' : undefined)
+
+  return (
+    <div className="card">
+      <div className="card-head"><h3>Анализ ИИ</h3><AiBadge label="гипотезы ИИ" /></div>
+      <p className="t-sm c2" style={{ marginBottom: 8 }}>ИИ предлагает — решает аналитик. Гипотеза входит в балл только после того, как её примут; каждое решение пишется в журнал. Юридический вывод ИИ не делает.</p>
+      {!live ? (
+        <div className="ai-note">{mode === 'loading' ? 'Подключаемся к серверу…'
+          : 'Демо-режим без бэкенда: анализ ИИ (условия оплаты, гипотезы ЖК) выполняется на сервере. Привязку к ЖК можно подтвердить вручную справа — в демо она живёт только до перезагрузки.'}</div>
+      ) : !data ? (
+        load?.err ? <div className="ai-note err">Анализ не загрузился: {load.err} <button className="link" onClick={retry}>Повторить</button></div>
+          : <div className="ai-note">Загружаем анализ…</div>
+      ) : (
+        <>
+          {load?.err && <div className="ai-note err" style={{ marginBottom: 8 }}>Не удалось обновить анализ: {load.err} <button className="link" onClick={retry}>Повторить</button></div>}
+          <div className="ai-sub">Привязка к ЖК</div>
+          {c && !fact && lc.now ? (
+            // гипотеза есть в текущей выдаче: её уверенность и сохранится при принятии; записанная при сборе — отдельно, если другая
+            <div className="ai-decision no">
+              <div className="row between" style={{ gap: 8, alignItems: 'flex-start' }}><span>ЖК «{c.name}» — гипотеза ИИ, аналитик её не подтвердил</span><Confidence value={lc.now.confidence} low={lc.now.low} /></div>
+              <div style={{ marginTop: 4 }}>
+                {lc.differs && `${cap(lc.when)} публикации уверенность была ${pct(lc.saved)}, по текущему анализу — ${pct(lc.now.confidence)}: при принятии сохранится ${pct(lc.now.confidence)}. `}
+                В балл объекта не входит, пока аналитик её не примет
+              </div>
+            </div>
+          ) : (
+            <div className={`ai-decision ${c ? (fact ? 'ok' : 'no') : ''}`}>
+              {c ? <>ЖК «{c.name}» — {linkText(a, lc)}{fact ? '' : '. В балл объекта не входит, пока аналитик её не примет'}</>
+                : 'ЖК не определён: примите гипотезу ниже или привяжите публикацию вручную'}
+            </div>
+          )}
+          {orphan && (
+            <div className="row wrap-f" style={{ gap: 8, marginTop: 10 }}>
+              <button className="btn g m" disabled={!!busy} onClick={() => accept(orphan)}><IcCheck size={18} />{busy === `a:${orphan.complexId}` ? 'Сохраняем…' : 'Принять'}</button>
+              <button className="btn g m" disabled={!!busy} onClick={() => setModal({ kind: 'reject', h: orphan, saved: true })}><IcClose size={18} />{busy === `r:${orphan.complexId}` ? 'Сохраняем…' : 'Отклонить'}</button>
+            </div>
+          )}
+          {hyps.length > 0 ? (
+            <div className="ai-list" style={{ marginTop: 4 }}>
+              {hyps.map((h) => {
+                const current = h.complexId === a.complexId
+                return (
+                  <HypothesisItem key={h.complexId} h={h} note={current && !fact ? `текущая привязка — гипотеза${lc.differs ? ` · ${lc.when} — ${pct(lc.saved)}` : ''}` : undefined}>
+                    {current && fact ? <span className="tag green"><IcCheck size={12} strokeWidth={3} />{a.linkConfirmedBy ? 'принята — привязка факт' : 'текущая привязка — факт'}</span> : (
+                      <>
+                        <button className="btn g m" disabled={!!busy} onClick={() => accept(h)}><IcCheck size={18} />{busy === `a:${h.complexId}` ? 'Сохраняем…' : current ? 'Принять' : 'Принять и привязать'}</button>
+                        <button className="btn g m" disabled={!!busy} onClick={() => setModal({ kind: 'reject', h })}><IcClose size={18} />{busy === `r:${h.complexId}` ? 'Сохраняем…' : 'Отклонить'}</button>
+                      </>
+                    )}
+                  </HypothesisItem>
+                )
+              })}
+            </div>
+          ) : <div className="t-sm c2" style={{ marginTop: 10 }}>{c ? 'Других ЖК ИИ по тексту не предлагает' : `ИИ не нашёл подходящих ЖК${rejected.length ? ' среди неотклонённых' : ''} — привяжите публикацию вручную`}</div>}
+          {rejected.length > 0 && <p className="t-xs c2" style={{ marginTop: 8 }}>Отклонены аналитиком: {rejected.map((n) => `ЖК «${n}»`).join(', ')} — ИИ их больше не предлагает</p>}
+
+          <div className="ai-sub">Условия оплаты <span className="t-sm c2" style={{ fontWeight: 400 }}>{data.terms.length}</span></div>
+          <TermList terms={data.terms} empty="ИИ не нашёл условий оплаты" />
+          {review && (
+            <div className={`ai-decision ${review === 'accepted' ? 'ok' : 'no'}`}>
+              {review === 'accepted' ? 'Подтверждено аналитиком: это предложение внести деньги' : 'Аналитик отметил: это не предложение внести деньги — R2 по публикации не засчитывается'}
+              {reviewBy && ` · ${reviewBy}`}{reviewAt && `, ${fmtStamp(reviewAt)}`}
+            </div>
+          )}
+          {(moneyFound || review) && (
+            <div className="row wrap-f" style={{ gap: 8, marginTop: 10 }}>
+              {review !== 'accepted' && <button className="btn g m" disabled={!!busy} onClick={() => terms('accepted')}><IcCheck size={18} />{busy === 't:accepted' ? 'Сохраняем…' : 'Подтвердить'}</button>}
+              {review !== 'rejected' && <button className="btn g m" disabled={!!busy} onClick={() => setModal({ kind: 'terms' })}><IcClose size={18} />{busy === 't:rejected' ? 'Сохраняем…' : 'Это не предложение денег'}</button>}
+            </div>
+          )}
+          <p className="t-xs c2" style={{ marginTop: 8, lineHeight: '17px' }}>R2 ставит правило модели по словарю — это воспроизводимая цитата, а не вывод ИИ. Отметка «Это не предложение денег» снимает R2 этой публикации и у объекта; подтверждение на балл не влияет.</p>
+
+          {(data.phones.length > 0 || data.addresses.length > 0) && (
+            <div className="row wrap-f" style={{ gap: 6, marginTop: 12 }}>
+              <span className="t-sm c2">Найдено в тексте:</span>
+              {data.phones.map((p) => <span key={p} className="tag gray">тел. {p}</span>)}
+              {data.addresses.map((x) => <span key={x} className="tag gray">{x}</span>)}
+            </div>
+          )}
+          {data.note && <div className="ai-note" style={{ marginTop: 12 }}>{data.note}</div>}
+          <div className="t-xs c3" style={{ marginTop: 12 }}>Движок {data.engine} · офлайн: правила, словари, транслитерация, без внешних API · одинаковый текст — одинаковый результат</div>
+        </>
+      )}
+
+      {modal && (
+        <Modal title={modal.kind === 'reject' ? 'Отклонить гипотезу ИИ?' : 'Это не предложение внести деньги?'} onClose={() => setModal(null)}
+          footer={<>
+            <button className="btn g" onClick={() => setModal(null)}>Отмена</button>
+            <button className="btn d" onClick={() => (modal.kind === 'reject' ? reject(modal) : terms('rejected'))}>{modal.kind === 'reject' ? 'Отклонить' : 'Да, не предложение денег'}</button>
+          </>}>
+          {modal.kind === 'reject' ? (
+            <div className="cell" style={{ minHeight: 56 }}><span className="ico"><IcBuilding size={20} /></span><div className="main">
+              <div className="ttl">ЖК «{modal.h.complexName}» · уверенность {modal.saved ? `${lc.when} ` : ''}{pct(modal.h.confidence)}</div>
+              <div className="sub">{modal.h.complexId === a.complexId && !fact ? 'Текущая привязка-гипотеза будет снята. ' : ''}ИИ больше не будет предлагать этот ЖК для публикации</div>
+            </div></div>
+          ) : (
+            <p className="t-sm" style={{ padding: '8px 24px', lineHeight: '20px' }}>R2 по этой публикации не будет засчитан — ни в её оценке, ни у объекта. Решение с вашим именем попадёт в журнал; его можно изменить.</p>
+          )}
+          <div style={{ padding: '12px 24px 4px' }}>
+            <label className="t-sm c2" htmlFor="ai-why">Почему — необязательно · попадёт в журнал</label>
+            <textarea id="ai-why" className="input" style={{ marginTop: 6 }} autoFocus maxLength={TEXT_MAX} value={whys[wk] ?? ''} onChange={(e) => { const v = e.target.value; setWhys((w) => ({ ...w, [wk]: v })) }}
+              placeholder={modal.kind === 'reject' ? 'Например: в тексте другой ЖК с похожим названием' : 'Например: бронь бесплатная, деньги принимаются только по ДДУ с гарантией ЕО'} />
+          </div>
+        </Modal>
+      )}
+    </div>
   )
 }

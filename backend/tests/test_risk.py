@@ -6,6 +6,7 @@
 import copy
 import itertools
 import json
+import math
 import random
 import re
 from collections import Counter
@@ -15,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from app import golden, risk
-from app.risk import hits, link_confirmed, quote, score_ad, score_complex
+from app.risk import hits, link_confirmed, quote, score_ad, score_complex, terms_rejected
 from app.risk_model import ALMATY, FACTORS, MARKERS, MODEL, OBSERVATIONS, SHARED, T, fill, fmt_date, zone_for
 
 AS_OF = "2026-10-15"
@@ -75,11 +76,35 @@ def test_zone_thresholds():
 
 
 def test_rule_thresholds():
-    assert (T["linkConfirmed"], T["readinessGap"], T["idleDays"], T["idlePhotosMin"], T["overdueDays"], T["idleShortDays"]) == \
-        (0.8, 20, 90, 2, 180, 30)
+    assert (T["readinessGap"], T["idleDays"], T["idlePhotosMin"], T["overdueDays"], T["idleShortDays"]) == (20, 90, 2, 180, 30)
     assert T["idleActivities"] == ["нет", "низкая"]
-    # автопривязка по названию — гипотеза: её уверенность ниже порога факта
-    assert 0 < T["autoLinkConfidence"] < T["linkConfirmed"]
+    # пороги ИИ-анализа — только для показа гипотез, в балл не входят
+    assert (T["lowConfidence"], T["hypothesisMin"], T["hypothesesTop"]) == (0.5, 0.3, 3)
+    assert 0 < T["hypothesisMin"] < T["lowConfidence"] < 1
+
+
+# Порога «уверенность ≥ N% — факт» больше нет: привязка — факт только после подтверждения аналитиком (ТЗ §5, §6)
+REMOVED_THRESHOLDS = ("linkConfirmed", "autoLinkConfidence")
+_THRESHOLD_USE = re.compile(r"""(?:\bT|thresholds)(?:\.|\[\s*["'])(?:linkConfirmed|autoLinkConfidence)\b|autoLinkConfidence""")
+APP = Path(risk.__file__).resolve().parent
+FRONT = SHARED.parent / "frontend" / "src"  # в образе бэкенда фронтенда нет — тогда проверяется только бэкенд
+
+
+def test_removed_link_thresholds_absent_from_model_and_engines():
+    assert not set(REMOVED_THRESHOLDS) & set(T)
+    for path in [APP / "risk.py", FRONT / "lib" / "risk.ts"]:
+        if path.exists():
+            assert not _THRESHOLD_USE.search(path.read_text(encoding="utf-8")), path
+    for tpl in [*(t for f in MODEL["factors"] for t in f["reasons"].values()), *MODEL["ad"]["reasons"].values()]:
+        assert "{threshold}%" not in tpl and "уверенность ниже" not in tpl, tpl
+
+
+def test_removed_link_thresholds_unused_anywhere():
+    """Ни бэкенд, ни фронтенд не читают удалённые пороги (иначе KeyError / undefined вместо правила привязки)."""
+    files = sorted(APP.rglob("*.py")) + sorted(p for p in FRONT.rglob("*.ts*")  # тесты проверяют как раз отсутствие
+                                               if p.suffix in (".ts", ".tsx") and ".test." not in p.name)
+    used = [f"{p.parent.name}/{p.name}" for p in files if _THRESHOLD_USE.search(p.read_text(encoding="utf-8"))]
+    assert not used, f"удалённые пороги привязки всё ещё используются: {used}"
 
 
 def test_control_cases_declared():
@@ -97,13 +122,13 @@ def test_control_cases_declared():
 # Все ключи пояснений, которые использует risk.py. Добавили ветку в движок — добавьте текст в модель и сюда.
 REASONS = {
     "R1": {"built", "ok_guarantee", "ok_guarantee_no_mio", "ok_mio", "absent", "absent_unsourced", "mio_without_bank", "unknown"},
-    "R2": {"built", "offer", "offer_unlinked", "none"},
+    "R2": {"built", "offer", "offer_unlinked", "offer_rejected", "none"},
     "R3": {"built", "ads", "ads_unlinked", "none"},
     "R4": {"verified", "pending", "none"},
     "R5": {"built", "mismatch", "match", "incomplete"},
     "R6": {"built", "overdue", "idle", "idle_unconfirmed", "no_photos", "active"},
 }
-AD_REASONS = {"R1_no_sale", "R1_no_complex", "R1_link_unconfirmed", "R2_offer", "R3_ads", "none"}
+AD_REASONS = {"R1_no_sale", "R1_no_complex", "R1_link_unconfirmed", "R2_offer", "R2_rejected", "R3_ads", "none"}
 OBS_STATES = {"O1": {"ok", "flag", "unknown"}, "O2": {"ok", "flag", "unknown"}, "O3": {"ok", "flag"}}
 
 
@@ -127,6 +152,11 @@ def test_reasons_used_in_engine_exist():
         assert reason in FACTORS[code]["reasons"] or reason in MODEL["ad"]["reasons"], (code, reason)
     for a, b in re.findall(r'\("(\w+)", "(\w+)"\) if code == "R2"', src) + re.findall(r'else \("(\w+)", "(\w+)"\)', src):
         assert {a, b} <= set(FACTORS["R2"]["reasons"]) | set(FACTORS["R3"]["reasons"])
+    # вето аналитика — только для R2 (R3 не затрагивается)
+    for reason in re.findall(r'_factor\(code, "(?:hit|clear|unknown)", "(\w+)"', src):
+        assert reason in FACTORS["R2"]["reasons"], reason
+        assert reason == "offer_rejected" or reason in FACTORS["R3"]["reasons"], reason
+    assert 'code == "R2" and terms_rejected(a)' in src and "offer_rejected" not in FACTORS["R3"]["reasons"]
 
 
 def test_markers_dictionaries():
@@ -169,6 +199,7 @@ DEFAULT = {"R1": ("clear", "ok_guarantee"), "R2": ("clear", "none"), "R3": ("cle
            "R4": ("clear", "none"), "R5": ("clear", "match"), "R6": ("clear", "active")}
 OFFER, ADS = ("hit", "offer"), ("hit", "ads")
 ABSENT, VERIFIED, MISMATCH, IDLE = ("hit", "absent"), ("hit", "verified"), ("hit", "mismatch"), ("hit", "idle")
+UNLINKED, ADS_UNLINKED, REJECTED = ("unknown", "offer_unlinked"), ("unknown", "ads_unlinked"), ("clear", "offer_rejected")
 BUILT_ALL = {c: ("clear", "built") for c in ["R1", "R2", "R3", "R5", "R6"]}
 
 # имя → (балл, зона, «нужна проверка», отличия факторов от DEFAULT)
@@ -195,13 +226,22 @@ EXPECT = {
     "r1_mio_bank_clear": (0, "green", False, {"R1": ("clear", "ok_mio")}),
     "r1_all_unknown": (0, "green", True, {"R1": ("unknown", "unknown")}),
     "r1_built_clear": (0, "green", False, BUILT_ALL),
-    "link_079_unknown": (0, "green", True, {"R2": ("unknown", "offer_unlinked"), "R3": ("unknown", "ads_unlinked")}),
-    "link_080_hit": (35, "yellow", False, {"R2": OFFER, "R3": ADS}),
-    "link_050_confirmed_hit": (35, "yellow", False, {"R2": OFFER, "R3": ADS}),
+    "link_hypothesis_079_unknown": (0, "green", True, {"R2": UNLINKED, "R3": ADS_UNLINKED}),
+    "link_high_confidence_unconfirmed_unknown": (0, "green", True, {"R2": UNLINKED, "R3": ADS_UNLINKED}),
+    "link_status_confirmed_hit": (35, "yellow", False, {"R2": OFFER, "R3": ADS}),
+    "link_analyst_confirmed_hit": (35, "yellow", False, {"R2": OFFER, "R3": ADS}),
+    "link_blank_confirmed_by_unknown": (0, "green", True, {"R2": UNLINKED, "R3": ADS_UNLINKED}),
     "link_dismissed_ignored": (0, "green", False, {}),
     "link_other_complex_ignored": (0, "green", False, {}),
     "link_mixed_counts_confirmed_only": (35, "yellow", False, {"R2": OFFER, "R3": ADS}),
     "link_order_newest_first": (35, "yellow", False, {"R2": OFFER, "R3": ADS}),
+    "r2_terms_rejected_clear": (10, "green", False, {"R2": REJECTED, "R3": ADS}),
+    "r2_terms_rejected_case_b_yellow": (45, "yellow", False, {"R1": ABSENT, "R2": REJECTED, "R3": ADS}),
+    "r2_terms_rejected_other_offer_hit": (35, "yellow", False, {"R2": OFFER, "R3": ADS}),
+    "r2_terms_rejected_hypothesis_clear": (0, "green", True, {"R3": ADS_UNLINKED}),
+    "r2_terms_rejected_hypothesis_not_counted": (10, "green", False, {"R2": REJECTED, "R3": ADS}),
+    "r2_terms_accepted_hit": (35, "yellow", False, {"R2": OFFER, "R3": ADS}),
+    "r2_offer_from_ocr_hit": (35, "yellow", False, {"R2": OFFER, "R3": ADS}),
     "r4_verified_collective_hit": (15, "green", False, {"R4": VERIFIED}),
     "r4_pending_unknown": (0, "green", True, {"R4": ("unknown", "pending")}),
     "r4_rejected_clear": (0, "green", False, {}),
@@ -307,21 +347,158 @@ def test_r1_evidence_documents():
     assert ok["items"][0]["quote"].startswith("Гарантия ЕО №")
 
 
-def test_link_hypothesis_evidence():
-    r = run("link_079_unknown")
-    assert fac(r, "R2")["evidence"].endswith("(уверенность ниже 80%) — нужна проверка")
+@pytest.mark.parametrize("name", ["link_hypothesis_079_unknown", "link_high_confidence_unconfirmed_unknown",
+                                  "link_blank_confirmed_by_unknown"])
+def test_link_hypothesis_evidence(name):
+    """Гипотеза ИИ — «нужна проверка» без порога-факта в тексте: уверенность, даже 95–97%, фактом не делает."""
+    r = run(name)
+    assert fac(r, "R2")["evidence"] == \
+        "Предложение внести деньги найдено в публикациях: 1, но привязка к ЖК — гипотеза ИИ, аналитик её не подтвердил — нужна проверка"
+    assert fac(r, "R3")["evidence"] == \
+        "Реклама продажи найдена в публикациях: 1, но привязка к ЖК — гипотеза ИИ, аналитик её не подтвердил — нужна проверка"
     assert fac(r, "R2")["items"][0]["ref"] and fac(r, "R3")["items"]
+    assert "%" not in fac(r, "R2")["evidence"] + fac(r, "R3")["evidence"]
     assert r["summary"].endswith("Нужна проверка: R2, R3.")
+    assert not any(link_confirmed(a) for a in CX_FX[name]["ads"])
+
+
+def test_link_confirmed_by_analyst_regardless_of_confidence():
+    for name, conf in [("link_analyst_confirmed_hit", 0.55), ("link_status_confirmed_hit", 0.5)]:
+        a = CX_FX[name]["ads"][0]
+        assert a["matchConfidence"] == conf and link_confirmed(a), name
+    assert CX_FX["link_analyst_confirmed_hit"]["ads"][0]["linkConfirmedBy"]
+    assert CX_FX["link_status_confirmed_hit"]["ads"][0]["linkConfirmedBy"] is None
+    assert CX_FX["link_high_confidence_unconfirmed_unknown"]["ads"][0]["matchConfidence"] == 0.97
 
 
 def test_link_mixed_counts_only_confirmed():
+    """Подтверждённая аналитиком привязка с уверенностью 0.6 — факт; гипотеза ИИ с уверенностью 0.9 — нет."""
     f = CX_FX["link_mixed_counts_confirmed_only"]
-    confirmed = [a["id"] for a in f["ads"] if a["matchConfidence"] >= 0.8]
+    confirmed = [a["id"] for a in f["ads"] if a.get("linkConfirmedBy")]
+    assert len(confirmed) == 1 and [a["matchConfidence"] for a in f["ads"]] == [0.9, 0.6]
     r = run("link_mixed_counts_confirmed_only")
     for code in ["R2", "R3"]:
         assert [i["ref"] for i in fac(r, code)["items"]] == confirmed
     assert fac(r, "R2")["evidence"] == "Предложение внести деньги в публикациях: 1"
     assert fac(r, "R3")["evidence"] == "Реклама продажи до ввода объекта: публикаций 1"
+
+
+# ---------- решение аналитика по условиям оплаты (вето R2) ----------
+
+def test_r2_terms_rejected_veto():
+    r = run("r2_terms_rejected_clear")
+    r2, r3 = fac(r, "R2"), fac(r, "R3")
+    assert (r2["state"], r2["reason"], r2["points"]) == ("clear", "offer_rejected", 25)
+    assert r2["evidence"] == "Аналитик отклонил условия оплаты в публикациях: 1 — это не предложение внести деньги, в балл не входит"
+    # отклонённая публикация остаётся в доказательствах — видно, что и почему не засчитано
+    assert [(i["ref"], i["marker"], i["quote"]) for i in r2["items"]] == [("fxa33", "бронь", "Платная бронь квартиры от 500 000 ₸.")]
+    assert (r3["state"], [i["ref"] for i in r3["items"]]) == ("hit", ["fxa33"]), "R3 решение по условиям оплаты не затрагивает"
+
+
+def test_r2_terms_rejected_breaks_red_zone():
+    """Кейс B с отклонённым аналитиком депозитом: R1 + R3 = 45 — без R2 красной зоны нет."""
+    base, vetoed = run("case_b"), run("r2_terms_rejected_case_b_yellow")
+    assert (base["score"], base["zone"]) == (70, "red")
+    assert (vetoed["score"], vetoed["zone"], hit_codes(vetoed)) == (45, "yellow", ["R1", "R3"])
+    assert vetoed["summary"] == "Балл 45: углублённая ручная проверка документов и публикаций."
+
+
+def test_r2_terms_rejected_only_that_ad():
+    r = run("r2_terms_rejected_other_offer_hit")
+    assert [i["ref"] for i in fac(r, "R2")["items"]] == ["fxa36"]
+    assert fac(r, "R2")["evidence"] == "Предложение внести деньги в публикациях: 1"
+    assert [i["ref"] for i in fac(r, "R3")["items"]] == ["fxa35", "fxa36"]
+
+
+def test_r2_terms_rejected_on_hypothesis_needs_no_r2_check():
+    r = run("r2_terms_rejected_hypothesis_clear")
+    assert (fac(r, "R2")["state"], fac(r, "R3")["state"]) == ("clear", "unknown")
+    assert r["summary"].endswith("Нужна проверка: R3.")
+    # привязка-гипотеза — не факт: отклонённая публикация к этому ЖК не относится и в его R2 не показывается
+    assert (fac(r, "R2")["reason"], fac(r, "R2")["items"]) == ("none", [])
+    assert [i["ref"] for i in fac(r, "R3")["items"]] == ["fxa37"]
+
+
+def test_r2_terms_rejected_counts_only_confirmed_links():
+    """Отклонены условия у публикации с привязкой-гипотезой (свежее) и у привязанной фактом: «отклонено аналитиком»
+    считает и показывает только вторую — первая к ЖК не привязана, в доказательства объекта (карточка, сигнал, PDF) не идёт."""
+    r = run("r2_terms_rejected_hypothesis_not_counted")
+    r2 = fac(r, "R2")
+    assert (r2["state"], r2["reason"], [i["ref"] for i in r2["items"]]) == ("clear", "offer_rejected", ["fxa45"])
+    assert r2["evidence"] == "Аналитик отклонил условия оплаты в публикациях: 1 — это не предложение внести деньги, в балл не входит"
+    assert (fac(r, "R3")["state"], [i["ref"] for i in fac(r, "R3")["items"]]) == ("hit", ["fxa45"])
+    # та же публикация-гипотеза без решения аналитика давала бы «нужна проверка» — решение её снимает, но фактом не делает
+    f = CX_FX["r2_terms_rejected_hypothesis_not_counted"]
+    plain = score_complex(f["complex"], f["developer"], [_without_review(f["ads"][0]), f["ads"][1]], [], AS_OF)
+    assert (fac(plain, "R2")["state"], [i["ref"] for i in fac(plain, "R2")["items"]]) == ("unknown", ["fxa44"])
+
+
+def test_r2_terms_rejected_seed_hypothesis_not_in_complex_evidence():
+    """Сид: a4 привязана к c8 гипотезой (71%), a8 — фактом. Отклонены условия у обеих → в R2 ЖК только a8."""
+    ads = [{**a, "termsReview": "rejected"} if a["id"] in ("a4", "a8") else a for a in SEED["ads"]]
+    c = SEED_CX["c8"]
+    r2 = fac(score_complex(c, DEVS.get(c["developerId"]), ads, SEED["appeals"], AS_OF), "R2")
+    assert (r2["state"], r2["reason"], [i["ref"] for i in r2["items"]]) == ("clear", "offer_rejected", ["a8"])
+    assert r2["evidence"].startswith("Аналитик отклонил условия оплаты в публикациях: 1 ")
+
+
+def _without_review(a):
+    return {k: v for k, v in a.items() if not k.startswith("termsReview")}
+
+
+def test_terms_accepted_does_not_change_risk():
+    f = copy.deepcopy(CX_FX["r2_terms_accepted_hit"])
+    assert f["ads"][0]["termsReview"] == "accepted"
+    plain = score_complex(f["complex"], f["developer"], [_without_review(a) for a in f["ads"]], [], AS_OF)
+    assert run("r2_terms_accepted_hit") == plain
+    a = AD_FX["ad_terms_accepted_red"]
+    assert run_ad("ad_terms_accepted_red") == score_ad(_without_review(a["ad"]), a["complex"])
+
+
+def test_ad_terms_rejected():
+    r = run_ad("ad_terms_rejected")
+    r2 = fac(r, "R2")
+    assert (r2["state"], r2["reason"]) == ("clear", "R2_rejected")
+    assert r2["evidence"] == "Найден маркер «бронь», но аналитик отклонил: это не предложение внести деньги — в балл не входит"
+    assert [i["quote"] for i in r2["items"]] == ["Платная бронь квартиры от 500 000 ₸."]
+    assert hit_codes(r) == ["R1", "R3"] and (r["score"], r["zone"]) == (45, "yellow")
+    assert r["signals"]["funds"] == ["бронь"], "сигналы словаря остаются как есть — решение аналитика их не стирает"
+
+
+def test_terms_rejected():
+    assert terms_rejected({"termsReview": "rejected"})
+    assert not any(terms_rejected(a) for a in [{"termsReview": "accepted"}, {"termsReview": None}, {}])
+
+
+def _all_ads():
+    """Все публикации сида и фикстур со своим ЖК (для свойств модели)."""
+    yield from ((a, SEED_CX.get(a.get("complexId") or "")) for a in SEED["ads"])
+    yield from ((f["ad"], f["complex"]) for f in FX["ad"])
+    yield from ((a, f["complex"] if a.get("complexId") == f["complex"]["id"] else None) for f in FX["complex"] for a in f["ads"])
+
+
+@pytest.mark.parametrize("review", ["rejected", "accepted", None])
+def test_terms_review_touches_only_r2(review):
+    """Отклонение условий оплаты снимает только R2 (по ЖК и по публикации); подтверждение и «нет решения» ничего не меняют."""
+    for cid, c in SEED_CX.items():
+        ads = [{**_without_review(a), "termsReview": review} for a in SEED["ads"]]
+        base = run_seed(cid)
+        r = score_complex(c, DEVS.get(c["developerId"]), ads, SEED["appeals"], AS_OF)
+        if review != "rejected":
+            assert r == base, cid
+            continue
+        assert fac(r, "R2")["state"] != "hit" and fac(r, "R3") == fac(base, "R3"), cid
+        assert [f for f in r["factors"] if f["code"] != "R2"] == [f for f in base["factors"] if f["code"] != "R2"], cid
+        assert r["score"] == base["score"] - (25 if fac(base, "R2")["state"] == "hit" else 0), cid
+        assert r["zone"] != "red", f"{cid}: без R2 красной зоны нет"
+    for a, c in _all_ads():
+        base, r = score_ad(_without_review(a), c), score_ad({**_without_review(a), "termsReview": review}, c)
+        if review != "rejected":
+            assert r == base, a["id"]
+            continue
+        assert fac(r, "R2")["state"] != "hit" and fac(r, "R3") == fac(base, "R3"), a["id"]
+        if fac(base, "R2")["state"] == "hit":
+            assert (fac(r, "R2")["reason"], fac(r, "R2")["items"]) == ("R2_rejected", fac(base, "R2")["items"]), a["id"]
 
 
 def test_evidence_order_newest_first():
@@ -441,6 +618,11 @@ AD_EXPECT = {
                                                      "R3": ("hit", "R3_ads")}),
     "ad_ocr_only_money": (35, "yellow", True, {"R1": ("unknown", "unknown"), "R2": ("hit", "R2_offer"), "R3": ("hit", "R3_ads")}),
     "ad_long_sentence_quote": (35, "yellow", True, {"R1": ("unknown", "unknown"), "R2": ("hit", "R2_offer"), "R3": ("hit", "R3_ads")}),
+    "ad_high_confidence_unconfirmed": (35, "yellow", True, {"R1": ("unknown", "R1_link_unconfirmed"), "R2": ("hit", "R2_offer"),
+                                                            "R3": ("hit", "R3_ads")}),
+    "ad_terms_rejected": (45, "yellow", False, {"R1": ABSENT, "R2": ("clear", "R2_rejected"), "R3": ("hit", "R3_ads")}),
+    "ad_terms_accepted_red": (70, "red", False, {"R1": ABSENT, "R2": ("hit", "R2_offer"), "R3": ("hit", "R3_ads")}),
+    "ad_quote_from_ocr": (35, "yellow", True, {"R1": ("unknown", "unknown"), "R2": ("hit", "R2_offer"), "R3": ("hit", "R3_ads")}),
 }
 
 
@@ -455,7 +637,11 @@ def test_ad_fixture(name):
 
 def test_ad_texts():
     assert fac(run_ad("ad_link_060"), "R1")["evidence"] == \
-        "Привязка к ЖК не подтверждена (уверенность 60%) — основание объекта не учитывается"
+        "Привязка к ЖК — гипотеза ИИ (уверенность 60%), аналитик её не подтвердил — основание объекта не учитывается"
+    # уверенность ИИ — информативно: и 97% без подтверждения аналитиком остаются гипотезой
+    assert fac(run_ad("ad_high_confidence_unconfirmed"), "R1")["evidence"] == \
+        "Привязка к ЖК — гипотеза ИИ (уверенность 97%), аналитик её не подтвердил — основание объекта не учитывается"
+    assert fac(run_ad("ad_money_basis_absent_red"), "R2")["evidence"] == "В публикации есть предложение внести деньги"
     assert fac(run_ad("ad_no_complex"), "R1")["evidence"] == "ЖК не определён — основание проверить нельзя"
     r = run_ad("ad_no_markers")
     assert r["signals"] == {"sale": [], "funds": [], "safe": []}
@@ -466,8 +652,36 @@ def test_ad_texts():
 def test_ad_ocr_quote():
     r = run_ad("ad_ocr_only_money")
     item = fac(r, "R2")["items"][0]
-    assert (item["marker"], item["quote"]) == ("предоплат", "ПРЕДОПЛАТА 10% · ФИКСИРУЕМ ЦЕНУ")
+    assert (item["marker"], item["quote"], item["quoteFrom"]) == ("предоплат", "ПРЕДОПЛАТА 10% · ФИКСИРУЕМ ЦЕНУ", "ocr")
     assert r["signals"]["funds"] == ["предоплат", "фиксируем цену"]
+
+
+@pytest.mark.parametrize("name", ["r2_offer_from_ocr_hit", "ad_quote_from_ocr"])
+def test_quote_from_marks_screenshot(name):
+    """Цитата со скриншота помечена quoteFrom = 'ocr', из текста публикации — 'text' (T-24)."""
+    r = run(name) if name in CX_FX else run_ad(name)
+    r2, r3 = fac(r, "R2")["items"][0], fac(r, "R3")["items"][0]
+    assert (r2["marker"], r2["quote"], r2["quoteFrom"]) == ("первый взнос", "ПЕРВЫЙ ВЗНОС 20% · ДДУ · ФИКСИРУЕМ ЦЕНУ", "ocr")
+    assert (r3["marker"], r3["quote"], r3["quoteFrom"]) == ("старт продаж", "Старт продаж!", "text")
+
+
+def test_quote_from_matches_source_for_every_ad():
+    """У каждого доказательства-публикации: цитата есть ⇔ есть quoteFrom, и цитата взята дословно из указанного источника."""
+    seen = Counter()
+    for a, c in _all_ads():
+        for f in score_ad(a, c)["factors"]:
+            for i in f["items"]:
+                if i["kind"] != "ad":
+                    continue
+                assert ("quote" in i) == ("quoteFrom" in i), (a["id"], f["code"])
+                if "quote" not in i:
+                    continue
+                src = " ".join((a.get(i["quoteFrom"]) or "").split())
+                assert i["quote"].removeprefix("… ").removesuffix(" …") in src, (a["id"], f["code"], i["quoteFrom"])
+                if i["quoteFrom"] == "ocr":
+                    assert quote(a.get("text"), i["marker"]) is None, "сначала цитата ищется в тексте публикации"
+                seen[i["quoteFrom"]] += 1
+    assert seen["text"] and seen["ocr"]
 
 
 def test_ad_long_sentence_quote_trimmed():
@@ -498,10 +712,19 @@ def test_quote():
 
 
 def test_link_confirmed():
-    assert not link_confirmed({"matchConfidence": 0.79, "status": "new"})
-    assert link_confirmed({"matchConfidence": 0.8, "status": "new"})
+    """Факт — только после решения аналитика (linkConfirmedBy или подтверждённая публикация); уверенность ИИ не в счёт."""
+    for conf in [0.79, 0.8, 0.97, 1]:
+        assert not link_confirmed({"matchConfidence": conf, "status": "new"}), conf
+        assert not link_confirmed({"matchConfidence": conf, "status": "in_review", "linkConfirmedBy": None}), conf
+    assert link_confirmed({"matchConfidence": 0.1, "status": "new", "linkConfirmedBy": "Нестерова А."})
     assert link_confirmed({"matchConfidence": 0.1, "status": "confirmed"})
+    assert link_confirmed({"status": "confirmed", "linkConfirmedBy": None})
     assert not link_confirmed({"status": "in_review"})
+    assert not link_confirmed({})
+    # пустое имя — не подтверждение (пробелы как в Python str.strip — их же отрезает фронтенд); одна дата — тоже
+    for blank in ["", "  ", "\u00a0\u3000\t\n"]:
+        assert not link_confirmed({"status": "new", "linkConfirmedBy": blank}), repr(blank)
+    assert not link_confirmed({"status": "new", "linkConfirmedAt": "2026-10-11T10:00:00+05:00"})
 
 
 def test_fill_and_fmt_date():
@@ -537,16 +760,25 @@ def test_unknown_never_becomes_r1(g, m, k, src, chk):
     assert r["score"] == (35 if state == "hit" else 0)
 
 
-@pytest.mark.parametrize("conf", [0, 0.31, 0.5, 0.79, 0.7999])
+@pytest.mark.parametrize("conf", [0, 0.31, 0.5, 0.79, 0.8, 0.95, 1])
 @pytest.mark.parametrize("status", ["new", "needs_check", "in_review"])
 def test_link_hypothesis_never_becomes_r2_r3(conf, status):
+    """Без подтверждения аналитиком привязка — гипотеза при любой уверенности ИИ."""
     f = _clean()
-    ad = copy.deepcopy(CX_FX["case_b"]["ads"][0]) | {"matchConfidence": conf, "status": status, "complexId": f["complex"]["id"]}
+    ad = copy.deepcopy(CX_FX["case_b"]["ads"][0]) | {"matchConfidence": conf, "status": status, "complexId": f["complex"]["id"],
+                                                     "linkConfirmedBy": None, "linkConfirmedAt": None}
     r = score_complex(f["complex"], f["developer"], [ad], [], AS_OF)
     assert (fac(r, "R2")["state"], fac(r, "R3")["state"]) == ("unknown", "unknown")
     assert (r["score"], r["zone"], r["needsCheck"]) == (0, "green", True)
     absent = copy.deepcopy(CX_FX["case_b"]["complex"])
-    assert fac(score_ad(ad, absent), "R1")["state"] == "unknown"
+    r1 = fac(score_ad(ad, absent), "R1")
+    assert (r1["state"], r1["reason"]) == ("unknown", "R1_link_unconfirmed")
+    assert f"(уверенность {math.floor(conf * 100 + 0.5)}%)" in r1["evidence"]
+    # то же с подтверждением аналитика — факт при любой уверенности
+    confirmed = ad | {"linkConfirmedBy": "Тестова А. (демо)", "linkConfirmedAt": "2026-10-11T10:00:00+05:00"}
+    r = score_complex(f["complex"], f["developer"], [confirmed], [], AS_OF)
+    assert hit_codes(r) == ["R2", "R3"] and (r["score"], r["needsCheck"]) == (35, False)
+    assert fac(score_ad(confirmed, absent), "R1")["state"] == "hit"
 
 
 def _all_results():
@@ -610,7 +842,8 @@ def test_deterministic_and_order_independent():
             rnd.shuffle(appeals)
             assert score_complex(c, DEVS.get(c["developerId"]), ads, appeals, AS_OF) == first, cid
         assert score_complex(c, DEVS.get(c["developerId"]), SEED["ads"], SEED["appeals"], date(2026, 10, 15)) == first, cid
-    for name in ["link_mixed_counts_confirmed_only", "link_order_newest_first", "r4_two_verified_newest_first"]:
+    for name in ["link_mixed_counts_confirmed_only", "link_order_newest_first", "r2_terms_rejected_other_offer_hit",
+                 "r4_two_verified_newest_first"]:
         f = CX_FX[name]
         assert score_complex(f["complex"], f["developer"], f["ads"][::-1], f["appeals"][::-1], AS_OF) == run(name), name
 
@@ -644,6 +877,33 @@ def test_seed_traffic_light():
     assert all(r["score"] < 25 for r in res.values() if r["zone"] == "green")
 
 
+def test_seed_link_confirmations():
+    """В сиде привязки подтверждены аналитиками явно; a4, a9, a12 — гипотезы ИИ (баллы сида от этого не меняются)."""
+    confirmed = {a["id"] for a in SEED["ads"] if link_confirmed(a)}
+    assert confirmed == {"a1", "a2", "a3", "a5", "a6", "a7", "a8", "a10", "a11"}
+    for a in SEED["ads"]:
+        assert "linkConfirmedBy" in a and "linkConfirmedAt" in a, a["id"]
+        assert bool(a["linkConfirmedBy"]) == bool(a["linkConfirmedAt"]), a["id"]
+        if a["linkConfirmedBy"]:
+            assert a["linkConfirmedBy"] in {x["name"] for x in SEED["analysts"]}, a["id"]
+    res = {cid: run_seed(cid) for cid in SEED_CX}
+    assert {cid: res[cid]["score"] for cid in ["c2", "c4", "c8", "c10", "c14"]} == {"c2": 70, "c4": 100, "c8": 60, "c10": 10, "c14": 35}
+
+
+def test_seed_without_analyst_confirmations():
+    """Сотрите подтверждения аналитиков — и высокая уверенность ИИ (0.83–0.99) не даст ни R2, ни R3:
+    фактом остаётся только привязка публикации, по которой аналитик подтвердил нарушение (a6 → c11)."""
+    ads = [{**a, "linkConfirmedBy": None, "linkConfirmedAt": None} for a in SEED["ads"]]
+    by_status = {a["complexId"] for a in ads if a.get("status") == "confirmed"}
+    assert by_status == {"c11"}
+    for cid, c in SEED_CX.items():
+        r = score_complex(c, DEVS.get(c["developerId"]), ads, SEED["appeals"], AS_OF)
+        for code in ["R2", "R3"]:
+            assert (fac(r, code)["state"] == "hit") == (cid in by_status and fac(run_seed(cid), code)["state"] == "hit"), (cid, code)
+    assert run_seed("c2")["zone"] == "red"
+    assert score_complex(SEED_CX["c2"], DEVS["d2"], ads, SEED["appeals"], AS_OF)["zone"] != "red"
+
+
 def test_seed_readiness_matches_progress():
     for c in SEED["complexes"]:
         k = (c.get("readiness") or {}).get("confirmed")
@@ -665,7 +925,9 @@ def test_fixtures_shape():
         assert required <= set(f["complex"]), f["name"]
         assert f["asOf"] == AS_OF and isinstance(f["ads"], list) and isinstance(f["appeals"], list), f["name"]
     for f in FX["ad"]:
-        assert {"id", "text", "matchConfidence", "status"} <= set(f["ad"]), f["name"]
+        assert {"id", "text", "matchConfidence", "status", "linkConfirmedBy"} <= set(f["ad"]), f["name"]
+    for f in FX["complex"]:  # подтверждение привязки задано явно (строка или null) у каждой публикации
+        assert all("linkConfirmedBy" in a and "linkConfirmedAt" in a for a in f["ads"]), f["name"]
 
 
 def test_golden_up_to_date():

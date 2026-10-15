@@ -1,5 +1,5 @@
 {
-  "_note": "ДЕМО. Синтетические случаи для эталона модели риска (shared/risk_golden.json): не зависят от сида. Ожидания проверяются в backend/tests/test_risk.py. Генерация эталона: cd backend && .venv/bin/python -m app.golden",
+  "_note": "ДЕМО. Синтетические случаи для эталона модели риска (shared/risk_golden.json): не зависят от сида. Привязка публикации к ЖК — факт только при linkConfirmedBy (аналитик подтвердил) или status=confirmed; matchConfidence — уверенность ИИ, на факт не влияет. Ожидания проверяются в backend/tests/test_risk.py. Генерация эталона: cd backend && .venv/bin/python -m app.golden",
   "complex": [
     {
       "name": "case_a",
@@ -76,7 +76,9 @@
           "complexId": "fx",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": []
@@ -158,7 +160,9 @@
           "complexId": "fx",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": []
@@ -241,7 +245,9 @@
           "complexId": "fx",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": []
@@ -323,7 +329,9 @@
           "complexId": "fx",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": [
@@ -420,7 +428,9 @@
           "complexId": "fx",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": [
@@ -521,7 +531,9 @@
           "complexId": "fx",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": [
@@ -622,7 +634,9 @@
           "complexId": "fx",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": [
@@ -721,7 +735,9 @@
           "complexId": "fx",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": [
@@ -887,7 +903,9 @@
           "complexId": "fx",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": [
@@ -984,7 +1002,9 @@
           "complexId": "fx",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": []
@@ -1690,14 +1710,16 @@
           "complexId": "fx",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": []
     },
     {
-      "name": "link_079_unknown",
-      "note": "Уверенность привязки 0.79 — гипотеза: R2/R3 нужна проверка",
+      "name": "link_hypothesis_079_unknown",
+      "note": "Привязка — гипотеза ИИ (уверенность 0.79), аналитик не подтвердил → R2/R3 нужна проверка",
       "asOf": "2026-10-15",
       "complex": {
         "id": "fx",
@@ -1775,14 +1797,16 @@
           "complexId": "fx",
           "matchConfidence": 0.79,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": null,
+          "linkConfirmedAt": null
         }
       ],
       "appeals": []
     },
     {
-      "name": "link_080_hit",
-      "note": "Уверенность привязки 0.8 — факт: R2 и R3",
+      "name": "link_high_confidence_unconfirmed_unknown",
+      "note": "Уверенность ИИ 0.97, но аналитик привязку не подтвердил → гипотеза: R2/R3 нужна проверка",
       "asOf": "2026-10-15",
       "complex": {
         "id": "fx",
@@ -1858,16 +1882,18 @@
           "date": "2026-10-10T12:00",
           "text": "Платная бронь квартиры от 500 000 ₸. Звоните!",
           "complexId": "fx",
-          "matchConfidence": 0.8,
+          "matchConfidence": 0.97,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": null,
+          "linkConfirmedAt": null
         }
       ],
       "appeals": []
     },
     {
-      "name": "link_050_confirmed_hit",
-      "note": "Уверенность 0.5, но аналитик подтвердил публикацию → R2 и R3",
+      "name": "link_status_confirmed_hit",
+      "note": "Уверенность 0.5, привязку отдельно не подтверждали, но аналитик подтвердил нарушение по публикации → R2 и R3",
       "asOf": "2026-10-15",
       "complex": {
         "id": "fx",
@@ -1945,7 +1971,183 @@
           "complexId": "fx",
           "matchConfidence": 0.5,
           "source": "demo",
-          "status": "confirmed"
+          "status": "confirmed",
+          "linkConfirmedBy": null,
+          "linkConfirmedAt": null
+        }
+      ],
+      "appeals": []
+    },
+    {
+      "name": "link_analyst_confirmed_hit",
+      "note": "Уверенность ИИ 0.55, аналитик подтвердил привязку (linkConfirmedBy) → факт: R2 и R3",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "yes",
+          "guaranteeRef": "Гарантия ЕО № ДЕМО-0001 от 01.03.2025",
+          "mio": "yes",
+          "mioRef": "Разрешение МИО № ДЕМО-01 от 10.03.2025",
+          "bvu": "yes",
+          "bank": "АО «Тест Банк» (демо)",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-01"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [
+        {
+          "id": "fxa31",
+          "platform": "instagram",
+          "account": "@test.demo",
+          "url": "https://example.com/demo/31",
+          "date": "2026-10-10T12:00",
+          "text": "Платная бронь квартиры от 500 000 ₸. Звоните!",
+          "complexId": "fx",
+          "matchConfidence": 0.55,
+          "source": "demo",
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
+        }
+      ],
+      "appeals": []
+    },
+    {
+      "name": "link_blank_confirmed_by_unknown",
+      "note": "linkConfirmedBy из одних пробелов — подтверждения нет, уверенность 0.95 → гипотеза: нужна проверка",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "yes",
+          "guaranteeRef": "Гарантия ЕО № ДЕМО-0001 от 01.03.2025",
+          "mio": "yes",
+          "mioRef": "Разрешение МИО № ДЕМО-01 от 10.03.2025",
+          "bvu": "yes",
+          "bank": "АО «Тест Банк» (демо)",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-01"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [
+        {
+          "id": "fxa32",
+          "platform": "instagram",
+          "account": "@test.demo",
+          "url": "https://example.com/demo/32",
+          "date": "2026-10-10T12:00",
+          "text": "Платная бронь квартиры от 500 000 ₸. Звоните!",
+          "complexId": "fx",
+          "matchConfidence": 0.95,
+          "source": "demo",
+          "status": "new",
+          "linkConfirmedBy": "  ",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": []
@@ -2030,7 +2232,9 @@
           "complexId": "fx",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "dismissed"
+          "status": "dismissed",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": []
@@ -2115,14 +2319,16 @@
           "complexId": "fx-other",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": []
     },
     {
       "name": "link_mixed_counts_confirmed_only",
-      "note": "Подтверждённая и гипотетическая привязки: в R2 только подтверждённая",
+      "note": "Подтверждённая аналитиком привязка (уверенность 0.6) и гипотеза ИИ (уверенность 0.9): в R2 только подтверждённая",
       "asOf": "2026-10-15",
       "complex": {
         "id": "fx",
@@ -2198,9 +2404,11 @@
           "date": "2026-10-12T09:00",
           "text": "Платная бронь квартиры от 500 000 ₸. Звоните!",
           "complexId": "fx",
-          "matchConfidence": 0.6,
+          "matchConfidence": 0.9,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": null,
+          "linkConfirmedAt": null
         },
         {
           "id": "fxa18",
@@ -2210,9 +2418,11 @@
           "date": "2026-10-08T09:00",
           "text": "Принимаем депозит под квартиры на этапе котлована. Пишите в директ.",
           "complexId": "fx",
-          "matchConfidence": 0.9,
+          "matchConfidence": 0.6,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": []
@@ -2297,7 +2507,9 @@
           "complexId": "fx",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         },
         {
           "id": "fxt2",
@@ -2309,7 +2521,9 @@
           "complexId": "fx",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         },
         {
           "id": "fxt10",
@@ -2321,7 +2535,9 @@
           "complexId": "fx",
           "matchConfidence": 0.95,
           "source": "demo",
-          "status": "new"
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
         }
       ],
       "appeals": []
@@ -4425,6 +4641,662 @@
       },
       "ads": [],
       "appeals": []
+    },
+    {
+      "name": "r2_terms_rejected_clear",
+      "note": "Аналитик отклонил условия оплаты единственной публикации → R2 не начисляется (offer_rejected), R3 остаётся",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "yes",
+          "guaranteeRef": "Гарантия ЕО № ДЕМО-0001 от 01.03.2025",
+          "mio": "yes",
+          "mioRef": "Разрешение МИО № ДЕМО-01 от 10.03.2025",
+          "bvu": "yes",
+          "bank": "АО «Тест Банк» (демо)",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-01"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [
+        {
+          "id": "fxa33",
+          "platform": "instagram",
+          "account": "@test.demo",
+          "url": "https://example.com/demo/33",
+          "date": "2026-10-10T12:00",
+          "text": "Платная бронь квартиры от 500 000 ₸. Звоните!",
+          "complexId": "fx",
+          "matchConfidence": 0.95,
+          "source": "demo",
+          "status": "new",
+          "termsReview": "rejected",
+          "termsReviewBy": "Тестова А. (демо)",
+          "termsReviewAt": "2026-10-11T10:00:00+05:00",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
+        }
+      ],
+      "appeals": []
+    },
+    {
+      "name": "r2_terms_rejected_case_b_yellow",
+      "note": "Кейс B, но депозит аналитик отклонил → R1 35 + R3 10 = 45: без R2 не красная",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "no",
+          "mio": "no",
+          "bvu": "no",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-09"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [
+        {
+          "id": "fxa34",
+          "platform": "instagram",
+          "account": "@test.demo",
+          "url": "https://example.com/demo/34",
+          "date": "2026-10-10T12:00",
+          "text": "Принимаем депозит под квартиры на этапе котлована. Пишите в директ.",
+          "complexId": "fx",
+          "matchConfidence": 0.95,
+          "source": "demo",
+          "status": "new",
+          "termsReview": "rejected",
+          "termsReviewBy": "Тестова А. (демо)",
+          "termsReviewAt": "2026-10-11T10:00:00+05:00",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
+        }
+      ],
+      "appeals": []
+    },
+    {
+      "name": "r2_terms_rejected_other_offer_hit",
+      "note": "Одна публикация отклонена аналитиком, другая — нет → R2 по неотклонённой (1), R3 по обеим (2)",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "yes",
+          "guaranteeRef": "Гарантия ЕО № ДЕМО-0001 от 01.03.2025",
+          "mio": "yes",
+          "mioRef": "Разрешение МИО № ДЕМО-01 от 10.03.2025",
+          "bvu": "yes",
+          "bank": "АО «Тест Банк» (демо)",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-01"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [
+        {
+          "id": "fxa35",
+          "platform": "instagram",
+          "account": "@test.demo",
+          "url": "https://example.com/demo/35",
+          "date": "2026-10-12T10:00",
+          "text": "Платная бронь квартиры от 500 000 ₸. Звоните!",
+          "complexId": "fx",
+          "matchConfidence": 0.95,
+          "source": "demo",
+          "status": "new",
+          "termsReview": "rejected",
+          "termsReviewBy": "Тестова А. (демо)",
+          "termsReviewAt": "2026-10-11T10:00:00+05:00",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
+        },
+        {
+          "id": "fxa36",
+          "platform": "instagram",
+          "account": "@test.demo",
+          "url": "https://example.com/demo/36",
+          "date": "2026-10-08T10:00",
+          "text": "Принимаем депозит под квартиры на этапе котлована. Пишите в директ.",
+          "complexId": "fx",
+          "matchConfidence": 0.95,
+          "source": "demo",
+          "status": "new",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
+        }
+      ],
+      "appeals": []
+    },
+    {
+      "name": "r2_terms_rejected_hypothesis_clear",
+      "note": "Привязка — гипотеза ИИ, условия оплаты отклонены → R2 не нужна проверка, и отклонённая публикация в доказательства R2 этого ЖК не идёт (none); R3 — нужна проверка",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "yes",
+          "guaranteeRef": "Гарантия ЕО № ДЕМО-0001 от 01.03.2025",
+          "mio": "yes",
+          "mioRef": "Разрешение МИО № ДЕМО-01 от 10.03.2025",
+          "bvu": "yes",
+          "bank": "АО «Тест Банк» (демо)",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-01"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [
+        {
+          "id": "fxa37",
+          "platform": "instagram",
+          "account": "@test.demo",
+          "url": "https://example.com/demo/37",
+          "date": "2026-10-10T12:00",
+          "text": "Платная бронь квартиры от 500 000 ₸. Звоните!",
+          "complexId": "fx",
+          "matchConfidence": 0.9,
+          "source": "demo",
+          "status": "new",
+          "termsReview": "rejected",
+          "termsReviewBy": "Тестова А. (демо)",
+          "termsReviewAt": "2026-10-11T10:00:00+05:00",
+          "linkConfirmedBy": null,
+          "linkConfirmedAt": null
+        }
+      ],
+      "appeals": []
+    },
+    {
+      "name": "r2_terms_rejected_hypothesis_not_counted",
+      "note": "Условия оплаты отклонены у двух публикаций, но к ЖК фактом привязана одна: offer_rejected считает и показывает только её; публикация с привязкой-гипотезой в R2 этого ЖК не попадает",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "yes",
+          "guaranteeRef": "Гарантия ЕО № ДЕМО-0001 от 01.03.2025",
+          "mio": "yes",
+          "mioRef": "Разрешение МИО № ДЕМО-01 от 10.03.2025",
+          "bvu": "yes",
+          "bank": "АО «Тест Банк» (демо)",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-01"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [
+        {
+          "id": "fxa44",
+          "platform": "instagram",
+          "account": "@test.demo",
+          "url": "https://example.com/demo/44",
+          "date": "2026-10-12T10:00",
+          "text": "Платная бронь квартиры от 500 000 ₸. Звоните!",
+          "complexId": "fx",
+          "matchConfidence": 0.71,
+          "source": "demo",
+          "status": "new",
+          "termsReview": "rejected",
+          "termsReviewBy": "Тестова А. (демо)",
+          "termsReviewAt": "2026-10-11T10:00:00+05:00",
+          "linkConfirmedBy": null,
+          "linkConfirmedAt": null
+        },
+        {
+          "id": "fxa45",
+          "platform": "instagram",
+          "account": "@test.demo",
+          "url": "https://example.com/demo/45",
+          "date": "2026-10-09T10:00",
+          "text": "Принимаем депозит под квартиры на этапе котлована. Пишите в директ.",
+          "complexId": "fx",
+          "matchConfidence": 0.95,
+          "source": "demo",
+          "status": "new",
+          "termsReview": "rejected",
+          "termsReviewBy": "Тестова А. (демо)",
+          "termsReviewAt": "2026-10-11T10:00:00+05:00",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
+        }
+      ],
+      "appeals": []
+    },
+    {
+      "name": "r2_terms_accepted_hit",
+      "note": "Аналитик подтвердил условия оплаты (accepted) → на балл не влияет: R2 и R3 как без решения",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "yes",
+          "guaranteeRef": "Гарантия ЕО № ДЕМО-0001 от 01.03.2025",
+          "mio": "yes",
+          "mioRef": "Разрешение МИО № ДЕМО-01 от 10.03.2025",
+          "bvu": "yes",
+          "bank": "АО «Тест Банк» (демо)",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-01"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [
+        {
+          "id": "fxa38",
+          "platform": "instagram",
+          "account": "@test.demo",
+          "url": "https://example.com/demo/38",
+          "date": "2026-10-10T12:00",
+          "text": "Платная бронь квартиры от 500 000 ₸. Звоните!",
+          "complexId": "fx",
+          "matchConfidence": 0.95,
+          "source": "demo",
+          "status": "new",
+          "termsReview": "accepted",
+          "termsReviewBy": "Тестова А. (демо)",
+          "termsReviewAt": "2026-10-11T10:00:00+05:00",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
+        }
+      ],
+      "appeals": []
+    },
+    {
+      "name": "r2_offer_from_ocr_hit",
+      "note": "Предложение денег только на скриншоте (OCR), реклама — в тексте → цитаты R2 из OCR, R3 из текста",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "yes",
+          "guaranteeRef": "Гарантия ЕО № ДЕМО-0001 от 01.03.2025",
+          "mio": "yes",
+          "mioRef": "Разрешение МИО № ДЕМО-01 от 10.03.2025",
+          "bvu": "yes",
+          "bank": "АО «Тест Банк» (демо)",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-01"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [
+        {
+          "id": "fxa39",
+          "platform": "instagram",
+          "account": "@test.demo",
+          "url": "https://example.com/demo/39",
+          "date": "2026-10-10T12:00",
+          "text": "Старт продаж! Квартиры с видом на реку.",
+          "complexId": "fx",
+          "matchConfidence": 0.95,
+          "source": "demo",
+          "status": "new",
+          "ocr": "ПЕРВЫЙ ВЗНОС 20% · ДДУ · ФИКСИРУЕМ ЦЕНУ",
+          "linkConfirmedBy": "Тестова А. (демо)",
+          "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
+        }
+      ],
+      "appeals": []
     }
   ],
   "ad": [
@@ -4441,7 +5313,9 @@
         "complexId": null,
         "matchConfidence": 0.31,
         "source": "demo",
-        "status": "new"
+        "status": "new",
+        "linkConfirmedBy": null,
+        "linkConfirmedAt": null
       },
       "complex": null
     },
@@ -4458,7 +5332,9 @@
         "complexId": "fx",
         "matchConfidence": 0.6,
         "source": "demo",
-        "status": "new"
+        "status": "new",
+        "linkConfirmedBy": null,
+        "linkConfirmedAt": null
       },
       "complex": {
         "id": "fx",
@@ -4527,7 +5403,9 @@
         "complexId": "fx",
         "matchConfidence": 0.95,
         "source": "demo",
-        "status": "new"
+        "status": "new",
+        "linkConfirmedBy": "Тестова А. (демо)",
+        "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
       },
       "complex": {
         "id": "fx",
@@ -4596,7 +5474,9 @@
         "complexId": "fx",
         "matchConfidence": 0.95,
         "source": "demo",
-        "status": "new"
+        "status": "new",
+        "linkConfirmedBy": "Тестова А. (демо)",
+        "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
       },
       "complex": {
         "id": "fx",
@@ -4665,7 +5545,9 @@
         "complexId": "fx",
         "matchConfidence": 0.95,
         "source": "demo",
-        "status": "new"
+        "status": "new",
+        "linkConfirmedBy": "Тестова А. (демо)",
+        "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
       },
       "complex": {
         "id": "fx",
@@ -4734,7 +5616,9 @@
         "complexId": "fx",
         "matchConfidence": 0.5,
         "source": "demo",
-        "status": "confirmed"
+        "status": "confirmed",
+        "linkConfirmedBy": null,
+        "linkConfirmedAt": null
       },
       "complex": {
         "id": "fx",
@@ -4803,7 +5687,9 @@
         "complexId": "fx",
         "matchConfidence": 0.95,
         "source": "demo",
-        "status": "new"
+        "status": "new",
+        "linkConfirmedBy": "Тестова А. (демо)",
+        "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
       },
       "complex": {
         "id": "fx",
@@ -4874,7 +5760,9 @@
         "matchConfidence": 0.95,
         "source": "demo",
         "status": "new",
-        "ocr": "ПРЕДОПЛАТА 10% · ФИКСИРУЕМ ЦЕНУ"
+        "ocr": "ПРЕДОПЛАТА 10% · ФИКСИРУЕМ ЦЕНУ",
+        "linkConfirmedBy": "Тестова А. (демо)",
+        "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
       },
       "complex": {
         "id": "fx",
@@ -4941,7 +5829,9 @@
         "complexId": "fx",
         "matchConfidence": 0.95,
         "source": "demo",
-        "status": "new"
+        "status": "new",
+        "linkConfirmedBy": "Тестова А. (демо)",
+        "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
       },
       "complex": {
         "id": "fx",
@@ -5008,7 +5898,9 @@
         "complexId": "fx",
         "matchConfidence": 0.3,
         "source": "demo",
-        "status": "new"
+        "status": "new",
+        "linkConfirmedBy": null,
+        "linkConfirmedAt": null
       },
       "complex": {
         "id": "fx",
@@ -5041,6 +5933,295 @@
             "value": 100,
             "source": "Акт ввода в эксплуатацию (демо)",
             "date": "2025-10-30"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      }
+    },
+    {
+      "name": "ad_high_confidence_unconfirmed",
+      "note": "Уверенность ИИ 0.97 без подтверждения аналитиком → R1 объекта не учитывается",
+      "ad": {
+        "id": "fxa40",
+        "platform": "instagram",
+        "account": "@test.demo",
+        "url": "https://example.com/demo/40",
+        "date": "2026-10-10T12:00",
+        "text": "Платная бронь квартиры от 500 000 ₸. Звоните!",
+        "complexId": "fx",
+        "matchConfidence": 0.97,
+        "source": "demo",
+        "status": "new",
+        "linkConfirmedBy": null,
+        "linkConfirmedAt": null
+      },
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "no",
+          "mio": "no",
+          "bvu": "no",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-09"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      }
+    },
+    {
+      "name": "ad_terms_rejected",
+      "note": "Аналитик отклонил условия оплаты → R2 не начисляется (R2_rejected); R1 + R3 = 45",
+      "ad": {
+        "id": "fxa41",
+        "platform": "instagram",
+        "account": "@test.demo",
+        "url": "https://example.com/demo/41",
+        "date": "2026-10-10T12:00",
+        "text": "Платная бронь квартиры от 500 000 ₸. Звоните!",
+        "complexId": "fx",
+        "matchConfidence": 0.95,
+        "source": "demo",
+        "status": "new",
+        "termsReview": "rejected",
+        "termsReviewBy": "Тестова А. (демо)",
+        "termsReviewAt": "2026-10-11T10:00:00+05:00",
+        "linkConfirmedBy": "Тестова А. (демо)",
+        "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
+      },
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "no",
+          "mio": "no",
+          "bvu": "no",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-09"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      }
+    },
+    {
+      "name": "ad_terms_accepted_red",
+      "note": "Аналитик подтвердил условия оплаты → как без решения: 70, красная",
+      "ad": {
+        "id": "fxa42",
+        "platform": "instagram",
+        "account": "@test.demo",
+        "url": "https://example.com/demo/42",
+        "date": "2026-10-10T12:00",
+        "text": "Платная бронь квартиры от 500 000 ₸. Звоните!",
+        "complexId": "fx",
+        "matchConfidence": 0.95,
+        "source": "demo",
+        "status": "new",
+        "termsReview": "accepted",
+        "termsReviewBy": "Тестова А. (демо)",
+        "termsReviewAt": "2026-10-11T10:00:00+05:00",
+        "linkConfirmedBy": "Тестова А. (демо)",
+        "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
+      },
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "no",
+          "mio": "no",
+          "bvu": "no",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-09"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      }
+    },
+    {
+      "name": "ad_quote_from_ocr",
+      "note": "Деньги только на скриншоте, реклама в тексте → цитата R2 из OCR (quoteFrom ocr), R3 из текста",
+      "ad": {
+        "id": "fxa43",
+        "platform": "instagram",
+        "account": "@test.demo",
+        "url": "https://example.com/demo/43",
+        "date": "2026-10-10T12:00",
+        "text": "Старт продаж! Квартиры с видом на реку.",
+        "complexId": "fx",
+        "matchConfidence": 0.95,
+        "source": "demo",
+        "status": "new",
+        "ocr": "ПЕРВЫЙ ВЗНОС 20% · ДДУ · ФИКСИРУЕМ ЦЕНУ",
+        "linkConfirmedBy": "Тестова А. (демо)",
+        "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
+      },
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "unknown",
+          "mio": "unknown",
+          "bvu": "unknown"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
           }
         },
         "inPublishedList": "yes",

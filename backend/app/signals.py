@@ -23,7 +23,8 @@ Obj = Dict[str, Any]
 # id сигнала в пути: в пределах INTEGER, иначе огромный id ронял запрос к БД (500) вместо 422/404
 SignalId = Annotated[int, Path(ge=1, le=2_147_483_647, description="id сигнала")]
 ZONE_NAMES = {z["zone"]: z["name"].lower() for z in MODEL["zones"]["items"]}
-SIGNAL_AD_FIELDS = ("id", "platform", "account", "url", "date", "status", "matchConfidence", "text", "ocr", "image", "price")
+SIGNAL_AD_FIELDS = ("id", "platform", "account", "url", "date", "status", "matchConfidence", "linkConfirmedBy", "linkConfirmedAt",
+                    "termsReview", "text", "ocr", "image", "price")
 
 
 def _by_date_desc(xs: List[Obj]) -> List[Obj]:

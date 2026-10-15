@@ -7,11 +7,19 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
 # Меняется при любой правке таблиц: демо-база со старой схемой пересоздаётся при старте (см. seed.init_db).
-SCHEMA_VERSION = "2026.10-audit-1"
+SCHEMA_VERSION = "2026.10-ai-2"
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def iso(dt: Optional[datetime]) -> Optional[str]:
+    """ISO 8601 с UTC-смещением; наивные значения (SQLite) считаются UTC."""
+    if dt is None:
+        return None
+    dt = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    return dt.isoformat(timespec="seconds")
 
 
 class Meta(Base):
@@ -45,6 +53,7 @@ class Developer(Base):
     unfinished: Mapped[int] = mapped_column(Integer, default=0)
     site: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     instagram: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    phones: Mapped[list] = mapped_column(JSON, default=list)  # телефоны отдела продаж — признак для сопоставления (ИИ)
 
     complexes: Mapped[list["Complex"]] = relationship(back_populates="developer")
 
@@ -89,7 +98,18 @@ class Ad(Base):
     ocr: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     image: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     complex_id: Mapped[Optional[str]] = mapped_column(ForeignKey("complexes.id"), nullable=True)
+    # уверенность ИИ в привязке к ЖК (информативно); фактом привязку делает подтверждение аналитика (link_confirmed_*)
     match_confidence: Mapped[float] = mapped_column(Float, default=0)
+    link_confirmed_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    link_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_links: Mapped[list] = mapped_column(JSON, default=list)  # ЖК, гипотезы о которых аналитик отклонил
+    # решение аналитика по условиям оплаты, найденным ИИ: accepted | rejected («это не предложение внести деньги» — вето R2)
+    terms_review: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    terms_review_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    terms_review_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # номер версии решений аналитика по публикации (привязка, гипотезы ИИ, условия оплаты): решение пишется условным UPDATE
+    # по прочитанному номеру — два одновременных решения не смешиваются в одно противоречивое состояние (main._decide)
+    decision_rev: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     price: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     source: Mapped[str] = mapped_column(String(16), default="manual")
     status: Mapped[str] = mapped_column(String(16), default="new", index=True)
@@ -157,7 +177,8 @@ class AuditEvent(Base):
     complex_id: Mapped[Optional[str]] = mapped_column(ForeignKey("complexes.id"), nullable=True, index=True)
     signal_id: Mapped[Optional[int]] = mapped_column(ForeignKey("signals.id"), nullable=True, index=True)
     # system — автоматическое, data — сведения из источника, status/link/comment — работа с публикацией,
-    # request — запрос сведений по ЖК, signal/export — сигнальная карточка и её выгрузка (schemas.AuditKind)
+    # request — запрос сведений по ЖК, signal/export — сигнальная карточка и её выгрузка, ai — гипотеза ИИ и решения
+    # аналитика по ней (schemas.AuditKind)
     kind: Mapped[str] = mapped_column(String(16), default="system", index=True)
     who: Mapped[str] = mapped_column(String(128))
     what: Mapped[str] = mapped_column(Text)

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { EvidenceItem, FactorState, Observation, ObservationState, Platform, RiskFactor, Tri } from '../data/types'
 import { MARKERS } from '../lib/risk'
 import { IcCamera, IcClock, IcDoc, IcUsers, IcWorker } from '../ui/icons'
+import { OcrTag } from './Hypothesis'
 import { PlatformIcon, TriTag, fmtDT, fmtDate, platformMeta } from './ui'
 
 const stateMeta: Record<FactorState, { name: string; tag: string }> = {
@@ -48,6 +49,7 @@ export function EvidenceView({ item: x, linkAds = true }: { item: EvidenceItem; 
         <div>
           <div className="meta">{meta(x.label, p && platformMeta[p].name, when(x.date))}</div>
           {x.quote && <div className="q"><Quote text={x.quote} marker={x.marker} /></div>}
+          {x.quote && x.quoteFrom === 'ocr' && <div style={{ marginTop: 4 }}><OcrTag /></div>}
         </div>
       </>
     )

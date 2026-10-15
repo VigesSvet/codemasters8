@@ -11,9 +11,7 @@ import { IcBuilding, IcClock, IcFlag, IcHelp, IcInbox, IcTraffic } from '../ui/i
 
 const WEEKS = [3, 5, 4, 7, 6, 9, 8, 12]
 const RECENT = 8
-/** Сколько событий нужных видов брать: среди них бывают автопривязки от «Системы» (по одной на публикацию сида) */
-const RECENT_WINDOW = 40
-/** Действия людей — без системных событий сбора и сверки данных и без автоматической привязки */
+/** Действия людей — без системных событий сбора и сверки данных и без гипотез, записанных ИИ (их отсекает и сервер) */
 const human = (e: AuditEvent) => e.kind !== 'system' && e.kind !== 'data' && e.who !== SYSTEM
 
 /** Оперативная сводка — шапка с показателями, карта с рейтингом прямо в шапке, ниже карусель свежей рекламы */
@@ -23,12 +21,12 @@ export default function Ops() {
   const [zone, setZone] = useState<Zone | 'all'>('all')
   const [recent, setRecent] = useState<{ events?: AuditEvent[]; err?: string } | null>(null)
   const [ver, setVer] = useState(0)
-  // последние действия аналитиков: сервер отбирает виды действий людей (иначе поток системных событий — ручные
-  // добавления, автопривязки — вытеснит их из окна), «Систему» отсекаем здесь; после изменений и восстановления связи — заново
+  // последние действия аналитиков: виды действий людей и автора не «Система» отбирает сервер до лимита (иначе поток
+  // гипотез ИИ при ручных добавлениях вытеснит людей из окна); здесь — та же проверка про запас; после изменений — заново
   useEffect(() => {
     if (mode !== 'api') return
     let alive = true
-    getAudit({ kind: HUMAN_KINDS, limit: RECENT_WINDOW }).then(
+    getAudit({ kind: HUMAN_KINDS, human: true, limit: RECENT }).then(
       (xs) => { if (alive) setRecent({ events: xs.filter(human).slice(-RECENT).reverse() }) },
       (e: unknown) => { if (alive) setRecent((r) => ({ events: r?.events, err: errorText(e) })) },
     )

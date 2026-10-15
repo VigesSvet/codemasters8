@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { FilterPop, Highlight, PageTitle, PlatformIcon, Score, StatusTag, adKey, fmtDT, platformMeta, statusMeta } from '../components/ui'
 import type { AdStatus, Platform, Zone } from '../data/types'
+import { linkConfirmed } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcClose, IcPlus, IcRefresh, IcSearch } from '../ui/icons'
 
@@ -23,6 +24,7 @@ export default function Ads() {
   const chips: [string, string, (x: R) => boolean][] = [
     ['queue', 'Ждут решения', (x) => x.a.status === 'new' || x.a.status === 'needs_check'],
     ['nocx', 'ЖК не определён', (x) => !x.c],
+    ['hyp', 'Привязка — гипотеза ИИ', (x) => !!x.c && !linkConfirmed(x.a)],
     ['ocr', 'Есть текст на фото', (x) => !!x.a.ocr],
     ['manual', 'Добавлены вручную', (x) => x.a.source === 'manual'],
   ]
@@ -76,6 +78,7 @@ export default function Ads() {
             <div className="body">
               <div className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={20} /><span className="bold">{a.account}</span><span className="c2 t-sm">{fmtDT(a.date)}</span></div>
               <div className="nm">{c ? `ЖК «${c.name}»` : 'ЖК не определён'}</div>
+              {c && !linkConfirmed(a) && <span className="tag yellow" style={{ alignSelf: 'flex-start' }} title="ЖК предложил ИИ, аналитик привязку не подтвердил — в балл объекта не входит">привязка — гипотеза ИИ {Math.round((a.matchConfidence || 0) * 100)}%</span>}
               <p className="txt clamp3"><Highlight text={a.text} /></p>
               <div className="row wrap-f" style={{ gap: 6, marginTop: 'auto' }}>
                 <StatusTag s={a.status} />

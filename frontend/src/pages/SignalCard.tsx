@@ -213,8 +213,8 @@ function SigAd({ a }: { a: SignalAd }) {
         <p className="t-sm" style={{ margin: '6px 0 0', lineHeight: '19px' }}><Highlight text={a.text} /></p>
         {a.ocr && <p className="t-xs c2" style={{ marginTop: 4 }}>На изображении: <Highlight text={a.ocr} /></p>}
         <div className="row wrap-f" style={{ gap: 6, marginTop: 8 }}>
-          <span className={`tag ${fact ? 'gray' : 'yellow'}`} title={fact ? 'Привязка к ЖК считается фактом' : 'Уверенность ниже порога — привязка остаётся гипотезой'}>
-            привязка {Math.round(a.matchConfidence * 100)}% — {fact ? 'факт' : 'гипотеза, в балл не входит'}
+          <span className={`tag ${fact ? 'gray' : 'yellow'}`} title={fact ? 'Привязку к ЖК подтвердил аналитик — это факт' : 'Привязку предложил ИИ, аналитик её не подтвердил — это гипотеза'}>
+            привязка — {fact ? `факт${a.linkConfirmedBy ? ` (подтвердил ${a.linkConfirmedBy})` : ''}` : `гипотеза ИИ ${Math.round(a.matchConfidence * 100)}%, в балл не входит`}
           </span>
           {a.price && <span className="tag gray">{a.price}</span>}
           <Link to={`/ads/${a.id}`} className="tag outline">{adKey(a.id)}</Link>

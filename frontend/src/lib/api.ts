@@ -29,6 +29,7 @@ const VALIDATION: Record<string, string> = {
 const FIELD: Record<string, string> = {
   author: 'автор', comment: 'комментарий', text: 'текст', status: 'статус', assignee: 'ответственный',
   topics: 'темы запроса', complexId: 'ЖК', account: 'аккаунт', platform: 'площадка', url: 'ссылка',
+  decision: 'решение', file: 'файл', ocr: 'текст со скриншота',
 }
 const PLACE = new Set(['body', 'query', 'path', 'header'])
 
@@ -94,6 +95,8 @@ const json = (method: string, body: unknown): RequestInit =>
 export const apiGet = <T>(path: string) => apiFetch<T>(path)
 export const apiPost = <T>(path: string, body: unknown) => apiFetch<T>(path, json('POST', body))
 export const apiPatch = <T>(path: string, body: unknown) => apiFetch<T>(path, json('PATCH', body))
+/** multipart/form-data: заголовок с границей ставит сам браузер */
+export const apiUpload = <T>(path: string, form: FormData) => apiFetch<T>(path, { method: 'POST', body: form })
 
 /** Текст любой ошибки для сообщения пользователю */
 export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))

@@ -13,6 +13,8 @@ export interface Developer {
   unfinished: number
   site?: string
   instagram?: string
+  /** Телефоны отдела продаж (демо) — признак сопоставления публикации с ЖК */
+  phones?: string[]
 }
 
 export interface Basis {
@@ -97,6 +99,9 @@ export type Platform = 'instagram' | 'tiktok' | 'krisha' | 'olx' | 'telegram' | 
 
 export type AdStatus = 'new' | 'needs_check' | 'in_review' | 'confirmed' | 'dismissed'
 
+/** Решение аналитика по условиям оплаты, найденным ИИ: rejected — «это не предложение внести деньги» (R2 не засчитывается) */
+export type TermsReview = 'accepted' | 'rejected'
+
 export interface Ad {
   id: string
   platform: Platform
@@ -107,7 +112,16 @@ export interface Ad {
   ocr?: string
   image?: string
   complexId?: string
+  /** Уверенность ИИ в привязке к ЖК (информативно): фактом привязку делает только подтверждение аналитика */
   matchConfidence: number
+  /** Кто и когда подтвердил привязку к ЖК; null — привязка остаётся гипотезой ИИ */
+  linkConfirmedBy?: string | null
+  linkConfirmedAt?: string | null
+  /** ЖК, гипотезы о которых аналитик отклонил — ИИ их больше не предлагает */
+  rejectedLinks?: string[]
+  termsReview?: TermsReview | null
+  termsReviewBy?: string | null
+  termsReviewAt?: string | null
   price?: string
   source: 'manual' | 'parser' | 'demo'
   status: AdStatus
@@ -128,6 +142,8 @@ export interface EvidenceItem {
   quote?: string
   /** Маркер из словаря, по которому найдена цитата */
   marker?: string
+  /** Откуда цитата публикации: текст объявления или распознанный скриншот (OCR) */
+  quoteFrom?: 'text' | 'ocr'
   source?: string
   date?: string
   url?: string
@@ -182,8 +198,9 @@ export interface AdScore {
   signals: AdSignals
 }
 
-/** Вид события журнала: данные и источники, статус, привязка, комментарий, запрос сведений, сигнал, выгрузка, системное */
-export type AuditKind = 'system' | 'data' | 'status' | 'link' | 'comment' | 'request' | 'signal' | 'export'
+/** Вид события журнала: данные и источники, статус, привязка, комментарий, запрос сведений, сигнал, выгрузка, системное,
+ *  ИИ (гипотеза и решения аналитика по ней) */
+export type AuditKind = 'system' | 'data' | 'status' | 'link' | 'comment' | 'request' | 'signal' | 'export' | 'ai'
 
 /** Событие журнала (audit_events): кто, что, когда; к чему относится — публикация, ЖК, сигнал */
 export interface AuditEvent {
@@ -220,6 +237,8 @@ export interface SignalAd {
   date: string
   status: AdStatus
   matchConfidence: number
+  /** Кто подтвердил привязку к ЖК; null — гипотеза ИИ, в балл не входит */
+  linkConfirmedBy?: string | null
   text: string
   ocr?: string | null
   image?: string | null
@@ -269,4 +288,132 @@ export interface Signal extends SignalSummary {
   exportedAt?: string | null
   /** Журнал решений и событий по сигналу */
   journal: AuditEvent[]
+}
+
+// ---------- ИИ-анализ публикаций (ТЗ §6) ----------
+
+export type TermKind = 'booking' | 'deposit' | 'down_payment' | 'installment' | 'ddu' | 'direct_payment' | 'price' | 'investment'
+
+/** Условие оплаты, найденное в тексте или на скриншоте — гипотеза ИИ с дословной цитатой и уверенностью */
+export interface Term {
+  kind: TermKind
+  /** По-русски: «Платная бронь», «Первоначальный взнос»… */
+  label: string
+  amount?: number | null
+  currency?: 'KZT' | 'USD' | 'RUB' | null
+  /** m2 — цена за квадратный метр */
+  unit?: 'm2' | null
+  percent?: number | null
+  months?: number | null
+  /** Дословный фрагмент исходного текста */
+  quote: string
+  from: 'text' | 'ocr'
+  /** 0…1 */
+  confidence: number
+  /** Уверенность ниже порога lowConfidence — пометка «низкая уверенность» */
+  low: boolean
+  /** Предложение внести деньги (для цены — false) */
+  money: boolean
+}
+
+export type ReasonFeature = 'name' | 'translit' | 'address' | 'account' | 'phone' | 'history' | 'district'
+
+/** Почему ИИ считает, что публикация про этот ЖК */
+export interface LinkReason {
+  feature: ReasonFeature
+  detail: string
+  weight: number
+}
+
+/** Гипотеза сопоставления публикации с ЖК */
+export interface LinkHypothesis {
+  complexId: string
+  complexName: string
+  confidence: number
+  low: boolean
+  reasons: LinkReason[]
+  /** Фрагмент, где найдено */
+  quote?: string | null
+}
+
+/** Результат ИИ-анализа: условия оплаты, гипотезы ЖК (до hypothesesTop, по убыванию уверенности), найденные телефоны и адреса */
+export interface Analysis {
+  /** Версия движка, например saq-ai-1 */
+  engine: string
+  terms: Term[]
+  hypotheses: LinkHypothesis[]
+  signals: AdSignals
+  phones: string[]
+  addresses: string[]
+  note?: string | null
+}
+
+/** Что анализируем: текст объявления, распознанный скриншот, аккаунт, площадка, ссылка */
+export interface AnalyzeInput {
+  text: string
+  ocr?: string
+  account?: string
+  platform?: Platform
+  url?: string
+}
+
+/** Анализ сохранённой публикации: без отклонённых гипотез и с решениями аналитика */
+export interface AdAnalysis extends Analysis {
+  termsReview: TermsReview | null
+  termsReviewBy: string | null
+  termsReviewAt: string | null
+  linkConfirmedBy: string | null
+  linkConfirmedAt: string | null
+  rejectedLinks: string[]
+}
+
+/** Распознавание скриншота на сервере (Tesseract); engine none — OCR на сервере недоступен */
+export interface OcrResult {
+  text: string
+  engine: 'tesseract' | 'none'
+  /** Средняя уверенность слов 0…1 */
+  confidence?: number | null
+  languages: string[]
+  durationMs: number
+  version?: string | null
+  /** Предобработка перед распознаванием: оттенки серого, увеличение, автоконтраст */
+  preprocess?: string[]
+  detail?: string | null
+}
+
+export interface OcrStatus {
+  available: boolean
+  engine: 'tesseract' | 'none'
+  version?: string | null
+  languages: string[]
+  detail?: string | null
+}
+
+/** Прогон движка ИИ на кейсах shared/ai_cases.json — тексты, которых нет в демо-наборе */
+export interface AiEvalCase {
+  id: string
+  title?: string | null
+  text: string
+  ocr?: string | null
+  account?: string | null
+  /** Ожидание: complexId (или noHypotheses — гипотез быть не должно), условия оплаты */
+  expected: Record<string, unknown>
+  /** Результат движка: первая гипотеза, все гипотезы, найденные условия */
+  got: Record<string, unknown>
+  ok: boolean
+  /** Что разошлось */
+  notes?: string | null
+}
+
+export interface AiEval {
+  engine: string
+  cases: AiEvalCase[]
+  metrics: {
+    termsFound: number
+    termsExpected: number
+    termsPrecision: number
+    linkTop1: number
+    linkCases: number
+    falsePositives: number
+  }
 }

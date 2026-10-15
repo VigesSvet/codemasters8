@@ -21,8 +21,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import HRFlowable, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from .risk import link_confirmed
-from .risk_model import ALMATY, T, fmt_date
+from .risk_model import ALMATY, fmt_date
 
 Obj = Dict[str, Any]
 
@@ -193,7 +192,8 @@ def _item(it: Obj) -> str:
     if k == "ad":
         q = f"«{esc(it.get('quote'))}»" if it.get("quote") else "Публикация"
         meta = _join(PLATFORMS.get(it.get("source"), it.get("source")), it.get("label"), when(it.get("date")),
-                     it.get("marker") and f"маркер «{it['marker']}»")
+                     it.get("marker") and f"маркер «{it['marker']}»",
+                     "цитата со скриншота (OCR)" if it.get("quoteFrom") == "ocr" else None)
         return f"{q} — {meta}" + (f"<br/>{esc(it['url'])}" if it.get("url") else "")
     if k == "document":
         return _document(it)
@@ -325,14 +325,14 @@ def _materials(sig: Obj) -> list:
     ads = ev.get("ads") or []
     lines = []
     for a in ads:
-        conf = math.floor((a.get("matchConfidence") or 0) * 100 + 0.5)
-        link = f"привязка {conf}% — факт" if link_confirmed(a) else f"привязка {conf}% — гипотеза, в балл не входит"
         head = _join(PLATFORMS.get(a.get("platform"), a.get("platform")), a.get("account"), when(a.get("date")),
-                     AD_STATUS.get(a.get("status"), a.get("status")), link)
+                     AD_STATUS.get(a.get("status"), a.get("status")), link_text(a),
+                     "условия оплаты: аналитик отклонил — не предложение внести деньги"
+                     if a.get("termsReview") == "rejected" else None)
         lines.append(Paragraph(f"<b>{head}</b><br/>{esc(line(a.get('text'), 320))}"
                                + (f"<br/>{esc(a['url'])}" if a.get("url") else ""), S["ev"], bulletText="–"))
-    rule = (f"Привязка к ЖК — факт при уверенности от {math.floor(T['linkConfirmed'] * 100 + 0.5)}% "
-            "или после подтверждения аналитиком; иначе это гипотеза, в балл не входит.")
+    rule = ("Привязка к ЖК — факт только после подтверждения аналитиком; гипотеза ИИ (с уверенностью) в балл не входит. "
+            "Если аналитик отклонил условия оплаты («не предложение внести деньги»), публикация не даёт R2.")
     out += [P("Публикации", "h3"), P(esc(rule), "small")] + (lines or [P("Привязанных публикаций нет", "small")])
     apps = ev.get("appeals") or []
     out += [P("Обращения граждан", "h3")]
@@ -344,6 +344,17 @@ def _materials(sig: Obj) -> list:
     out += [Paragraph(_join(when(p.get("date")), p.get("source"), p.get("activity") and f"активность: {p['activity']}",
                             p.get("note")), S["ev"], bulletText="–") for p in photos] or [P("Снимков нет", "small")]
     return out
+
+
+def link_text(a: Obj) -> str:
+    """Привязка публикации к ЖК в материалах: факт (кто и когда подтвердил) или гипотеза ИИ с уверенностью."""
+    if a.get("linkConfirmedBy"):
+        at = a.get("linkConfirmedAt")
+        return f"привязка — факт (подтвердил {line(a['linkConfirmedBy'], 64)}{', ' + when(at) if at else ''})"
+    if a.get("status") == "confirmed":
+        return "привязка — факт (нарушение подтверждено аналитиком)"
+    conf = math.floor((a.get("matchConfidence") or 0) * 100 + 0.5)
+    return f"привязка — гипотеза ИИ {conf}%, в балл не входит"
 
 
 def _status(sig: Obj) -> list:

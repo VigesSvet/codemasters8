@@ -10,7 +10,8 @@
       "objects": 6,
       "unfinished": 0,
       "site": "ertis-invest.kz",
-      "instagram": "@ertis.invest"
+      "instagram": "@ertis.invest",
+      "phones": []
     },
     {
       "id": "d2",
@@ -20,7 +21,10 @@
       "registered": "2020-05-21",
       "objects": 3,
       "unfinished": 1,
-      "instagram": "@altai.build"
+      "instagram": "@altai.build",
+      "phones": [
+        "+7 7232 00-00-02"
+      ]
     },
     {
       "id": "d3",
@@ -31,7 +35,8 @@
       "objects": 9,
       "unfinished": 0,
       "site": "ulba-dev.kz",
-      "instagram": "@ulba.dev"
+      "instagram": "@ulba.dev",
+      "phones": []
     },
     {
       "id": "d4",
@@ -41,7 +46,10 @@
       "registered": "2023-02-09",
       "objects": 1,
       "unfinished": 1,
-      "instagram": "@shygys.kurylys"
+      "instagram": "@shygys.kurylys",
+      "phones": [
+        "+7 7232 00-00-04"
+      ]
     },
     {
       "id": "d5",
@@ -52,7 +60,8 @@
       "objects": 11,
       "unfinished": 0,
       "site": "kvartal-vostok.kz",
-      "instagram": "@kvartal.vostok"
+      "instagram": "@kvartal.vostok",
+      "phones": []
     },
     {
       "id": "d6",
@@ -62,7 +71,10 @@
       "registered": "2021-09-17",
       "objects": 2,
       "unfinished": 2,
-      "instagram": "@nord.capital.uka"
+      "instagram": "@nord.capital.uka",
+      "phones": [
+        "+7 7232 00-00-06"
+      ]
     },
     {
       "id": "d7",
@@ -73,7 +85,8 @@
       "objects": 4,
       "unfinished": 0,
       "site": "bereke-dev.kz",
-      "instagram": "@bereke.dev"
+      "instagram": "@bereke.dev",
+      "phones": []
     }
   ],
   "complexes": [
@@ -812,7 +825,9 @@
       "image": "/img/site-i.jpg",
       "complexId": "c2",
       "matchConfidence": 0.97,
-      "price": "от 290 000 ₸/м²"
+      "price": "от 290 000 ₸/м²",
+      "linkConfirmedBy": "Нестерова А.",
+      "linkConfirmedAt": "2026-10-13T19:02:00+05:00"
     },
     {
       "id": "a2",
@@ -828,7 +843,9 @@
       "image": "/img/site-c.jpg",
       "complexId": "c4",
       "matchConfidence": 0.92,
-      "price": "от 310 000 ₸/м²"
+      "price": "от 310 000 ₸/м²",
+      "linkConfirmedBy": "Исаев Т.",
+      "linkConfirmedAt": "2026-10-13T12:45:00+05:00"
     },
     {
       "id": "a3",
@@ -843,7 +860,9 @@
       "image": "/img/site-a-2026-08.jpg",
       "complexId": "c1",
       "matchConfidence": 0.99,
-      "price": "от 360 000 ₸/м²"
+      "price": "от 360 000 ₸/м²",
+      "linkConfirmedBy": "Омарова Ж.",
+      "linkConfirmedAt": "2026-10-12T11:20:00+05:00"
     },
     {
       "id": "a4",
@@ -857,7 +876,9 @@
       "text": "Продаётся 2-комн. квартира в строящемся ЖК на Левобережье, 64 м², черновая. Переуступка по ДДУ, сдача 2027. Торг.",
       "complexId": "c8",
       "matchConfidence": 0.71,
-      "price": "19 800 000 ₸"
+      "price": "19 800 000 ₸",
+      "linkConfirmedBy": null,
+      "linkConfirmedAt": null
     },
     {
       "id": "a5",
@@ -872,7 +893,9 @@
       "image": "/img/site-f.jpg",
       "complexId": "c6",
       "matchConfidence": 0.88,
-      "price": "цена котлована"
+      "price": "цена котлована",
+      "linkConfirmedBy": "Нестерова А.",
+      "linkConfirmedAt": "2026-10-11T22:10:00+05:00"
     },
     {
       "id": "a6",
@@ -889,7 +912,9 @@
       "image": "/img/site-g.jpg",
       "complexId": "c11",
       "matchConfidence": 0.95,
-      "price": "270 000 ₸/м²"
+      "price": "270 000 ₸/м²",
+      "linkConfirmedBy": "Нестерова А.",
+      "linkConfirmedAt": "2026-10-11T16:42:00+05:00"
     },
     {
       "id": "a7",
@@ -902,7 +927,9 @@
       "text": "3-комн. квартира в сданном доме ЖК «Квартал 21», 86 м², ключи на руках, документы готовы.",
       "complexId": "c5",
       "matchConfidence": 0.9,
-      "price": "34 500 000 ₸"
+      "price": "34 500 000 ₸",
+      "linkConfirmedBy": "Омарова Ж.",
+      "linkConfirmedAt": "2026-10-10T14:24:00+05:00"
     },
     {
       "id": "a8",
@@ -917,7 +944,9 @@
       "image": "/img/site-h.jpg",
       "complexId": "c8",
       "matchConfidence": 0.83,
-      "price": "от 285 000 ₸/м²"
+      "price": "от 285 000 ₸/м²",
+      "linkConfirmedBy": "Омарова Ж.",
+      "linkConfirmedAt": "2026-10-10T08:52:00+05:00"
     },
     {
       "id": "a9",
@@ -930,7 +959,9 @@
       "reach": 41200,
       "text": "Подборка новостроек Өскемен 🏙 Green Line, Белуха Парк, Ульба Ривер — продажа квартир, рассрочка, бронь. Пишите в директ.",
       "complexId": "c12",
-      "matchConfidence": 0.54
+      "matchConfidence": 0.54,
+      "linkConfirmedBy": null,
+      "linkConfirmedAt": null
     },
     {
       "id": "a10",
@@ -942,7 +973,9 @@
       "status": "new",
       "text": "Отдел продаж ЖК «Солнечный квартал». Приём заявок на бронирование. Продаётся. Цена по запросу.",
       "complexId": "c14",
-      "matchConfidence": 0.86
+      "matchConfidence": 0.86,
+      "linkConfirmedBy": "Исаев Т.",
+      "linkConfirmedAt": "2026-10-09T11:40:00+05:00"
     },
     {
       "id": "a11",
@@ -956,7 +989,9 @@
       "text": "Белуха Парк — строим по гарантии ЕО. Каркас 9 этаж. Продажа через договор с гарантией, номер договора гарантии в шапке профиля.",
       "image": "/img/site-b.jpg",
       "complexId": "c10",
-      "matchConfidence": 0.96
+      "matchConfidence": 0.96,
+      "linkConfirmedBy": "Омарова Ж.",
+      "linkConfirmedAt": "2026-10-08T18:00:00+05:00"
     },
     {
       "id": "a12",
@@ -969,7 +1004,9 @@
       "reach": 7400,
       "text": "Инвестиция в квадратные метры! Новый проект на КШТ, старт строительства. Вход от 5 млн ₸, доходность до 30% к сдаче. Количество мест ограничено.",
       "matchConfidence": 0.31,
-      "price": "от 5 000 000 ₸"
+      "price": "от 5 000 000 ₸",
+      "linkConfirmedBy": null,
+      "linkConfirmedAt": null
     }
   ],
   "publishedList": {

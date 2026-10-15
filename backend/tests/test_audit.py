@@ -27,21 +27,28 @@ def _status(c, aid, status, **body):
 def test_seed_journal_of_ad(client):
     log = _log(client, "/api/ads/a6/audit")
     assert all(set(e) == EVENT_KEYS and e["at"].endswith("+00:00") for e in log) and _sorted(log)
-    assert [(e["kind"], e["who"]) for e in log] == [("system", "Система"), ("link", "Система"),
+    assert [(e["kind"], e["who"]) for e in log] == [("system", "Система"), ("ai", "Система"), ("link", "Нестерова А."),
                                                     ("status", "Нестерова А."), ("status", "Нестерова А.")]
-    # время публикации в сиде — местное (UTC+5) без смещения; явные события — со смещением +05:00
-    assert [e["at"] for e in log] == ["2026-10-11T11:02:00+00:00", "2026-10-11T11:02:00+00:00",
+    # время публикации в сиде — местное (UTC+5) без смещения; явные события и подтверждение привязки — со смещением +05:00
+    assert [e["at"] for e in log] == ["2026-10-11T11:02:00+00:00", "2026-10-11T11:02:00+00:00", "2026-10-11T11:42:00+00:00",
                                       "2026-10-12T04:30:00+00:00", "2026-10-12T06:10:00+00:00"]
     assert log[0]["what"] == "Публикация собрана автоматически (Instagram)"
-    assert log[1]["what"] == "Привязка к ЖК «Достык Плаза» по совпадению: уверенность 95% — факт"
-    assert log[2]["what"] == "Статус: «Новая» → «На проверке» · ответственный: Нестерова А."
-    assert log[3]["what"].startswith("Статус: «На проверке» → «Нарушение подтверждено». Основание: ")
+    # при сборе привязка — гипотеза ИИ; фактом её сделал аналитик (linkConfirmedBy/At из сида)
+    assert log[1]["what"] == ("Гипотеза ИИ: ЖК «Достык Плаза», уверенность 95% (совпадение при сборе публикации) — "
+                              "нужна проверка аналитиком")
+    assert log[2]["what"] == "Привязка к ЖК «Достык Плаза» подтверждена аналитиком"
+    assert log[3]["what"] == "Статус: «Новая» → «На проверке» · ответственный: Нестерова А."
+    assert log[4]["what"].startswith("Статус: «На проверке» → «Нарушение подтверждено». Основание: ")
     assert {(e["adId"], e["complexId"], e["signalId"]) for e in log} == {("a6", "c11", None)}
+    a6 = next(a for a in client.get("/api/ads").json() if a["id"] == "a6")
+    assert (a6["linkConfirmedBy"], a6["linkConfirmedAt"]) == ("Нестерова А.", "2026-10-11T11:42:00+00:00")
 
-    # источник публикации и порог привязки
-    assert [e["what"] for e in _log(client, "/api/ads/a4/audit")][:2] == [
-        "Публикация добавлена вручную",
-        "Привязка к ЖК «Тихий берег» по совпадению: уверенность 71% — гипотеза, нужна проверка аналитиком"]
+    # источник публикации; неподтверждённая привязка — только гипотеза, без события подтверждения
+    assert [(e["kind"], e["what"]) for e in _log(client, "/api/ads/a4/audit")][:3] == [
+        ("system", "Публикация добавлена вручную"),
+        ("ai", "Гипотеза ИИ: ЖК «Тихий берег», уверенность 71% (совпадение при добавлении публикации) — "
+               "нужна проверка аналитиком"),
+        ("status", "Статус: «Новая» → «На проверке» · ответственный: Нестерова А.")]
     assert _log(client, "/api/ads/a10/audit")[0]["what"] == "Демо-запись (2ГИС)"
     a12 = _log(client, "/api/ads/a12/audit")
     assert [(e["kind"], e["complexId"], e["what"]) for e in a12][-1] == ("link", None, "ЖК не определён — нужна ручная привязка")
@@ -69,7 +76,7 @@ def test_seed_journal_of_complex(client):
     assert len(shots) == 4 and all(e["at"].endswith("T07:00:00+00:00") for e in shots)
     assert shots[-1]["what"] == "Снимок площадки (дрон): активность — нет. Изменений нет 95 дней"
     # публикации по ЖК — тоже в журнале объекта
-    assert {e["kind"] for e in log} == {"data", "system", "link", "status", "comment"}
+    assert {e["kind"] for e in log} == {"data", "system", "ai", "link", "status", "comment"}
     assert {e["adId"] for e in log if e["kind"] != "data"} == {"a2"}
 
     assert "Обращение отклонено после проверки" in [e["what"] for e in _log(client, "/api/complexes/c1/audit")]
@@ -78,7 +85,7 @@ def test_seed_journal_of_complex(client):
     req = [e for e in _log(client, "/api/complexes/c6/audit") if e["kind"] == "request"]
     assert [(e["who"], e["at"]) for e in req] == [("Омарова Ж.", "2026-10-12T05:15:00+00:00")]
     # у c14 сведения не сверены (нет источника) — в журнале только его публикация
-    assert {e["kind"] for e in _log(client, "/api/complexes/c14/audit")} == {"system", "link"}
+    assert {e["kind"] for e in _log(client, "/api/complexes/c14/audit")} == {"system", "ai", "link"}
 
 
 def test_seed_journal_is_deterministic(client):
@@ -227,7 +234,7 @@ def test_manual_ad_events(client):
     body = {"platform": "instagram", "account": "@x", "text": "Старт продаж ЖК Ульба Ривер, бронь"}
     ad = client.post("/api/ads", json={**body, "id": "m1", "author": f" {AUTHOR} "}).json()
     log = _log(client, f"/api/ads/{ad['id']}/audit")
-    assert [(e["kind"], e["who"], e["complexId"]) for e in log] == [("system", AUTHOR, "c3"), ("system", "Система", "c3")]
+    assert [(e["kind"], e["who"], e["complexId"]) for e in log] == [("system", AUTHOR, "c3"), ("ai", "Система", "c3")]
     assert "author" not in ad
     # без автора — «Система»; повтор id — 409, а не ошибка БД; длина полей — как у столбцов БД
     assert _log(client, f"/api/ads/{client.post('/api/ads', json=body).json()['id']}/audit")[0]["who"] == "Система"
@@ -248,11 +255,11 @@ def test_manual_ad_cannot_carry_decision(client):
             assert r.status_code == 422 and r.json()["detail"][0]["loc"][-1] == "status", (status, extra)
     assert client.get("/api/ads/zz1/audit").status_code == 404
     assert client.get("/api/complexes/c12/risk").json() == risk
-    # статусы до решения — можно; привязка по названию остаётся гипотезой
+    # статусы до решения — можно; привязка по названию остаётся гипотезой ИИ
     r = client.post("/api/ads", json={**body, "status": "needs_check"})
     assert r.status_code == 201 and (r.json()["status"], r.json()["complexId"], r.json()["matchConfidence"]) == (
-        "needs_check", "c12", 0.6)
-    assert {e["kind"] for e in _log(client, "/api/ads/zz1/audit")} == {"system"}
+        "needs_check", "c12", 0.8) and r.json()["linkConfirmedBy"] is None
+    assert {e["kind"] for e in _log(client, "/api/ads/zz1/audit")} == {"system", "ai"}
 
 
 # ---------- комментарии ----------
@@ -287,7 +294,7 @@ def test_complex_journal_collects_everything(client):
 
     log = _log(client, "/api/complexes/c4/audit")
     assert _sorted(log) and all(e["complexId"] == "c4" for e in log)
-    assert {e["kind"] for e in log} == {"data", "system", "link", "status", "comment", "signal", "export", "request"}
+    assert {e["kind"] for e in log} == {"data", "system", "ai", "link", "status", "comment", "signal", "export", "request"}
     sig = [e for e in log if e["signalId"] == sid]
     assert [(e["kind"], e["what"]) for e in sig] == [("signal", "Сигнал создан: балл 100, зона красная"), ("export", "Выгружен PDF")]
     assert [e["kind"] for e in log[-5:]] == ["signal", "export", "request", "comment", "status"]

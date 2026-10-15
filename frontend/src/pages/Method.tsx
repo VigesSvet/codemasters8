@@ -1,18 +1,20 @@
-import { useMemo, useState, type ComponentType } from 'react'
+import { useEffect, useMemo, useState, type ComponentType } from 'react'
 import { Link } from 'react-router-dom'
+import { AiBadge } from '../components/Hypothesis'
 import { Faq, Gauge, Score, Seg, ZoneTag } from '../components/ui'
-import type { FactorState } from '../data/types'
+import type { AiEval, FactorState } from '../data/types'
+import { errorText } from '../lib/api'
 import { factorDef, model, zoneFor, type ModelCase } from '../lib/risk'
 import { useStore } from '../lib/store'
-import { IcBank, IcCheck, IcChevronDown, IcChevronUp, IcClock, IcHelp, IcInfo, IcMegaphone, IcUsersFamily, IcWallet, IcWorker } from '../ui/icons'
+import { IcBank, IcCheck, IcChevronDown, IcChevronUp, IcClock, IcClose, IcHelp, IcInfo, IcMegaphone, IcUsersFamily, IcWallet, IcWorker } from '../ui/icons'
 
 const T = model.thresholds
 const ICONS: Record<string, ComponentType<{ size?: number }>> = { R1: IcBank, R2: IcWallet, R3: IcMegaphone, R4: IcUsersFamily, R5: IcWorker, R6: IcClock }
 // Подписи состояний в калькуляторе — по смыслу фактора: [подтверждён, нет, нет сведений]
 const STATE_LABELS: Record<string, [string, string, string]> = {
   R1: ['Установлено отсутствие', 'Основание есть', 'Нет сведений'],
-  R2: ['Есть в публикации', 'Нет', 'Привязка не подтверждена'],
-  R3: ['Есть публикация', 'Нет', 'Привязка не подтверждена'],
+  R2: ['Есть в публикации', 'Нет', 'Привязка — гипотеза ИИ'],
+  R3: ['Есть публикация', 'Нет', 'Привязка — гипотеза ИИ'],
   R4: ['Проверено', 'Нет', 'На проверке'],
   R5: [`Разница от ${T.readinessGap} п.п.`, 'Меньше порога', 'Нет пары значений'],
   R6: ['Подтверждён', 'Нет', 'Не подтверждён'],
@@ -36,10 +38,57 @@ const formula = (hits: string[]) => {
 const fromCase = (k: ModelCase): Record<string, FactorState> =>
   Object.fromEntries(model.factors.map((f) => [f.code, k.hits.includes(f.code) ? 'hit' : k.unknown.includes(f.code) ? 'unknown' : 'clear']))
 
+const pct = (x: number) => `${Math.round(x * 100)}%`
+const TERM: Record<string, string> = {
+  booking: 'бронь', deposit: 'депозит', down_payment: 'взнос', installment: 'рассрочка', ddu: 'ДДУ', direct_payment: 'оплата застройщику',
+  price: 'цена', investment: 'инвестиции',
+}
+const AI_TILES: [string, string][] = [
+  ['OCR скриншота', 'Tesseract (нейросеть LSTM) — русский, казахский, английский. Перед распознаванием: оттенки серого, увеличение мелких изображений, автоконтраст. Распознанный текст аналитик может поправить; цитаты из него помечаются «из скриншота (OCR)».'],
+  ['Условия оплаты', 'Платная бронь, депозит, первый взнос, рассрочка, ДДУ, оплата напрямую застройщику, цена за м², «инвестиции». Суммы в ₸, $ и ₽ в любой записи («500 тыс. тг», «1,2 млн ₸»), проценты и сроки. У каждого условия — дословная цитата и уверенность.'],
+  ['Сопоставление с ЖК', 'Название с транслитерацией KZ/RU/Latin и опечатками, адрес (улица и дом), аккаунт и телефон застройщика, прежние подтверждённые публикации аккаунта, район. До трёх гипотез с причинами; подборка нескольких ЖК снижает уверенность каждой.'],
+]
+
+type EvalTerm = { kind?: string; amount?: number | null; currency?: string | null; unit?: string | null; percent?: number | null; months?: number | null; money?: boolean }
+type EvalSide = {
+  complexId?: string | null; complexName?: string | null; confidence?: number | null; low?: boolean | null; noHypotheses?: boolean; terms?: EvalTerm[]
+}
+const CUR: Record<string, string> = { KZT: '₸', USD: '$', RUB: '₽' }
+const termShort = (t: EvalTerm) => [
+  TERM[t.kind ?? ''] ?? t.kind,
+  t.amount != null && `${t.amount.toLocaleString('ru-RU')} ${CUR[t.currency ?? 'KZT'] ?? t.currency}${t.unit === 'm2' ? '/м²' : ''}`,
+  t.percent != null && `${t.percent}%`, t.months != null && `${t.months} мес.`, t.money === false && '(не деньги)',
+].filter(Boolean).join(' ')
+
+/** Ожидание или результат кейса: ЖК (с уверенностью у результата) и условия оплаты */
+function EvalCell({ v, names, got }: { v: Record<string, unknown>; names: Map<string, string>; got?: boolean }) {
+  const o = v as EvalSide
+  const cx = o.complexId
+    ? `ЖК «${o.complexName ?? names.get(o.complexId) ?? o.complexId}»${got && o.confidence != null ? ` · ${pct(o.confidence)}${o.low ? ', низкая' : ''}` : ''}`
+    : o.noHypotheses ? 'ЖК — гипотез нет' : got ? 'ЖК — гипотез нет' : 'ЖК — без уверенной привязки'
+  return (
+    <div className="ai-kv">
+      <div>{cx}</div>
+      {Array.isArray(o.terms) && <div className="c2">{o.terms.length ? o.terms.map(termShort).join(', ') : 'условий нет'}</div>}
+    </div>
+  )
+}
+
 /** Методика — по образцу раздела «Ипотека» на realty.yandex.ru: серая шапка с плитками, калькулятор, таблица программ.
  *  Всё — из общей модели shared/risk_model.json (та же, что считает бэкенд) */
 export default function Method() {
-  const { complexes, riskOf } = useStore()
+  const { mode, complexes, riskOf, aiEval } = useStore()
+  const live = mode === 'api'
+  // проверка ИИ на новых данных — прогон на сервере при открытии страницы
+  const [ev, setEv] = useState<{ data?: AiEval; err?: string } | null>(null)
+  const [evVer, setEvVer] = useState(0)
+  useEffect(() => {
+    if (!live) return
+    let alive = true
+    aiEval().then((data) => { if (alive) setEv({ data }) }, (e: unknown) => { if (alive) setEv({ err: errorText(e) }) })
+    return () => { alive = false }
+  }, [live, evVer]) // eslint-disable-line react-hooks/exhaustive-deps
+  const names = useMemo(() => new Map(complexes.map((c) => [c.id, c.name])), [complexes])
   // калькулятор: начинаем с кейса A — показывает, что «нет сведений» не превращается в R1
   const [st, setSt] = useState<Record<string, FactorState>>(() => fromCase(model.cases[0]))
   const calc = useMemo(() => {
@@ -195,6 +244,78 @@ export default function Method() {
         })}
       </div>
 
+      <h2 className="t-h2 row" id="ai" style={{ margin: '48px 0 4px', gap: 10 }}>ИИ-анализ публикаций <AiBadge label="гипотезы ИИ" /></h2>
+      <p className="c2" style={{ marginBottom: 16, maxWidth: 760 }}>
+        ИИ работает на новых данных — тексте и скриншоте, которые аналитик добавляет вручную. Движок офлайн и на сервере: распознавание, правила,
+        словари и нечёткое сравнение, без внешних API и ключей. Одинаковый вход даёт одинаковый результат. Всё, что он находит, — гипотезы
+        с фрагментом-подтверждением и уверенностью.
+      </p>
+      <div className="promo-tiles">
+        {AI_TILES.map(([h, d]) => <div key={h} className="promo-tile"><div className="h">{h}</div><div className="d">{d}</div></div>)}
+      </div>
+      <div className="xgrid" style={{ marginTop: 16, gap: 16 }}>
+        <div className="box t-sm" style={{ lineHeight: '20px' }}>
+          <div className="bold" style={{ marginBottom: 6 }}>Решает аналитик</div>
+          <div>· Принимает гипотезу привязки — привязка становится фактом с его именем и временем, R2 и R3 по публикации начинают идти в балл объекта.</div>
+          <div>· Отклоняет гипотезу — ИИ больше не предлагает этот ЖК, текущая привязка-гипотеза снимается.</div>
+          <div>· Подтверждает условия оплаты или отмечает «Это не предложение денег» — тогда R2 этой публикации не засчитывается.</div>
+          <div>· Каждое решение — в журнале публикации: кто, что, когда.</div>
+        </div>
+        <div className="box warn t-sm" style={{ lineHeight: '20px' }}>
+          <div className="bold" style={{ marginBottom: 6 }}>Чего ИИ не делает</div>
+          <div>· Не выносит юридический вердикт и не подтверждает нарушение.</div>
+          <div>· Не меняет балл сам: привязка-гипотеза даёт 0 баллов и «Нужна проверка», как бы ни была высока уверенность.</div>
+          <div>· Не ставит R2: его ставит правило модели по словарю — воспроизводимая цитата. Снять R2 может только аналитик.</div>
+          <div>· Неуверенное помечает: ниже {pct(T.lowConfidence)} — «низкая уверенность», ниже {pct(T.hypothesisMin)} гипотеза не показывается.</div>
+        </div>
+      </div>
+
+      <h2 className="t-h2" id="ai-eval" style={{ margin: '48px 0 4px' }}>Проверка на новых данных</h2>
+      <p className="c2" style={{ marginBottom: 16, maxWidth: 760 }}>
+        Тексты, которых нет в демо-наборе: транслит и опечатки в названиях, адрес без названия, телефон застройщика, подборка нескольких ЖК, шумный
+        OCR, «бесплатная бронь», вторичка в сданном доме и контрпримеры без признаков. Сервер прогоняет движок при открытии страницы; те же кейсы
+        проверяет автотест (shared/ai_cases.json).
+      </p>
+      {!live ? (
+        <div className="ai-note">{mode === 'loading' ? 'Подключаемся к серверу…' : 'Прогон выполняется на сервере — в демо-режиме без бэкенда его нет. Запустите ./dev.sh и откройте страницу снова.'}</div>
+      ) : !ev ? <div className="ai-note">Прогоняем кейсы…</div>
+        : !ev.data ? <div className="ai-note err">Проверка не загрузилась: {ev.err} <button className="link" onClick={() => setEvVer((v) => v + 1)}>Повторить</button></div>
+          : (() => {
+            const m = ev.data.metrics, okN = ev.data.cases.filter((k) => k.ok).length
+            return (
+              <>
+                <div className="ai-metrics">
+                  <div className="ai-metric"><b>{okN} из {ev.data.cases.length}</b><span>кейсов пройдено</span></div>
+                  <div className="ai-metric"><b>{m.termsFound} из {m.termsExpected}</b><span>ожидаемых условий оплаты найдено</span></div>
+                  <div className="ai-metric"><b>{pct(m.termsPrecision)}</b><span>точность условий: доля найденных, которые ожидались</span></div>
+                  <div className="ai-metric"><b>{pct(m.linkTop1)}</b><span>верный ЖК — первая гипотеза ({m.linkCases} кейсов с ЖК)</span></div>
+                  <div className="ai-metric"><b>{m.falsePositives}</b><span>ложных привязок на контрпримерах</span></div>
+                </div>
+                <table className="ytable">
+                  <thead><tr><th style={{ width: 90 }}>Кейс</th><th>Текст</th><th>Ожидалось</th><th>Получено</th><th className="r">Итог</th></tr></thead>
+                  <tbody>
+                    {ev.data.cases.map((k) => (
+                      <tr key={k.id}>
+                        <td><span className="tag gray">{k.id}</span></td>
+                        <td className="ai-text">
+                          {k.title && <div className="bold" style={{ marginBottom: 2 }}>{k.title}</div>}
+                          {k.text}
+                          {k.ocr && <div className="c2" style={{ marginTop: 2 }}>OCR: {k.ocr}</div>}
+                          {k.account && <div className="c2" style={{ marginTop: 2 }}>Аккаунт: {k.account}</div>}
+                          {k.notes && <div className="t-xs" style={{ marginTop: 4, color: k.ok ? 'var(--text-2)' : 'var(--red-ink)' }}>{k.notes}</div>}
+                        </td>
+                        <td><EvalCell v={k.expected} names={names} /></td>
+                        <td><EvalCell v={k.got} names={names} got /></td>
+                        <td className="r">{k.ok ? <span className="tag green"><IcCheck size={12} strokeWidth={3} />совпадает</span> : <span className="tag red"><IcClose size={12} strokeWidth={3} />расходится</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="t-sm c3" style={{ marginTop: 8 }}>Движок {ev.data.engine}</p>
+              </>
+            )
+          })()}
+
       <h2 className="t-h2" style={{ margin: '48px 0 16px' }}>Словари для разбора рекламы</h2>
       <Seg value={dict} onChange={setDict} items={DICTS.map(([k, l]) => [k, <>{l}<span style={{ opacity: 0.56 }}>{model.markers[k].length}</span></>])} />
       <p className="c2" style={{ margin: '16px 0', maxWidth: 760 }}>{d[3]}</p>
@@ -210,7 +331,8 @@ export default function Method() {
         items={[
           ['Почему «нет данных» не считается отсутствием основания?', 'По ТЗ R1 ставится, только когда отсутствие гарантии ЕО и разрешения МИО установлено проверенными данными с источником и датой сверки. Нет ответа реестра или сведений — 0 баллов и отметка «Нужна проверка»: аналитик запрашивает документы, а не фиксирует нарушение.'],
           ['Что значит «Нужна проверка»?', 'Хотя бы один фактор нельзя ни подтвердить, ни исключить: нет сведений, обращение ещё не проверено или привязка публикации к ЖК — только гипотеза. Балл от этого не растёт, но объект попадает в фильтр «Нужна проверка».'],
-          ['Как учитываются гипотезы ИИ?', `Привязка публикации к ЖК — факт, если уверенность сопоставления от ${Math.round(T.linkConfirmed * 100)}% или аналитик подтвердил публикацию. Ниже — гипотеза: R2 и R3 по такой публикации дают 0 баллов и отметку «Нужна проверка».`],
+          ['Как учитываются гипотезы ИИ?', 'Привязка публикации к ЖК — факт только после решения аналитика: он принял гипотезу ИИ, выбрал ЖК сам или подтвердил нарушение по публикации. До этого привязка — гипотеза ИИ, как бы ни была высока уверенность: R2 и R3 по такой публикации дают 0 баллов и отметку «Нужна проверка».'],
+          ['Может ли ИИ поднять или снизить балл сам?', <>Нет. ИИ находит условия оплаты и предлагает ЖК — это гипотезы. Балл меняют подтверждённые данные и решения аналитика: принятая привязка добавляет R2/R3 публикации объекту, отметка «Это не предложение денег» снимает R2 этой публикации. Подробнее — в разделе <a className="link" href="#ai">ИИ-анализ публикаций</a>.</>],
           ['Совпадает ли расчёт на сервере и в интерфейсе?', 'Да. Бэкенд и интерфейс читают одну модель, а автотесты сверяют оба движка с одними и теми же эталонными результатами. Одинаковые подтверждённые данные дают одинаковый балл.'],
         ]} />
     </>
