@@ -3,13 +3,14 @@ import { Link, useLocation, useNavigationType, useParams, useSearchParams } from
 import { AuditList } from '../components/Audit'
 import Compare from '../components/Compare'
 import { FactorList, ObservationList } from '../components/Factors'
+import GeoCheck from '../components/GeoCheck'
 import MapView from '../components/MapView'
 import { DocSourceLine, Origin } from '../components/Provenance'
 import SignalPanel from '../components/SignalPanel'
 import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Seg, StatusTag, TriTag, ZoneTag, fmtDate, fmtDT, plural, zoneShort } from '../components/ui'
 import { publishedListMeta } from '../data/demo'
 import type { AppealStatus, AuditEvent, BasisDoc, BasisSource, ReadinessValue, RiskResult, Stage, Tri } from '../data/types'
-import { errorText } from '../lib/api'
+import { errorText, mediaSrc } from '../lib/api'
 import { AUDIT_GROUPS, REQUEST_TOPICS, inGroup, type AuditGroup, type RequestTopic } from '../lib/audit'
 import { from, useFrom } from '../lib/nav'
 import { DEMO_ORG, isDemo, isDemoAd } from '../lib/provenance'
@@ -43,7 +44,7 @@ export default function ComplexCard() {
   const navType = useNavigationType()
   const back = useFrom()
   useHeadHeight()
-  const { mode, complexes, ads, developers, appeals, notify, riskOf, getAudit, requestInfo, user, revision } = useStore()
+  const { mode, complexes, ads, developers, appeals, notify, riskOf, getAudit, requestInfo, refreshComplex, user, revision } = useStore()
   const tab: Tab = TABS.find((t) => t === sp.get('tab')) ?? 'basis'
   const tabsRef = useRef<HTMLDivElement>(null)
   const arrived = useRef<string>(undefined)
@@ -98,6 +99,9 @@ export default function ComplexCard() {
     </>
   )
   const r = riskOf(c)
+  /** Координаты перенесены из 2ГИС: точка сразу меняется в общем списке ЖК (карточка, общая карта, список новостроек),
+   *  точные значения — ЖК перечитывается с сервера */
+  const applied = (p: { lat: number; lng: number }) => { void refreshComplex(c.id, { lat: p.lat, lng: p.lng }) }
   const hitF = r.factors.filter((f) => f.state === 'hit')
   /** Ссылки на публикации передают, откуда пришли: разбор публикации покажет «← ЖК «…»» и вернёт на ту же вкладку */
   const here = (t: Tab) => ({ label: `ЖК «${c.name}»`, to: `/complexes/${c.id}?tab=${t}` })
@@ -286,22 +290,26 @@ export default function ComplexCard() {
             <div className="fade">
               <div style={{ marginBottom: 16 }}><FactorList factors={fac('R2', 'R3')} items={false} /></div>
               {linked.length === 0 && <div className="empty">Публикаций по объекту не найдено</div>}
-              {linked.map((a) => (
-                <Link key={a.id} to={`/ads/${a.id}`} state={from(here('ads').label, here('ads').to)} className="offer" style={{ gridTemplateColumns: a.image ? '200px minmax(0,1fr)' : '1fr' }}>
-                  {a.image && <div className="ph"><img src={a.image} alt="" /></div>}
-                  <div className="body">
-                    <div className="row between">
-                      <div className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={20} /><span className="bold">{a.account}</span><span className="t-sm c2">{fmtDT(a.date)}</span></div>
-                      <div className="row" style={{ gap: 6 }}>
-                        {isDemoAd(a) && <Origin kind="demo" label="демо" title="Демонстрационная публикация: вымышленный текст и аккаунт" />}
-                        {!linkConfirmed(a) && <span className="tag yellow" title="Гипотеза ИИ: аналитик ещё не подтвердил, что публикация про этот ЖК, — в балл не входит">привязка — гипотеза ИИ {Math.round((a.matchConfidence || 0) * 100)}%</span>}
-                        <StatusTag s={a.status} />
+              {linked.map((a) => {
+                // файл публикации с сервера (/api/media/…) — через mediaSrc: учитывает VITE_API_URL
+                const img = mediaSrc(a.image)
+                return (
+                  <Link key={a.id} to={`/ads/${a.id}`} state={from(here('ads').label, here('ads').to)} className="offer" style={{ gridTemplateColumns: img ? '200px minmax(0,1fr)' : '1fr' }}>
+                    {img && <div className="ph"><img src={img} alt="" /></div>}
+                    <div className="body">
+                      <div className="row between">
+                        <div className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={20} /><span className="bold">{a.account}</span><span className="t-sm c2">{fmtDT(a.date)}</span></div>
+                        <div className="row" style={{ gap: 6 }}>
+                          {isDemoAd(a) && <Origin kind="demo" label="демо" title="Демонстрационная публикация: вымышленный текст и аккаунт" />}
+                          {!linkConfirmed(a) && <span className="tag yellow" title="Гипотеза ИИ: аналитик ещё не подтвердил, что публикация про этот ЖК, — в балл не входит">привязка — гипотеза ИИ {Math.round((a.matchConfidence || 0) * 100)}%</span>}
+                          <StatusTag s={a.status} />
+                        </div>
                       </div>
+                      <p className="txt" style={{ marginTop: 6 }}><Highlight text={a.text} /></p>
                     </div>
-                    <p className="txt" style={{ marginTop: 6 }}><Highlight text={a.text} /></p>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                )
+              })}
             </div>
           )}
           {tab === 'photos' && (
@@ -355,8 +363,13 @@ export default function ComplexCard() {
             <Link to={`/?sel=${c.id}`} className="link t-sm bold">На общей карте</Link>
           </div>
           <div className="ph" style={{ height: 240, borderRadius: 16 }}>
-            <MapView items={[{ c, zone: r.zone, score: r.score }]} center={[c.lng, c.lat]} zoom={14.5} interactive={false} labels />
+            {/* key: после переноса координат карта создаётся заново с новым центром */}
+            <MapView key={`${c.lng},${c.lat}`} items={[{ c, zone: r.zone, score: r.score }]}
+              center={[c.lng, c.lat]} zoom={14.5} interactive={false} labels />
           </div>
+          {/* сверка адреса в 2ГИС: кандидаты — по кнопке, решение и перенос координат — за аналитиком; события — в журнал объекта */}
+          <GeoCheck key={c.id} target={{ kind: 'complex', id: c.id }} address={c.address} point={{ lat: c.lat, lng: c.lng }} canApply
+            onChange={() => setVer((v) => v + 1)} onApplied={applied} />
         </div>
 
         {/* липкая колонка — только сводка и действия, короче окна: внизу страницы она уходит вверх вместе с концом контента */}

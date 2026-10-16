@@ -1,0 +1,314 @@
+"""Схема БД: обновление на месте (migrate), защита собранных данных, новые таблицы, JSON со слежением, помощники
+моделей (as_utc, insert_ignore) и новые поля схем API (AdOut, HumanName, приём публикаций)."""
+import uuid
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+from sqlalchemy import Column, Integer, inspect, select, text
+
+from app import migrate, models, schemas
+from app.db import Base, SessionLocal, engine, make_engine
+from app.seed import init_db
+
+AD = {"platform": "instagram", "account": "@test_dev", "text": "Старт продаж, бронь 100 000 ₸", "author": "Тест"}
+
+
+def _ad(client, aid: str):
+    """Публикация из списка GET /api/ads (отдельного GET /api/ads/{id} в API нет)."""
+    return next((a for a in client.get("/api/ads").json() if a["id"] == aid), None)
+
+
+def _meta(conn) -> str:
+    return conn.execute(text("SELECT value FROM meta WHERE key = 'schema_version'")).scalar()
+
+
+def _set_meta(value: str) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE meta SET value = :v WHERE key = 'schema_version'"), {"v": value})
+
+
+def _to_baseline() -> None:
+    """База как у версии 2026.10-sources-1: без 12 новых таблиц и ads.collected_at."""
+    with engine.begin() as conn:
+        for t in reversed(Base.metadata.sorted_tables):
+            if t.name in migrate.NEW_TABLES:
+                t.drop(conn)
+        conn.execute(text("ALTER TABLE ads DROP COLUMN collected_at"))
+    _set_meta(migrate.BASELINE)
+
+
+def _sqlite_file() -> Path | None:
+    return Path(engine.url.database) if engine.dialect.name == "sqlite" else None
+
+
+def _backups() -> set:
+    f = _sqlite_file()
+    return set(f.parent.glob(f"{f.name}.bak-*")) if f else set()
+
+
+def test_fresh_db(tmp_path):
+    assert models.SCHEMA_VERSION == migrate.STEPS[-1][0] == "2026.10-intake-1"
+    eng = make_engine(f"sqlite:///{tmp_path}/fresh.db")
+    try:
+        init_db(eng)
+        assert set(migrate.NEW_TABLES) <= set(inspect(eng).get_table_names())
+        with eng.connect() as conn:
+            assert _meta(conn) == models.SCHEMA_VERSION
+            assert conn.execute(text("SELECT count(*) FROM ads")).scalar() == 12
+            assert conn.execute(text("PRAGMA journal_mode")).scalar() == "wal"
+            assert conn.execute(text("PRAGMA busy_timeout")).scalar() == 30000
+        assert not list(tmp_path.glob("fresh.db.bak-*"))  # новой базе резервная копия не нужна
+    finally:
+        eng.dispose()
+
+
+def test_baseline_upgrade_keeps_data(client):
+    created = client.post("/api/ads", json=AD)
+    assert created.status_code == 201
+    aid = created.json()["id"]
+    client.patch("/api/ads/a1/status", json={"status": "in_review", "author": "Тест"})
+    _to_baseline()
+    assert "collected_at" not in {c["name"] for c in inspect(engine).get_columns("ads")}
+    before = _backups()
+
+    init_db(engine)
+
+    assert set(migrate.NEW_TABLES) <= set(inspect(engine).get_table_names())
+    assert "collected_at" in {c["name"] for c in inspect(engine).get_columns("ads")}
+    with engine.connect() as conn:
+        assert _meta(conn) == models.SCHEMA_VERSION
+    assert _ad(client, aid)["origin"] == "analyst"
+    assert _ad(client, "a1")["status"] == "in_review"  # не пересеяно
+    assert len(client.get("/api/ads").json()) == 13
+    if _sqlite_file():
+        new = _backups() - before
+        assert len(new) == 1 and next(iter(new)).name.startswith(f"{_sqlite_file().name}.bak-2026.10-sources-1-")
+        for f in new:
+            f.unlink()
+
+    # повторный запуск — ничего не меняется
+    init_db(engine)
+    assert len(client.get("/api/ads").json()) == 13
+    assert _backups() == before
+
+
+def test_unknown_version_with_durable_rows(client, env):
+    aid = client.post("/api/ads", json=AD).json()["id"]
+    _set_meta("old")
+    with pytest.raises(migrate.SchemaError) as e:
+        init_db(engine)
+    assert "SAQ_ALLOW_SCHEMA_RESET" in str(e.value) and "ads: 1" in str(e.value)
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM ads WHERE id = :id"), {"id": aid}).scalar() == 1  # не удалено
+    _set_meta("old")
+    env(SAQ_ALLOW_SCHEMA_RESET="1")
+    init_db(engine)
+    assert _ad(client, aid) is None
+    assert len(client.get("/api/ads").json()) == 12
+    with engine.connect() as conn:
+        assert _meta(conn) == models.SCHEMA_VERSION
+
+
+def test_unknown_version_without_durable_rows_reseeds(client):
+    client.patch("/api/ads/a1/status", json={"status": "in_review", "author": "Тест"})
+    _set_meta("old")
+    init_db(engine)
+    assert _ad(client, "a1")["status"] == "new"
+
+
+def test_durable_rows(client):
+    tables = set(inspect(engine).get_table_names())
+    assert migrate.durable_rows(engine, tables) == {}
+    with SessionLocal() as db:
+        db.add(models.Collector(code="instagram"))  # строка без updated_by восстановима
+        db.commit()
+    assert migrate.durable_rows(engine, tables) == {}
+    with SessionLocal() as db:
+        db.get(models.Collector, "instagram").updated_by = "Администратор"
+        db.add(models.GeoCheck(target_kind="complex", target_id="c1", query="ул. Тест", query_norm="ул тест",
+                               status="candidates", requested_by="Тест"))
+        db.commit()
+    assert migrate.durable_rows(engine, tables) == {"collectors": 1, "geo_checks": 1}
+    assert migrate.durable_rows(engine, {"ads"}) == {}  # только перечисленные таблицы
+
+
+def test_chain_from_and_add_column(client):
+    assert migrate.chain_from(migrate.BASELINE) == migrate.STEPS
+    assert migrate.chain_from(models.SCHEMA_VERSION) == []
+    assert migrate.chain_from("old") is None and migrate.chain_from(None) is None
+    with engine.begin() as conn:
+        assert migrate.add_column(conn, "ads", models.Ad.__table__.c.collected_at) is False  # уже есть
+        assert migrate.add_column(conn, "quota_counters", Column("extra_n", Integer, server_default="0", nullable=False))
+        assert migrate.add_column(conn, "quota_counters", Column("extra_n", Integer, server_default="0")) is False
+        with pytest.raises(ValueError):
+            migrate.add_column(conn, "quota_counters", Column("bad", Integer, nullable=False))
+    assert migrate.backup_sqlite(make_engine("sqlite://"), "x") is None
+
+
+def test_upgrade_rechecks_version_and_rolls_back(client, monkeypatch):
+    _to_baseline()
+
+    def broken(conn):
+        conn.execute(text("CREATE TABLE half_done (id INTEGER PRIMARY KEY)"))
+        raise RuntimeError("сбой шага")
+
+    monkeypatch.setattr(migrate, "STEPS", [("2026.10-intake-1", broken)])
+    with pytest.raises(RuntimeError):
+        migrate.upgrade(engine, migrate.BASELINE)
+    with engine.connect() as conn:
+        assert _meta(conn) == migrate.BASELINE  # версия не сдвинулась
+    assert "half_done" not in inspect(engine).get_table_names()  # шаги — в одной транзакции
+    monkeypatch.undo()
+    for f in _backups():
+        f.unlink()
+    init_db(engine)
+    with engine.connect() as conn:
+        assert _meta(conn) == models.SCHEMA_VERSION
+
+
+# ---------- модели ----------
+
+def test_json_mutation_tracked(client):
+    with SessionLocal() as db:
+        db.add(models.Collector(code="tiktok"))
+        db.add(models.CollectionRun(id=900, collector="tiktok", trigger="manual"))
+        db.commit()
+    with SessionLocal() as db:
+        row = db.get(models.Collector, "tiktok")
+        assert row.state == {} and row.config == {} and row.failures == 0 and row.enabled is False
+        run = db.get(models.CollectionRun, 900)
+        row.state["x"] = 1
+        row.facts["keyFp"] = "abc"
+        run.notes.append({"level": "info", "text": "старт"})
+        db.commit()
+    with SessionLocal() as db:
+        assert db.get(models.Collector, "tiktok").state == {"x": 1}
+        assert db.get(models.Collector, "tiktok").facts == {"keyFp": "abc"}
+        assert db.get(models.CollectionRun, 900).notes == [{"level": "info", "text": "старт"}]
+
+
+def test_as_utc():
+    almaty = timezone(timedelta(hours=5))
+    assert models.as_utc(None) is None
+    assert models.as_utc(datetime(2026, 10, 16, 12, 0)) == datetime(2026, 10, 16, 12, 0, tzinfo=timezone.utc)
+    got = models.as_utc(datetime(2026, 10, 16, 12, 0, tzinfo=almaty))
+    assert got.tzinfo == timezone.utc and got.hour == 7
+
+
+def test_insert_ignore_and_partial_unique_index(client):
+    with SessionLocal() as db:
+        vals = {"name": "dgis:abc:all", "count": 0, "updated_at": datetime(2026, 10, 16, 12, tzinfo=timezone(
+            timedelta(hours=5)))}
+        assert models.insert_ignore(db, models.QuotaCounter, vals, ["name"]) is True
+        assert models.insert_ignore(db, models.QuotaCounter, {**vals, "count": 5}, ["name"]) is False
+        db.commit()
+        row = db.get(models.QuotaCounter, "dgis:abc:all")
+        assert row.count == 0 and models.as_utc(row.updated_at).hour == 7
+        # не больше одного активного задания на dedupe_key; завершённое не мешает новому
+        where = text(models.ACTIVE_JOB)
+        job = {"kind": "collect", "dedupe_key": "collect:krisha", "status": "queued"}
+        assert models.insert_ignore(db, models.Job, job, ["dedupe_key"], where=where) is True
+        assert models.insert_ignore(db, models.Job, job, ["dedupe_key"], where=where) is False
+        db.execute(models.Job.__table__.update().values(status="done"))
+        assert models.insert_ignore(db, models.Job, job, ["dedupe_key"], where=where) is True
+        db.commit()
+        jobs = db.scalars(select(models.Job).order_by(models.Job.id)).all()
+        assert [j.status for j in jobs] == ["done", "queued"]
+        assert jobs[1].payload == {} and jobs[1].attempts == 0 and jobs[1].max_attempts == 5 and jobs[1].run_after
+
+
+def _collected_ad(db, *, media=True) -> str:
+    aid = uuid.uuid4().hex
+    now = models.utcnow()
+    db.add(models.Ad(id=aid, platform="tiktok", account="@tumargroup", url="", date="2026-10-16T13:00", text="Продажи",
+                     source="parser", origin="collected", collected_at=now))
+    db.flush()
+    item = models.IngestItem(platform="tiktok", external_id="7694623823408188693", collector="intake", ad_id=aid,
+                             content_hash="h" * 64, analysis_status="queued")
+    db.add(item)
+    db.flush()
+    if media:
+        for i, (kind, status, current) in enumerate([("image", "downloaded", True), ("video", "downloaded", True),
+                                                      ("image", "pending", True), ("image", "downloaded", False),
+                                                      ("frame", "downloaded", True)]):
+            db.add(models.MediaAsset(id=uuid.uuid4().hex, ad_id=aid, item_id=item.id, position=10 - i, kind=kind,
+                                     status=status, current=current, source_key=f"k{i}", mime="image/png"))
+    db.commit()
+    return aid
+
+
+def test_ad_out_for_collected_and_demo_ads(client):
+    demo = _ad(client, "a1")
+    assert not {"collectedAt", "media", "processing"} & set(demo)  # прежний JSON демо-публикаций
+    assert demo["origin"] == "demo"
+    with SessionLocal() as db:
+        aid = _collected_ad(db)
+    got = _ad(client, aid)
+    assert got["origin"] == "collected" and got["collectedAt"].endswith("+00:00")
+    assert got["processing"] == {"status": "queued", "version": 1, "analyzedVersion": None, "stage": None,
+                                 "error": None}
+    # только загруженные изображения и видео текущей версии, по позиции
+    assert [m["kind"] for m in got["media"]] == ["video", "image"]
+    assert all(m["url"] == f"/api/media/{m['id']}" for m in got["media"])
+    from app import world
+
+    with SessionLocal() as db:
+        d = world.ad_dict(db.get(models.Ad, aid))
+        assert d["collectedAt"] and len(d["media"]) == 2
+        plain = schemas.AdOut.model_validate(db.get(models.Ad, "a1")).model_dump()
+        assert "collected_at" not in plain and "media" not in plain and "processing" not in plain
+
+
+def test_human_name_and_connector_schemas():
+    assert schemas.AdminActionIn(author=" Омарова Ж. ").author == "Омарова Ж."
+    for name in ("Система", " система ", "СИСТЕМА"):
+        with pytest.raises(ValidationError) as e:
+            schemas.AdminActionIn(author=name)
+        assert "Имя «Система» зарезервировано за автоматическими записями" in str(e.value)
+    with pytest.raises(ValidationError):
+        schemas.ConnectorPatchIn(author="Тест", config={"unknown": 1})
+    with pytest.raises(ValidationError):
+        schemas.ConnectorPatchIn(author="Тест", interval_min=1)
+    body = schemas.ConnectorPatchIn.model_validate({"author": "Тест", "config": {"searchUrls": ["https://krisha.kz/x"],
+                                                                                   "resultsPerPage": 5}})
+    assert body.config.search_urls == ["https://krisha.kz/x"] and body.config.results_per_page == 5
+    assert "Другая площадка" == __import__("app.pdf", fromlist=["PLATFORMS"]).PLATFORMS["other"]
+
+
+def _intake(**kw):
+    return schemas.IntakePublicationIn.model_validate({"platform": "tiktok", "externalId": "7694623823408188693", **kw})
+
+
+def test_intake_publication_schema():
+    b = _intake(text="a\x00b" + "x" * 30000, account="@x\x00y", publishedAt="2026-10-09T11:10:23.000Z")
+    assert b.text.startswith("ab") and len(b.text) == schemas.AD_TEXT_MAX and b.account == "@xy"
+    assert b.published_at == datetime(2026, 10, 9, 11, 10, 23, tzinfo=timezone.utc)
+    tg = schemas.IntakePublicationIn.model_validate({"platform": "telegram", "externalId": "-1001234567890:5"})
+    assert tg.external_id == "1234567890:5"
+
+    def err(**kw) -> str:
+        with pytest.raises(ValidationError) as e:
+            schemas.IntakePublicationIn.model_validate({"platform": "tiktok", "externalId": "1", **kw})
+        return str(e.value)
+
+    assert "externalId для telegram: ожидается" in err(platform="telegram", externalId="abc")
+    assert "externalId для krisha" in err(platform="krisha", externalId="12a")
+    assert "поля решений аналитика при приёме публикаций не принимаются: status, complexId" in err(
+        status="confirmed", complexId="c1")
+    assert "extra_forbidden" in err(unknown=1) or "Extra inputs" in err(unknown=1)
+    assert "publishedAt: укажите часовой пояс" in err(publishedAt="2026-10-09T11:10:23")
+    future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    old = (datetime.now(timezone.utc) - timedelta(days=31)).isoformat()
+    assert "collectedAt в будущем" in err(collectedAt=future)
+    assert "collectedAt старше 30 дней" in err(collectedAt=old)
+    assert "media.url: нужна ссылка https://" in err(media=[{"key": "a", "url": "http://x/y.png"}])
+    assert "ключи файлов повторяются: a" in err(media=[{"key": "a", "url": "https://x/1"}, {"key": "a", "url": "https://x/2"}])
+    assert err(media=[{"key": f"k{i}", "url": f"https://x/{i}"} for i in range(21)])
+    assert "url: нужна ссылка http(s)://" in err(url="javascript:alert(1)")
+    assert err(sourceId="Bad Id")
+    out = schemas.IntakeResultOut(status="created", ad_id="a" * 32, item_id=1, version=1, media_queued=2,
+                                  analysis_queued=True).model_dump(by_alias=True)
+    assert out == {"status": "created", "adId": "a" * 32, "itemId": 1, "version": 1, "mediaQueued": 2,
+                   "analysisQueued": True}

@@ -1,0 +1,4 @@
+{"profiles": [], "profileScrapeSections": ["videos"], "profileSorting": "latest", "resultsPerPage": 5,
+ "excludePinnedPosts": false, "shouldDownloadVideos": true, "shouldDownloadCovers": true,
+ "shouldDownloadSlideshowImages": true, "shouldDownloadAvatars": false, "shouldDownloadMusicCovers": false,
+ "downloadSubtitlesOptions": "NEVER_DOWNLOAD_SUBTITLES"}

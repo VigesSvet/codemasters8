@@ -1,21 +1,24 @@
 import logging
-import uuid
 from contextlib import asynccontextmanager
-from datetime import date, datetime
+from datetime import date
 from typing import List, Optional, get_args
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from . import ai, importer, models, registry, schemas, signals, world
+from . import ads_service, ai, importer, logs, media, models, registry, schemas, signals, world
+from .ads_service import REASON_NAMES, _event, _pct, _why  # noqa: F401 — прежние имена main (журнал, гипотезы)
 from .ai import evaluate, ocr as ocr_engine
 from .db import get_db
-from .risk_model import ALMATY, MODEL, T
+from .integrations import registry as connectors, routes as integration_routes, service as integration_service
+from .risk_model import MODEL, T
 from .seed import init_db
+from .settings import get_settings
 from .world import audit, audit_dict, iso
 
 log = logging.getLogger("saq")
@@ -23,7 +26,16 @@ log = logging.getLogger("saq")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    logs.install()  # маскирование секретов в логах (обработчики uvicorn к этому моменту уже настроены)
     init_db()
+    s = get_settings()
+    ready = [code for code, conn in connectors.CONNECTORS.items() if not conn.missing(s)]
+    broken = [code for code, conn in connectors.CONNECTORS.items() if isinstance(conn, connectors.BrokenConnector)]
+    log.info("Подключений: %s, настроено на сервере: %s", len(connectors.CONNECTORS), ", ".join(ready) or "нет")
+    if broken:
+        log.error("Модули подключений не загрузились: %s — подробности выше в журнале", ", ".join(broken))
+    if s.public_host:
+        log.info("Публичный адрес %s: доступен только путь %s", s.public_host, s.public_path)
     yield
 
 
@@ -57,13 +69,19 @@ class InternalErrors:
 
 
 class UploadLimit:
-    """Загрузка файлов (POST /api/ocr — 10 МБ, POST /api/sources/import — 5 МБ): тело больше предела (файл + запас на
+    """Загрузка файлов и тела приёма (POST /api/ocr — 10 МБ, POST /api/sources/import — 5 МБ, POST /api/media — 10 МБ,
+    POST /api/intake/publications — 2 МБ, POST /api/intake/telegram — 60 МБ): тело больше предела (файл + запас на
     разметку multipart) — 413 сразу, а не после того, как весь файл придёт по сети и ляжет во временный файл (FastAPI
     разбирает форму до вызова обработчика, и предела на размер файла у разбора нет). По Content-Length — не читая тело;
-    без него (chunked) — по мере чтения. Точная проверка размера файла — в ocr.load и importer.parse."""
+    без него (chunked) — по мере чтения. Точная проверка размера файла — в ocr.load, importer.parse и media.
+    413 на приёме (/api/intake/*) записывается в состояние подключения (service.record_reject)."""
 
     LIMITS = {"/api/ocr": (ocr_engine.MAX_BYTES + 64 * 1024, ocr_engine.TOO_BIG),
-              "/api/sources/import": (importer.MAX_BYTES + 64 * 1024, importer.TOO_BIG)}
+              "/api/sources/import": (importer.MAX_BYTES + 64 * 1024, importer.TOO_BIG),
+              "/api/media": (media.UPLOAD_MAX + 64 * 1024, "Файл больше 10 МБ"),
+              "/api/intake/publications": (media.INTAKE_JSON_MAX, "Тело запроса больше 2 МБ"),
+              "/api/intake/telegram": (media.BOT_MAX_BODY, "Заявка больше 60 МБ")}
+    REJECTS = {"/api/intake/publications": "intake", "/api/intake/telegram": "telegram_bot"}
 
     def __init__(self, app):
         self.app = app
@@ -72,8 +90,11 @@ class UploadLimit:
         if scope["type"] != "http" or scope["method"] != "POST" or scope["path"] not in self.LIMITS:
             return await self.app(scope, receive, send)
         limit, too_big = self.LIMITS[scope["path"]]
+        reject = self.REJECTS.get(scope["path"])
         length = next((v for k, v in scope["headers"] if k == b"content-length"), b"")
         if length.isdigit() and int(length) > limit:
+            if reject:
+                await run_in_threadpool(integration_service.record_reject, reject, 413, too_big)
             return await JSONResponse({"detail": too_big}, status_code=413)(scope, receive, send)
         got = 0
 
@@ -82,10 +103,39 @@ class UploadLimit:
             message = await receive()
             got += len(message.get("body", b"")) if message["type"] == "http.request" else 0
             if got > limit:  # FastAPI пропускает HTTPException из разбора тела как есть → 413
+                if reject:
+                    await run_in_threadpool(integration_service.record_reject, reject, 413, too_big)
                 raise HTTPException(413, too_big)
             return message
 
         await self.app(scope, counted, send)
+
+
+class PublicHostGuard:
+    """Публичный адрес OLX Callback (туннель ngrok, OLX_REDIRECT_URI): через его хост доступен только путь обратного
+    вызова, остальное — 404 «Не найдено» (API наружу не открывается). Проверяются и Host, и X-Forwarded-Host; хост
+    сравнивается без порта, регистра и конечной точки («x.ngrok-free.dev.» — тот же хост, как в http.host_allowed).
+    Самая внешняя обёртка приложения."""
+
+    def __init__(self, app):
+        self.app = app
+
+    @staticmethod
+    def _hosts(scope) -> set:
+        out = set()
+        for key in (b"x-forwarded-host", b"host"):
+            value = next((v for k, v in scope.get("headers") or [] if k == key), None)
+            if value:
+                first = value.decode("latin-1").split(",", 1)[0].strip()
+                out.add(first.split(":")[0].lower().rstrip("."))
+        return out
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            s = get_settings()
+            if s.public_host and s.public_host in self._hosts(scope) and scope.get("path") != s.public_path:
+                return await JSONResponse({"detail": "Не найдено"}, status_code=404)(scope, receive, send)
+        return await self.app(scope, receive, send)
 
 
 def no_nul_in_url(request: Request) -> None:
@@ -104,6 +154,7 @@ app.add_middleware(UploadLimit)
 app.add_middleware(InternalErrors)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
                    expose_headers=["Content-Disposition"])
+app.add_middleware(PublicHostGuard)  # последней — самая внешняя
 
 # Подписи для журнала
 STATUS_NAMES = {"new": "Новая", "needs_check": "Нужна проверка", "in_review": "На проверке",
@@ -170,12 +221,6 @@ def _ad(db: Session, aid: str) -> models.Ad:
     return ad
 
 
-def _event(db: Session, kind: str, who: str, what: str, **refs) -> models.AuditEvent:
-    e = models.AuditEvent(kind=kind, who=who, what=what, at=models.utcnow(), **refs)
-    db.add(e)
-    return e
-
-
 def _then(text: str, more: str) -> str:
     """Следующее предложение без «..» после инициалов («ответственный: Омарова Ж.») — как statusLine во фронте (lib/audit.ts)."""
     return f"{text}{'' if text.endswith('.') else '.'} {more}"
@@ -214,16 +259,10 @@ def ads(status: Optional[str] = None, platform: Optional[str] = None, db: Sessio
     return db.scalars(q).all()
 
 
-def _pct(x: float) -> int:
-    return int((x or 0) * 100 + 0.5)
-
-
-REASON_NAMES = {"name": "название", "translit": "название в другом написании", "address": "адрес", "account": "аккаунт",
-                "phone": "телефон застройщика", "history": "история аккаунта", "district": "район"}
-
-
-def _why(h: dict) -> str:
-    return ", ".join(dict.fromkeys(REASON_NAMES[r["feature"]] for r in h["reasons"]))
+@app.get("/api/ads/{aid}", response_model=schemas.AdOut, response_model_by_alias=True)
+def ad_one(aid: str, db: Session = Depends(get_db)):
+    """Одна публикация (в том числе состояние анализа собранной — processing)."""
+    return _ad(db, aid)
 
 
 def _confirmed(ad: models.Ad) -> bool:
@@ -235,44 +274,15 @@ def _confirmed(ad: models.Ad) -> bool:
 def create_ad(body: schemas.AdIn, db: Session = Depends(get_db)):
     """Ручное добавление публикации. Без complexId ЖК подбирает ИИ: лучшая гипотеза с уверенностью от lowConfidence
     становится привязкой-гипотезой (в балл ЖК не входит до подтверждения аналитиком). С complexId и linkConfirmed —
-    аналитик выбрал ЖК сам: привязка сразу факт."""
+    аналитик выбрал ЖК сам: привязка сразу факт. Общая запись публикации — ads_service.create_ad (её же вызывают
+    сборщики, приём публикаций и бот заявок); image «/api/media/{id}» привязывает загруженный формой скриншот."""
     data = body.model_dump()
-    author = data.pop("author") or "Система"
-    data["origin"] = "analyst"  # добавлена аналитиком, не из демо-набора
-    confirmed = data.pop("link_confirmed")
-    data["id"] = data.get("id") or f"m{uuid.uuid4().hex[:8]}"
-    if db.get(models.Ad, data["id"]):
-        raise HTTPException(409, f"Публикация {data['id']} уже есть")
-    # дата публикации — местное время без смещения, как в источниках (Усть-Каменогорск, UTC+5)
-    data["date"] = data.get("date") or datetime.now(ALMATY).replace(tzinfo=None).isoformat(timespec="minutes")
-    linked = _complex(db, data["complex_id"]) if data.get("complex_id") else None
-    hyps = [] if confirmed else ai.all_hypotheses(world.catalog(db), data)
-    best = hyps[0] if hyps else None
-    hyp = None
-    if confirmed:
-        data.update(match_confidence=1.0, link_confirmed_by=author, link_confirmed_at=models.utcnow())
-    elif linked:  # подсказка формы (выбранная гипотеза) — тоже гипотеза; уверенность — из анализа, если форма её не дала
-        hyp = next((h for h in hyps if h["complexId"] == linked.id), None)
-        if not data.get("match_confidence") and hyp:
-            data["match_confidence"] = hyp["confidence"]
-    elif best and best["confidence"] >= T["lowConfidence"]:
-        linked, hyp = db.get(models.Complex, best["complexId"]), best
-        data["complex_id"], data["match_confidence"] = linked.id, best["confidence"]
-    ad = models.Ad(**data)
-    db.add(ad)
-    _event(db, "system", author, "Публикация добавлена вручную", ad_id=ad.id, complex_id=ad.complex_id)
-    if confirmed:
-        _event(db, "link", author, f"Привязка к ЖК «{linked.name}» подтверждена аналитиком", ad_id=ad.id, complex_id=linked.id)
-    elif linked:
-        why = _why(hyp) if hyp else "выбран в форме ручного ввода"
-        _event(db, "ai", "Система", f"Гипотеза ИИ: ЖК «{linked.name}», уверенность {_pct(ad.match_confidence)}% ({why}) — "
-               "нужна проверка аналитиком", ad_id=ad.id, complex_id=linked.id)
-    else:
-        what = "ИИ: ЖК не определён — нужна ручная привязка"
-        if best:
-            what += (f" (лучшая гипотеза — «{best['complexName']}», {_pct(best['confidence'])}%, ниже порога "
-                     f"{_pct(T['lowConfidence'])}%)")
-        _event(db, "ai", "Система", what, ad_id=ad.id)
+    try:
+        ad = ads_service.create_ad(db, data, actor=ads_service.analyst(data.get("author")))
+    except ads_service.AdExists as e:
+        raise HTTPException(409, f"Публикация {e.ad_id} уже есть") from None
+    except ads_service.ComplexNotFound as e:
+        raise registry.not_found(db, e.complex_id) from None
     db.commit()
     return ad
 
@@ -411,7 +421,8 @@ def analyze(body: schemas.AnalyzeIn, db: Session = Depends(get_db)):
 
 
 def _ad_obj(ad: models.Ad) -> dict:
-    return {"text": ad.text, "ocr": ad.ocr, "account": ad.account, "url": ad.url}
+    """Публикация для сопоставления с ЖК; у заявки жителя аккаунт и ссылка не учитываются (ads_service.match_obj)."""
+    return ads_service.match_obj(ad)
 
 
 def _conf(h: dict) -> str:
@@ -451,7 +462,8 @@ def ad_analysis(aid: str, db: Session = Depends(get_db)):
     """Анализ сохранённой публикации: без отклонённых аналитиком гипотез, с решениями по привязке и условиям оплаты."""
     ad = _ad(db, aid)
     cat = world.catalog(db, exclude_ad=aid)
-    res = ai.analyze(cat, ad.text, ad.ocr, ad.account, ad.platform, ad.url, rejected=ad.rejected_links or [])
+    m = _ad_obj(ad)
+    res = ai.analyze(cat, ad.text, ad.ocr, m["account"], ad.platform, m["url"], rejected=ad.rejected_links or [])
     note = _link_note(db, cat, ad, res["hypotheses"])
     if note:
         res["note"] = ". ".join(x for x in (res["note"], note) if x)
@@ -610,3 +622,9 @@ app.include_router(signals.router)
 # ---------- открытые данные: источники, объекты, импорт (без риска и сигналов) ----------
 
 app.include_router(registry.router)
+
+# ---------- сбор публикаций: подключения, запуски, приём, файлы; маршруты модулей подключений ----------
+
+app.include_router(integration_routes.router)
+for _router in connectors.routers():
+    app.include_router(_router)

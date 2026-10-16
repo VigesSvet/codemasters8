@@ -7,7 +7,9 @@ import { Faq, Hero, HeroTile, Highlight, LinkCols, PlatformIcon, Score, SectionH
 import type { Ad, AuditEvent, Platform, Zone } from '../data/types'
 import { errorText } from '../lib/api'
 import { HUMAN_KINDS, SYSTEM } from '../lib/audit'
+import { adImage } from '../lib/media'
 import { from } from '../lib/nav'
+import { platformName } from '../lib/platform'
 import { adSignals, model } from '../lib/risk'
 import { isDemoAd } from '../lib/provenance'
 import { useStore } from '../lib/store'
@@ -68,6 +70,7 @@ export default function Ops() {
   const maxP = Math.max(...byPlat.map((x) => x.n))
   const idle = scored.filter((x) => x.c.idleDays >= 30).sort((a, b) => b.c.idleDays - a.c.idleDays)
   const fresh = [...ads].sort((a, b) => b.date.localeCompare(a.date))
+  const collected = ads.filter((a) => a.origin === 'collected').length
   const scroll = (d: number) => strip.current?.scrollBy({ left: d * strip.current.clientWidth, behavior: 'smooth' })
   const weeks = useMemo(() => salesByWeek(ads), [ads])
   const maxW = Math.max(1, ...weeks.map((w) => w.n))
@@ -150,10 +153,10 @@ export default function Ops() {
       <SectionHead title="Свежая реклама" to="/ads" onPrev={() => scroll(-1)} onNext={() => scroll(1)} />
       <div className="hscroll" ref={strip}>
         {fresh.map((a) => {
-          const c = complexes.find((x) => x.id === a.complexId); const s = adScoreOf(a)
+          const c = complexes.find((x) => x.id === a.complexId); const s = adScoreOf(a); const img = adImage(a)
           return (
             <Link key={a.id} to={`/ads/${a.id}`} state={BACK} className="pcard">
-              <div className="ph">{a.image ? <img src={a.image} alt="" /> : <div style={{ height: '100%', display: 'grid', placeItems: 'center' }}><PlatformIcon p={a.platform} size={44} /></div>}<div className="tl"><span className="tag white">{platformMeta[a.platform].name}</span></div><div className="tr"><Score value={s.score} zone={s.zone} /></div></div>
+              <div className="ph">{img ? <img src={img} alt="" /> : <div style={{ height: '100%', display: 'grid', placeItems: 'center' }}><PlatformIcon p={a.platform} size={44} /></div>}<div className="tl"><span className="tag white">{platformName(a.platform)}</span></div><div className="tr"><Score value={s.score} zone={s.zone} /></div></div>
               <span className="big">{c ? c.name : 'ЖК не определён'}</span>
               {c && <LinkMark a={a} label="привязка — гипотеза ИИ" style={{ alignSelf: 'flex-start' }} />}
               <span className="t-sm c2">{a.account} · {fmtShort(a.date)}</span>
@@ -200,15 +203,18 @@ export default function Ops() {
           ['Что значит «Ждут решения»?', 'Публикации со статусом «Новая» или «Нужна проверка». Их разбирает аналитик в очереди: подтверждает нарушение, отклоняет или запрашивает сведения.'],
           ['Что значит «Сигналы ждут решения»?', 'Сигнальные карточки по ЖК, по которым аналитик ещё не решил: подтвердить или вернуть на доработку. Сигнал формируется из карточки ЖК и фиксирует риск и доказательства на момент создания.'],
           ['Откуда «Стройка стоит»?', <>Из фото-мониторинга: на снимках дрона или камеры нет изменений. Простой 30–89 дней — наблюдение вне балла: аналитик его видит, но балл не меняется. От 90 дней, если это подтверждают два снимка и больше с активностью «нет» или «низкая», — фактор R6 (+5 баллов); если таких снимков меньше двух, R6 помечается «Нужна проверка». R6 также ставится при просрочке срока сдачи на 180 дней и больше. Подробнее — в <Link className="link" to="/method">методике</Link>.</>],
-          ['Как часто обновляются данные?', <>Публикации — при ручном вводе (автоматического сбора из соцсетей нет), открытые данные Homeportal и Казреестра — при импорте файла на странице <Link className="link" to="/sources">«Источники»</Link>. ЖК, снимки и перечень ГАСК в сводке — демонстрационные.</>],
+          ['Как часто обновляются данные?', <>Публикации — подключёнными сборщиками (страница <Link className="link" to="/sources">«Источники»</Link>), через Telegram-бота заявок и при ручном вводе; открытые данные Homeportal и Казреестра — при импорте файла на той же странице. ЖК, снимки и перечень ГАСК в сводке — демонстрационные.</>],
         ]} />
 
       <LinkCols cols={[
         [['Объекты в красной зоне', '/complexes?zone=red', count('red')], ['Объекты в жёлтой зоне', '/complexes?zone=yellow', count('yellow')], ['Объекты в зелёной зоне', '/complexes?zone=green', count('green')]],
-        [['Очередь проверки', '/queue', queue.length], ['Сигналы ждут решения', '/signals?status=new', waiting.length], ['Вся реклама', '/ads', ads.length], ['Добавлены аналитиком', '/ads?chip=manual', ads.filter((a) => !isDemoAd(a) && (a.origin === 'analyst' || a.source === 'manual')).length]],
+        [['Очередь проверки', '/queue', queue.length], ['Сигналы ждут решения', '/signals?status=new', waiting.length], ['Вся реклама', '/ads', ads.length], ['Добавлены аналитиком', '/ads?chip=manual', ads.filter((a) => !isDemoAd(a) && (a.origin === 'analyst' || a.source === 'manual')).length],
+          ...(collected ? [['Собраны автоматически', '/ads?chip=collected', collected] as [string, string, number]] : [])],
         [['Фото-мониторинг', '/sites', idle.length], ['Застройщики', '/developers', developers.length], ['Отчёт для руководства', '/reports', 1]],
       ]} />
-      <div className="row t-sm c2" style={{ gap: 6, marginTop: 24 }}><IcHelp size={16} />ЖК, застройщики и публикации сводки — демонстрационные (вымышленные). Решение о нарушении принимает сотрудник.</div>
+      <div className="row t-sm c2" style={{ gap: 6, marginTop: 24 }}><IcHelp size={16} />{collected
+        ? 'ЖК и застройщики сводки — демонстрационные (вымышленные); публикации — демо-набор, добавленные вручную и собранные подключёнными источниками.'
+        : 'ЖК, застройщики и публикации сводки — демонстрационные (вымышленные).'} Решение о нарушении принимает сотрудник.</div>
     </>
   )
 }

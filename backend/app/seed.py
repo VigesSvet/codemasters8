@@ -8,11 +8,13 @@ from typing import Any, Dict, Iterator, List, Optional, Type, get_args
 from sqlalchemy import MetaData, Table, inspect, select
 from sqlalchemy.engine import Engine
 
-from . import importer, models, registry
+from . import importer, migrate, models, registry
+from .ads_service import AD_SOURCES  # noqa: F401 — тексты первого события публикации
 from .db import Base, SessionLocal, engine as default_engine
 from .pdf import PLATFORMS
 from .risk_model import ALMATY, SHARED
 from .schemas import AuditKind
+from .settings import get_settings
 
 log = logging.getLogger("saq")
 
@@ -37,8 +39,6 @@ def _row(model: Type[Base], d: Dict[str, Any]) -> Base:
 
 SYSTEM = "Система"
 TRI = {"yes": "есть", "no": "нет", "unknown": "нет сведений"}
-AD_SOURCES = {"parser": "Публикация собрана автоматически ({platform})", "manual": "Публикация добавлена вручную",
-              "demo": "Демо-запись ({platform})"}
 
 
 def utc(value: str, local_time: str = "10:00") -> datetime:
@@ -160,12 +160,24 @@ def _drop_app_tables(eng: Engine) -> None:
 
 
 def init_db(eng: Engine = default_engine) -> None:
-    """Нет таблиц приложения → таблицы + сид. Старая схема (нет meta или другая версия) → таблицы приложения
-    пересоздаются и пересеваются; посторонние таблицы в той же БД остаются как есть."""
+    """Нет таблиц приложения → таблицы + сид. Известная прошлая версия схемы → обновление на месте с резервной копией
+    (migrate.upgrade), данные сохраняются. Неизвестная версия (или нет meta) → таблицы приложения пересоздаются и
+    пересеваются, но только если в базе нет собранных/внесённых данных (migrate.durable_rows); иначе SchemaError —
+    пока не задан SAQ_ALLOW_SCHEMA_RESET=1. Посторонние таблицы в той же БД остаются как есть."""
     tables = _app_tables(eng)
     if tables:
         ver = _version(eng, tables)
-        if ver != models.SCHEMA_VERSION:
+        if ver == models.SCHEMA_VERSION:
+            pass
+        elif migrate.chain_from(ver) is not None:
+            migrate.upgrade(eng, ver)
+        else:
+            found = migrate.durable_rows(eng, tables)
+            if found and not get_settings().allow_schema_reset:
+                raise migrate.SchemaError(
+                    f"Схема БД неизвестной версии ({ver or 'без версии'}), а в ней есть собранные/внесённые данные "
+                    f"({', '.join(f'{k}: {v}' for k, v in found.items())}). Сделайте резервную копию и перенесите данные "
+                    "вручную или запустите с SAQ_ALLOW_SCHEMA_RESET=1, чтобы пересоздать таблицы приложения")
             log.warning("Схема демо-БД устарела (%s, нужна %s): таблицы приложения пересоздаются, данные пересеваются из %s",
                         ver or "без версии", models.SCHEMA_VERSION, SEED)
             _drop_app_tables(eng)

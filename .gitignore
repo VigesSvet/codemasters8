@@ -7,3 +7,17 @@ __pycache__/
 .env
 .DS_Store
 .trash/
+# локальные данные интеграций: файлы публикаций, сессия Telegram, служебные файлы SQLite (вне Git)
+/.vite/
+/data/
+/backend/data/
+*.db-wal
+*.db-shm
+*.db-journal
+*.db.bak-*
+*.session
+*.session-journal
+*.lock
+*.pending.json
+.env.*
+!.env.example

@@ -7,3 +7,7 @@ python-multipart>=0.0.9
 reportlab>=4.2
 pillow>=10.0
 openpyxl>=3.1
+httpx==0.28.1            # HTTP-клиент сборщиков (раньше только в requirements-dev.txt); http.download_transport опирается на его внутренности
+python-dotenv==1.2.4     # чтение .env без изменения os.environ (interpolate=False)
+telethon==1.45.0         # Telegram MTProto: сбор публичных каналов
+beautifulsoup4==4.15.0   # разбор HTML выдачи Krisha (html.parser, без lxml)

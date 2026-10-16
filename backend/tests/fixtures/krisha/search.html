@@ -1,0 +1,80 @@
+<!doctype html>
+<!-- Синтетическая страница выдачи для тестов сборщика Krisha: написана вручную, данные вымышленные. Разметка повторяет
+     только имена классов живой выдачи: тип продавца — класс user-<тип> у div.a-card__footer, ЖК — ссылка в блоке
+     .a-card__complex-info (подпись .a-card__complex-label — «Новостройка», не название), превью — CDN
+     krisha-photos.kcdn.online; nbTotal — строка. Третья карточка — без подвала: тип продавца из window.data.adverts. -->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Продажа квартир — тестовая выдача</title>
+<script>
+  if (window.data == null) { var ignored = 1; }
+  window.data = {"search": {"nbTotal": "3", "ids": [900000001, 900000002, 900000003], "page": 1},
+    "photoHost": "https://krisha-photos.kcdn.online/",
+    "adverts": [
+      {"id": 900000003, "userType": "company", "isHot": false, "secretNote": "не сохранять"}
+    ],
+    "user": {"id": 777, "name": "Тестовый Пользователь", "phone": "+7 700 000 00 00", "email": "fake-user@example.invalid"},
+    "config": {"apiUrl": "https://api.example.invalid/", "secretKey": "FAKE-CONFIG-SECRET"},
+    "appToken": "FAKE-APP-TOKEN", "appVersion": "0.0-test",
+    "ipInfo": {"ip": "203.0.113.7"}, "centrifuge": {"token": "FAKE-CENTRIFUGE-TOKEN"},
+    "views": {"900000001": 12}, "cookieDomain": ".example.invalid"};
+  window.data.search.nbTotal = 999;
+  document.title = "JavaScript выполнен";
+</script>
+</head>
+<body>
+<section class="a-list">
+  <div class="a-card a-storage-live ddl_product" data-id="900000001" data-uuid="00000000-aaaa-4bbb-8ccc-000000000001">
+    <div class="a-card__inc">
+      <a class="a-card__image" href="/a/show/900000001"><picture class="a-image__picture"><img class="a-image__img" src="https://krisha-photos.kcdn.online/webp/90/900000001/1-280x175.webp" alt=""></picture></a>
+      <div class="a-card__descr">
+        <div class="a-card__header">
+          <div class="a-card__main-info">
+            <div class="a-card__header-left"><a class="a-card__title" href="/a/show/900000001">3-комнатная квартира · 86 м² · 5/9 этаж</a></div>
+            <div class="a-card__price">31&nbsp;500&nbsp;000 <span class="currency-sign offer__currency">〒</span></div>
+          </div>
+          <div class="a-card__header-body">
+            <div class="a-card__wrapper-subtitle"><div class="a-card__subtitle">Усть-Каменогорск, Тестовая улица 1</div></div>
+            <div class="a-card__text-preview">Квартира в ЖК Ульба Ривер, черновая отделка, сдача в 2027 году</div>
+          </div>
+        </div>
+        <div class="a-card__footer user-complex">
+          <div class="a-card__owner a-card__complex-info">
+            <div class="a-card__complex-label">Новостройка</div>
+            <a href="/complex/show/ust-kamenogorsk/test-ulba-river/">ЖК Ульба Ривер</a>
+            от застройщика «Тестовый застройщик»
+          </div>
+        </div>
+        <div class="a-card__actions">
+          <div class="a-card__paid-services paid-labels">
+            <div class="paid-icon"><span class="paid-icon__img tfi-round-fire-fill"></span><span class="kr-tooltip"><a class="tm-cabinet-link-hot" href="/my/">Горячее</a></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="a-card a-storage-live ddl_product" data-id="900000002" data-uuid="00000000-aaaa-4bbb-8ccc-000000000002">
+    <div class="a-card__image"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" data-src="https://photos.kcdn.kz/test/900000002-0-280x175.jpg" alt=""></div>
+    <div class="a-card__header">
+      <a class="a-card__title" href="/a/show/900000002">1-комнатная квартира · 38 м² · 2/5 этаж</a>
+      <div class="a-card__price">14 200 000 <span class="currency-sign">〒</span></div>
+    </div>
+    <div class="a-card__subtitle">Усть-Каменогорск, Пробная улица 12</div>
+    <div class="a-card__text-preview">Продаю сам, без посредников. Тёплая, светлая.</div>
+    <div class="a-card__footer user-owner">
+      <div class="a-card__owner user-title-not-pro user-label-owner"><span class="a-card__owner-label">Хозяин недвижимости</span></div>
+    </div>
+  </div>
+  <div class="a-card a-storage-live ddl_product" data-id="900000003" data-uuid="00000000-aaaa-4bbb-8ccc-000000000003">
+    <div class="a-card__header">
+      <a class="a-card__title" href="/a/show/900000003">2-комнатная квартира · 54 м² · 7/12 этаж</a>
+      <div class="a-card__price">от 21 000 000 <span class="currency-sign">〒</span></div>
+    </div>
+    <div class="a-card__subtitle">Усть-Каменогорск, Условный проспект 3</div>
+    <div class="a-card__text-preview">Агентство «Пример»: ипотека, рассрочка 0-0-12.</div>
+  </div>
+</section>
+<nav class="paginator"><span class="paginator__btn is-active">1</span></nav>
+</body>
+</html>

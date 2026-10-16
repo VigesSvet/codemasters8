@@ -2,9 +2,11 @@ import { useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Origin } from '../components/Provenance'
 import { FilterPop, Highlight, PageTitle, PlatformIcon, Score, StatusTag, adKey, fmtDT, platformMeta, plural, statusMeta } from '../components/ui'
-import type { AdStatus, Platform, Zone } from '../data/types'
+import type { Ad, AdStatus, Platform, Zone } from '../data/types'
 import { useSearchText } from '../lib/find'
+import { adImage } from '../lib/media'
 import { from } from '../lib/nav'
+import { platformName } from '../lib/platform'
 import { isDemoAd } from '../lib/provenance'
 import { linkConfirmed } from '../lib/risk'
 import { matches, norm } from '../lib/search'
@@ -14,6 +16,18 @@ import { IcClose, IcPlus } from '../ui/icons'
 const ORDER: AdStatus[] = ['new', 'needs_check', 'in_review', 'confirmed', 'dismissed']
 const ZONES: Zone[] = ['red', 'yellow', 'green']
 type Sort = 'risk' | 'date' | 'reach'
+
+/** Собрана подключённым источником или прислана жителем через бота (не демо и не ручной ввод) */
+const collected = (a: Ad) => a.origin === 'collected'
+/** Метка происхождения на фото: собрано сборщиком, прислано через бота, добавлено аналитиком */
+const originLabel = (a: Ad) => (collected(a) ? (a.source === 'bot' ? 'прислано через бота' : 'собрано автоматически') : 'добавлено аналитиком')
+/** Состояние анализа собранной публикации в строке ленты; анализ готов или его нет — без метки.
+ *  Не выполнен — «анализ не выполнен», а не «риска нет»: оценка тогда посчитана только по тексту */
+const ANALYSIS_TAG: Record<'queued' | 'running' | 'failed', [string, string, string]> = {
+  queued: ['gray', 'анализ в очереди', 'Анализ публикации на сервере ещё не начался — оценка пока только по тексту'],
+  running: ['blue', 'идёт анализ', 'Сервер распознаёт файлы публикации — оценка пока только по тексту'],
+  failed: ['yellow', 'анализ не выполнен', 'Анализ публикации не выполнен — оценка только по тексту, проверьте вручную'],
+}
 
 /** Лента рекламы — как выдача объявлений realty.yandex.ru/…/kupit/kvartira: фильтры сверху, строки с фото */
 export default function Ads() {
@@ -46,7 +60,12 @@ export default function Ads() {
     ['hyp', 'Привязка — гипотеза ИИ', (x) => !!x.c && !linkConfirmed(x.a)],
     ['ocr', 'Есть текст на фото', (x) => !!x.a.ocr],
     ['manual', 'Добавлены аналитиком', (x) => !isDemoAd(x.a) && (x.a.origin === 'analyst' || x.a.source === 'manual')],
+    ['collected', 'Собраны автоматически', (x) => collected(x.a)],
+    ['noai', 'Анализ не выполнен', (x) => x.a.processing?.status === 'failed'],
   ]
+  // «Анализ не выполнен» — только когда такие есть (или фильтр уже выбран в адресе)
+  const shownChips = chips.filter(([k, , fn]) => k !== 'noai' || chip === k || all.some(fn))
+  const anyCollected = ads.some(collected)
   const match = (x: R, f: { plat?: Platform[]; status?: AdStatus[]; zone?: Zone[] } = {}) => {
     const p = f.plat ?? plat, st = f.status ?? status, z = f.zone ?? zone
     return (!q || matches(q, adKey(x.a.id), x.a.account, x.c?.name) || norm(x.a.text).includes(norm(q)))
@@ -78,9 +97,11 @@ export default function Ads() {
       <PageTitle title="Реклама новостроек в Усть-Каменогорске"
         sub={<>Подсветка: <mark>продажа</mark>, <mark className="fund">предложение денег (R2)</mark>, <mark className="safe">признаки законности</mark></>}
         actions={<Link to="/ads/new" className="btn y m"><IcPlus />Добавить вручную</Link>} />
-      <p className="t-sm c2 row wrap-f" style={{ gap: 8, marginTop: -12, marginBottom: 16 }}><Origin kind="demo" label="демо" />Публикации демо-набора вымышлены. Автоматического сбора из соцсетей нет — новые публикации аналитик добавляет вручную.</p>
+      <p className="t-sm c2 row wrap-f" style={{ gap: 8, marginTop: -12, marginBottom: 16 }}><Origin kind="demo" label="демо" />
+        <span>Публикации демо-набора вымышлены. {anyCollected ? 'Собранные автоматически публикации помечены «собрано»; привязку к ЖК для них предлагает ИИ, решает аналитик.'
+          : <>Автоматический сбор пока не дал публикаций — подключения и их состояние на странице <Link className="link" to="/sources">«Источники»</Link>.</>}</span></p>
       <div className="chips" style={{ marginTop: -8, marginBottom: 24 }}>
-        {chips.map(([k, l, fn]) => <button key={k} className={`chip ${chip === k ? 'on' : ''}`} onClick={() => setChip(chip === k ? '' : k)}>{l}<span className="n">{all.filter(fn).length}</span></button>)}
+        {shownChips.map(([k, l, fn]) => <button key={k} className={`chip ${chip === k ? 'on' : ''}`} onClick={() => setChip(chip === k ? '' : k)}>{l}<span className="n">{all.filter(fn).length}</span></button>)}
       </div>
 
       <div className="sorter">
@@ -90,31 +111,38 @@ export default function Ads() {
 
       {rows.length === 0 && <div className="empty">Ничего не найдено</div>}
       <div className="fade">
-        {rows.map(({ a, c, s }) => (
-          <Link key={a.id} to={`/ads/${a.id}`} state={back} className="offer">
-            <div className="ph">
-              {a.image ? <img src={a.image} alt="" /> : <div className="noimg"><PlatformIcon p={a.platform} size={48} /></div>}
-              <div className="tl"><span className="tag white">{platformMeta[a.platform].name}</span>{isDemoAd(a) ? <Origin kind="demo" label="демо" onPhoto title="Демонстрационная публикация: текст и аккаунт вымышлены" /> : <span className="tag white">добавлено аналитиком</span>}</div>
-            </div>
-            <div className="body">
-              <div className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={20} /><span className="bold">{a.account}</span><span className="c2 t-sm">{fmtDT(a.date)}</span></div>
-              <div className="nm">{c ? `ЖК «${c.name}»` : 'ЖК не определён'}</div>
-              {c && !linkConfirmed(a) && <span className="tag yellow" style={{ alignSelf: 'flex-start' }} title="ЖК предложил ИИ, аналитик привязку не подтвердил — в балл объекта не входит">привязка — гипотеза ИИ {Math.round((a.matchConfidence || 0) * 100)}%</span>}
-              <p className="txt clamp3"><Highlight text={a.text} /></p>
-              <div className="row wrap-f" style={{ gap: 6, marginTop: 'auto' }}>
-                <StatusTag s={a.status} />
-                {a.price && <span className="tag gray">{a.price}</span>}
-                {a.ocr && <span className="tag gray">текст на фото</span>}
+        {rows.map(({ a, c, s }) => {
+          const img = adImage(a)
+          const st = a.processing?.status
+          const at = st === 'queued' || st === 'running' || st === 'failed' ? ANALYSIS_TAG[st] : null
+          return (
+            <Link key={a.id} to={`/ads/${a.id}`} state={back} className="offer">
+              <div className="ph">
+                {img ? <img src={img} alt="" /> : <div className="noimg"><PlatformIcon p={a.platform} size={48} /></div>}
+                <div className="tl"><span className="tag white">{platformName(a.platform)}</span>{isDemoAd(a) ? <Origin kind="demo" label="демо" onPhoto title="Демонстрационная публикация: текст и аккаунт вымышлены" />
+                  : <span className="tag white" title={collected(a) && a.collectedAt ? `Получено сервером ${fmtDT(a.collectedAt)}` : undefined}>{originLabel(a)}</span>}</div>
               </div>
-            </div>
-            <div className="side">
-              <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}><span className="c2 t-sm">оценка</span><Score value={s.score} zone={s.zone} /></div>
-              <div className="t-sm c2" style={{ textAlign: 'right' }}>{a.reach ? `охват ~${(a.reach / 1000).toFixed(1)} тыс.` : 'охват неизвестен'}</div>
-              <div className="t-xs c3" style={{ textAlign: 'right' }}>{adKey(a.id)}</div>
-              <span className="btn g m" style={{ marginTop: 'auto' }}>Разобрать</span>
-            </div>
-          </Link>
-        ))}
+              <div className="body">
+                <div className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={20} /><span className="bold">{a.account}</span><span className="c2 t-sm">{fmtDT(a.date)}</span></div>
+                <div className="nm">{c ? `ЖК «${c.name}»` : 'ЖК не определён'}</div>
+                {c && !linkConfirmed(a) && <span className="tag yellow" style={{ alignSelf: 'flex-start' }} title="ЖК предложил ИИ, аналитик привязку не подтвердил — в балл объекта не входит">привязка — гипотеза ИИ {Math.round((a.matchConfidence || 0) * 100)}%</span>}
+                <p className="txt clamp3"><Highlight text={a.text} /></p>
+                <div className="row wrap-f" style={{ gap: 6, marginTop: 'auto' }}>
+                  <StatusTag s={a.status} />
+                  {a.price && <span className="tag gray">{a.price}</span>}
+                  {a.ocr && <span className="tag gray">текст на фото</span>}
+                  {at && <span className={`tag ${at[0]}`} title={at[2]}>{at[1]}</span>}
+                </div>
+              </div>
+              <div className="side">
+                <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}><span className="c2 t-sm">оценка</span><Score value={s.score} zone={s.zone} /></div>
+                <div className="t-sm c2" style={{ textAlign: 'right' }}>{a.reach ? `охват ~${(a.reach / 1000).toFixed(1)} тыс.` : 'охват неизвестен'}</div>
+                <div className="t-xs c3" style={{ textAlign: 'right' }}>{adKey(a.id)}</div>
+                <span className="btn g m" style={{ marginTop: 'auto' }}>Разобрать</span>
+              </div>
+            </Link>
+          )
+        })}
       </div>
     </>
   )

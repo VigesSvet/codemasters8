@@ -10,3 +10,12 @@ frontend
 **/*.db
 **/dist
 .env
+# данные интеграций и секреты не попадают в образ (.env передаётся в контейнеры через env_file)
+backend/data
+data
+**/*.db-*
+**/*.db.bak-*
+**/*.session*
+**/*.pending.json
+.vite
+.env.*

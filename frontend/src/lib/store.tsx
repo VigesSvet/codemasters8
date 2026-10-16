@@ -9,6 +9,7 @@ import type {
 import { decisionPatch } from './ai'
 import { API, ApiError, apiGet, apiPatch, apiPost, apiUpload, onReach } from './api'
 import { auditPath, linkLine, statusLine, type AuditScope, type RequestTopic } from './audit'
+import { keepLocalPreviews } from './media'
 import { scoreAd, scoreComplex } from './risk'
 import { onSessionChange, readSession, writeSession, type User } from './session'
 
@@ -51,6 +52,14 @@ interface Store {
   adScoreOf: (a: Ad) => AdScore
   /** Перечитать риск; при ошибке — локальный расчёт и баннер (не отклоняется) */
   refreshRisk: () => Promise<void>
+  /** Перечитать ленту публикаций с сервера (сборщик или бот добавили, изменили публикации, закончился их анализ), затем риск;
+   *  страницы перечитают свои загрузки (revision). Демо-режим — ничего не делает. Не отклоняется: ошибка — в баннер.
+   *  quiet — для опроса: ошибка без баннера, лента не изменилась — ни риск, ни revision не трогаются.
+   *  true — лента прочитана с сервера; false — демо-режим или сервер не ответил */
+  refreshAds: (opts?: { quiet?: boolean }) => Promise<boolean>
+  /** ЖК изменился на сервере (координаты перенесены из 2ГИС): patch — сразу в список ЖК (карта, карточка, список), затем ЖК
+   *  перечитывается с сервера. Не отклоняется: без ответа остаётся patch */
+  refreshComplex: (id: string, patch?: Partial<Pick<Complex, 'lat' | 'lng'>>) => Promise<void>
   /** Смена статуса от имени user.name. false — не сохранено: изменение откатано, ошибка в apiError */
   setAdStatus: (id: string, s: AdStatus, opts?: { assignee?: string; comment?: string }) => Promise<boolean>
   /** Новая публикация. false — не сохранена: убрана из ленты, ошибка в apiError */
@@ -332,6 +341,39 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       riskOf,
       adScoreOf,
       refreshRisk,
+      refreshAds: async ({ quiet } = {}) => {
+        if (mode !== 'api') return false
+        let got: Ad[]
+        try {
+          got = await apiGet<Ad[]>('/ads')
+        } catch (e) {
+          if (!quiet) fail('Не удалось обновить ленту публикаций', e)
+          return false
+        }
+        if (!Array.isArray(got)) return false
+        setLastSync(stamp())
+        // опрос без изменений: не перечитываем риск, журналы и анализ на страницах. Сравниваем вместе с предпросмотрами этой
+        // вкладки (blob:) — иначе публикация со скриншотом, не сохранённым на сервере, «меняла» бы ленту при каждом опросе
+        if (quiet && JSON.stringify(keepLocalPreviews(got, ads)) === JSON.stringify(ads)) return true
+        // скриншот этой вкладки (blob:), не сохранённый на сервере, остаётся предпросмотром до перезагрузки
+        setAds((xs) => keepLocalPreviews(got, xs))
+        await refreshRisk()
+        changed()
+        return true
+      },
+      refreshComplex: async (id, patch) => {
+        if (patch) setComplexes((xs) => xs.map((x) => (x.id === id ? { ...x, ...patch } : x)))
+        if (mode !== 'api') return
+        try {
+          const got = await apiGet<Complex>(`/complexes/${enc(id)}`)
+          if (got?.id === id && Number.isFinite(got.lat) && Number.isFinite(got.lng)) {
+            setComplexes((xs) => xs.map((x) => (x.id === id ? got : x)))
+            setLastSync(stamp())
+          }
+        } catch {
+          // без ответа остаётся patch — та же точка, что записал сервер
+        }
+      },
       setAdStatus: async (id, status, opts = {}) => {
         const prev = ads.find((a) => a.id === id)
         if (!user || !prev) { notify(user ? 'Публикация не найдена' : NO_USER); return false }
@@ -369,6 +411,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return true
         }
         // linkConfirmed — ЖК выбран аналитиком вручную: привязка сразу факт; иначе гипотеза ИИ.
+        // Скриншот сначала загружает форма (POST /api/media) — в image приходит /api/media/{id}, его и сохраняем.
         // Локальный скриншот (blob:) живёт только в этой вкладке — на сервер его адрес не отправляем, в сессии показываем
         const local = a.image?.startsWith('blob:') ? a.image : undefined
         const body = {

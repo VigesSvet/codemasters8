@@ -1,0 +1,79 @@
+/* ───── Источники: подключения сбора публикаций (integration-spec §13.2) ───── */
+
+.lnk { margin-bottom: 48px; scroll-margin-top: 96px; }
+
+/* Полоса режима администратора */
+.lnk-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; padding: 14px 18px; border-radius: var(--r-l); background: var(--fill); }
+.lnk-bar > svg { flex: none; color: var(--text-2); }
+.lnk-bar .grow { flex: 1; min-width: 260px; display: flex; flex-direction: column; gap: 2px; font-size: 14px; line-height: 19px; }
+.lnk-bar .grow .c2 { font-size: 13px; line-height: 18px; }
+
+/* Неактивная кнопка с подсказкой: у .btn[disabled] нет событий мыши — title показывает обёртка */
+.lnk-dis { display: inline-flex; cursor: not-allowed; }
+
+/* Группы и карточки подключений */
+.lnk-group { margin-top: 28px; }
+.lnk-gh { display: flex; align-items: baseline; gap: 8px; font-family: var(--font-display); font-size: 20px; line-height: 26px; font-weight: 700; }
+.lnk-gh .n { font-size: 15px; font-weight: 500; color: var(--text-3); }
+.lnk-gnote { margin: 4px 0 12px; max-width: 820px; font-size: 14px; line-height: 19px; color: var(--text-2); }
+.lnk-grid { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
+.devcard.lnk-card { cursor: default; gap: 12px; }
+.lnk-head { display: flex; align-items: flex-start; gap: 14px; }
+.lnk-head .who { flex: 1; min-width: 0; }
+.lnk-head .who .t-h3 { font-size: 18px; }
+.lnk-ico { width: 48px; height: 48px; border-radius: 14px; flex: none; display: grid; place-items: center; background: var(--fill); color: var(--text-2); }
+.lnk-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+.lnk-sw { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-radius: var(--r-m); background: var(--bg); font-size: 14px; }
+.toggle[disabled] { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+.lnk-kv { grid-template-columns: 150px minmax(0, 1fr); gap: 6px 12px; font-size: 14px; line-height: 19px; }
+.lnk-kv .alog-err { display: block; margin: 0; padding: 4px 10px; }
+.lnk-kv .long { overflow-wrap: anywhere; }
+
+.lnk-lim { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; line-height: 18px; color: var(--text-2); }
+.lnk-lim > svg { flex: none; margin-top: 1px; }
+.lnk-lim.strong { padding: 10px 14px; border-radius: var(--r-m); background: var(--amber-bg); color: var(--amber-ink); }
+.lnk-card .box.warn { padding: 10px 14px; border-radius: var(--r-m); line-height: 19px; }
+
+/* Подсказка входа в Telegram: команды консоли на сервере */
+.lnk-cli { padding: 10px 14px; border-radius: var(--r-m); background: var(--bg); font-size: 13px; line-height: 18px; color: var(--text-2); }
+.lnk-cli code { display: block; margin: 6px 0; padding: 6px 10px; border-radius: var(--r-s); background: #fff; color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 17px; overflow-wrap: anywhere; }
+
+.lnk-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: auto; }
+.lnk-acts .btn svg { width: 14px; height: 14px; }
+.lnk-confirm { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+
+/* Панель запуска: ход проверки или сбора */
+.lnk-run { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: var(--r-m); background: var(--bg); font-size: 14px; line-height: 19px; }
+.lnk-run.green { background: var(--green-bg); }
+.lnk-run.yellow { background: var(--amber-bg); }
+.lnk-run.red { background: var(--red-bg); }
+.lnk-run .alog-err { margin: 0; }
+.lnk-run .box.warn { padding: 8px 12px; background: rgba(255, 255, 255, 0.6); }
+.lnk-run-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.lnk-run-h b { font-weight: 600; }
+.lnk-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); flex: none; animation: lnk-pulse 1.2s ease-in-out infinite; }
+@keyframes lnk-pulse { 50% { opacity: 0.25; } }
+.lnk-notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13px; line-height: 17px; color: var(--text-2); }
+.lnk-notes li { display: flex; gap: 8px; }
+.lnk-notes li .at { flex: none; font-variant-numeric: tabular-nums; color: var(--text-3); }
+.lnk-notes li.warn { color: var(--amber-ink); }
+.lnk-notes li.error { color: var(--red-ink); }
+
+/* Итог «Обновить всё» */
+.lnk-all { margin-top: 12px; padding: 12px 16px; border-radius: var(--r-l); background: var(--bg); font-size: 14px; line-height: 19px; display: flex; flex-direction: column; gap: 6px; }
+.lnk-all ul { margin: 0; padding-left: 18px; color: var(--text-2); }
+
+/* Форма настройки подключения */
+.lnk-form { display: flex; flex-direction: column; gap: 14px; padding: 8px 24px 8px; }
+.lnk-fld { display: flex; flex-direction: column; gap: 6px; }
+.lnk-fld textarea.input { height: auto; min-height: 104px; padding: 10px 12px; font-size: 14px; line-height: 20px; resize: vertical; }
+.lnk-fld .input.short { width: 160px; }
+.lnk-chk { display: flex; align-items: flex-start; gap: 12px; text-align: left; font-size: 14px; line-height: 19px; }
+.lnk-chk .chk { margin-top: -1px; }
+
+@media (max-width: 720px) {
+  .lnk-grid { grid-template-columns: minmax(0, 1fr); }
+  .lnk-kv { grid-template-columns: 120px minmax(0, 1fr); }
+}

@@ -50,7 +50,7 @@ AD_STATUS = {"new": "новая", "needs_check": "нужна проверка", 
 APPEAL_STATUS = {"verified": "проверено", "pending": "на проверке", "rejected": "отклонено"}
 DOC_STATE = {"yes": "есть", "no": "нет", "unknown": "нет данных"}
 PLATFORMS = {"instagram": "Instagram", "tiktok": "TikTok", "krisha": "Krisha.kz", "olx": "OLX", "telegram": "Telegram",
-             "facebook": "Facebook", "2gis": "2ГИС"}
+             "facebook": "Facebook", "2gis": "2ГИС", "other": "Другая площадка"}
 _SUBST = {"→": "->", "←": "<-", "✓": "+", "✔": "+", "●": "•", "★": "*", "\u00a0": " "}
 
 

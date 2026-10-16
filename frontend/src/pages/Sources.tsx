@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import Connectors, { CollectAllButton, CollectorsTile, ConnectorsProvider } from '../components/Connectors'
 import { Origin, SrcLink } from '../components/Provenance'
-import { Faq, Hero, HeroTile, PlatformIcon, platformMeta } from '../components/ui'
+import { Faq, Hero, HeroTile } from '../components/ui'
 import { publishedListMeta } from '../data/demo'
 import { OFFLINE_FILE } from '../data/openData'
-import type { ImportReport, Platform, SourceInfo } from '../data/types'
+import type { ImportReport, SourceInfo } from '../data/types'
 import { errorText } from '../lib/api'
 import { OPEN_DATA_NOTE, isDemoAd, sourceName, when } from '../lib/provenance'
 import { useStore } from '../lib/store'
@@ -12,14 +13,14 @@ import { IcClock, IcDatabase, IcDoc, IcInfo, IcMegaphone, IcPencil, IcShield, Ic
 
 const MAX_MB = 5
 const ACCEPT = '.xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv'
-const PLATFORMS: Platform[] = ['instagram', 'tiktok', 'telegram', 'krisha', 'olx', '2gis']
 const gray = (n: ReactNode) => <span className="zone-pic gray" style={{ width: 48, height: 48, borderRadius: 14, flex: 'none' }}>{n}</span>
 const records = (n: number) => `${n.toLocaleString('ru-RU')} ${n % 10 === 1 && n % 100 !== 11 ? 'запись' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'записи' : 'записей'}`
 const latest = (xs: (string | null | undefined)[]) => xs.filter((x): x is string => !!x).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0]
 
 type Imp = { file?: File; busy?: boolean; report?: ImportReport; err?: string }
 
-/** Источники — что реально есть: открытые данные (импорт файла), ручной ввод, демо-набор. Без имитации интеграций (ТЗ §4) */
+/** Источники — что реально есть: открытые данные (импорт файла), подключения сбора публикаций (фактическое состояние с сервера),
+ *  ручной ввод, демо-набор. Без имитации интеграций (ТЗ §4) */
 export default function Sources() {
   const { mode, ads, complexes, developers, appeals, sources, importSource, notify, revision } = useStore()
   const live = mode === 'api'
@@ -41,7 +42,6 @@ export default function Sources() {
   const last = latest(open.map((s) => s.collectedAt))
   const demoAds = ads.filter(isDemoAd)
   const manual = ads.filter((a) => !isDemoAd(a) && (a.origin === 'analyst' || a.source === 'manual')).length
-  const byPlat = (p: Platform) => demoAds.filter((a) => a.platform === p).length
 
   const pick = (f?: File) => setImp(f ? { file: f, err: f.size > MAX_MB * 1024 * 1024 ? `Файл больше ${MAX_MB} МБ` : undefined } : {})
   const upload = () => {
@@ -60,21 +60,27 @@ export default function Sources() {
   }
 
   return (
-    <>
+    <ConnectorsProvider>
       <Hero crumb="Источники данных" title="Откуда берутся данные"
-        info="Без закрытых государственных API и без имитации интеграций: открытые данные загружаются файлом, публикации — вручную. У каждой записи — источник, ссылка и время сбора"
+        info="Открытые данные загружаются файлом, публикации — подключёнными сборщиками, через бота заявок и вручную. У каждой записи — источник, ссылка и время сбора. Состояние подключений — фактическое, с сервера"
+        actions={<CollectAllButton />}
         tiles={<>
           <HeroTile icon={<IcDatabase size={32} />} label="Записей открытых данных" value={load?.data ? total : '—'} to="/complexes?layer=open" />
           <HeroTile icon={<IcDoc size={32} />} label="Открытых источников" value={load?.data ? open.length : '—'} onClick={() => document.getElementById('open')?.scrollIntoView({ behavior: 'smooth' })} />
           <HeroTile icon={<IcClock size={32} />} label="Последний сбор" value={last ? when(last).split(',')[0] : '—'} onClick={() => document.getElementById('open')?.scrollIntoView({ behavior: 'smooth' })} />
           <HeroTile icon={<IcMegaphone size={32} />} label="Публикаций в ленте" value={ads.length} tone="blue" to="/ads" />
+          <CollectorsTile />
           <HeroTile icon={<IcInfo size={32} />} label="Демо-набор, ЖК" value={complexes.length} to="/complexes" />
         </>} />
 
       <div className="box warn t-sm" style={{ marginBottom: 32, lineHeight: '20px' }}>
         <b>Автоматической синхронизации с реестрами нет.</b> Записи Homeportal и Казреестра (CSV Ashyq Data) собраны в файл и загружены импортом —
-        у каждой сохранены ссылка, ID в источнике и время сбора. Чтобы обновить данные, загрузите новый файл ниже. Сбора из соцсетей и площадок объявлений тоже нет.
+        у каждой сохранены ссылка, ID в источнике и время сбора. Чтобы обновить данные, загрузите новый файл ниже.
+        Сбор публикаций — в разделе <button className="link" onClick={() => document.getElementById('connectors')?.scrollIntoView({ behavior: 'smooth' })}>«Подключения»</button> ниже:
+        показано только то, что реально настроено и проверено.
       </div>
+
+      <Connectors />
 
       <h2 className="t-h2" id="open" style={{ marginBottom: 4 }}>Открытые данные</h2>
       <p className="c2" style={{ marginBottom: 16, maxWidth: 820 }}>{OPEN_DATA_NOTE} <Link className="link" to="/complexes?layer=open">Объекты в реестре</Link></p>
@@ -183,26 +189,18 @@ export default function Sources() {
           <div className="t-sm" style={{ lineHeight: '19px' }}>Список объектов из Instagram ГАСК ВКО, с которым сверяются ЖК демо-набора. Отметка в карточке ЖК — с источником и датой перечня.</div>
           <div className="t-sm c2">{publishedListMeta.count} ЖК · {publishedListMeta.source} · обновлён {when(publishedListMeta.updated)}</div>
         </div>
-        <div className="devcard" style={{ cursor: 'default' }}>
-          <div className="row" style={{ gap: 14, alignItems: 'flex-start' }}>
-            {gray(<IcMegaphone size={22} />)}
-            <div style={{ flex: 1 }}><div className="t-h3" style={{ fontSize: 18 }}>Соцсети и площадки объявлений</div><div className="t-sm c2" style={{ marginTop: 2 }}>Автоматический сбор</div></div>
-            <span className="tag gray">не подключены</span>
-          </div>
-          <div className="row" style={{ gap: 6 }}>{PLATFORMS.map((p) => <PlatformIcon key={p} p={p} size={28} />)}</div>
-          <div className="t-sm" style={{ lineHeight: '19px' }}>Автоматического сбора нет. Публикации с этих площадок в ленте — демонстрационные, остальные аналитик добавляет вручную. Сбор возможен только при соблюдении правил площадки.</div>
-          <div className="t-sm c2">В демо-наборе: {PLATFORMS.filter((p) => byPlat(p)).map((p) => `${platformMeta[p].name} ${byPlat(p)}`).join(' · ') || 'нет'}</div>
-        </div>
       </div>
 
       <Faq title="Вопросы об источниках"
         items={[
           ['Есть ли автоматическая синхронизация с реестрами?', 'Нет. Записи Homeportal и Казреестра (CSV Ashyq Data) собраны в файл и загружены импортом; у каждой сохранены ссылка, ID в источнике, время сбора и дата загрузки у поставщика. Чтобы обновить — загрузите новый файл: известные записи обновятся, новые добавятся. Реестр с API можно подключить как ещё один источник, когда появится доступ.'],
           ['Почему у реальных объектов нет балла риска?', `${OPEN_DATA_NOTE} Демо не публикует обвинений в адрес реальных компаний (ТЗ §7): риск, зоны и сигналы строятся только на вымышленных ЖК демо-набора.`],
-          ['Почему реклама попадает не вся?', 'Таргетированную рекламу соцсети показывают конкретным людям — публичным сбором её не увидеть. Поэтому главный канал — ручное добавление: аналитик или житель присылает скриншот.'],
-          ['Нужен ли доступ к закрытым госреестрам?', 'Нет. Система работает на открытых данных, загруженных файлом, на ручном вводе и на демо-наборе.'],
+          ['Почему реклама попадает не вся?', 'Сборщики читают только публичные аккаунты и каналы из списка; таргетированную рекламу соцсети показывают конкретным людям — её присылают аналитики и жители (ручной ввод и Telegram-бот заявок).'],
+          ['Нужен ли доступ к закрытым госреестрам?', 'Нет. Система работает на открытых данных, загруженных файлом, на публикациях подключённых источников (публичные аккаунты, каналы и выдача площадок), на ручном вводе и на демо-наборе. Закрытые реестры и чужие аккаунты не нужны.'],
+          ['Кто настраивает подключения?', 'Только администратор: токен SAQ_ADMIN_TOKEN он вводит в этой вкладке, проверяет его сервер. Ключи площадок (Meta, Telegram, Apify, 2ГИС, OLX) задаются в .env на сервере и в браузер не передаются. Демо-вход аналитика прав администратора не даёт.'],
+          ['Почему 2ГИС, OpenAI и OLX — не сборщики?', '2ГИС — геосервис: предлагает кандидатов адреса для карточки ЖК, решение принимает аналитик. OpenAI в этой версии не подключён — публикации анализируют правила на сервере. OLX Partner API даёт доступ только к ресурсам своего авторизованного аккаунта — чужие объявления так не собрать.'],
           ['Как связывается публикация с ЖК?', 'ИИ сравнивает текст и распознанный скриншот с объектами: название (с транслитерацией и опечатками), адрес, аккаунт и телефон застройщика — и предлагает до трёх гипотез с причинами и уверенностью. Фактом привязка становится только после того, как аналитик примет гипотезу или выберет ЖК сам.'],
         ]} />
-    </>
+    </ConnectorsProvider>
   )
 }

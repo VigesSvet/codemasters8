@@ -159,6 +159,8 @@ def build_catalog(complexes: Iterable[Obj], developers: Iterable[Obj], ads: Iter
         confirmed = a.get("linkConfirmedBy") or a.get("status") == "confirmed"
         if a.get("id") == exclude_ad or not confirmed or a.get("status") == "dismissed" or a.get("complexId") not in known:
             continue
+        if a.get("source") == "bot":  # аккаунт в заявке жителя — его слова, а не аккаунт автора рекламы: не история
+            continue
         for key in account_keys(a.get("account")):
             row = cat.history.setdefault(key, {})
             row[a["complexId"]] = row.get(a["complexId"], 0) + 1

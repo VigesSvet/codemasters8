@@ -5,7 +5,8 @@ services:
       POSTGRES_USER: saq
       POSTGRES_PASSWORD: saq
       POSTGRES_DB: saq
-    ports: ["5432:5432"]
+    # только с этой машины: в БД токены OLX и данные заявителей
+    ports: ["127.0.0.1:5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U saq"]
@@ -16,11 +17,56 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    # секреты подключений — из .env в корне (его нет в Git); без файла API стартует, подключения «не настроены»
+    env_file:
+      - path: .env
+        required: false
+        format: raw
     environment:
       DATABASE_URL: postgresql+psycopg://saq:saq@db:5432/saq
-    ports: ["8000:8000"]
+      MEDIA_ROOT: /data/media
+      TG_SESSION_PATH: /data/private/telegram.session
+      SAQ_ENV_FILE: ""
+    # файлы публикаций; сессию Telegram API не видит (её наличие сообщает воркер)
+    volumes: [media:/data/media]
+    # только с этой машины: внешний доступ — через туннель к пути обратного вызова OLX (PublicHostGuard)
+    ports: ["127.0.0.1:8000:8000"]
     depends_on:
       db: { condition: service_healthy }
+    # проверка раз в 30 с (каждая — строка журнала доступа uvicorn), при старте — раз в 2 с: воркер не ждёт лишнего
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=2)"]
+      interval: 30s
+      start_period: 60s
+      start_interval: 2s
+      retries: 5
+    logging: &logs
+      options: { max-size: 10m, max-file: "3" }
+
+  # воркер сбора и анализа: ждёт, пока API применит схему БД, сам её не меняет
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "-m", "app.worker"]
+    env_file:
+      - path: .env
+        required: false
+        format: raw
+    environment:
+      DATABASE_URL: postgresql+psycopg://saq:saq@db:5432/saq
+      MEDIA_ROOT: /data/media
+      TG_SESSION_PATH: /data/private/telegram.session
+      SAQ_ENV_FILE: ""
+      SAQ_WORKER_ID: worker-1
+    # сессия Telegram — секрет: отдельный том, смонтирован только сюда
+    volumes: [media:/data/media, tgsession:/data/private]
+    restart: unless-stopped
+    # остановка: текущее задание дорабатывает (загрузка файла прерывается через 30 с), только потом SIGKILL
+    stop_grace_period: 120s
+    logging: *logs
+    depends_on:
+      api: { condition: service_healthy }
 
   web:
     image: node:22-alpine
@@ -29,9 +75,11 @@ services:
     environment:
       API_PROXY: http://api:8000
     # ../shared из /app → /shared: фронтенд импортирует общую модель риска и сид
-    volumes: [./frontend:/app, /app/node_modules, ./shared:/shared:ro]
+    volumes: [./frontend:/app:z, /app/node_modules, "./shared:/shared:ro,z"]
     ports: ["5180:5180"]
     depends_on: [api]
 
 volumes:
   pgdata:
+  media:
+  tgsession:

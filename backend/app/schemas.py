@@ -1,8 +1,9 @@
-from datetime import datetime
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import (AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints, ValidationInfo,
-                      field_validator, model_serializer)
+                      field_validator, model_serializer, model_validator)
 from pydantic.alias_generators import to_camel
 from pydantic_core import PydanticCustomError
 
@@ -17,8 +18,8 @@ FactorState = Literal["hit", "clear", "unknown"]
 EvidenceKind = Literal["ad", "document", "photo", "appeal", "readiness", "deadline"]
 AuditKind = Literal["system", "data", "status", "link", "comment", "request", "signal", "export", "ai"]
 # Происхождение сведений (ТЗ §7 «Достоверность»): demo — вымышленный демо-набор, analyst — добавил аналитик,
-# source — запись открытого источника
-Origin = Literal["demo", "analyst", "source"]
+# source — запись открытого источника, collected — собрано сборщиком или прислано жителем через бота
+Origin = Literal["demo", "analyst", "source", "collected"]
 SourceCode = Literal["homeportal", "homeportal_section", "ashyq"]
 FundingMethod = Literal["guarantee", "mio", "bvu"]
 TermsReview = Literal["accepted", "rejected"]
@@ -26,6 +27,13 @@ TermKind = Literal["booking", "deposit", "down_payment", "installment", "ddu", "
 ReasonFeature = Literal["name", "translit", "address", "account", "phone", "history", "district"]
 # Темы внутреннего запроса сведений по ЖК (POST /api/complexes/{id}/requests)
 InfoTopic = Literal["basis", "readiness", "appeals", "list", "other"]
+# Сбор публикаций (integration-spec §10–§11): площадки приёма через API, статусы подключений и запусков
+IntakePlatform = Literal["instagram", "telegram", "tiktok", "krisha", "olx", "facebook"]
+ConnectorStatus = Literal["not_configured", "unchecked", "checking", "queued", "running", "ready", "working", "partial",
+                          "waiting", "off", "error", "expired", "denied", "access_check", "rate_limited"]
+RunStatus = Literal["queued", "running", "succeeded", "partial", "failed", "access_check", "rate_limited",
+                    "not_configured", "cancelled"]
+SYSTEM_AUTHOR = "Система"  # автор автоматических записей журнала; человеку это имя не дать (HumanName)
 
 NUL_MSG = "недопустимый символ NUL (\\0)"
 
@@ -39,6 +47,16 @@ def no_nul(v: Any) -> Any:
 
 # Обязательная строка: после strip не пустая, иначе 422
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128), AfterValidator(no_nul)]
+
+
+def _not_system(v: str) -> str:
+    if v.strip().casefold() == SYSTEM_AUTHOR.casefold():
+        raise PydanticCustomError("value_error", "Имя «Система» зарезервировано за автоматическими записями")
+    return v
+
+
+# Автор действия на новых маршрутах (подключения, геопроверки, OLX): «Система» — только у автоматических записей
+HumanName = Annotated[Name, AfterValidator(_not_system)]
 Comment = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000), AfterValidator(no_nul)]
 Note = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000), AfterValidator(no_nul)]
 
@@ -154,6 +172,30 @@ class AdIn(Camel):
         return v
 
 
+class MediaRefOut(Camel):
+    """Файл публикации в хранилище: адрес /api/media/{id} (только загруженные изображения и видео текущей версии)."""
+
+    id: str
+    kind: Literal["image", "video"]
+    mime: Optional[str] = None
+    url: str = ""
+    role: Optional[str] = None
+
+
+class ProcessingOut(Camel):
+    """Состояние анализа собранной публикации: очередь, выполняется, готово, не выполнен (этап и причина)."""
+
+    status: Literal["queued", "running", "done", "failed"]
+    version: int
+    analyzed_version: Optional[int] = None
+    stage: Optional[str] = None
+    error: Optional[str] = None
+
+
+# Поля AdOut, которых нет у демо- и ручных публикаций: пустые не выводятся — их JSON (и world.ad_dict) не меняется
+_AD_OPTIONAL = {"collectedAt": None, "collected_at": None, "media": [], "processing": None}
+
+
 class AdOut(Camel):
     id: str
     platform: str
@@ -177,6 +219,13 @@ class AdOut(Camel):
     assignee: Optional[str] = None
     reach: Optional[int] = None
     origin: Origin = "demo"
+    collected_at: IsoTime = None  # время получения сборщиком/приёмом (UTC), не время публикации
+    media: Annotated[List[MediaRefOut], BeforeValidator(lambda v: list(v or []))] = []
+    processing: Optional[ProcessingOut] = None  # только у публикаций из приёма (Ad.ingest)
+
+    @model_serializer(mode="wrap")
+    def _out(self, handler) -> Dict[str, Any]:
+        return {k: v for k, v in handler(self).items() if not (k in _AD_OPTIONAL and v == _AD_OPTIONAL[k])}
 
 
 class AdComplexIn(Camel):
@@ -631,3 +680,315 @@ class ImportReportOut(Camel):
     without_coords: int
     sources: Dict[str, int] = {}
     event_id: int
+
+
+# ---------- сбор публикаций: подключения, запуски, приём (integration-spec §11.2) ----------
+
+class AdVersionOut(Camel):
+    version: int
+    collected_at: IsoTime = None
+    text: str
+    price: Optional[str] = None
+    media_keys: List[str] = []
+    current: bool
+
+
+class MediaUploadOut(Camel):
+    id: str
+    url: str
+    mime: str
+    size: int
+
+
+ConfigItem = Annotated[str, StringConstraints(max_length=255), AfterValidator(no_nul)]
+ConfigUrl = Annotated[str, StringConstraints(max_length=512), AfterValidator(no_nul)]
+
+
+class ConnectorConfigIn(Camel):
+    """Списки источников подключения; точную проверку и нормализацию делает connector.validate_config."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    accounts: Optional[List[ConfigItem]] = Field(None, max_length=50)
+    channels: Optional[List[ConfigItem]] = Field(None, max_length=50)
+    profiles: Optional[List[ConfigItem]] = Field(None, max_length=20)
+    search_urls: Optional[List[ConfigUrl]] = Field(None, max_length=10)
+    card_urls: Optional[List[ConfigUrl]] = Field(None, max_length=10)
+    results_per_page: Optional[int] = Field(None, ge=1, le=50)
+    download_videos: Optional[bool] = None
+
+
+class ConnectorPatchIn(Camel):
+    author: HumanName
+    enabled: Optional[bool] = None
+    interval_min: Optional[int] = Field(None, ge=5, le=10080)
+    config: Optional[ConnectorConfigIn] = None
+
+
+class AdminActionIn(Camel):
+    author: HumanName
+
+
+class RunCountsOut(Camel):
+    seen: int = 0
+    new: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    failed: int = 0
+    media_saved: int = 0
+    media_failed: int = 0
+
+
+class RunNoteOut(Camel):
+    at: str
+    level: Literal["info", "warn", "error"]
+    text: str
+
+
+class RunOut(Camel):
+    id: int
+    source: str
+    trigger: Literal["schedule", "manual", "test"]
+    status: RunStatus
+    status_label: str
+    requested_by: Optional[str] = None
+    created_at: IsoTime = None
+    started_at: IsoTime = None
+    finished_at: IsoTime = None
+    counts: RunCountsOut
+    external_run_id: Optional[str] = None
+    cost_usd: Optional[float] = None
+    error_code: Optional[str] = None
+    error: Optional[str] = None
+    notes: List[RunNoteOut] = []
+    retry_at: IsoTime = None
+
+
+class ConnectorCountsOut(Camel):
+    items: int = 0
+    ads: int = 0
+    media: int = 0
+
+
+class ConnectorCapsOut(Camel):
+    test: bool
+    collect: bool
+    toggle: bool
+    configure: bool
+    connect: bool
+
+
+class ConnectorOut(Camel):
+    code: str
+    kind: Literal["collector", "intake", "geo", "oauth", "analyzer"]
+    group: Literal["collectors", "intake", "geo", "analyzer", "limited"]
+    platform: Optional[str] = None
+    name: str
+    via: str
+    status: ConnectorStatus
+    status_label: str
+    status_detail: Optional[str] = None
+    enabled: bool
+    configured: bool
+    missing: List[str] = []
+    secret_refs: List[str] = []
+    config: Dict[str, Any] = {}
+    config_fields: List[str] = []
+    options: List[str] = []
+    interval_min: Optional[int] = None
+    interval_bounds: Optional[List[int]] = None
+    next_run_at: IsoTime = None
+    last_success_at: IsoTime = None
+    last_error: Optional[str] = None
+    last_error_at: IsoTime = None
+    checked_at: IsoTime = None
+    facts: Dict[str, Any] = {}
+    counts: ConnectorCountsOut
+    last_run: Optional[RunOut] = None
+    active_run_id: Optional[int] = None
+    capabilities: ConnectorCapsOut
+    limitation: Optional[str] = None
+    contract_verified: Optional[bool] = None
+    paid: bool = False
+    stopped: bool = False
+
+
+class WorkerOut(Camel):
+    alive: bool
+    last_seen_at: IsoTime = None
+    id: Optional[str] = None
+
+
+class ConnectorsOut(Camel):
+    connectors: List[ConnectorOut]
+    worker: WorkerOut
+    admin_configured: bool
+
+
+class CollectAllItemOut(Camel):
+    code: str
+    run_id: Optional[int] = None
+    reason: Optional[str] = None
+
+
+class CollectAllOut(Camel):
+    queued: List[CollectAllItemOut]
+    skipped: List[CollectAllItemOut]
+
+
+# ---------- приём публикаций через API (POST /api/intake/publications, integration-spec §7.4) ----------
+
+INTAKE_TEXT_MAX = 100000  # принимается до 100 000 символов, хранится до AD_TEXT_MAX
+INTAKE_MEDIA_MAX = 20
+INTAKE_PAST_DAYS = 30
+INTAKE_FUTURE_MIN = 5
+# Поля решений аналитика: через приём публикаций не передаются (решения — только у аналитика)
+DECISION_KEYS = ("status", "assignee", "complexId", "complex_id", "matchConfidence", "linkConfirmed", "linkConfirmedBy",
+                 "linkConfirmedAt", "termsReview", "termsReviewBy", "termsReviewAt", "rejectedLinks", "origin", "source",
+                 "id")
+# Канонический externalId по площадке: (шаблон, описание формата в ответе 422)
+EXTERNAL_ID_FORMATS = {
+    "telegram": (r"^-?\d{1,20}:\d{1,12}$", "«{ID канала}:{ID первого сообщения}», например 1234567890:15"),
+    "instagram": (r"^\d{1,32}$", "числовой ID медиа Graph API"),
+    "tiktok": (r"^\d{1,32}$", "числовой ID публикации"),
+    "krisha": (r"^\d{1,16}$", "числовой ID объявления"),
+    "olx": (r"^[\w.:@+=-]{1,128}$", "до 128 символов: буквы, цифры и . : @ + = -"),
+    "facebook": (r"^[\w.:@+=-]{1,128}$", "до 128 символов: буквы, цифры и . : @ + = -"),
+}
+_HTTP_URL = re.compile(r"^https?://\S+$", re.I)
+_HTTPS_URL = re.compile(r"^https://\S+$", re.I)
+_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
+def normalize_external_id(platform: str, value: str) -> str:
+    """Проверка формата externalId; Telegram в форме Bot API (-100XXXXXXXXXX) → положительный ID канала Telethon."""
+    pattern, fmt = EXTERNAL_ID_FORMATS[platform]
+    if not re.match(pattern, value):
+        raise PydanticCustomError("value_error", "externalId для {platform}: ожидается {format}",
+                                  {"platform": platform, "format": fmt})
+    if platform == "telegram":
+        channel, msg = value.split(":", 1)
+        if channel.startswith("-100") and len(channel) > 4:
+            channel = channel[4:]
+        channel = channel.lstrip("-").lstrip("0") or "0"
+        value = f"{channel}:{int(msg)}"
+    return value
+
+
+def _strip_ctrl(v: Any) -> Any:
+    """NUL и управляющие символы (кроме перевода строки и табуляции) удаляются: текст источника не отклоняется из-за них."""
+    return _CTRL.sub("", v) if isinstance(v, str) else v
+
+
+def _aware(v: Optional[datetime], name: str) -> Optional[datetime]:
+    if v is not None and v.tzinfo is None:
+        raise PydanticCustomError("value_error", "{name}: укажите часовой пояс (например, 2026-10-09T11:10:23Z)",
+                                  {"name": name})
+    return v.astimezone(timezone.utc) if v is not None else None
+
+
+class IntakeMediaIn(Camel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255), AfterValidator(no_nul)]
+    url: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2048), AfterValidator(no_nul)]
+    kind: Literal["image", "video"] = "image"
+    mime: Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=64), AfterValidator(no_nul)]] = None
+
+    @field_validator("url")
+    @classmethod
+    def _https(cls, v: str) -> str:
+        if not _HTTPS_URL.match(v):
+            raise PydanticCustomError("value_error", "media.url: нужна ссылка https://")
+        return v
+
+
+class IntakePublicationIn(Camel):
+    """Нормализованная публикация от внешнего сборщика. Решения аналитика не принимаются; медиа — только https,
+    загружаются позже анализом; collectedAt — заявленное клиентом время (хранится как заявлено, в пределах 30 дней)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    platform: IntakePlatform
+    external_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
+    account: Annotated[str, BeforeValidator(_strip_ctrl), StringConstraints(strip_whitespace=True, max_length=255)] = ""
+    url: Annotated[str, StringConstraints(strip_whitespace=True, max_length=512), AfterValidator(no_nul)] = ""
+    published_at: Optional[datetime] = None
+    collected_at: Optional[datetime] = None
+    text: Annotated[str, Field(max_length=INTAKE_TEXT_MAX)] = ""
+    price: Optional[Annotated[str, BeforeValidator(_strip_ctrl), StringConstraints(strip_whitespace=True,
+                                                                                    max_length=64)]] = None
+    reach: Optional[int] = Field(None, ge=0)
+    media: List[IntakeMediaIn] = Field([], max_length=INTAKE_MEDIA_MAX)
+    source_id: Optional[Annotated[str, StringConstraints(pattern=r"^[a-z0-9_-]{1,32}$")]] = None
+    external_run_id: Optional[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64),
+                                        AfterValidator(no_nul)]] = None
+    raw: Dict[str, Any] = {}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_decisions(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            found = [k for k in DECISION_KEYS if k in data]
+            if found:
+                raise PydanticCustomError("value_error",
+                                          "поля решений аналитика при приёме публикаций не принимаются: {names}",
+                                          {"names": ", ".join(found)})
+        return data
+
+    @field_validator("external_id")
+    @classmethod
+    def _external_id(cls, v: str, info: ValidationInfo) -> str:
+        platform = info.data.get("platform")
+        return normalize_external_id(platform, v) if platform in EXTERNAL_ID_FORMATS else v
+
+    @field_validator("url")
+    @classmethod
+    def _url(cls, v: str) -> str:
+        if v and not _HTTP_URL.match(v):
+            raise PydanticCustomError("value_error", "url: нужна ссылка http(s):// или пустая строка")
+        return v
+
+    @field_validator("text")
+    @classmethod
+    def _text(cls, v: str) -> str:
+        v = v.replace("\x00", "")
+        return v[:AD_TEXT_MAX]
+
+    @field_validator("published_at")
+    @classmethod
+    def _published(cls, v: Optional[datetime]) -> Optional[datetime]:
+        return _aware(v, "publishedAt")
+
+    @field_validator("collected_at")
+    @classmethod
+    def _collected(cls, v: Optional[datetime]) -> Optional[datetime]:
+        v = _aware(v, "collectedAt")
+        if v is not None:
+            now = datetime.now(timezone.utc)
+            if v > now + timedelta(minutes=INTAKE_FUTURE_MIN):
+                raise PydanticCustomError("value_error", "collectedAt в будущем — проверьте часы сборщика")
+            if v < now - timedelta(days=INTAKE_PAST_DAYS):
+                raise PydanticCustomError("value_error", "collectedAt старше {days} дней", {"days": INTAKE_PAST_DAYS})
+        return v
+
+    @field_validator("media")
+    @classmethod
+    def _unique_keys(cls, v: List[IntakeMediaIn]) -> List[IntakeMediaIn]:
+        seen, dup = set(), []
+        for m in v:
+            if m.key in seen and m.key not in dup:
+                dup.append(m.key)
+            seen.add(m.key)
+        if dup:
+            raise PydanticCustomError("value_error", "media: ключи файлов повторяются: {keys}", {"keys": ", ".join(dup)})
+        return v
+
+
+class IntakeResultOut(Camel):
+    status: Literal["created", "updated", "unchanged"]
+    ad_id: str
+    item_id: int
+    version: int
+    media_queued: int = 0
+    analysis_queued: bool = False

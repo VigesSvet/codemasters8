@@ -4,8 +4,9 @@ export type Tri = 'yes' | 'no' | 'unknown'
 export type Stage = 'котлован' | 'фундамент' | 'каркас' | 'кровля' | 'отделка' | 'введён'
 
 /** Происхождение сущности (ТЗ §4, §7): demo — вымышленный сценарий из сида, source — запись открытого источника,
- *  analyst — добавлено аналитиком (публикация через ручной ввод) */
-export type Origin = 'demo' | 'source' | 'analyst'
+ *  analyst — добавлено аналитиком (публикация через ручной ввод), collected — собрано подключённым сборщиком
+ *  или прислано жителем через Telegram-бота (source = 'bot') */
+export type Origin = 'demo' | 'source' | 'analyst' | 'collected'
 
 export interface Developer {
   id: string
@@ -142,11 +143,335 @@ export interface Ad {
   termsReviewBy?: string | null
   termsReviewAt?: string | null
   price?: string
-  source: 'manual' | 'parser' | 'demo'
+  /** manual — ручной ввод, parser — сборщик или приём публикаций API, bot — заявка жителя через Telegram-бота, demo — сид */
+  source: 'manual' | 'parser' | 'demo' | 'bot'
   status: AdStatus
   assignee?: string
   reach?: number
   origin?: Origin
+  /** Когда публикацию получил сервер (сборщик, приём, бот), UTC ISO — не время публикации в источнике. Нет у демо и ручных */
+  collectedAt?: string | null
+  /** Сохранённые файлы публикации текущей версии (изображения и видео), адреса /api/media/{id}. Нет у демо и ручных */
+  media?: MediaRef[]
+  /** Анализ собранной публикации на сервере: очередь, идёт, готов, не выполнен. Нет у публикаций без приёма */
+  processing?: Processing | null
+}
+
+// ---------- Сбор публикаций: файлы, анализ, версии (integration-spec §11.2) ----------
+
+/** Файл публикации в хранилище сервера: url — /api/media/{id}; в <img>/<video> — только через mediaSrc */
+export interface MediaRef {
+  id: string
+  kind: 'image' | 'video'
+  mime?: string | null
+  url: string
+  /** cover — обложка, slide — слайд карусели, attachment — вложение */
+  role?: string | null
+}
+
+export type ProcessingStatus = 'queued' | 'running' | 'done' | 'failed'
+
+/** Состояние анализа собранной публикации: version — текущая версия в источнике, analyzedVersion — последняя проанализированная;
+ *  stage — этап (media | frames | ocr | rules | events) во время анализа или этап, на котором анализ упал */
+export interface Processing {
+  status: ProcessingStatus
+  version: number
+  analyzedVersion?: number | null
+  stage?: string | null
+  error?: string | null
+}
+
+/** Версия публикации в источнике (история правок): новые первыми, current — актуальная */
+export interface AdVersion {
+  version: number
+  collectedAt?: string | null
+  text: string
+  price?: string | null
+  /** Ключи файлов этой версии (по ним видно, что поменялись изображения) */
+  mediaKeys: string[]
+  current: boolean
+}
+
+/** Ответ загрузки скриншота POST /api/media: url — /api/media/{id}, его и отправляем в image публикации */
+export interface MediaUpload {
+  id: string
+  url: string
+  mime: string
+  size: number
+}
+
+// ---------- Подключения источников и запуски сбора (integration-spec §10–§11) ----------
+
+/** Код подключения; порядок — как в реестре сервера */
+export type ConnectorCode = 'instagram' | 'telegram' | 'tiktok' | 'krisha' | 'telegram_bot' | 'intake' | 'dgis' | 'openai' | 'olx'
+
+/** collector — сборщик публикаций, intake — приём заявок и публикаций, geo — геосервис, oauth — ограниченный доступ (OLX),
+ *  analyzer — анализатор */
+export type ConnectorKind = 'collector' | 'intake' | 'geo' | 'oauth' | 'analyzer'
+export type ConnectorGroup = 'collectors' | 'intake' | 'geo' | 'analyzer' | 'limited'
+
+/** Состояние подключения (сохранённое + вычисленное на сервере), §10.4 */
+export type ConnectorStatus =
+  | 'not_configured' | 'unchecked' | 'checking' | 'queued' | 'running' | 'ready' | 'working' | 'partial'
+  | 'waiting' | 'off' | 'error' | 'expired' | 'denied' | 'access_check' | 'rate_limited'
+
+/** Статус запуска сбора или проверки, §10.5; конечные — все, кроме queued и running */
+export type RunStatus = 'queued' | 'running' | 'succeeded' | 'partial' | 'failed' | 'access_check' | 'rate_limited' | 'not_configured' | 'cancelled'
+
+export type RunTrigger = 'schedule' | 'manual' | 'test'
+
+/** Списки, которые задаёт администратор: аккаунты Instagram, каналы Telegram, профили TikTok, URL Krisha */
+export type ConfigField = 'accounts' | 'channels' | 'profiles' | 'searchUrls' | 'cardUrls'
+
+/** Настройки сбора подключения: списки источников и опции (TikTok — resultsPerPage, downloadVideos) */
+export interface ConnectorConfig {
+  accounts?: string[]
+  channels?: string[]
+  profiles?: string[]
+  searchUrls?: string[]
+  cardUrls?: string[]
+  resultsPerPage?: number
+  downloadVideos?: boolean
+}
+
+/** PATCH /api/sources/{code} — только администратор; author пишется в журнал */
+export interface ConnectorPatch {
+  author: string
+  enabled?: boolean
+  intervalMin?: number
+  config?: ConnectorConfig
+}
+
+export interface RunCounts {
+  seen: number
+  new: number
+  updated: number
+  unchanged: number
+  failed: number
+  mediaSaved: number
+  mediaFailed: number
+}
+
+export interface RunNote {
+  at: string
+  level: 'info' | 'warn' | 'error'
+  text: string
+}
+
+/** Запуск сбора или проверки подключения («запуск №N») */
+export interface CollectionRun {
+  id: number
+  /** Код подключения */
+  source: ConnectorCode | string
+  trigger: RunTrigger
+  status: RunStatus
+  /** Подпись статуса по-русски (сервер) */
+  statusLabel: string
+  requestedBy?: string | null
+  createdAt?: string | null
+  startedAt?: string | null
+  finishedAt?: string | null
+  counts: RunCounts
+  /** ID запуска у поставщика (Apify) */
+  externalRunId?: string | null
+  /** Стоимость платного запуска, USD (TikTok через Apify) */
+  costUsd?: number | null
+  errorCode?: string | null
+  error?: string | null
+  /** Заметки запуска (до 100 на сервере): что пропущено, что упало */
+  notes: RunNote[]
+  /** Когда будет повтор (пауза по лимиту, повтор после ошибки) */
+  retryAt?: string | null
+}
+
+export interface ConnectorCounts {
+  /** Материалов из этого источника (записей приёма) */
+  items: number
+  /** Публикаций */
+  ads: number
+  /** Сохранённых файлов */
+  media: number
+}
+
+/** Что можно делать с подключением: проверить, собрать, включить расписание, настроить списки, подключить аккаунт (OAuth) */
+export interface ConnectorCaps {
+  test: boolean
+  collect: boolean
+  toggle: boolean
+  configure: boolean
+  connect: boolean
+}
+
+/** Подключение источника (GET /api/sources/connectors): фактическое состояние с сервера, без секретов */
+export interface Connector {
+  code: ConnectorCode | string
+  kind: ConnectorKind
+  group: ConnectorGroup
+  /** Площадка публикаций (instagram, telegram, tiktok, krisha, olx) — для значка */
+  platform?: string | null
+  name: string
+  /** Через что подключено: «Meta Graph API · Business Discovery» */
+  via: string
+  status: ConnectorStatus
+  statusLabel: string
+  statusDetail?: string | null
+  /** Сбор по расписанию включён */
+  enabled: boolean
+  /** Ключи и сессия есть на сервере */
+  configured: boolean
+  /** Каких переменных или файлов нет на сервере — имена, не значения */
+  missing: string[]
+  /** Где хранятся секреты (env:ИМЯ) — без значений */
+  secretRefs: string[]
+  config: ConnectorConfig & Record<string, unknown>
+  configFields: ConfigField[]
+  /** Дополнительные опции настройки (resultsPerPage, downloadVideos) */
+  options: string[]
+  intervalMin?: number | null
+  /** [мин, макс] периода в минутах */
+  intervalBounds?: number[] | null
+  nextRunAt?: string | null
+  lastSuccessAt?: string | null
+  lastError?: string | null
+  lastErrorAt?: string | null
+  checkedAt?: string | null
+  /** Несекретные факты последней проверки: аккаунт, срок доступа, кандидаты 2ГИС… */
+  facts: Record<string, unknown>
+  counts: ConnectorCounts
+  lastRun?: CollectionRun | null
+  /** Запуск, который сейчас в очереди или выполняется */
+  activeRunId?: number | null
+  capabilities: ConnectorCaps
+  /** Ограничение источника — показывается рядом с карточкой */
+  limitation?: string | null
+  /** false — контракт внешнего адаптера не сверен (Telegram-бот) */
+  contractVerified?: boolean | null
+  /** Платный источник (TikTok через Apify) */
+  paid: boolean
+  /** Сбор остановлен после ошибки — до ручной проверки */
+  stopped: boolean
+}
+
+/** Воркер сбора: жив ли (сигнал не старше 2 мин) */
+export interface WorkerInfo {
+  alive: boolean
+  lastSeenAt?: string | null
+  id?: string | null
+}
+
+export interface ConnectorsResponse {
+  connectors: Connector[]
+  worker: WorkerInfo
+  /** На сервере задан SAQ_ADMIN_TOKEN — режим администратора доступен */
+  adminConfigured: boolean
+}
+
+export interface CollectAllItem {
+  code: ConnectorCode | string
+  runId?: number | null
+  /** Почему пропущен: «выключен», «не настроен», «уже идёт»… */
+  reason?: string | null
+}
+
+/** POST /api/sources/collect-all: что поставлено в очередь, что пропущено и почему */
+export interface CollectAllResult {
+  queued: CollectAllItem[]
+  skipped: CollectAllItem[]
+}
+
+/** POST /api/integrations/olx/start: адрес авторизации OLX (одноразовый, 10 минут) */
+export interface OlxStart {
+  authorizeUrl: string
+  expiresAt?: string | null
+}
+
+// ---------- 2ГИС: сверка адреса (integration-spec §12.5) ----------
+
+export type GeoTargetKind = 'complex' | 'registry'
+
+/** Точность совпадения адреса у 2ГИС: exact — точный дом, number — отличается литера/корпус, near — ближайший дом,
+ *  street — только улица */
+export type GeoPrecision = 'exact' | 'number' | 'near' | 'street' | 'other'
+
+/** Кандидат адреса из 2ГИС; координаты — lat/lon (у ЖК — lat/lng, у карты — [lng, lat]) */
+export interface GeoCandidate {
+  id: string
+  name: string
+  fullName?: string | null
+  addressName?: string | null
+  purpose?: string | null
+  type?: string | null
+  precision?: GeoPrecision | string | null
+  lat: number
+  lon: number
+  city?: string | null
+  /** Расстояние до точки в карточке, м (null — у объекта нет координат) */
+  distanceM?: number | null
+  /** Единственный точный дом в городе — подсказка, не выбор: ничего не принимается автоматически */
+  recommended: boolean
+}
+
+/** candidates — ждёт решения аналитика; not_found — 2ГИС ничего не нашёл; accepted / rejected — решение принято */
+export type GeoCheckStatus = 'candidates' | 'not_found' | 'accepted' | 'rejected'
+
+/** Сверка адреса в 2ГИС: запрос, кандидаты, решение аналитика */
+export interface GeoCheck {
+  id: number
+  targetKind: GeoTargetKind
+  targetId: string
+  provider: string
+  query: string
+  status: GeoCheckStatus
+  candidates: GeoCandidate[]
+  fetchedAt?: string | null
+  /** Ответ из кэша — 2ГИС повторно не запрашивался */
+  cached: boolean
+  /** Кандидаты удалены по сроку хранения */
+  purged: boolean
+  requestedBy?: string | null
+  chosenId?: string | null
+  /** Координаты перенесены в карточку ЖК */
+  applied: boolean
+  /** Точка в карточке до решения */
+  prevPoint?: { lat: number; lng: number } | null
+  decidedBy?: string | null
+  decidedAt?: string | null
+  comment?: string | null
+  /** До какого времени хранятся кандидаты */
+  expiresAt?: string | null
+}
+
+/** Квота и кэш 2ГИС: запросов по ключу за период и за сегодня */
+export interface GeoStatus {
+  configured: boolean
+  used: number
+  limit?: number | null
+  periodStart?: string | null
+  usedToday: number
+  dailyLimit?: number | null
+  cacheDays: number
+}
+
+/** POST /api/geo/checks; force — обновить кэш (только администратор) */
+export interface GeoCheckIn {
+  targetKind: GeoTargetKind
+  targetId: string
+  query?: string
+  author: string
+  force?: boolean
+}
+
+/** Принять кандидата; apply — перенести координаты в карточку ЖК (только для ЖК) */
+export interface GeoAcceptIn {
+  candidateId: string
+  author: string
+  apply?: boolean
+  comment?: string
+}
+
+export interface GeoRejectIn {
+  author: string
+  comment?: string
 }
 
 export type FactorState = 'hit' | 'clear' | 'unknown'

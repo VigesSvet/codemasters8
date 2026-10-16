@@ -1,22 +1,25 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
 import { FactorList, Quote } from '../components/Factors'
 import { AiBadge, Confidence, HypothesisItem, LinkMark, OcrTag, TermList } from '../components/Hypothesis'
 import { Origin } from '../components/Provenance'
 import { SignalAction } from '../components/SignalPanel'
-import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Score, StatusDot, ZoneTag, adKey, fmtDT, platformMeta, statusMeta } from '../components/ui'
-import type { Ad, AdAnalysis, AdScore, AdStatus, AuditEvent, Complex, LinkHypothesis } from '../data/types'
+import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Score, StatusDot, ZoneTag, adKey, fmtDT, plural, statusMeta } from '../components/ui'
+import type { Ad, AdAnalysis, AdScore, AdStatus, AdVersion, AuditEvent, Complex, LinkHypothesis, Processing } from '../data/types'
 import { linkConf, linkText, pct, visibleHypotheses, type LinkConf } from '../lib/ai'
 import { errorText } from '../lib/api'
 import { SYSTEM, fmtStamp, initialsOf } from '../lib/audit'
+import { getVersions, processingNote, stageLabel } from '../lib/connectors'
+import { adImage, mediaRefSrc } from '../lib/media'
 import { from, useFrom } from '../lib/nav'
+import { externalUrl, platformName } from '../lib/platform'
 import { isDemoAd } from '../lib/provenance'
 import { linkConfirmed, model } from '../lib/risk'
 import { matches } from '../lib/search'
 import { useHeadHeight } from '../lib/sticky'
 import { useStore } from '../lib/store'
-import { IcBuilding, IcCheck, IcClose, IcExternal, IcSearch, IcSend, IcUsers } from '../ui/icons'
+import { IcBuilding, IcCheck, IcChevronDown, IcChevronUp, IcClose, IcExternal, IcSearch, IcSend, IcUsers } from '../ui/icons'
 
 const ORDER: AdStatus[] = ['new', 'needs_check', 'in_review', 'confirmed', 'dismissed']
 const TEXT_MAX = 2000
@@ -38,12 +41,19 @@ type Log = { id: string; events?: AuditEvent[]; err?: string }
 /** Анализ ИИ публикации с сервера: id — чей; при ошибке перечитывания остаётся прежний */
 type AiLoad = { id: string; data?: AdAnalysis; err?: string }
 
+/** Анализ собранной публикации ещё идёт: пока он в очереди или выполняется, ленту опрашиваем — каждые 10 с, не дольше 5 минут */
+const POLL_MS = 10_000
+const POLL_MAX = 30
+const pending = (p?: Processing | null) => p?.status === 'queued' || p?.status === 'running'
+
 /** Разбор публикации: слева сама реклама и история, справа — решение аналитика */
 export default function AdDetail() {
   const { id } = useParams()
-  const { mode, ads, complexes, setAdStatus, linkAd, acceptHypothesis, getAnalysis, addComment, getAudit, sessionLog, notify, riskOf, adScoreOf, user, analysts, revision } = useStore()
+  const { mode, ads, complexes, setAdStatus, linkAd, acceptHypothesis, getAnalysis, addComment, getAudit, sessionLog, notify, riskOf, adScoreOf, user, analysts, revision, refreshAds } = useStore()
   const a = ads.find((x) => x.id === id)
   const found = !!a
+  // опрос ленты, пока сервер анализирует собранную публикацию: n — сколько раз уже опросили эту публикацию
+  const [poll, setPoll] = useState<{ id?: string; n: number }>({ n: 0 })
   const [comment, setComment] = useState('')
   const [sending, setSending] = useState(false)
   const [modal, setModal] = useState<'status' | 'cx' | Decision | null>(null)
@@ -84,16 +94,61 @@ export default function AdDetail() {
     return () => { alive = false }
   }, [id, live, found, aiVer, revision]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!a) return mode === 'loading' ? <div className="empty">Загружаем публикацию…</div> : (
-    <div className="empty">
-      <div className="t-h3" style={{ color: 'var(--text)', marginBottom: 6 }}>Публикация не найдена</div>
-      <div>Публикации «{id}» нет в ленте — ссылка устарела или база была пересоздана.</div>
-      <div className="row" style={{ justifyContent: 'center', gap: 8, marginTop: 16 }}>
-        {back && <Link to={back.to} className="btn g m">← {back.label}</Link>}
-        <Link to="/ads" className="btn g m">К ленте публикаций</Link>
+  // Публикации нет в ленте этой вкладки: её могли собрать или прислать после загрузки страницы (ссылка из журнала, от коллеги) —
+  // прежде чем сказать «не найдена», один раз перечитываем ленту с сервера. key — чья проверка: публикация и номер «Обновить ленту»
+  const [miss, setMiss] = useState<{ key: string; ok: boolean } | null>(null)
+  const [missVer, setMissVer] = useState(0)
+  const missKey = `${id}:${missVer}`
+  useEffect(() => {
+    if (!live || !id || found) return
+    let alive = true
+    refreshAds({ quiet: true }).then((ok) => { if (alive) setMiss({ key: missKey, ok }) })
+    return () => { alive = false }
+  }, [live, id, found, missKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // анализ собранной публикации в очереди или идёт: перечитываем ленту, пока он не закончится (готов или не выполнен).
+  // Лента не изменилась — журнал и анализ не перечитываются (refreshAds quiet). Скрытая вкладка не опрашивает и не тратит
+  // бюджет опросов (он — на реальные запросы); вкладка снова видна — ленту перечитываем сразу
+  const [visible, setVisible] = useState(() => document.visibilityState !== 'hidden')
+  useEffect(() => {
+    const on = () => setVisible(document.visibilityState !== 'hidden')
+    document.addEventListener('visibilitychange', on)
+    return () => document.removeEventListener('visibilitychange', on)
+  }, [])
+  const polls = poll.id === id ? poll.n : 0
+  const waiting = live && pending(a?.processing)
+  useEffect(() => {
+    if (!waiting || !visible || polls >= POLL_MAX) return
+    const t = setTimeout(() => {
+      void refreshAds({ quiet: true })
+      setPoll({ id, n: polls + 1 })
+    }, POLL_MS)
+    return () => clearTimeout(t)
+  }, [waiting, visible, polls, id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const wasVisible = useRef(visible)
+  useEffect(() => {
+    const was = wasVisible.current
+    wasVisible.current = visible
+    if (visible && !was && waiting) void refreshAds({ quiet: true })
+  }, [visible]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!a) {
+    const looked = miss?.key === missKey ? miss : null
+    if (mode === 'loading' || (live && !looked)) return <div className="empty">Загружаем публикацию…</div>
+    return (
+      <div className="empty">
+        <div className="t-h3" style={{ color: 'var(--text)', marginBottom: 6 }}>Публикация не найдена</div>
+        <div>{!live ? `Публикации «${id}» нет в демо-наборе — возможно, ссылка ведёт на публикацию с сервера или устарела.`
+          : looked?.ok ? `Публикации «${id}» нет на сервере — ссылка устарела или база была пересоздана.`
+            : `Публикации «${id}» нет в ленте этой вкладки, а перечитать ленту с сервера не удалось — проверьте связь и обновите ленту.`}</div>
+        <div className="row" style={{ justifyContent: 'center', gap: 8, marginTop: 16 }}>
+          {back && <Link to={back.to} className="btn g m">← {back.label}</Link>}
+          {live && <button className="btn g m" onClick={() => setMissVer((v) => v + 1)}>Обновить ленту</button>}
+          <Link to="/ads" className="btn g m">К ленте публикаций</Link>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
   // ЖК — только сохранённая привязка из стора (с бэкендом — PATCH /ads/{id}/complex, событие в журнале)
   const c = a.complexId ? complexes.find((x) => x.id === a.complexId) : undefined
   const s = adScoreOf(a)
@@ -120,6 +175,16 @@ export default function AdDetail() {
   const demoAd = isDemoAd(a)
   const byAnalyst = !demoAd && (a.origin === 'analyst' || a.source === 'manual')
   const added = byAnalyst ? events.find((e) => e.who !== SYSTEM) : undefined
+  // собрана подключённым источником или прислана жителем через бота: источник, площадка, время получения сервером
+  const collected = a.origin === 'collected'
+  const bot = collected && a.source === 'bot'
+  const img = adImage(a)
+  const href = externalUrl(a.url)
+  // файлы публикации, кроме обложки (она — крупно слева)
+  const files = (a.media ?? []).filter((m) => { const src = mediaRefSrc(m); return !!src && src !== img })
+  const proc = a.processing ?? null
+  /** «Обновить» у состояния анализа: перечитать ленту сейчас и снова опрашивать */
+  const recheck = () => { setPoll({ id, n: 0 }); void refreshAds() }
 
   /** to — новый ЖК (null — снять привязку): выбор аналитика — привязка становится фактом с его именем */
   const link = (to: Complex | null) => {
@@ -167,12 +232,13 @@ export default function AdDetail() {
       <PageTitle crumbs={back ? [[`← ${back.label}`, back.to], [adKey(a.id)]] : [['Карта', '/'], ['Лента публикаций', '/ads'], [adKey(a.id)]]}
         title={<span className="row wrap-f" style={{ gap: 14 }}>{c ? `Реклама ЖК «${c.name}»` : 'Реклама без привязки к ЖК'}
           {c && <LinkMark a={a} value={lc.now?.confidence} label="привязка — гипотеза ИИ" />}{demoAd && <Origin kind="demo" label="Демо-публикация (вымышленная)" />}</span>}
-        sub={<span className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={22} />{platformMeta[a.platform].name} · {a.account} · {fmtDT(a.date)}</span>} />
+        sub={<span className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={22} /><span>{platformName(a.platform)} · {a.account} · {fmtDT(a.date)}
+          {collected && a.collectedAt && <span title="Когда публикацию получил сервер — не время публикации в источнике"> · {bot ? 'прислано' : 'собрано'} {fmtDT(a.collectedAt)}</span>}</span></span>} />
 
       <div className="cols-r">
         <div className="stack" style={{ gap: 16 }}>
-          <div className="card" style={{ display: 'grid', gridTemplateColumns: a.image ? '300px 1fr' : '1fr', gap: 28 }}>
-            {a.image && <div className="ph" style={{ borderRadius: 18, aspectRatio: '1' }}><img src={a.image} alt="" /></div>}
+          <div className="card" style={{ display: 'grid', gridTemplateColumns: img ? '300px 1fr' : '1fr', gap: 28 }}>
+            {img && <div className="ph" style={{ borderRadius: 18, aspectRatio: '1' }}><img src={img} alt="" /></div>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <p style={{ fontSize: 20, lineHeight: '28px' }}><Highlight text={a.text} /></p>
               {a.ocr && (
@@ -181,27 +247,47 @@ export default function AdDetail() {
                   <div className="t-sm" style={{ letterSpacing: '.02em' }}><Highlight text={a.ocr} /></div>
                 </div>
               )}
+              {files.length > 0 && (
+                <div>
+                  <div className="t-xs c2" style={{ marginBottom: 6 }}>Файлы публикации · {a.media?.length ?? files.length}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(112px, 1fr))', gap: 8 }}>
+                    {files.map((m) => m.kind === 'video'
+                      ? <video key={m.id} controls preload="metadata" src={mediaRefSrc(m)} style={{ gridColumn: '1 / -1', width: '100%', maxHeight: 420, borderRadius: 12, background: '#000' }} />
+                      : <a key={m.id} href={mediaRefSrc(m)} target="_blank" rel="noreferrer" className="ph" style={{ display: 'block', borderRadius: 12, aspectRatio: '1' }} title="Открыть в полном размере"><img src={mediaRefSrc(m)} alt="" /></a>)}
+                  </div>
+                </div>
+              )}
+              {proc && proc.status !== 'done' && <ProcessingNote p={proc} polling={waiting && polls < POLL_MAX} onRefresh={recheck} />}
               <div className="row wrap-f" style={{ gap: 6, marginTop: 'auto' }}>
                 {a.price && <span className="tag gray">Цена: {a.price}</span>}
                 {a.reach && <span className="tag gray">Охват ~{a.reach.toLocaleString('ru')}</span>}
-                {demoAd ? <Origin kind="demo" label="Демонстрационные данные" title="Демонстрационная публикация: текст, аккаунт и ссылка вымышлены; автоматического сбора публикаций нет" />
-                  : byAnalyst ? <Origin kind="analyst" label="Добавлено аналитиком" who={added?.who ?? a.assignee} at={added?.at} />
-                    : <span className="tag gray">Источник: {a.source}</span>}
+                {demoAd ? <Origin kind="demo" label="Демонстрационные данные" title="Демонстрационная публикация: текст, аккаунт и ссылка вымышлены" />
+                  : collected ? <Origin kind="source" label={bot ? 'Прислано жителем через бота' : 'Собрано из источника'} source={platformName(a.platform)} at={a.collectedAt ?? undefined}
+                    title={`${bot ? 'Публикацию прислал житель через Telegram-бота заявок' : 'Публикацию собрал подключённый источник'}: текст и файлы — как в источнике на момент сбора, аналитиком не проверены. ${platformName(a.platform)}${a.collectedAt ? `, получено сервером ${fmtDT(a.collectedAt)}` : ''}`} />
+                    : byAnalyst ? <Origin kind="analyst" label="Добавлено аналитиком" who={added?.who ?? a.assignee} at={added?.at} />
+                      : <span className="tag gray">Источник: {a.source}</span>}
                 {/* гипотеза помечена у заголовка; здесь — только факт с автором */}
                 {c && fact && <Origin kind="analyst" label="Привязка — решение аналитика" who={a.linkConfirmedBy} at={a.linkConfirmedAt} />}
-                <a href={a.url} target="_blank" rel="noreferrer" className="tag outline"><IcExternal size={13} />Источник</a>
+                {href && <a href={href} target="_blank" rel="noreferrer" className="tag outline" title={collected ? 'Публикация в источнике — могла измениться после сбора' : undefined}><IcExternal size={13} />{collected ? 'Открыть в источнике' : 'Источник'}</a>}
               </div>
             </div>
           </div>
 
           {/* оценка с факторами — в обычном потоке: липкая колонка справа держит только статус и решения */}
           <div className="card">
-            <div className="card-head"><h3>Оценка публикации</h3><ZoneTag zone={s.zone} /></div>
+            <div className="card-head"><h3>Оценка публикации</h3><span className="row" style={{ gap: 6 }}>{proc && proc.status !== 'done' && (
+              <span className={`tag ${proc.status === 'failed' ? 'yellow' : 'gray'}`} title="Анализ файлов публикации не завершён — оценка посчитана только по тексту">{proc.status === 'failed' ? 'анализ не выполнен' : 'предварительная'}</span>
+            )}<ZoneTag zone={s.zone} /></span></div>
             <div style={{ display: 'grid', gridTemplateColumns: '290px minmax(0, 1fr)', gap: 32, alignItems: 'start' }}>
               <div>
                 <div className="row" style={{ alignItems: 'flex-end', gap: 6, margin: '8px 0 16px' }}><span className="big-num" style={{ fontSize: 52 }}>{s.score}</span><span className="c3" style={{ paddingBottom: 4 }}>из 100</span></div>
                 <Gauge value={s.score} />
                 {s.needsCheck && <div style={{ marginTop: 14 }}><NeedsCheck /></div>}
+                {proc && proc.status !== 'done' && (
+                  <p className="t-xs c2" style={{ marginTop: 12, lineHeight: '17px' }}>{proc.status === 'failed'
+                    ? 'Анализ не выполнен — оценка может быть неполной: текст со скриншотов и видео мог в неё не войти. Это не значит, что риска нет: проверьте вручную.'
+                    : 'Оценка предварительная: анализ файлов публикации ещё не закончился, текст со скриншотов и видео в неё пока не вошёл.'}</p>
+                )}
                 {c && cr && (
                   <Link to={`/complexes/${c.id}`} state={from(`Публикация ${adKey(a.id)}`, `/ads/${a.id}`)} className="row" style={{ marginTop: 18, background: 'var(--bg)', borderRadius: 16, padding: 8, gap: 12 }}>
                     <img src={c.cover} alt="" style={{ width: 52, height: 52, borderRadius: 12, objectFit: 'cover' }} />
@@ -247,6 +333,8 @@ export default function AdDetail() {
           </div>
 
           <AiCard key={a.id} a={a} s={s} c={c} load={ai} lc={lc} retry={() => setAiVer((v) => v + 1)} onLink={() => setModal('cx')} />
+
+          {proc && live && <SourceVersions key={a.id} a={a} version={proc.version} />}
 
           <div className="card">
             <div className="card-head"><h3>История</h3>{mine?.events && <span className="t-sm c2">{mine.events.length} · журнал сервера</span>}</div>
@@ -494,6 +582,85 @@ function AiCard({ a, s, c, load, lc, retry, onLink }: { a: Ad; s: AdScore; c?: C
               placeholder={modal.kind === 'reject' ? 'Например: в тексте другой ЖК с похожим названием' : 'Например: бронь бесплатная, деньги принимаются только по ДДУ с гарантией ЕО'} />
           </div>
         </Modal>
+      )}
+    </div>
+  )
+}
+
+/** Состояние анализа собранной публикации, пока он не готов: в очереди и идёт — серая плашка с «Обновить»,
+ *  не выполнен — предупреждение. Не выполненный анализ — «анализ не выполнен», а не «риска нет» */
+function ProcessingNote({ p, polling, onRefresh }: { p: Processing; polling: boolean; onRefresh: () => void }) {
+  const note = processingNote(p)
+  const ver = p.version > 1 ? ` (версия ${p.version})` : ''
+  if (p.status === 'failed') return (
+    <div className="box warn t-sm" style={{ padding: '12px 16px', lineHeight: '19px' }}>
+      <b>{note}</b>
+      <div style={{ marginTop: 4 }}>{p.stage ? `Этап: ${stageLabel(p.stage)}${ver}. ` : ver ? `Версия ${p.version}. ` : ''}Текст со скриншотов и видео может быть не распознан, гипотезы ИИ — неполными.
+        Оценка — только по тексту публикации: это не значит, что риска нет.</div>
+    </div>
+  )
+  return (
+    <div className="ai-note">{note}{ver}. Оценка пока только по тексту{polling ? ' — обновляем каждые 10 с' : ''}. <button className="link" onClick={onRefresh}>Обновить</button>
+      {!polling && p.status === 'queued' && <> · Долго в очереди — проверьте воркер сбора на странице <Link className="link" to="/sources">«Источники»</Link></>}
+    </div>
+  )
+}
+
+/** Версии публикации с сервера: key — чьи (публикация и её текущая версия); при ошибке перечитывания остаются прежние.
+ *  data null — недоступно (нет связи, сервер без сбора публикаций) */
+type VerLoad = { key: string; data?: AdVersion[] | null; err?: string }
+
+/** «Версии в источнике (N)»: как публикация менялась в источнике. Загружается только при раскрытии */
+function SourceVersions({ a, version }: { a: Ad; version: number }) {
+  const [open, setOpen] = useState(false)
+  const [load, setLoad] = useState<VerLoad | null>(null)
+  const [ver, setVer] = useState(0)
+  const key = `${a.id}:${version}`
+  useEffect(() => {
+    if (!open) return
+    let alive = true
+    getVersions(a.id).then(
+      (data) => { if (alive) setLoad({ key, data }) },
+      (e: unknown) => { if (alive) setLoad((l) => ({ key, data: l?.key === key ? l.data : undefined, err: errorText(e) })) },
+    )
+    return () => { alive = false }
+  }, [open, key, ver]) // eslint-disable-line react-hooks/exhaustive-deps
+  const mine = load?.key === key ? load : null
+  const list = mine?.data
+  const retry = () => setVer((v) => v + 1)
+
+  return (
+    <div className="card">
+      <button className="row between" style={{ width: '100%', textAlign: 'left', gap: 12 }} aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="t-h3">Версии в источнике ({version})</span>
+        {open ? <IcChevronUp size={20} /> : <IcChevronDown size={20} />}
+      </button>
+      {open && (
+        <div className="fade" style={{ marginTop: 8 }}>
+          <p className="t-sm c2" style={{ marginBottom: 8 }}>Каждая правка текста, цены или файлов в источнике — новая версия. Решения аналитика остаются за публикацией: после правки сверьте их с текущей версией.</p>
+          {mine?.err && <div className="alog-err t-sm">Версии не загрузились: {mine.err} <button className="link" onClick={retry}>Повторить</button></div>}
+          {!mine ? <div className="t-sm c2">Загружаем версии…</div>
+            : list === null ? <div className="ai-note">История версий недоступна: нет связи с сервером или сервер без сбора публикаций. <button className="link" onClick={retry}>Повторить</button></div>
+              : !list ? null
+                : !list.length ? <div className="t-sm c2">Версий нет: публикация не из приёма</div>
+                  : list.map((v, i) => {
+                    const n = v.mediaKeys?.length ?? 0
+                    return (
+                      <div key={v.version} style={{ padding: '12px 0', borderTop: i ? '1px solid var(--line)' : undefined }}>
+                        <div className="row wrap-f" style={{ gap: 8 }}>
+                          <span className="bold">Версия {v.version}</span>
+                          {v.current && <span className="tag green">текущая</span>}
+                          <span className="t-sm c2">{v.collectedAt ? `получена ${fmtDT(v.collectedAt)}` : 'время не указано'}</span>
+                          {v.price && <span className="tag gray">Цена: {v.price}</span>}
+                          <span className="tag gray">{n ? `${n} ${plural(n, ['файл', 'файла', 'файлов'])}` : 'без файлов'}</span>
+                        </div>
+                        <div className="t-sm" style={{ marginTop: 6, lineHeight: '19px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 152, overflowY: 'auto' }}>
+                          {v.text ? <Highlight text={v.text} /> : <span className="c3">без текста</span>}
+                        </div>
+                      </div>
+                    )
+                  })}
+        </div>
       )}
     </div>
   )

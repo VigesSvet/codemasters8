@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import GeoCheck from '../components/GeoCheck'
 import MapView from '../components/MapView'
 import { OpenDataNote, Origin, SrcLink } from '../components/Provenance'
 import { PageTitle } from '../components/ui'
@@ -131,6 +132,8 @@ export default function RegistryCard() {
           {mode === 'demo' && <div className="ai-note">Демо-режим без бэкенда: показана встроенная копия открытых данных ({OFFLINE_FILE}) — те же записи, что загружает сервер. Импорт новых файлов — с бэкендом (./dev.sh).</div>}
           <OpenDataNote>Поля ниже — дословно как у источника, с его ссылкой и временем сбора. Разные записи одного объекта (блоки, очереди, повторы в разных реестрах) показаны по отдельности.</OpenDataNote>
           {records.map((r, i) => <RecordView key={`${r.source}:${r.sourceRecordId ?? i}`} r={r} i={i} />)}
+          {/* сверка адреса в 2ГИС — только кандидаты и решение аналитика в журнал: сведения источника не меняются */}
+          {o.address && <GeoCheck key={o.key} target={{ kind: 'registry', id: o.key }} address={o.address} point={hasCoords ? { lat: o.lat!, lng: o.lng! } : null} canApply={false} />}
         </div>
         <aside className="stack sticky">
           <div className="card">

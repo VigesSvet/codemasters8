@@ -6,6 +6,8 @@ import type { Ad, Analysis, AnalyzeInput, LinkHypothesis, OcrResult, OcrStatus, 
 import { OCR_EMPTY, OCR_KEPT, ocrNotice, ocrOnEdit, ocrOnNewShot, ocrOnResult, pct, type OcrField } from '../lib/ai'
 import { errorText } from '../lib/api'
 import { finder, rankComplex } from '../lib/find'
+import { UPLOAD_MAX, uploadScreenshot, uploadWarning } from '../lib/media'
+import { KNOWN_PLATFORMS } from '../lib/platform'
 import { scoreAd } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcCheck, IcChevronDown, IcClose, IcSearch, IcUpload } from '../ui/icons'
@@ -13,13 +15,18 @@ import { IcCheck, IcChevronDown, IcClose, IcSearch, IcUpload } from '../ui/icons
 const SAMPLE = 'Старт продаж в новом ЖК «Тихий берег»! Квартиры у набережной, бронь от 300 000 ₸, первый взнос 15%, рассрочка от застройщика. Сдача 2027. Продаётся по договору долевого участия.'
 /** Пауза после ввода перед анализом */
 const DEBOUNCE = 400
-const MAX_FILE = 10 * 1024 * 1024
+const MAX_FILE = UPLOAD_MAX
 
 /** Как выбран ЖК: auto — лучшая гипотеза ИИ (при сохранении её выберет сервер), hyp — гипотеза выбрана из списка,
  *  manual — аналитик выбрал ЖК сам. Гипотеза остаётся гипотезой; фактом привязку делает только выбор или подтверждение аналитика */
 type Pick = { by: 'auto' } | { by: 'hyp'; h: LinkHypothesis } | { by: 'manual'; complexId: string }
 /** Результат анализа для набора входных данных key; при ошибке остаётся прошлый результат */
 type AiResult = { key: string; a: Analysis | null; err?: string }
+/** Скриншот на сервере (POST /api/media): url — /api/media/{id} для image публикации; file — какой файл загружен.
+ *  Повторное сохранение после ошибки POST /api/ads не загружает тот же файл заново */
+type Upload = { file: File; url: string }
+/** Скриншот не загрузился на сервер: file — какой, error — почему. Новый скриншот снимает предупреждение */
+type UploadFail = { file: File; error: string }
 /** id и время новой публикации — в момент сохранения */
 const newId = () => ({ id: `m${Date.now().toString(36)}`, now: new Date().toISOString() })
 const sec = (ms: number) => `${(ms / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} с`
@@ -35,6 +42,11 @@ export default function AdNew() {
   const [url, setUrl] = useState('')
   const [text, setText] = useState('')
   const [img, setImg] = useState<string | undefined>()
+  // файл текущего скриншота (img — его локальный предпросмотр blob:): при сохранении он уходит на сервер
+  const [shot, setShot] = useState<File | null>(null)
+  const [uploaded, setUploaded] = useState<Upload | null>(null)
+  const [upFail, setUpFail] = useState<UploadFail | null>(null)
+  const [uploading, setUploading] = useState(false)
   // поле «Текст на изображении» относится к текущему скриншоту: что положил OCR, что ввели вручную (см. lib/ai)
   const [ocrField, setOcrField] = useState<OcrField>(OCR_EMPTY)
   const ocrText = ocrField.text
@@ -99,32 +111,56 @@ export default function AdNew() {
   }
   const s = scoreAd(draft, linked)
 
+  // скриншот этой формы не загрузился на сервер — предупреждение и выбор: повторить или сохранить без него
+  const shotFail = upFail && upFail.file === shot ? upFail.error : null
+
   // открываем разбор только после сохранения: при ошибке форма остаётся заполненной, причина — в баннере.
-  // Пока распознаётся скриншот, не сохраняем: его текст (часто единственное место с условиями оплаты) пропал бы молча
-  const save = () => {
+  // Пока распознаётся скриншот, не сохраняем: его текст (часто единственное место с условиями оплаты) пропал бы молча.
+  // С сервером скриншот сначала загружается (POST /api/media), и в публикацию уходит его адрес /api/media/{id};
+  // не загрузился — публикацию не сохраняем молча: предупреждение, а без скриншота — только по явному выбору
+  // (тогда blob: остаётся локальным предпросмотром этой вкладки). В демо-режиме — как раньше, локально
+  const save = async (withoutShot = false) => {
     if (!text || saving || ocrBusy) return
+    setSaving(true)
+    let image = img
+    if (!demo && shot && !withoutShot) {
+      if (uploaded?.file === shot) image = uploaded.url
+      else {
+        setUploading(true)
+        const r = await uploadScreenshot(shot)
+        setUploading(false)
+        if (!r.ok) {
+          setUpFail({ file: shot, error: r.error })
+          setSaving(false)
+          return
+        }
+        setUploaded({ file: shot, url: r.url })
+        setUpFail(null)
+        image = r.url
+      }
+    }
     const { id, now } = newId()
     // «автоматически» — ЖК выбирает сервер тем же движком по сохраняемому тексту
     const ad: Ad = pick.by === 'auto' && live
-      ? { ...draft, id, date: now, complexId: undefined, matchConfidence: 0 }
-      : { ...draft, id, date: now, linkConfirmedAt: manual ? now : null }
-    setSaving(true)
-    addAd(ad).then((ok) => {
-      setSaving(false)
-      if (!ok) return
-      notify(`Публикация ${adKey(ad.id)} добавлена в ленту`)
-      nav(`/ads/${ad.id}`)
-    })
+      ? { ...draft, image, id, date: now, complexId: undefined, matchConfidence: 0 }
+      : { ...draft, image, id, date: now, linkConfirmedAt: manual ? now : null }
+    const ok = await addAd(ad)
+    setSaving(false)
+    if (!ok) return
+    notify(`Публикация ${adKey(ad.id)} добавлена в ленту${!demo && shot && withoutShot ? ' — без скриншота на сервере' : ''}`)
+    nav(`/ads/${ad.id}`)
   }
 
   const onFile = (f?: File) => {
-    if (!f) return
+    // во время сохранения скриншот не меняем: на сервер уходит тот, что уже загружается
+    if (!f || saving) return
     setOcrErr(null)
     if (f.size > MAX_FILE) { setOcrErr('Файл больше 10 МБ — уменьшите скриншот или обрежьте лишнее'); return }
     // новый скриншот заменяет прежний вместе с распознанным с него текстом (введённый вручную остаётся с пометкой).
     // Не изображение по типу файла — прежний скриншот остаётся, пока сервер не распознает новый (обычно 415)
     const replace = () => {
       setImg(URL.createObjectURL(f))
+      setShot(f)
       setOcrRes(null)
       setOcrField(ocrOnNewShot)
     }
@@ -167,7 +203,7 @@ export default function AdNew() {
           <div className="fsection" style={{ marginTop: 0 }}>Публикация</div>
           <div className="frow top">
             <label>Площадка</label>
-            <div className="chips">{(Object.keys(platformMeta) as Platform[]).map((p) => (
+            <div className="chips">{KNOWN_PLATFORMS.map((p) => (
               <button key={p} className={`chip ${platform === p ? 'on' : ''}`} onClick={() => setPlatform(p)}><PlatformIcon p={p} size={18} />{platformMeta[p].name}</button>
             ))}</div>
           </div>
@@ -187,7 +223,7 @@ export default function AdNew() {
             <div>
               <div className={`drop ${over ? 'over' : ''}`} onClick={() => file.current?.click()} onDragOver={(e) => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); onFile(e.dataTransfer.files[0]) }}>
                 {img ? <img src={img} alt="" style={{ maxHeight: 220, borderRadius: 12 }} /> : (
-                  <div><IcUpload /><div className="bold" style={{ marginTop: 8 }}>Перетащите файл или нажмите</div><div className="t-sm c2" style={{ marginTop: 4 }}>PNG, JPG до 10 МБ · текст на изображении распознаётся на сервере</div></div>
+                  <div><IcUpload /><div className="bold" style={{ marginTop: 8 }}>Перетащите файл или нажмите</div><div className="t-sm c2" style={{ marginTop: 4 }}>PNG, JPG до 10 МБ · текст на изображении распознаётся на сервере{demo ? '' : ', скриншот сохраняется вместе с публикацией'}</div></div>
                 )}
               </div>
               <input ref={file} type="file" accept="image/*" hidden onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = '' }} />
@@ -300,8 +336,14 @@ export default function AdNew() {
               <span>Объект</span><span style={{ textAlign: 'right' }}>{linked ? <>{linked.name}<div className="t-xs c2">{manual ? 'выбран вами — факт' : `гипотеза ИИ ${pct(target?.conf ?? 0)}`}</div></> : '—'}</span>
             </div>
             <p className="t-xs c2" style={{ marginTop: 12, lineHeight: '17px' }}>R2 и R3 — по словарю модели, R1 объекта — только при подтверждённой привязке. Гипотеза ИИ в балл не входит.</p>
-            <button className="btn y full" style={{ marginTop: 16 }} disabled={!text || saving || ocrBusy} onClick={save}>
-              {saving ? 'Сохраняем…' : ocrBusy ? 'Распознаём скриншот…' : text ? 'Сохранить и оценить' : 'Введите текст объявления'}
+            {shotFail && !saving && (
+              <div className="ai-note warn" style={{ marginTop: 16 }}>{uploadWarning(shotFail)}.{' '}
+                <button className="link" onClick={() => void save()}>Повторить загрузку</button>
+              </div>
+            )}
+            <button className="btn y full" style={{ marginTop: 16 }} disabled={!text || saving || ocrBusy} onClick={() => void save(!!shotFail)}>
+              {uploading ? 'Загружаем скриншот…' : saving ? 'Сохраняем…' : ocrBusy ? 'Распознаём скриншот…' : !text ? 'Введите текст объявления'
+                : shotFail ? 'Сохранить без скриншота' : 'Сохранить и оценить'}
             </button>
           </div>
         </aside>

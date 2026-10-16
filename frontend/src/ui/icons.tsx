@@ -5,6 +5,7 @@ import type { ComponentType, CSSProperties, SVGProps } from 'react'
 import {
   ArrowDownToLine, ArrowUpFromLine, ArrowsRotateRight, Bell, Book, ChartColumn, Check, CircleQuestion, Database, Eye, Factory, Flag, House, Key,
   LayoutCellsLarge, ListCheck, Megaphone, PersonWorker, Persons, Plane, ShieldCheck, Smartphone, TrafficLight, Tray, Calendar,
+  Gear, Lock, MapPin, Play, PlugConnection, Sparkles, TriangleExclamation,
 } from '@gravity-ui/icons'
 import { Y } from './yandex-svg'
 
@@ -108,3 +109,11 @@ export const IcWorker = g(PersonWorker)
 export const IcBuilding = g(House)
 export const IcUsers = g(Persons)
 export const IcChart = g(ChartColumn)
+// подключения источников (страница «Источники»), сверка адреса 2ГИС
+export const IcPlugConnection = g(PlugConnection)
+export const IcPlay = g(Play)
+export const IcMapPin = g(MapPin)
+export const IcTriangleExclamation = g(TriangleExclamation)
+export const IcSparkles = g(Sparkles)
+export const IcGear = g(Gear)
+export const IcLock = g(Lock)

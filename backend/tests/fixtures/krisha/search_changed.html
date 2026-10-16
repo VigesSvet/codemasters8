@@ -1,0 +1,18 @@
+<!doctype html>
+<!-- Синтетическая выдача с «изменённой разметкой»: объявления есть в window.data, но карточек a-card нет. -->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Продажа квартир — тестовая выдача (новая разметка)</title>
+<script>
+  window.data = {"search": {"nbTotal": 2, "ids": [900000011, 900000012], "page": 1},
+    "user": {"id": 777, "name": "Тестовый Пользователь"}, "appToken": "FAKE-APP-TOKEN"};
+</script>
+</head>
+<body>
+<section class="listing">
+  <article class="ad-tile" data-ad-id="900000011"><a href="/a/show/900000011">Квартира</a></article>
+  <article class="ad-tile" data-ad-id="900000012"><a href="/a/show/900000012">Квартира</a></article>
+</section>
+</body>
+</html>

@@ -6,6 +6,7 @@ import './styles/signal.css'
 import './styles/audit.css'
 import './styles/ai.css'
 import './styles/provenance.css'
+import './styles/sources.css'
 import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(

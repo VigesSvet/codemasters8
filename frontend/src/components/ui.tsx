@@ -1,9 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { AdStatus, Platform, Tri, Zone } from '../data/types'
+import { adKey as codeKey } from '../lib/find'
+import { PLATFORMS, platformName, type PlatformInfo } from '../lib/platform'
 import { MARKERS } from '../lib/risk'
 import { siFacebook, siInstagram, siTelegram, siTiktok } from 'simple-icons'
-import { IcCheck, IcChevronDown, IcChevronLeft, IcChevronRight, IcChevronUp, IcClose, IcHelp, IcInfo as IcInfoY } from '../ui/icons'
+import { IcCheck, IcChevronDown, IcChevronLeft, IcChevronRight, IcChevronUp, IcClose, IcGlobe, IcHelp, IcInfo as IcInfoY } from '../ui/icons'
 
 export const zoneName: Record<Zone, string> = { red: 'Красная зона', yellow: 'Жёлтая зона', green: 'Зелёная зона' }
 export const zoneShort: Record<Zone, string> = { red: 'Красная', yellow: 'Жёлтая', green: 'Зелёная' }
@@ -18,15 +20,9 @@ export function TriTag({ v, label }: { v: Tri; label?: string }) {
   return <span className={`tag ${v === 'yes' ? 'green' : v === 'no' ? 'red' : 'gray'}`}>{v === 'yes' ? <IcCheck size={13} strokeWidth={3} /> : v === 'no' ? <IcClose size={13} strokeWidth={3} /> : null}{label ?? triText[v]}</span>
 }
 
-export const platformMeta: Record<Platform, { name: string; color: string }> = {
-  instagram: { name: 'Instagram', color: '#E4405F' },
-  tiktok: { name: 'TikTok', color: '#000000' },
-  krisha: { name: 'Krisha.kz', color: '#FFD84D' },
-  olx: { name: 'OLX', color: '#23E5DB' },
-  telegram: { name: 'Telegram', color: '#26A5E4' },
-  facebook: { name: 'Facebook', color: '#0866FF' },
-  '2gis': { name: '2ГИС', color: '#19AA1E' },
-}
+/** Площадки по коду (таблица — lib/platform). Есть и 'other' — публикация собрана с площадки не из списка: у неё своя подпись
+ *  и общий значок, страницы с platformMeta[a.platform] на ней не падают */
+export const platformMeta: Record<Platform, PlatformInfo> = PLATFORMS
 
 // Логотипы: Simple Icons (CC0) для соцсетей, фавиконки сайтов для Krisha, OLX и 2ГИС
 const SI: Partial<Record<Platform, { path: string; bg: string }>> = {
@@ -45,7 +41,14 @@ export function PlatformIcon({ p, size = 28 }: { p: Platform; size?: number }) {
       <svg viewBox="0 0 24 24" width={size * (p === 'telegram' ? 0.56 : 0.6)} height={size * (p === 'telegram' ? 0.56 : 0.6)} fill="#fff" style={p === 'telegram' ? { marginLeft: -size * 0.05 } : undefined}><path d={si.path} /></svg>
     </span>
   )
-  return <img className="plat" src={PNG[p]} alt={platformMeta[p].name} title={platformMeta[p].name} style={{ width: size, height: size, borderRadius: r }} />
+  const png = PNG[p]
+  // площадка не из списка — общий значок вместо битой картинки
+  if (!png) return (
+    <span className="plat" style={{ width: size, height: size, borderRadius: r, background: 'var(--fill)', color: 'var(--text-2)' }} title={platformName(p)}>
+      <IcGlobe size={Math.round(size * 0.6)} />
+    </span>
+  )
+  return <img className="plat" src={png} alt={platformMeta[p].name} title={platformMeta[p].name} style={{ width: size, height: size, borderRadius: r }} />
 }
 
 export const statusMeta: Record<AdStatus, { name: string; tag: string; color: string }> = {
@@ -100,8 +103,10 @@ export function PageTitle({ crumbs, title, sub, actions }: { crumbs?: [string, s
   )
 }
 
-export const Toggle = ({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label?: string }) => (
-  <button className={`toggle ${on ? 'on' : ''}`} role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} />
+/** Переключатель; disabled — недоступен (приглушён, не нажимается), title — почему */
+export const Toggle = ({ on, onChange, label, disabled, title }: { on: boolean; onChange: (v: boolean) => void; label?: string; disabled?: boolean; title?: string }) => (
+  <button className={`toggle ${on ? 'on' : ''}`} role="switch" aria-checked={on} aria-label={label} title={title} disabled={disabled}
+    style={disabled ? { opacity: 0.4, cursor: 'not-allowed' } : undefined} onClick={() => { if (!disabled) onChange(!on) }} />
 )
 
 /** Ячейка списка: иконка / заголовок / подпись / хвост */
@@ -164,8 +169,9 @@ export const plural = (n: number, [one, few, many]: readonly [string, string, st
   const a = Math.abs(n) % 100, b = a % 10
   return a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many
 }
-/** Номер публикации (AD-007, AD-M1A2B3C4) — рядом с разбором номера в поиске */
-export { adKey } from '../lib/find'
+/** Номер публикации (AD-007, AD-M1A2B3C4) — рядом с разбором номера в поиске (lib/find). У собранных публикаций id —
+ *  32 символа (UUID hex): номер — AD- и первые 8 символов (AD-3F2A9C1B); поиск по началу номера их находит */
+export const adKey = (id: string) => (id.length >= 20 ? `AD-${id.slice(0, 8).toUpperCase()}` : codeKey(id))
 
 /** Кнопка фильтра с поповером — как «Комнат ⌄» на realty.yandex.ru: круглые варианты и жёлтая кнопка «Показать N» */
 export function FilterPop<T extends string>({ label, title, value, options, onChange, count, multi }: {

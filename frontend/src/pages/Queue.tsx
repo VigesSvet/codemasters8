@@ -5,6 +5,7 @@ import { LinkMark } from '../components/Hypothesis'
 import { Faq, Modal, Hero, HeroTile, Highlight, PlatformIcon, Score, StatusDot, Seg, adKey, fmtShort, statusMeta } from '../components/ui'
 import type { Ad, AdStatus, Complex } from '../data/types'
 import { initialsOf } from '../lib/audit'
+import { adImage } from '../lib/media'
 import { from } from '../lib/nav'
 import { scoreAd } from '../lib/risk'
 import { useStore } from '../lib/store'
@@ -120,7 +121,7 @@ export default function Queue() {
         {top && (
           <div className="panel" style={{ gridTemplateColumns: 'minmax(0, 1fr) 320px' }}>
             <div className="pl row" style={{ gap: 20, alignItems: 'flex-start', paddingBottom: 16 }}>
-              {top.a.image ? <img src={top.a.image} alt="" style={{ width: 140, height: 105, borderRadius: 12, objectFit: 'cover', flex: 'none' }} /> : <PlatformIcon p={top.a.platform} size={64} />}
+              {adImage(top.a) ? <img src={adImage(top.a)} alt="" style={{ width: 140, height: 105, borderRadius: 12, objectFit: 'cover', flex: 'none' }} /> : <PlatformIcon p={top.a.platform} size={64} />}
               <div style={{ minWidth: 0 }}>
                 <div className="t-sm c2">Следующая по риску · {adKey(top.a.id)}</div>
                 <div className="t-h3 row wrap-f" style={{ margin: '2px 0 6px', gap: 10 }}>{top.c ? `Реклама ЖК «${top.c.name}»` : 'Реклама без ЖК'}<LinkMark a={top.a} label="привязка — гипотеза ИИ" /></div>
@@ -147,7 +148,7 @@ export default function Queue() {
         <Modal title="Подтвердить нарушение?" onClose={() => setConfirm(null)}
           footer={<><button className="btn g" onClick={() => setConfirm(null)}>Отмена</button><button className="btn y" disabled={!reason.trim()} onClick={() => confirmIt(confirm, reason.trim())}>Подтвердить нарушение</button></>}>
           <div className="row" style={{ gap: 14, padding: '4px 24px 8px' }}>
-            {confirm.a.image ? <img src={confirm.a.image} alt="" style={{ width: 72, height: 54, borderRadius: 10, objectFit: 'cover' }} /> : <PlatformIcon p={confirm.a.platform} size={48} />}
+            {adImage(confirm.a) ? <img src={adImage(confirm.a)} alt="" style={{ width: 72, height: 54, borderRadius: 10, objectFit: 'cover' }} /> : <PlatformIcon p={confirm.a.platform} size={48} />}
             <div style={{ minWidth: 0 }}><div className="bold">{confirm.c ? `ЖК «${confirm.c.name}»` : 'ЖК не определён'}</div><div className="t-sm c2">{confirm.a.account} · оценка {confirm.s.score}</div></div>
           </div>
           <div style={{ padding: '8px 24px 4px' }}>

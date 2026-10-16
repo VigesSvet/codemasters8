@@ -7,7 +7,9 @@ import { SignalGate, SignalStatusTag, SignalTime } from '../components/SignalPan
 import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Score, StatusTag, ZoneTag, adKey, fmtDT, fmtDate, zoneName } from '../components/ui'
 import type { Appeal, EvidenceItem, ReadinessValue, Signal, SignalAd } from '../data/types'
 import { ApiError } from '../lib/api'
+import { mediaSrc } from '../lib/media'
 import { from, useFrom, type From } from '../lib/nav'
+import { externalUrl } from '../lib/platform'
 import { DEMO_ORG, isDemo } from '../lib/provenance'
 import { linkConfirmed } from '../lib/risk'
 import { useStore } from '../lib/store'
@@ -209,9 +211,12 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
 /** Публикация из снимка: платформа, аккаунт, статус, уверенность привязки, текст с подсветкой, ссылки */
 function SigAd({ a, back }: { a: SignalAd; back: From }) {
   const fact = linkConfirmed(a)
+  // снимок публикации в сигнале: обложка — через mediaSrc (серверные /api/media/… учитывают VITE_API_URL), ссылка — только http(s)
+  const img = mediaSrc(a.image)
+  const href = externalUrl(a.url)
   return (
     <div className="sig-ad">
-      <div className="ph">{a.image ? <img src={a.image} alt="" /> : <span className="noimg"><PlatformIcon p={a.platform} size={36} /></span>}</div>
+      <div className="ph">{img ? <img src={img} alt="" /> : <span className="noimg"><PlatformIcon p={a.platform} size={36} /></span>}</div>
       <div style={{ minWidth: 0 }}>
         <div className="row between" style={{ gap: 8 }}>
           <div className="row" style={{ gap: 8, minWidth: 0 }}><PlatformIcon p={a.platform} size={20} /><span className="bold">{a.account}</span><span className="t-sm c2">{fmtDT(a.date)}</span></div>
@@ -225,7 +230,7 @@ function SigAd({ a, back }: { a: SignalAd; back: From }) {
           </span>
           {a.price && <span className="tag gray">{a.price}</span>}
           <Link to={`/ads/${a.id}`} state={from(back.label, back.to)} className="tag outline" title="Открыть разбор публикации">{adKey(a.id)}</Link>
-          {a.url && <a href={a.url} target="_blank" rel="noreferrer" className="tag outline"><IcExternal size={13} />Источник</a>}
+          {href && <a href={href} target="_blank" rel="noreferrer" className="tag outline"><IcExternal size={13} />Источник</a>}
         </div>
       </div>
     </div>
