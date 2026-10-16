@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
 import MapView from '../components/MapView'
-import { Faq, Hero, HeroTile, Highlight, LinkCols, PlatformIcon, Score, SectionHead, StatusTag, fmtDT, fmtShort, platformMeta } from '../components/ui'
+import { Faq, Hero, HeroTile, Highlight, LinkCols, PlatformIcon, Score, SectionHead, StatusTag, ZoneTag, fmtDT, fmtShort, platformMeta } from '../components/ui'
 import type { AuditEvent, Platform, Zone } from '../data/types'
 import { errorText } from '../lib/api'
 import { HUMAN_KINDS, SYSTEM } from '../lib/audit'
+import { model } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcClock, IcFlag, IcHelp, IcInbox, IcTraffic } from '../ui/icons'
 
@@ -62,7 +63,7 @@ export default function Ops() {
             <MapView items={shown} onSelect={(id) => nav(`/complexes/${id}`)} controls fit />
           </div>
           <div className="pr" style={{ padding: '20px 20px 12px', maxHeight: 460, overflow: 'auto' }}>
-            <div className="row between" style={{ marginBottom: 6 }}><span className="t-h3">Рейтинг риска</span><span className="t-sm c2">{shown.length} ЖК</span></div>
+            <div className="row between" style={{ marginBottom: 6 }}><span className="t-h3">Рейтинг риска</span><span className="t-sm c2">{shown.length} ЖК · демо</span></div>
             {shown.map(({ c, r }, i) => (
               <Link key={c.id} to={`/complexes/${c.id}`} className="rrow">
                 <span className="c3 num t-sm" style={{ width: 18 }}>{i + 1}</span>
@@ -89,6 +90,23 @@ export default function Ops() {
           </div>
         </>
       )}
+
+      <SectionHead title="Демо-сценарии ТЗ §5" to="/method#cases" right={<span className="t-sm c2">вымышленные ЖК: на них показана модель риска</span>} />
+      <div className="sigmini" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+        {model.cases.map((k) => {
+          const c = complexes.find((x) => x.id === k.complexId)
+          if (!c) return null
+          const r = riskOf(c)
+          return (
+            <Link key={k.id} to={`/complexes/${c.id}?tab=risk`}>
+              <span className="row between"><span className="tag dark">Сценарий {k.id}</span><Score value={r.score} zone={r.zone} /></span>
+              <span className="bold clamp2">ЖК «{c.name}»</span>
+              <span className="t-xs c2 clamp2">{k.title}</span>
+              <span className="row" style={{ gap: 6 }}><span className="t-xs c2">ожидание:</span><ZoneTag zone={k.zone} /><span className="t-xs c2 num">{k.score}</span></span>
+            </Link>
+          )
+        })}
+      </div>
 
       {mode === 'api' && (
         <>
@@ -146,7 +164,7 @@ export default function Ops() {
           ['Что значит «Ждут решения»?', 'Публикации со статусом «Новая» или «Нужна проверка». Их разбирает аналитик в очереди: подтверждает нарушение, отклоняет или запрашивает сведения.'],
           ['Что значит «Сигналы ждут решения»?', 'Сигнальные карточки по ЖК, по которым аналитик ещё не решил: подтвердить или вернуть на доработку. Сигнал формируется из карточки ЖК и фиксирует риск и доказательства на момент создания.'],
           ['Откуда «Стройка стоит»?', <>Из фото-мониторинга: на снимках дрона или камеры нет изменений. Простой 30–89 дней — наблюдение вне балла: аналитик его видит, но балл не меняется. От 90 дней, если это подтверждают два снимка и больше с активностью «нет» или «низкая», — фактор R6 (+5 баллов); если таких снимков меньше двух, R6 помечается «Нужна проверка». R6 также ставится при просрочке срока сдачи на 180 дней и больше. Подробнее — в <Link className="link" to="/method">методике</Link>.</>],
-          ['Как часто обновляются данные?', 'Публикации — при каждом сборе и ручном вводе, снимки — после облёта, перечень ГАСК — при его обновлении в Instagram.'],
+          ['Как часто обновляются данные?', <>Публикации — при ручном вводе (автоматического сбора из соцсетей нет), открытые данные Homeportal и Казреестра — при импорте файла на странице <Link className="link" to="/sources">«Источники»</Link>. ЖК, снимки и перечень ГАСК в сводке — демонстрационные.</>],
         ]} />
 
       <LinkCols cols={[
@@ -154,7 +172,7 @@ export default function Ops() {
         [['Очередь проверки', '/queue', queue.length], ['Сигналы на решении', '/signals?status=new', waiting.length], ['Вся реклама', '/ads', ads.length], ['Добавлены вручную', '/ads', ads.filter((a) => a.source === 'manual').length]],
         [['Фото-мониторинг', '/sites', idle.length], ['Застройщики', '/developers', 7], ['Отчёт для руководства', '/reports', 1]],
       ]} />
-      <div className="row t-sm c2" style={{ gap: 6, marginTop: 24 }}><IcHelp size={16} />Данные демонстрационные. Решение о нарушении принимает сотрудник.</div>
+      <div className="row t-sm c2" style={{ gap: 6, marginTop: 24 }}><IcHelp size={16} />ЖК, застройщики и публикации сводки — демонстрационные (вымышленные). Решение о нарушении принимает сотрудник.</div>
     </>
   )
 }

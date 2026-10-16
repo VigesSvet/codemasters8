@@ -21,7 +21,13 @@ export default function Shell() {
   const nav = useNavigate()
   const [open, setOpen] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
-  useEffect(() => { setOpen(null); window.scrollTo(0, 0) }, [loc.pathname])
+  useEffect(() => { setOpen(null) }, [loc.pathname])
+  // новая страница — сверху; с якорем (/method#cases) — к нему: эффект оболочки идёт после эффектов страницы, страница уже отрисована
+  useEffect(() => {
+    const el = loc.hash && document.getElementById(decodeURIComponent(loc.hash.slice(1)))
+    if (el) el.scrollIntoView({ block: 'start' })
+    else window.scrollTo(0, 0)
+  }, [loc.pathname, loc.hash])
   // связь — по итогу последнего запроса, а не по баннеру: «Скрыть» не делает её зелёной, успешный запрос — снимает красный
   const conn: Conn = mode === 'api' && offline ? 'down' : mode
   const check = () => { setChecking(true); reconnect().finally(() => setChecking(false)) }
@@ -89,7 +95,7 @@ export default function Shell() {
         </div>
         <nav className="ytabs">
           {tab('/', 'Карта')}
-          {tab('/complexes', 'Новостройки')}
+          {tab('/complexes', 'Новостройки', loc.pathname.startsWith('/complexes') || loc.pathname.startsWith('/registry/'))}
           {tab('/ads', <>Реклама<span className="badge gray">{ads.length}</span></>, adsActive)}
           {tab('/queue', <>Очередь проверки{queue > 0 && <span className="badge">{queue}</span>}</>)}
           {tab('/signals', <>Сигналы{sigNew > 0 && <span className="badge">{sigNew}</span>}</>)}
@@ -132,7 +138,7 @@ export default function Shell() {
             <div><h6>Реклама</h6><Link to="/ads">Лента публикаций</Link><Link to="/queue">Очередь проверки</Link><Link to="/signals">Сигнальные карточки</Link><Link to="/ads/new">Добавить вручную</Link></div>
             <div><h6>Аналитика</h6><Link to="/ops">Оперативная сводка</Link><Link to="/reports">Отчёты</Link><Link to="/method">Методика скоринга</Link><Link to="/sources">Источники данных</Link></div>
             <div><h6>О сервисе</h6><Link to="/residents">Жителям</Link><a>ДЭР ВКО · ГАСК</a><a>Поддержка аналитиков</a></div>
-            <div className="copy"><span>© 2026 SAQ Qurylys — цифровой помощник ДЭР ВКО</span><span>Данные демонстрационные. Решение о нарушении принимает сотрудник.</span></div>
+            <div className="copy"><span>© 2026 SAQ Qurylys — цифровой помощник ДЭР ВКО</span><span>Демо-сценарии и организации в них вымышлены; открытые данные — с источником и временем сбора, без оценки риска. Решение о нарушении принимает сотрудник.</span></div>
           </div></footer>
         </>
       )}

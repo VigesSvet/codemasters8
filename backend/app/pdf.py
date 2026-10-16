@@ -179,12 +179,37 @@ def _pct(v: Any) -> str:
     return f"{v}%" if v not in (None, "") else "—"
 
 
+def link(url: Any) -> str:
+    """Ссылка на источник: http(s) — кликабельная в PDF, прочее — текстом."""
+    u = clean(url).strip()
+    if not u:
+        return ""
+    if not u.lower().startswith(("http://", "https://")):
+        return esc(u)
+    return f'<a href="{escape(u, {chr(34): "&quot;"})}" color="#1a56db">{esc(u)}</a>'
+
+
 def _document(d: Obj) -> str:
+    """Документ-основание с провенансом по документу (T-29): реквизит, источник, дата сверки, ссылка на источник.
+    Документ без источника и даты не проверялся — так и пишется, «нет» без источника не выдаётся за факт."""
     state = DOC_STATE.get(str(d.get("value")), d.get("value"))
     head = f"<b>{esc(d.get('label'))}</b>: {esc(state)}"
+    checked = d.get("source") or d.get("date")
     tail = _join(d.get("quote") and f"реквизит: {d['quote']}", d.get("source") and f"источник: {d['source']}",
-                 d.get("date") and f"сверено {when(d['date'])}")
+                 d.get("date") and f"сверено {when(d['date'])}",
+                 None if checked else ("не проверялся" if str(d.get("value")) in ("unknown", "None") else "источник не указан"))
+    url = link(d.get("url"))
+    tail = " · ".join(x for x in (tail, url) if x)
     return head + (f" — {tail}" if tail else "")
+
+
+DEMO_DEV = "вымышленная организация (демо)"
+DEMO_COMPLEX = "вымышленный ЖК (демо)"
+
+
+def _demo(x: Optional[Obj]) -> bool:
+    """Демо-сущность: origin 'demo'; в снимках сигналов до блока E поля нет — тогда тоже демо (других ЖК в реестре нет)."""
+    return bool(x) and x.get("origin", "demo") == "demo"
 
 
 def _item(it: Obj) -> str:
@@ -252,9 +277,10 @@ def _object(sig: Obj) -> list:
     return [
         P("Объект", "h2"),
         _kv([
-            ("Название", P(f"ЖК «{esc(c.get('name'))}»")),
+            ("Название", P(_join(f"ЖК «{c.get('name')}»", DEMO_COMPLEX if _demo(c) else None))),
             ("Адрес", P(_join(c.get("address"), c.get("district") and f"р-н {c['district']}"))),
-            ("Застройщик", P(_join(dev.get("name"), f"БИН {dev.get('bin')}") if dev else "нет данных")),
+            ("Застройщик", P(_join(dev.get("name"), f"БИН {dev.get('bin')}", DEMO_DEV if _demo(dev) else None)
+                             if dev else "нет данных")),
             ("Стадия и готовность", P("<br/>".join(ready))),
             ("Срок сдачи", P(_join(f"заявлен {when(c.get('plannedEnd'))}", c.get("start") and f"начало {when(c['start'])}"))),
             ("Основание привлечения средств", P("<br/>".join(_document(d) for d in docs) if docs else "нет данных")),

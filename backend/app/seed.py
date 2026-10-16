@@ -1,4 +1,5 @@
-"""Схема и демо-данные БД: версия схемы в таблице meta, сид из shared/seed_data.json (включая исходный журнал)."""
+"""Схема и демо-данные БД: версия схемы в таблице meta, сид из shared/seed_data.json (включая исходный журнал) и записи
+открытых источников из shared/registry_ust_kamenogorsk.json (собраны импортёром app.importer, отдельный слой без риска)."""
 import json
 import logging
 from datetime import datetime, timezone
@@ -7,7 +8,7 @@ from typing import Any, Dict, Iterator, List, Optional, Type, get_args
 from sqlalchemy import MetaData, Table, inspect, select
 from sqlalchemy.engine import Engine
 
-from . import models
+from . import importer, models, registry
 from .db import Base, SessionLocal, engine as default_engine
 from .pdf import PLATFORMS
 from .risk_model import ALMATY, SHARED
@@ -125,6 +126,8 @@ def seed(db) -> None:
     db.add_all(_row(models.Appeal, a) for a in data.get("appeals", []))
     db.flush()
     db.add_all(journal(data))
+    db.flush()
+    registry.seed(db, importer.load_registry())
     db.flush()
 
 

@@ -11,7 +11,8 @@
       "unfinished": 0,
       "site": "ertis-invest.kz",
       "instagram": "@ertis.invest",
-      "phones": []
+      "phones": [],
+      "origin": "demo"
     },
     {
       "id": "d2",
@@ -24,7 +25,8 @@
       "instagram": "@altai.build",
       "phones": [
         "+7 7232 00-00-02"
-      ]
+      ],
+      "origin": "demo"
     },
     {
       "id": "d3",
@@ -36,7 +38,8 @@
       "unfinished": 0,
       "site": "ulba-dev.kz",
       "instagram": "@ulba.dev",
-      "phones": []
+      "phones": [],
+      "origin": "demo"
     },
     {
       "id": "d4",
@@ -49,7 +52,8 @@
       "instagram": "@shygys.kurylys",
       "phones": [
         "+7 7232 00-00-04"
-      ]
+      ],
+      "origin": "demo"
     },
     {
       "id": "d5",
@@ -61,7 +65,8 @@
       "unfinished": 0,
       "site": "kvartal-vostok.kz",
       "instagram": "@kvartal.vostok",
-      "phones": []
+      "phones": [],
+      "origin": "demo"
     },
     {
       "id": "d6",
@@ -74,7 +79,8 @@
       "instagram": "@nord.capital.uka",
       "phones": [
         "+7 7232 00-00-06"
-      ]
+      ],
+      "origin": "demo"
     },
     {
       "id": "d7",
@@ -86,7 +92,8 @@
       "unfinished": 0,
       "site": "bereke-dev.kz",
       "instagram": "@bereke.dev",
-      "phones": []
+      "phones": [],
+      "origin": "demo"
     }
   ],
   "complexes": [
@@ -112,7 +119,24 @@
         "bvu": "yes",
         "bank": "АО «Банк Восток» (демо)",
         "source": "Картотека ГАСК ВКО (демо)",
-        "checkedAt": "2026-10-10"
+        "checkedAt": "2026-10-10",
+        "sources": {
+          "guarantee": {
+            "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+            "url": "https://homeportal.kz",
+            "checkedAt": "2026-10-10"
+          },
+          "mio": {
+            "source": "Реестр разрешений МИО, elicense.kz (демо)",
+            "url": "https://elicense.kz",
+            "checkedAt": "2026-10-10"
+          },
+          "bvu": {
+            "source": "Ответ банка АО «Банк Восток» (демо) на запрос ДЭР",
+            "url": null,
+            "checkedAt": "2026-10-10"
+          }
+        }
       },
       "inPublishedList": "yes",
       "cover": "/img/site-a-2026-08.jpg",
@@ -160,7 +184,8 @@
           "source": "Фото-мониторинг, облёт (демо)",
           "date": "2026-08-15"
         }
-      }
+      },
+      "origin": "demo"
     },
     {
       "id": "c2",
@@ -181,7 +206,24 @@
         "mio": "no",
         "bvu": "no",
         "source": "Картотека ГАСК ВКО (демо)",
-        "checkedAt": "2026-10-09"
+        "checkedAt": "2026-10-09",
+        "sources": {
+          "guarantee": {
+            "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+            "url": "https://homeportal.kz",
+            "checkedAt": "2026-10-09"
+          },
+          "mio": {
+            "source": "Реестр разрешений МИО, elicense.kz (демо)",
+            "url": "https://elicense.kz",
+            "checkedAt": "2026-10-09"
+          },
+          "bvu": {
+            "source": "Ответ БВУ на запрос ДЭР (демо)",
+            "url": null,
+            "checkedAt": "2026-10-09"
+          }
+        }
       },
       "inPublishedList": "no",
       "cover": "/img/site-i.jpg",
@@ -208,7 +250,8 @@
           "source": "Фото-мониторинг, облёт (демо)",
           "date": "2026-09-28"
         }
-      }
+      },
+      "origin": "demo"
     },
     {
       "id": "c3",
@@ -231,7 +274,19 @@
         "bvu": "yes",
         "bank": "АО «Шығыс Банк» (демо)",
         "source": "Картотека ГАСК ВКО (демо)",
-        "checkedAt": "2026-10-10"
+        "checkedAt": "2026-10-10",
+        "sources": {
+          "guarantee": {
+            "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+            "url": "https://homeportal.kz",
+            "checkedAt": "2026-10-10"
+          },
+          "bvu": {
+            "source": "Ответ банка АО «Шығыс Банк» (демо) на запрос ДЭР",
+            "url": null,
+            "checkedAt": "2026-10-10"
+          }
+        }
       },
       "inPublishedList": "yes",
       "cover": "/img/facade-c.jpg",
@@ -258,7 +313,8 @@
           "source": "Акт осмотра ГАСК (демо)",
           "date": "2026-09-20"
         }
-      }
+      },
+      "origin": "demo"
     },
     {
       "id": "c4",
@@ -279,7 +335,19 @@
         "mio": "no",
         "bvu": "unknown",
         "source": "Картотека ГАСК ВКО (демо)",
-        "checkedAt": "2026-10-06"
+        "checkedAt": "2026-10-06",
+        "sources": {
+          "guarantee": {
+            "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+            "url": "https://homeportal.kz",
+            "checkedAt": "2026-10-06"
+          },
+          "mio": {
+            "source": "Реестр разрешений МИО, elicense.kz (демо)",
+            "url": "https://elicense.kz",
+            "checkedAt": "2026-10-06"
+          }
+        }
       },
       "inPublishedList": "no",
       "cover": "/img/site-c.jpg",
@@ -337,7 +405,8 @@
           "source": "Фото-мониторинг, облёт (демо)",
           "date": "2026-09-09"
         }
-      }
+      },
+      "origin": "demo"
     },
     {
       "id": "c5",
@@ -360,7 +429,24 @@
         "bvu": "yes",
         "bank": "АО «Банк Восток» (демо)",
         "source": "Картотека ГАСК ВКО (демо)",
-        "checkedAt": "2025-11-05"
+        "checkedAt": "2025-11-05",
+        "sources": {
+          "guarantee": {
+            "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+            "url": "https://homeportal.kz",
+            "checkedAt": "2025-11-05"
+          },
+          "mio": {
+            "source": "Реестр разрешений МИО, elicense.kz (демо)",
+            "url": "https://elicense.kz",
+            "checkedAt": "2025-11-05"
+          },
+          "bvu": {
+            "source": "Ответ банка АО «Банк Восток» (демо) на запрос ДЭР",
+            "url": null,
+            "checkedAt": "2025-11-05"
+          }
+        }
       },
       "inPublishedList": "yes",
       "cover": "/img/facade-b.jpg",
@@ -387,7 +473,8 @@
           "source": "Акт ввода в эксплуатацию (демо)",
           "date": "2025-10-30"
         }
-      }
+      },
+      "origin": "demo"
     },
     {
       "id": "c6",
@@ -408,7 +495,14 @@
         "mio": "no",
         "bvu": "unknown",
         "source": "Реестр разрешений МИО (демо)",
-        "checkedAt": "2026-10-08"
+        "checkedAt": "2026-10-08",
+        "sources": {
+          "mio": {
+            "source": "Реестр разрешений МИО, elicense.kz (демо)",
+            "url": "https://elicense.kz",
+            "checkedAt": "2026-10-08"
+          }
+        }
       },
       "inPublishedList": "unknown",
       "cover": "/img/site-f.jpg",
@@ -435,7 +529,8 @@
           "source": "Фото-мониторинг, облёт (демо)",
           "date": "2026-06-01"
         }
-      }
+      },
+      "origin": "demo"
     },
     {
       "id": "c7",
@@ -458,7 +553,24 @@
         "bvu": "yes",
         "bank": "АО «Шығыс Банк» (демо)",
         "source": "Картотека ГАСК ВКО (демо)",
-        "checkedAt": "2026-10-10"
+        "checkedAt": "2026-10-10",
+        "sources": {
+          "guarantee": {
+            "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+            "url": "https://homeportal.kz",
+            "checkedAt": "2026-10-10"
+          },
+          "mio": {
+            "source": "Реестр разрешений МИО, elicense.kz (демо)",
+            "url": "https://elicense.kz",
+            "checkedAt": "2026-10-10"
+          },
+          "bvu": {
+            "source": "Ответ банка АО «Шығыс Банк» (демо) на запрос ДЭР",
+            "url": null,
+            "checkedAt": "2026-10-10"
+          }
+        }
       },
       "inPublishedList": "yes",
       "cover": "/img/site-d.jpg",
@@ -485,7 +597,8 @@
           "source": "Фото-мониторинг, облёт (демо)",
           "date": "2026-09-20"
         }
-      }
+      },
+      "origin": "demo"
     },
     {
       "id": "c8",
@@ -507,7 +620,24 @@
         "mioRef": "Разрешение МИО № 87",
         "bvu": "no",
         "source": "Картотека ГАСК ВКО (демо)",
-        "checkedAt": "2026-10-09"
+        "checkedAt": "2026-10-09",
+        "sources": {
+          "guarantee": {
+            "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+            "url": "https://homeportal.kz",
+            "checkedAt": "2026-10-09"
+          },
+          "mio": {
+            "source": "Реестр разрешений МИО, elicense.kz (демо)",
+            "url": "https://elicense.kz",
+            "checkedAt": "2026-10-09"
+          },
+          "bvu": {
+            "source": "Ответ БВУ на запрос ДЭР (демо)",
+            "url": null,
+            "checkedAt": "2026-10-09"
+          }
+        }
       },
       "inPublishedList": "no",
       "cover": "/img/site-h.jpg",
@@ -534,7 +664,8 @@
           "source": "Фото-мониторинг, облёт (демо)",
           "date": "2026-09-02"
         }
-      }
+      },
+      "origin": "demo"
     },
     {
       "id": "c9",
@@ -556,7 +687,24 @@
         "bvu": "yes",
         "bank": "АО «Банк Восток» (демо)",
         "source": "Картотека ГАСК ВКО (демо)",
-        "checkedAt": "2026-10-10"
+        "checkedAt": "2026-10-10",
+        "sources": {
+          "guarantee": {
+            "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+            "url": "https://homeportal.kz",
+            "checkedAt": "2026-10-10"
+          },
+          "mio": {
+            "source": "Реестр разрешений МИО, elicense.kz (демо)",
+            "url": "https://elicense.kz",
+            "checkedAt": "2026-10-10"
+          },
+          "bvu": {
+            "source": "Ответ банка АО «Банк Восток» (демо) на запрос ДЭР",
+            "url": null,
+            "checkedAt": "2026-10-10"
+          }
+        }
       },
       "inPublishedList": "yes",
       "cover": "/img/facade-a.jpg",
@@ -583,7 +731,8 @@
           "source": "Фото-мониторинг, облёт (демо)",
           "date": "2026-09-20"
         }
-      }
+      },
+      "origin": "demo"
     },
     {
       "id": "c10",
@@ -606,7 +755,24 @@
         "bvu": "yes",
         "bank": "АО «Шығыс Банк» (демо)",
         "source": "Картотека ГАСК ВКО (демо)",
-        "checkedAt": "2026-10-10"
+        "checkedAt": "2026-10-10",
+        "sources": {
+          "guarantee": {
+            "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+            "url": "https://homeportal.kz",
+            "checkedAt": "2026-10-10"
+          },
+          "mio": {
+            "source": "Реестр разрешений МИО, elicense.kz (демо)",
+            "url": "https://elicense.kz",
+            "checkedAt": "2026-10-10"
+          },
+          "bvu": {
+            "source": "Ответ банка АО «Шығыс Банк» (демо) на запрос ДЭР",
+            "url": null,
+            "checkedAt": "2026-10-10"
+          }
+        }
       },
       "inPublishedList": "yes",
       "cover": "/img/site-b.jpg",
@@ -633,7 +799,8 @@
           "source": "Фото-мониторинг, облёт (демо)",
           "date": "2026-09-20"
         }
-      }
+      },
+      "origin": "demo"
     },
     {
       "id": "c11",
@@ -654,7 +821,24 @@
         "mio": "no",
         "bvu": "no",
         "source": "Картотека ГАСК ВКО (демо)",
-        "checkedAt": "2026-10-07"
+        "checkedAt": "2026-10-07",
+        "sources": {
+          "guarantee": {
+            "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+            "url": "https://homeportal.kz",
+            "checkedAt": "2026-10-07"
+          },
+          "mio": {
+            "source": "Реестр разрешений МИО, elicense.kz (демо)",
+            "url": "https://elicense.kz",
+            "checkedAt": "2026-10-07"
+          },
+          "bvu": {
+            "source": "Ответ БВУ на запрос ДЭР (демо)",
+            "url": null,
+            "checkedAt": "2026-10-07"
+          }
+        }
       },
       "inPublishedList": "no",
       "cover": "/img/site-g.jpg",
@@ -681,7 +865,8 @@
           "source": "Фото-мониторинг, облёт (демо)",
           "date": "2026-07-01"
         }
-      }
+      },
+      "origin": "demo"
     },
     {
       "id": "c12",
@@ -703,7 +888,14 @@
         "bvu": "yes",
         "bank": "АО «Банк Восток» (демо)",
         "source": "АО «Банк Восток», ответ на запрос (демо)",
-        "checkedAt": "2026-10-03"
+        "checkedAt": "2026-10-03",
+        "sources": {
+          "bvu": {
+            "source": "Ответ банка АО «Банк Восток» (демо) на запрос ДЭР",
+            "url": null,
+            "checkedAt": "2026-10-03"
+          }
+        }
       },
       "inPublishedList": "unknown",
       "cover": "/img/site-d.jpg",
@@ -730,7 +922,8 @@
           "source": "Фото-мониторинг, облёт (демо)",
           "date": "2026-09-20"
         }
-      }
+      },
+      "origin": "demo"
     },
     {
       "id": "c13",
@@ -752,7 +945,24 @@
         "bvu": "yes",
         "bank": "АО «Банк Восток» (демо)",
         "source": "Картотека ГАСК ВКО (демо)",
-        "checkedAt": "2025-01-15"
+        "checkedAt": "2025-01-15",
+        "sources": {
+          "guarantee": {
+            "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+            "url": "https://homeportal.kz",
+            "checkedAt": "2025-01-15"
+          },
+          "mio": {
+            "source": "Реестр разрешений МИО, elicense.kz (демо)",
+            "url": "https://elicense.kz",
+            "checkedAt": "2025-01-15"
+          },
+          "bvu": {
+            "source": "Ответ банка АО «Банк Восток» (демо) на запрос ДЭР",
+            "url": null,
+            "checkedAt": "2025-01-15"
+          }
+        }
       },
       "inPublishedList": "yes",
       "cover": "/img/facade-c.jpg",
@@ -779,7 +989,8 @@
           "source": "Акт ввода в эксплуатацию (демо)",
           "date": "2024-12-20"
         }
-      }
+      },
+      "origin": "demo"
     },
     {
       "id": "c14",
@@ -798,7 +1009,8 @@
       "basis": {
         "guarantee": "unknown",
         "mio": "unknown",
-        "bvu": "unknown"
+        "bvu": "unknown",
+        "sources": {}
       },
       "inPublishedList": "unknown",
       "cover": "/img/site-i.jpg",
@@ -807,7 +1019,8 @@
       "readiness": {
         "declared": null,
         "confirmed": null
-      }
+      },
+      "origin": "demo"
     }
   ],
   "ads": [
@@ -827,7 +1040,8 @@
       "matchConfidence": 0.97,
       "price": "от 290 000 ₸/м²",
       "linkConfirmedBy": "Нестерова А.",
-      "linkConfirmedAt": "2026-10-13T19:02:00+05:00"
+      "linkConfirmedAt": "2026-10-13T19:02:00+05:00",
+      "origin": "demo"
     },
     {
       "id": "a2",
@@ -845,7 +1059,8 @@
       "matchConfidence": 0.92,
       "price": "от 310 000 ₸/м²",
       "linkConfirmedBy": "Исаев Т.",
-      "linkConfirmedAt": "2026-10-13T12:45:00+05:00"
+      "linkConfirmedAt": "2026-10-13T12:45:00+05:00",
+      "origin": "demo"
     },
     {
       "id": "a3",
@@ -862,7 +1077,8 @@
       "matchConfidence": 0.99,
       "price": "от 360 000 ₸/м²",
       "linkConfirmedBy": "Омарова Ж.",
-      "linkConfirmedAt": "2026-10-12T11:20:00+05:00"
+      "linkConfirmedAt": "2026-10-12T11:20:00+05:00",
+      "origin": "demo"
     },
     {
       "id": "a4",
@@ -878,7 +1094,8 @@
       "matchConfidence": 0.71,
       "price": "19 800 000 ₸",
       "linkConfirmedBy": null,
-      "linkConfirmedAt": null
+      "linkConfirmedAt": null,
+      "origin": "demo"
     },
     {
       "id": "a5",
@@ -895,7 +1112,8 @@
       "matchConfidence": 0.88,
       "price": "цена котлована",
       "linkConfirmedBy": "Нестерова А.",
-      "linkConfirmedAt": "2026-10-11T22:10:00+05:00"
+      "linkConfirmedAt": "2026-10-11T22:10:00+05:00",
+      "origin": "demo"
     },
     {
       "id": "a6",
@@ -914,7 +1132,8 @@
       "matchConfidence": 0.95,
       "price": "270 000 ₸/м²",
       "linkConfirmedBy": "Нестерова А.",
-      "linkConfirmedAt": "2026-10-11T16:42:00+05:00"
+      "linkConfirmedAt": "2026-10-11T16:42:00+05:00",
+      "origin": "demo"
     },
     {
       "id": "a7",
@@ -929,7 +1148,8 @@
       "matchConfidence": 0.9,
       "price": "34 500 000 ₸",
       "linkConfirmedBy": "Омарова Ж.",
-      "linkConfirmedAt": "2026-10-10T14:24:00+05:00"
+      "linkConfirmedAt": "2026-10-10T14:24:00+05:00",
+      "origin": "demo"
     },
     {
       "id": "a8",
@@ -946,7 +1166,8 @@
       "matchConfidence": 0.83,
       "price": "от 285 000 ₸/м²",
       "linkConfirmedBy": "Омарова Ж.",
-      "linkConfirmedAt": "2026-10-10T08:52:00+05:00"
+      "linkConfirmedAt": "2026-10-10T08:52:00+05:00",
+      "origin": "demo"
     },
     {
       "id": "a9",
@@ -961,7 +1182,8 @@
       "complexId": "c12",
       "matchConfidence": 0.54,
       "linkConfirmedBy": null,
-      "linkConfirmedAt": null
+      "linkConfirmedAt": null,
+      "origin": "demo"
     },
     {
       "id": "a10",
@@ -975,7 +1197,8 @@
       "complexId": "c14",
       "matchConfidence": 0.86,
       "linkConfirmedBy": "Исаев Т.",
-      "linkConfirmedAt": "2026-10-09T11:40:00+05:00"
+      "linkConfirmedAt": "2026-10-09T11:40:00+05:00",
+      "origin": "demo"
     },
     {
       "id": "a11",
@@ -991,7 +1214,8 @@
       "complexId": "c10",
       "matchConfidence": 0.96,
       "linkConfirmedBy": "Омарова Ж.",
-      "linkConfirmedAt": "2026-10-08T18:00:00+05:00"
+      "linkConfirmedAt": "2026-10-08T18:00:00+05:00",
+      "origin": "demo"
     },
     {
       "id": "a12",
@@ -1006,7 +1230,8 @@
       "matchConfidence": 0.31,
       "price": "от 5 000 000 ₸",
       "linkConfirmedBy": null,
-      "linkConfirmedAt": null
+      "linkConfirmedAt": null,
+      "origin": "demo"
     }
   ],
   "publishedList": {
@@ -1024,7 +1249,8 @@
       "status": "verified",
       "verifiedAt": "2026-09-25",
       "subject": "Коллективное обращение дольщиков: внесли первый взнос по ДДУ, договор не зарегистрирован",
-      "source": "ДЭР ВКО, вх. № ЗТ-1184 (демо)"
+      "source": "ДЭР ВКО, вх. № ЗТ-1184 (демо)",
+      "origin": "demo"
     },
     {
       "id": "ap2",
@@ -1035,7 +1261,8 @@
       "status": "verified",
       "verifiedAt": "2026-10-07",
       "subject": "Коллективное обращение: застройщик принимает взносы напрямую, без гарантии ЕО",
-      "source": "eOtinish, № ЖТ-2026-5521 (демо)"
+      "source": "eOtinish, № ЖТ-2026-5521 (демо)",
+      "origin": "demo"
     },
     {
       "id": "ap3",
@@ -1046,7 +1273,8 @@
       "status": "verified",
       "verifiedAt": "2026-10-09",
       "subject": "Коллективное обращение покупателей: оплата по переуступке ДДУ до ввода дома",
-      "source": "ГАСК ВКО, вх. № 2214 (демо)"
+      "source": "ГАСК ВКО, вх. № 2214 (демо)",
+      "origin": "demo"
     },
     {
       "id": "ap4",
@@ -1057,7 +1285,8 @@
       "status": "pending",
       "verifiedAt": null,
       "subject": "Жители сообщают о приёме брони без договора",
-      "source": "Звонок на линию ДЭР ВКО (демо)"
+      "source": "Звонок на линию ДЭР ВКО (демо)",
+      "origin": "demo"
     },
     {
       "id": "ap5",
@@ -1068,7 +1297,8 @@
       "status": "rejected",
       "verifiedAt": "2026-09-10",
       "subject": "Жалоба на ночные работы — не относится к привлечению средств",
-      "source": "eOtinish (демо)"
+      "source": "eOtinish (демо)",
+      "origin": "demo"
     }
   ],
   "analysts": [

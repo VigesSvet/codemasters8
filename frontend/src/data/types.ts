@@ -3,6 +3,10 @@ export type Tri = 'yes' | 'no' | 'unknown'
 
 export type Stage = 'котлован' | 'фундамент' | 'каркас' | 'кровля' | 'отделка' | 'введён'
 
+/** Происхождение сущности (ТЗ §4, §7): demo — вымышленный сценарий из сида, source — запись открытого источника,
+ *  analyst — добавлено аналитиком (публикация через ручной ввод) */
+export type Origin = 'demo' | 'source' | 'analyst'
+
 export interface Developer {
   id: string
   name: string
@@ -15,6 +19,7 @@ export interface Developer {
   instagram?: string
   /** Телефоны отдела продаж (демо) — признак сопоставления публикации с ЖК */
   phones?: string[]
+  origin?: Origin
 }
 
 export interface Basis {
@@ -27,9 +32,21 @@ export interface Basis {
   /** Банк второго уровня (проектное финансирование / эскроу) */
   bvu: Tri
   bank?: string
-  /** Где сверено основание и когда (без источника «нет» не превращается в R1) */
+  /** Где сверено основание и когда (без источника «нет» не превращается в R1) — общая сверка */
   source?: string
   checkedAt?: string
+  /** Провенанс по каждому документу: где сверен, ссылка, когда. Нет записи — документ не проверялся */
+  sources?: Partial<Record<BasisDoc, BasisSource>>
+}
+
+/** Документ основания привлечения средств */
+export type BasisDoc = 'guarantee' | 'mio' | 'bvu'
+
+/** Где и когда сверен документ основания */
+export interface BasisSource {
+  source: string
+  url?: string | null
+  checkedAt: string
 }
 
 /** Значение готовности с источником и датой — для R5 нужны оба */
@@ -78,6 +95,7 @@ export interface Complex {
   cover: string
   photos: SitePhoto[]
   idleDays: number
+  origin?: Origin
 }
 
 export type AppealStatus = 'verified' | 'pending' | 'rejected'
@@ -93,6 +111,7 @@ export interface Appeal {
   verifiedAt?: string | null
   subject: string
   source: string
+  origin?: Origin
 }
 
 export type Platform = 'instagram' | 'tiktok' | 'krisha' | 'olx' | 'telegram' | 'facebook' | '2gis'
@@ -127,6 +146,7 @@ export interface Ad {
   status: AdStatus
   assignee?: string
   reach?: number
+  origin?: Origin
 }
 
 export type FactorState = 'hit' | 'clear' | 'unknown'
@@ -416,4 +436,141 @@ export interface AiEval {
     linkCases: number
     falsePositives: number
   }
+}
+
+
+// ---------- Открытые данные (ТЗ §4): записи источников и объекты по ним — без риска, зон и сигналов ----------
+
+/** Код источника: карточки Homeportal, отдельный раздел Homeportal, Казреестр (CSV Ashyq Data); demo — демо-набор */
+export type SourceCode = 'homeportal' | 'homeportal_section' | 'ashyq' | 'demo'
+
+/** Способ привлечения средств дольщиков по данным источника */
+export type FundingMethod = 'guarantee' | 'mio' | 'bvu'
+
+/** Запись открытого источника: нормализованные поля строки и её провенанс. Пустое поле — источник не предоставил значение */
+export interface SourceRecord {
+  id?: number
+  /** Ключ объекта реестра, в который сгруппирована запись */
+  key?: string
+  source: SourceCode | string
+  sourceName?: string | null
+  /** Раздел источника, из которого взята запись */
+  sourceSection?: string | null
+  sourceUrl?: string | null
+  sourceRecordId?: string | null
+  /** Когда собраны данные (UTC ISO) */
+  collectedAt?: string | null
+  /** Дата загрузки у поставщика данных */
+  providerLoadedAt?: string | null
+  /** Когда запись загружена в систему (импорт), из какого файла и строки */
+  importedAt?: string | null
+  importFile?: string | null
+  row?: number | null
+  name: string
+  address?: string | null
+  developer?: string | null
+  developerBin?: string | null
+  /** Уполномоченная компания и её БИН */
+  agent?: string | null
+  agentBin?: string | null
+  stage?: string | null
+  fundingMethod?: FundingMethod | null
+  /** Способ привлечения средств — как написал источник */
+  fundingText?: string | null
+  docNumber?: string | null
+  docDate?: string | null
+  start?: string | null
+  plannedEnd?: string | null
+  actNumber?: string | null
+  actDate?: string | null
+  /** Готовность по отчёту, % */
+  readiness?: number | null
+  reportPeriod?: string | null
+  lat?: number | null
+  lng?: number | null
+  cadastral?: string | null
+  site?: string | null
+  /** Примечание источника */
+  note?: string | null
+  origin?: Origin
+}
+
+/** Объект открытых данных — записи источников, сгруппированные по нормализованному названию */
+export interface RegistryObject {
+  key: string
+  name: string
+  address?: string | null
+  developer?: string | null
+  developerBin?: string | null
+  agent?: string | null
+  fundingMethods: string[]
+  stage?: string | null
+  plannedEnd?: string | null
+  lat?: number | null
+  lng?: number | null
+  /** Сколько записей источников */
+  records: number
+  /** Коды источников */
+  sources: string[]
+  collectedAt?: string | null
+  /** sourceSection — раздел источника (только как атрибут, без оценки); coordsFarKm — координаты источника дальше 30 км от города */
+  flags: { sourceSection?: string | null; coordsFarKm?: number | null }
+  origin?: Origin
+}
+
+/** Реестр открытых данных: с координатами — на карту, без координат — отдельным списком */
+export interface RegistryList {
+  objects: RegistryObject[]
+  withoutCoords: RegistryObject[]
+}
+
+/** Карточка объекта открытых данных: сам объект и все записи источников */
+export interface RegistryCard {
+  object: RegistryObject
+  records: SourceRecord[]
+}
+
+/** Источник данных: что, сколько записей, когда собрано */
+export interface SourceInfo {
+  code: SourceCode | string
+  name: string
+  url?: string | null
+  /** Записей в БД (у demo — число вымышленных ЖК) */
+  records: number
+  /** Объектов с записями этого источника (у demo — ЖК) */
+  objects?: number
+  /** Последний сбор */
+  collectedAt?: string | null
+  providerLoadedAt?: string | null
+  note?: string | null
+  /** Только у demo */
+  counts?: { complexes: number; developers: number; ads: number; appeals: number }
+}
+
+/** Отчёт импорта файла открытых данных: дедупликация по (источник, ID в источнике) */
+export interface ImportReport {
+  file?: string | null
+  format?: 'xlsx' | 'csv'
+  /** Строк данных прочитано */
+  read: number
+  /** Новых записей */
+  created: number
+  /** Записей с изменившимися полями */
+  updated: number
+  /** Известные записи без изменений */
+  unchanged?: number
+  /** Строк пропущено: нет обязательного поля, неизвестный источник… */
+  skipped: number
+  /** Повторы (источник, ID) внутри файла */
+  duplicates?: number
+  /** Почему строки пропущены */
+  errors?: string[]
+  warnings?: string[]
+  /** После импорта: записей и объектов всего, объектов без координат */
+  records?: number
+  objects?: number
+  withoutCoords?: number
+  /** Принято строк по кодам источников */
+  sources?: Record<string, number>
+  eventId?: number
 }

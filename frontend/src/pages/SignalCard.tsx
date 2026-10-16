@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
 import { EvidenceView, FactorList, ObservationList } from '../components/Factors'
+import { Origin } from '../components/Provenance'
 import { SignalGate, SignalStatusTag, SignalTime } from '../components/SignalPanel'
 import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Score, StatusTag, ZoneTag, adKey, fmtDT, fmtDate, zoneName } from '../components/ui'
 import type { Appeal, EvidenceItem, ReadinessValue, Signal, SignalAd } from '../data/types'
 import { ApiError } from '../lib/api'
+import { DEMO_ORG, isDemo } from '../lib/provenance'
 import { linkConfirmed } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcCheck, IcDoc, IcDownload, IcExternal, IcShield } from '../ui/icons'
@@ -66,7 +68,7 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
   return (
     <>
       <PageTitle crumbs={[['Сигналы', '/signals'], [sig.code]]}
-        title={<span className="row wrap-f" style={{ gap: 14 }}>Сигнал {sig.code} · ЖК «{c.name}»<ZoneTag zone={sig.zone} /><SignalStatusTag s={sig.status} /></span>}
+        title={<span className="row wrap-f" style={{ gap: 14 }}>Сигнал {sig.code} · ЖК «{c.name}»<ZoneTag zone={sig.zone} /><SignalStatusTag s={sig.status} />{isDemo(c) && <Origin kind="demo" label="Демо-сценарий (вымышленный ЖК)" />}</span>}
         sub={<>Создан: {sig.createdBy}, <SignalTime at={sig.createdAt} />. Данные — снимок на момент создания, дальше не пересчитываются.</>} />
 
       <div className="cols-r">
@@ -78,7 +80,7 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
               <div className="kv">
                 <span>ЖК</span><span><Link className="link" to={`/complexes/${c.id}`}>ЖК «{c.name}»</Link></span>
                 <span>Адрес</span><span>{c.address}{c.district && <span className="c2"> · {c.district}</span>}</span>
-                <span>Застройщик</span><span>{dev ? <>{dev.name}<span className="c2 num"> · БИН {dev.bin}</span></> : <span className="c2">нет данных</span>}</span>
+                <span>Застройщик</span><span>{dev ? <>{dev.name}<span className="c2 num"> · БИН {dev.bin}</span>{isDemo(dev) && <span className="c2"> · {DEMO_ORG}</span>}</> : <span className="c2">нет данных</span>}</span>
                 <span>Стадия</span><span>{c.stage}, {rd?.confirmed
                   ? <>подтверждённая готовность {rd.confirmed.value}%<span className="c2"> · {origin(rd.confirmed)}</span></>
                   : <>готовность по карточке объекта {c.progress}%<span className="c2"> · без источника</span></>}

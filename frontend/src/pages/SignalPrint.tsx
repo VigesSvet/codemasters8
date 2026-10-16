@@ -4,6 +4,7 @@ import { Quote } from '../components/Factors'
 import { SignalGate, SignalStatusTag, SignalTime } from '../components/SignalPanel'
 import { platformMeta, statusMeta, zoneName } from '../components/ui'
 import type { EvidenceItem, FactorState, ObservationState, Platform, ReadinessValue, Signal, SignalAd } from '../data/types'
+import { DEMO_ORG, isDemo } from '../lib/provenance'
 import { fmtDate as day, linkConfirmed } from '../lib/risk'
 import { IcChevronLeft } from '../ui/icons'
 
@@ -21,7 +22,7 @@ const linkLabel = (a: SignalAd) => linkConfirmed(a)
 /** Доказательство одной строкой — как в PDF */
 function Item({ x }: { x: EvidenceItem }) {
   if (x.kind === 'ad') return <>{x.quote ? <Quote text={x.quote} marker={x.marker} /> : 'Публикация'} — {join(x.quote && x.quoteFrom === 'ocr' && 'из скриншота (OCR)', plat(x.source), x.label, x.date && day(x.date))}</>
-  if (x.kind === 'document') return <><b>{x.label}</b>: {DOC[String(x.value)] ?? x.value ?? '—'}{(x.quote || x.source || x.date) && <> — {join(x.quote && `реквизит: ${x.quote}`, x.source, x.date && `сверено ${day(x.date)}`)}</>}</>
+  if (x.kind === 'document') return <><b>{x.label}</b>: {DOC[String(x.value)] ?? x.value ?? '—'} — {join(x.quote && `реквизит: ${x.quote}`, x.source || x.date ? join(x.source, x.date && `сверено ${day(x.date)}`, x.url) : 'не проверялся: источника и даты сверки нет')}</>
   if (x.kind === 'appeal') return <>Обращение: {x.label} — {join(APPEAL[String(x.value)] ?? x.value, x.source, x.date && day(x.date))}</>
   if (x.kind === 'readiness') return <>{x.label}: {x.value}% — {join(x.source, x.date && day(x.date))}</>
   if (x.kind === 'photo') return <>Снимок {join(x.date && day(x.date), x.source, x.value !== undefined && `активность: ${x.value}`)}</>
@@ -66,7 +67,7 @@ function Sheet({ sig, at }: { sig: Signal; at: string }) {
           <div>
             <div className="sheet-org">SAQ Qurylys · ДЭР ВКО · Усть-Каменогорск</div>
             <h1>Сигнальная карточка {sig.code}</h1>
-            <div className="sheet-sub">ЖК «{c.name}» · {c.address}</div>
+            <div className="sheet-sub">ЖК «{c.name}» · {c.address}{isDemo(c) && ' · демо-сценарий (вымышленный ЖК)'}</div>
           </div>
           <dl className="sheet-meta">
             <dt>Сформирована</dt><dd><SignalTime at={at} numeric /></dd>
@@ -81,7 +82,7 @@ function Sheet({ sig, at }: { sig: Signal; at: string }) {
           <table className="sheet-kv"><tbody>
             <tr><th>Название</th><td>ЖК «{c.name}»</td></tr>
             <tr><th>Адрес</th><td>{join(c.address, c.district && `р-н ${c.district}`)}</td></tr>
-            <tr><th>Застройщик</th><td>{dev ? join(dev.name, `БИН ${dev.bin}`) : 'нет данных'}</td></tr>
+            <tr><th>Застройщик</th><td>{dev ? join(dev.name, `БИН ${dev.bin}`, isDemo(dev) && DEMO_ORG) : 'нет данных'}</td></tr>
             <tr><th>Стадия и готовность</th><td>
               {rd?.confirmed ? `${c.stage}, подтверждённая готовность ${sourced(rd.confirmed)}` : `${c.stage}; готовность по карточке объекта ${c.progress}%, без источника`}
               <br />Заявлено: {rd?.declared ? sourced(rd.declared) : 'нет данных'}

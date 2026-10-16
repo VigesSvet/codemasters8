@@ -1,0 +1,52 @@
+/* ───── Блок E: происхождение сведений и открытые данные ───── */
+
+/* Бейджи: факт из источника — нейтральная обводка, демо — пунктир (вымышленное), решение аналитика — зелёный tag */
+.tag.prov.src { background: #fff; box-shadow: inset 0 0 0 1px var(--line-2); color: var(--text-2); }
+.tag.prov.demo { background: #fff; border: 1px dashed rgba(0, 0, 0, 0.36); color: var(--text-2); }
+.tag.prov.on-ph { height: 28px; padding: 0 10px; border-radius: 14px; color: #000; }
+.tag.prov.demo.on-ph { border: 0; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18); }
+
+/* Вариант «у поля»: иконка и подпись мелко */
+.prov-f { display: inline-flex; align-items: flex-start; gap: 6px; font-size: 13px; line-height: 17px; color: var(--text-2); }
+.prov-f > svg { flex: none; margin-top: 1px; }
+.prov-f.ai { align-items: center; flex-wrap: wrap; }
+.prov-f b { font-weight: 500; color: var(--text); }
+.prov-f.none { color: var(--amber-ink); }
+.prov-f .tag { height: 20px; font-size: 12px; }
+.prov-a { white-space: nowrap; }
+.prov-a svg { margin-left: 3px; vertical-align: -1px; }
+.fact-i { margin-left: 5px; vertical-align: -1px; color: var(--text-3); }
+
+/* Плашка открытых данных — нейтральная, без цвета риска */
+.od-note { display: flex; gap: 10px; align-items: flex-start; padding: 14px 18px; line-height: 19px; }
+.od-note > svg { flex: none; margin-top: 1px; color: var(--text-2); }
+
+/* Баннер демо-сценария A/B/C в карточке ЖК */
+.case-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: -8px 0 20px; padding: 12px 16px; border-radius: var(--r-l); background: var(--fill); font-size: 14px; line-height: 19px; }
+.case-banner .grow { flex: 1; min-width: 240px; }
+
+/* Метки открытых данных на карте — серые, без балла */
+.gpin.src { --c: #8a8c91; }
+.gpin.src .b { height: 22px; padding: 0 7px; font-weight: 500; }
+.gpin.src .b::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #fff; }
+.gpin.src:not(:hover):not(.lbl) .b { gap: 0; }
+
+/* Реестр открытых данных: источники у карточки объекта */
+.od-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Записи источников в карточке объекта */
+.od-rec + .od-rec { margin-top: 16px; }
+.od-rec .kv { grid-template-columns: 220px 1fr; }
+.od-empty-f { margin-top: 10px; font-size: 13px; line-height: 18px; color: var(--text-3); }
+
+/* Импорт файла и отчёт */
+.imp-form { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.imp-file { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: var(--r-m); background: var(--fill); cursor: pointer; font-weight: 500; }
+.imp-file input { display: none; }
+.imp-report { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 16px; }
+.imp-report div { background: var(--bg); border-radius: var(--r-l); padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
+.imp-report b { font-family: var(--font-display); font-size: 26px; line-height: 30px; font-variant-numeric: tabular-nums; }
+.imp-report span { font-size: 13px; color: var(--text-2); }
+
+/* Якоря страниц не прячутся под липкой шапкой */
+.screen [id] { scroll-margin-top: 132px; }

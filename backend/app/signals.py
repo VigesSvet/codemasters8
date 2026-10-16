@@ -10,7 +10,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import models, schemas
+from . import models, registry, schemas
 from .db import get_db
 from .pdf import render_signal
 from .risk import ad_signals, factor_r1
@@ -110,8 +110,8 @@ def counts(db: Session) -> Dict[str, int]:
 @router.post("", response_model=schemas.SignalOut, response_model_by_alias=True, status_code=201)
 def create_signal(body: schemas.SignalCreateIn, db: Session = Depends(get_db)):
     snap = snapshot(db, body.complex_id)
-    if snap is None:
-        raise HTTPException(404, "ЖК не найден")
+    if snap is None:  # в т. ч. ключ объекта открытых данных: сигналы — только по ЖК демо-реестра (T-31)
+        raise registry.not_found(db, body.complex_id)
     existing = _open_signal(db, body.complex_id)
     if existing:
         raise _conflict(existing)

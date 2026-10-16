@@ -141,6 +141,9 @@ def test_reason_texts_complete():
         f = FACTORS[c]
         assert f["title"] and f["short"] and f["when"] and f["source"] and f["example"], c
         assert all(t.strip() for t in f["reasons"].values()), c
+        # вариант — другая формулировка существующей причины, не новая причина
+        for k, t in f.get("variants", {}).items():
+            assert t.strip() and any(k.startswith(x + "_") for x in f["reasons"]) and k not in f["reasons"], (c, k)
 
 
 def test_reasons_used_in_engine_exist():
@@ -226,6 +229,15 @@ EXPECT = {
     "r1_mio_bank_clear": (0, "green", False, {"R1": ("clear", "ok_mio")}),
     "r1_all_unknown": (0, "green", True, {"R1": ("unknown", "unknown")}),
     "r1_built_clear": (0, "green", False, BUILT_ALL),
+    "r1_absent_per_doc_hit": (35, "yellow", False, {"R1": ABSENT}),
+    "r1_absent_per_doc_no_general_hit": (35, "yellow", False, {"R1": ABSENT}),
+    "r1_absent_mixed_fallback_hit": (35, "yellow", False, {"R1": ABSENT}),
+    "r1_absent_general_only_hit": (35, "yellow", False, {"R1": ABSENT}),
+    "r1_absent_same_source_per_doc_hit": (35, "yellow", False, {"R1": ABSENT}),
+    "r1_absent_guarantee_only_sourced_unknown": (0, "green", True, {"R1": ("unknown", "absent_unsourced")}),
+    "r1_absent_own_without_date_unknown": (0, "green", True, {"R1": ("unknown", "absent_unsourced")}),
+    "r1_unknown_doc_without_source": (0, "green", True, {"R1": ("unknown", "unknown")}),
+    "r1_unknown_doc_with_general_check": (0, "green", True, {"R1": ("unknown", "unknown")}),
     "link_hypothesis_079_unknown": (0, "green", True, {"R2": UNLINKED, "R3": ADS_UNLINKED}),
     "link_high_confidence_unconfirmed_unknown": (0, "green", True, {"R2": UNLINKED, "R3": ADS_UNLINKED}),
     "link_status_confirmed_hit": (35, "yellow", False, {"R2": OFFER, "R3": ADS}),
@@ -343,8 +355,124 @@ def test_r1_evidence_documents():
     r1 = fac(run("r1_absent_sourced_hit"), "R1")
     assert [i["ref"] for i in r1["items"]] == ["guarantee", "mio", "bvu"]
     assert all(i["kind"] == "document" and i["source"] == "Картотека ГАСК (демо)" and i["date"] == "2026-10-09" for i in r1["items"])
+    assert not any("url" in i for i in r1["items"]), "у общей сверки ссылки нет"
     ok = fac(run("zone_clean_0_green"), "R1")
     assert ok["items"][0]["quote"].startswith("Гарантия ЕО №")
+
+
+# ---------- R1: провенанс по документам (basis.sources) ----------
+
+KZHK = ("Реестр гарантий КЖК, homeportal.kz (демо)", "2026-10-09", "https://homeportal.kz")
+MIO = ("Реестр разрешений МИО, elicense.kz (демо)", "2026-10-08", "https://elicense.kz")
+
+
+def _docs(r):
+    """ref документа → (источник, дата, ссылка) из доказательств R1; нет поля — None."""
+    return {i["ref"]: (i.get("source"), i.get("date"), i.get("url")) for i in fac(r, "R1")["items"]}
+
+
+def test_r1_absent_per_document_text_and_items():
+    """Свои записи документов важнее общей сверки: текст и доказательства — по документу, со ссылкой."""
+    r1 = fac(run("r1_absent_per_doc_hit"), "R1")
+    assert r1["evidence"] == ("Проверкой установлено: гарантии ЕО нет (Реестр гарантий КЖК, homeportal.kz (демо), 09.10.2026); "
+                              "разрешения МИО нет (Реестр разрешений МИО, elicense.kz (демо), 08.10.2026)")
+    assert "Картотека ГАСК" not in r1["evidence"]
+    assert _docs(run("r1_absent_per_doc_hit")) == {"guarantee": KZHK, "mio": MIO,
+                                                   "bvu": ("Ответ БВУ на запрос ДЭР (демо)", "2026-10-07", None)}
+
+
+def test_r1_absent_per_document_without_general_check():
+    r = run("r1_absent_per_doc_no_general_hit")
+    assert fac(r, "R1")["evidence"].startswith("Проверкой установлено: гарантии ЕО нет (Реестр гарантий КЖК")
+    # пустая ссылка не выводится; документ без записи и без общей сверки — без источника и даты
+    assert _docs(r) == {"guarantee": KZHK, "mio": MIO[:2] + (None,), "bvu": (None, None, None)}
+
+
+def test_r1_absent_mixed_fallback():
+    """Своя запись только у гарантии — МИО (и банк) берут общую сверку; у каждого документа свой источник в тексте."""
+    r = run("r1_absent_mixed_fallback_hit")
+    assert fac(r, "R1")["evidence"] == ("Проверкой установлено: гарантии ЕО нет (Реестр гарантий КЖК, homeportal.kz (демо), "
+                                        "09.10.2026); разрешения МИО нет (Картотека ГАСК (демо), 05.10.2026)")
+    general = ("Картотека ГАСК (демо)", "2026-10-05", None)
+    assert _docs(r) == {"guarantee": KZHK, "mio": general, "bvu": general}
+
+
+@pytest.mark.parametrize("name", ["case_b", "r1_absent_sourced_hit", "r1_absent_general_only_hit", "r1_absent_same_source_per_doc_hit"])
+def test_r1_absent_same_source_short_text(name):
+    """Один источник и одна дата (по выводу) у обоих документов — короткий текст, как у общей сверки."""
+    r1 = fac(run(name), "R1")
+    assert (r1["state"], r1["reason"]) == ("hit", "absent")
+    assert r1["evidence"] == "Проверкой установлено: гарантии ЕО нет и разрешения МИО нет (Картотека ГАСК (демо), 09.10.2026)"
+
+
+@pytest.mark.parametrize("name,missing", [
+    ("r1_absent_unsourced_unknown", "Гарантия ЕО (КЖК), Разрешение МИО"),
+    ("r1_absent_no_date_unknown", "Гарантия ЕО (КЖК), Разрешение МИО"),
+    ("r1_absent_guarantee_only_sourced_unknown", "Разрешение МИО"),
+    # своя запись МИО без даты общую дату не занимает: дата чужой сверки не подтверждает этот документ
+    ("r1_absent_own_without_date_unknown", "Разрешение МИО"),
+])
+def test_r1_absent_needs_both_documents_sourced(name, missing):
+    r = run(name)
+    r1 = fac(r, "R1")
+    assert (r1["state"], r1["reason"], r["score"]) == ("unknown", "absent_unsourced", 0)
+    assert r1["evidence"] == \
+        f"Отсутствие основания указано, но нет источника или даты сверки по документам: {missing} — нужна проверка"
+
+
+def test_r1_guarantee_only_sourced_items():
+    assert _docs(run("r1_absent_guarantee_only_sourced_unknown")) == {"guarantee": KZHK, "mio": (None, None, None),
+                                                                      "bvu": (None, None, None)}
+    assert _docs(run("r1_absent_own_without_date_unknown"))["mio"] == (MIO[0], None, MIO[2])
+
+
+@pytest.mark.parametrize("name", ["r1_unknown_doc_without_source", "r1_unknown_doc_with_general_check"])
+def test_r1_unknown_document_without_source(name):
+    """Документ «нет данных» не сверялся: в доказательствах ни источника, ни даты, ни ссылки — даже при общей сверке
+    и даже при своей записи (у банка во втором случае). Сверенный документ (гарантия) — со своим провенансом."""
+    r1 = fac(run(name), "R1")
+    assert (r1["state"], r1["reason"]) == ("unknown", "unknown")
+    unknown = [i for i in r1["items"] if i["value"] == "unknown"]
+    assert [i["ref"] for i in unknown] == ["mio", "bvu"]
+    assert all(set(i) == {"kind", "ref", "label", "value"} for i in unknown), unknown
+    assert _docs(run(name))["guarantee"] == KZHK
+
+
+def test_r1_general_check_only_for_checked_documents():
+    """Общая сверка подписывает только документы «да/нет» без своей записи: у c6 гарантия «нет данных» не получает
+    источник «Реестр разрешений МИО», у c12 гарантия и МИО — ответ банка."""
+    assert _docs(run("r1_guarantee_mio_unknown_clear"))["mio"] == (None, None, None)
+    assert _docs(run("r1_guarantee_no_mio_clear"))["mio"] == ("Реестр гарантий ЕО (демо)", "2026-10-05", None)
+    assert _docs(run_seed("c6"))["guarantee"] == (None, None, None)
+    assert _docs(run_seed("c12"))["guarantee"] == _docs(run_seed("c12"))["mio"] == (None, None, None)
+
+
+@pytest.mark.parametrize("cid", ["c2", "c4", "c11"])
+def test_seed_r1_by_document(cid):
+    """Сид: у каждого документа в состоянии «да/нет» своя запись — R1 и ссылки в доказательствах по документу."""
+    b = SEED_CX[cid]["basis"]
+    r1 = fac(run_seed(cid), "R1")
+    g, m = b["sources"]["guarantee"], b["sources"]["mio"]
+    assert r1["evidence"] == (f"Проверкой установлено: гарантии ЕО нет ({g['source']}, {fmt_date(g['checkedAt'])}); "
+                              f"разрешения МИО нет ({m['source']}, {fmt_date(m['checkedAt'])})")
+    docs = _docs(run_seed(cid))
+    for key, own in b["sources"].items():
+        assert docs[key] == (own["source"], own["checkedAt"], own["url"] or None), (cid, key)
+
+
+def test_seed_document_provenance():
+    """Сид: документ «да/нет» — своя запись, без неё общая сверка; документ «нет данных» — без источника и даты."""
+    for cid, c in SEED_CX.items():
+        b = c["basis"]
+        for key, prov in _docs(run_seed(cid)).items():  # у введённых R1 без доказательств
+            own = (b.get("sources") or {}).get(key)
+            if b.get(key) not in ("yes", "no"):
+                assert prov == (None, None, None), (cid, key)
+            elif own:
+                assert prov == (own["source"], own["checkedAt"], own["url"] or None), (cid, key)
+            else:
+                assert prov == (b.get("source"), b.get("checkedAt"), None), (cid, key)
+    assert set(_docs(run_seed("c14")).values()) == {(None, None, None)}
 
 
 @pytest.mark.parametrize("name", ["link_hypothesis_079_unknown", "link_high_confidence_unconfirmed_unknown",
@@ -760,6 +888,34 @@ def test_unknown_never_becomes_r1(g, m, k, src, chk):
     assert r["score"] == (35 if state == "hit" else 0)
 
 
+OWN = {"full": {"source": "Реестр (демо)", "url": "https://example.kz", "checkedAt": "2026-10-08"},
+       "no_date": {"source": "Реестр (демо)", "url": None, "checkedAt": None},
+       "no_source": {"source": "", "url": None, "checkedAt": "2026-10-08"},
+       "empty": {}, "null": None, "none": "—"}
+
+
+@pytest.mark.parametrize("own_g,own_m,general", list(itertools.product(OWN, OWN, [True, False])))
+def test_r1_absent_requires_provenance_of_both_documents(own_g, own_m, general):
+    """Гарантии и МИО нет: R1 ⇔ у каждого из двух документов есть источник и дата — своя запись целиком, а без неё общая сверка."""
+    f = _clean()
+    basis = {"guarantee": "no", "mio": "no", "bvu": "no", "sources": {}}
+    for key, own in (("guarantee", own_g), ("mio", own_m)):
+        if own != "none":
+            basis["sources"][key] = copy.deepcopy(OWN[own])
+    if general:
+        basis |= {"source": "Картотека ГАСК (демо)", "checkedAt": "2026-10-09"}
+    f["complex"]["basis"] = basis
+    r1 = fac(score_complex(f["complex"], f["developer"], [], [], AS_OF), "R1")
+    ok = lambda own: own == "full" or (own in ("empty", "null", "none") and general)
+    assert (r1["state"], r1["reason"]) == (("hit", "absent") if ok(own_g) and ok(own_m) else ("unknown", "absent_unsourced"))
+    if r1["state"] == "hit":
+        short = (own_g == "full") == (own_m == "full")  # оба своих одинаковых или оба по общей сверке
+        assert ("гарантии ЕО нет и разрешения МИО нет" in r1["evidence"]) == short, r1["evidence"]
+    urls = {i["ref"]: i.get("url") for i in r1["items"]}
+    assert urls == {"guarantee": OWN["full"]["url"] if own_g == "full" else None,
+                    "mio": OWN["full"]["url"] if own_m == "full" else None, "bvu": None}
+
+
 @pytest.mark.parametrize("conf", [0, 0.31, 0.5, 0.79, 0.8, 0.95, 1])
 @pytest.mark.parametrize("status", ["new", "needs_check", "in_review"])
 def test_link_hypothesis_never_becomes_r2_r3(conf, status):
@@ -789,10 +945,16 @@ def _all_results():
     yield from (("fx-ad:" + k, r, True) for k, r in g["fixtures"]["ad"].items())
 
 
-def _template(code, reason, is_ad):
+def _templates(code, reason, is_ad):
+    """Шаблоны текста причины: основной и её варианты (ключ «<причина>_<вариант>» в factors[].variants)."""
     if is_ad and reason in MODEL["ad"]["reasons"]:
-        return MODEL["ad"]["reasons"][reason]
-    return FACTORS[code]["reasons"][reason]
+        return [MODEL["ad"]["reasons"][reason]]
+    variants = FACTORS[code].get("variants", {})
+    return [FACTORS[code]["reasons"][reason], *(t for k, t in variants.items() if k.startswith(reason + "_"))]
+
+
+def _matches(tpl, text):
+    return re.fullmatch("".join(".+?" if p.startswith("{") else re.escape(p) for p in re.split(r"(\{\w+\})", tpl)), text, re.S)
 
 
 def test_formula_and_texts_hold_for_every_result():
@@ -805,9 +967,8 @@ def test_formula_and_texts_hold_for_every_result():
         assert ("R2" not in hit) or ("R3" in hit), f"{name}: предложение денег — это и реклама продажи (кейсы A/B)"
         for f in r["factors"]:
             assert (f["title"], f["points"]) == (FACTORS[f["code"]]["title"], FACTORS[f["code"]]["weight"]), name
-            tpl = _template(f["code"], f["reason"], is_ad)
-            pattern = "".join(".+?" if p.startswith("{") else re.escape(p) for p in re.split(r"(\{\w+\})", tpl))
-            assert re.fullmatch(pattern, f["evidence"], re.S), (name, f["code"], f["evidence"])
+            assert any(_matches(t, f["evidence"]) for t in _templates(f["code"], f["reason"], is_ad)), \
+                (name, f["code"], f["evidence"])
             assert "{" not in f["evidence"], (name, f["code"])
             if f["state"] == "hit":
                 assert f["items"], f"{name}: у подтверждённого {f['code']} должно быть доказательство (ТЗ §7)"
@@ -817,10 +978,12 @@ def test_formula_and_texts_hold_for_every_result():
 
 
 def test_fixtures_cover_every_branch():
-    covered, ad_covered, obs_covered, summaries = set(), set(), set(), set()
+    covered, ad_covered, obs_covered, summaries, variants = set(), set(), set(), set(), set()
     for name, r, is_ad in _all_results():
         for f in r["factors"]:
             (ad_covered if is_ad and f["reason"] in AD_REASONS else covered).add((f["code"], f["reason"]))
+            variants |= {(f["code"], k) for k, t in FACTORS[f["code"]].get("variants", {}).items()
+                         if k.startswith(f["reason"] + "_") and _matches(t, f["evidence"])}
         obs_covered |= {(o["code"], o["state"]) for o in r.get("observations", [])}
         if not is_ad:
             summaries.add(r["zone"] if r["zone"] != "yellow" else ("yellow_high" if r["score"] >= 60 else "yellow"))
@@ -828,6 +991,7 @@ def test_fixtures_cover_every_branch():
                 summaries.add("needs_check")
     assert covered == {(c, x) for c, xs in REASONS.items() for x in xs}
     assert {x for _, x in ad_covered} == AD_REASONS
+    assert variants == {(c, k) for c in CODES for k in FACTORS[c].get("variants", {})} == {("R1", "absent_same_source")}
     assert obs_covered == {(c, s) for c, ss in OBS_STATES.items() for s in ss}
     assert summaries == set(MODEL["summaries"])
 

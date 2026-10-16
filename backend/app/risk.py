@@ -121,13 +121,30 @@ def _as_date(as_of: Any) -> date:
 
 # ---------- факторы ----------
 
+def doc_source(b: Obj, key: str) -> Obj:
+    """Провенанс документа основания: своя запись basis.sources[key] целиком (чужую дату не занимает),
+    иначе — общая сверка basis.source / basis.checkedAt (ссылки у неё нет). Документ «нет данных» (не yes/no) не сверялся —
+    у него нет ни источника, ни даты, даже при общей сверке."""
+    if b.get(key, "unknown") not in ("yes", "no"):
+        return {"source": None, "checkedAt": None, "url": None}
+    own = (b.get("sources") or {}).get(key)
+    if own:
+        return {"source": own.get("source"), "checkedAt": own.get("checkedAt"), "url": own.get("url")}
+    return {"source": b.get("source"), "checkedAt": b.get("checkedAt"), "url": None}
+
+
+def _sourced(p: Obj) -> bool:
+    return bool(p["source"]) and bool(p["checkedAt"])
+
+
 def factor_r1(c: Obj) -> Obj:
     if c.get("stage") == BUILT:
         return _factor("R1", "clear", "built")
     b = c.get("basis") or {}
     g, m, k = b.get("guarantee", "unknown"), b.get("mio", "unknown"), b.get("bvu", "unknown")
-    items = [_item(kind="document", ref=d["key"], label=d["label"], value=b.get(d["key"], "unknown"),
-                   quote=b.get(d["refField"]), source=b.get("source"), date=b.get("checkedAt"))
+    src = {d["key"]: doc_source(b, d["key"]) for d in MODEL["documents"]}
+    items = [_item(kind="document", ref=d["key"], label=d["label"], value=b.get(d["key"], "unknown"), quote=b.get(d["refField"]),
+                   source=src[d["key"]]["source"], date=src[d["key"]]["checkedAt"], url=src[d["key"]]["url"])
              for d in MODEL["documents"]]
     if g == "yes":
         # «отсутствие МИО не является R1» — только когда отсутствие МИО установлено; «нет данных» так не называем
@@ -135,9 +152,17 @@ def factor_r1(c: Obj) -> Obj:
     if m == "yes" and k == "yes":
         return _factor("R1", "clear", "ok_mio", items=items)
     if g == "no" and m == "no":
-        if b.get("source") and b.get("checkedAt"):
-            return _factor("R1", "hit", "absent", {"source": b["source"], "checkedAt": fmt_date(b["checkedAt"])}, items)
-        return _factor("R1", "unknown", "absent_unsourced", items=items)
+        # отсутствие установлено, только если у каждого из двух документов есть источник и дата сверки (свои или общие)
+        pg, pm = src["guarantee"], src["mio"]
+        if _sourced(pg) and _sourced(pm):
+            v = {"guaranteeSource": pg["source"], "guaranteeCheckedAt": fmt_date(pg["checkedAt"]),
+                 "mioSource": pm["source"], "mioCheckedAt": fmt_date(pm["checkedAt"])}
+            if (v["guaranteeSource"], v["guaranteeCheckedAt"]) == (v["mioSource"], v["mioCheckedAt"]):
+                return _factor("R1", "hit", "absent", {"source": pg["source"], "checkedAt": v["mioCheckedAt"]}, items,
+                               FACTORS["R1"]["variants"]["absent_same_source"])
+            return _factor("R1", "hit", "absent", v, items)
+        missing = [d["label"] for d in MODEL["documents"] if d["key"] in ("guarantee", "mio") and not _sourced(src[d["key"]])]
+        return _factor("R1", "unknown", "absent_unsourced", {"documents": ", ".join(missing)}, items)
     if m == "yes":
         return _factor("R1", "unknown", "mio_without_bank", items=items)
     return _factor("R1", "unknown", "unknown", items=items)

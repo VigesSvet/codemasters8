@@ -3,6 +3,7 @@ import type { EvidenceItem, FactorState, Observation, ObservationState, Platform
 import { MARKERS } from '../lib/risk'
 import { IcCamera, IcClock, IcDoc, IcUsers, IcWorker } from '../ui/icons'
 import { OcrTag } from './Hypothesis'
+import { SrcLink } from './Provenance'
 import { PlatformIcon, TriTag, fmtDT, fmtDate, platformMeta } from './ui'
 
 const stateMeta: Record<FactorState, { name: string; tag: string }> = {
@@ -61,7 +62,10 @@ export function EvidenceView({ item: x, linkAds = true }: { item: EvidenceItem; 
       <div>
         <div className="row" style={{ gap: 8 }}><span className="bold">{x.label}</span>{typeof x.value === 'string' && <TriTag v={x.value as Tri} />}</div>
         {x.quote && <div className="q">{x.quote}</div>}
-        {(x.source || x.date) && <div className="meta">{meta(x.source, x.date && `сверено ${fmtDate(x.date)}`)}</div>}
+        {/* провенанс по документу (T-29): источник, дата сверки, ссылка; без них документ не проверялся */}
+        {x.source || x.date
+          ? <div className="meta">{meta(x.source ?? 'источник не указан', x.date ? `сверено ${fmtDate(x.date)}` : 'дата сверки не указана')}{x.url && <> · <SrcLink url={x.url} /></>}</div>
+          : <div className="meta" style={{ color: 'var(--amber-ink)' }}>не проверялся: источника и даты сверки нет</div>}
       </div>
     </div>
   )

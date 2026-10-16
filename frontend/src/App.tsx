@@ -12,6 +12,7 @@ import Ops from './pages/Ops'
 import Login from './pages/Login'
 import Method from './pages/Method'
 import Queue from './pages/Queue'
+import RegistryCard from './pages/RegistryCard'
 import Reports from './pages/Reports'
 import Residents from './pages/Residents'
 import SignalCard from './pages/SignalCard'
@@ -42,6 +43,7 @@ export default function App() {
               <Route path="ops" element={<Ops />} />
               <Route path="complexes" element={<Complexes />} />
               <Route path="complexes/:id" element={<ComplexCard />} />
+              <Route path="registry/:key" element={<RegistryCard />} />
               <Route path="ads" element={<Ads />} />
               <Route path="ads/new" element={<AdNew />} />
               <Route path="ads/:id" element={<AdDetail />} />

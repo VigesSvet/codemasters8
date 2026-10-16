@@ -4,12 +4,14 @@ import { AuditList } from '../components/Audit'
 import Compare from '../components/Compare'
 import { FactorList, ObservationList } from '../components/Factors'
 import MapView from '../components/MapView'
+import { DocSourceLine, Origin } from '../components/Provenance'
 import SignalPanel from '../components/SignalPanel'
-import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Seg, StatusTag, TriTag, ZoneTag, fmtDate, fmtDT } from '../components/ui'
+import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Seg, StatusTag, TriTag, ZoneTag, fmtDate, fmtDT, zoneShort } from '../components/ui'
 import { publishedListMeta } from '../data/demo'
-import type { AppealStatus, AuditEvent, ReadinessValue, RiskResult, Stage, Tri } from '../data/types'
+import type { AppealStatus, AuditEvent, BasisDoc, BasisSource, ReadinessValue, RiskResult, Stage, Tri } from '../data/types'
 import { errorText } from '../lib/api'
 import { AUDIT_GROUPS, REQUEST_TOPICS, inGroup, type AuditGroup, type RequestTopic } from '../lib/audit'
+import { DEMO_ORG, isDemo, isDemoAd } from '../lib/provenance'
 import { linkConfirmed, model } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcCalendar, IcCamera, IcCheck, IcClose, IcCrane, IcDoc, IcHeart, IcHelp, IcMap, IcMore, IcShield, IcUsers, IcWorker } from '../ui/icons'
@@ -27,6 +29,7 @@ function suggestTopics(r: RiskResult): RequestTopic[] {
 }
 const APPEAL: Record<AppealStatus, [string, string]> = { verified: ['проверено', 'red'], pending: ['на проверке', 'yellow'], rejected: ['отклонено', 'gray'] }
 const quarter = (d: string) => { const x = new Date(d); return `${['I', 'II', 'III', 'IV'][Math.floor(x.getMonth() / 3)]} кв. ${x.getFullYear()}` }
+const points = (n: number) => `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'балл' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'балла' : 'баллов'}`
 
 /** Карточка ЖК по образцу страницы новостройки на realty.yandex.ru */
 export default function ComplexCard() {
@@ -63,6 +66,16 @@ export default function ComplexCard() {
   const unknown = r.factors.filter((f) => f.state === 'unknown')
   const o1 = r.observations.find((o) => o.code === 'O1')
   const b = c.basis
+  const demoCx = isDemo(c)
+  // контрольный сценарий ТЗ §5 на этом объекте (A — c14, B — c2, C — c10)
+  const kase = model.cases.find((k) => k.complexId === c.id)
+  /** Где и когда сверен документ: своя запись; у установленного статуса без своей — общая сверка; иначе «не проверялся» */
+  const docProv = (k: BasisDoc, v: Tri) => {
+    const own = b.sources?.[k]
+    const general: BasisSource | null = !own && v !== 'unknown' && b.source ? { source: b.source, checkedAt: b.checkedAt ?? '', url: null } : null
+    return <DocSourceLine src={own ?? general} general={!!general} />
+  }
+  const listSrc: BasisSource = { source: publishedListMeta.source, checkedAt: publishedListMeta.updated, url: publishedListMeta.url ?? null }
   const rd = c.readiness ?? { declared: null, confirmed: null }
   // округление как в модели (п.п. до сотых, половина — вверх)
   const gap = rd.declared && rd.confirmed ? Math.floor(Math.abs(rd.declared.value - rd.confirmed.value) * 100 + 0.5) / 100 : null
@@ -90,7 +103,7 @@ export default function ComplexCard() {
     }, (e: unknown) => setReq((q) => q && { ...q, busy: false, err: errorText(e) }))
   }
 
-  const basis = (title: string, v: Tri, doc?: string, note?: string, tag?: string) => (
+  const basis = (title: string, v: Tri, doc?: string, note?: string, tag?: string, prov?: React.ReactNode) => (
     <div className="promo-tile">
       <div className="row between">
         <span className={`zone-pic ${v === 'yes' ? 'green' : v === 'no' ? 'red' : 'gray'}`} style={{ width: 32, height: 32 }}>{v === 'yes' ? <IcCheck size={16} /> : v === 'no' ? <IcClose size={16} /> : <IcHelp size={16} />}</span>
@@ -99,6 +112,7 @@ export default function ComplexCard() {
       <div className="h" style={{ marginTop: 6 }}>{title}</div>
       <div className="d">{doc ?? (v === 'unknown' ? 'Сведения не получены — запросить у уполномоченного органа' : 'Документ не найден')}</div>
       {note && <div className="d" style={{ marginTop: 'auto', color: 'var(--text-3)' }}>{note}</div>}
+      {prov && <div style={{ marginTop: note ? 6 : 'auto', paddingTop: 4 }}>{prov}</div>}
     </div>
   )
   const ready = (title: string, v: ReadinessValue | null) => (
@@ -111,8 +125,19 @@ export default function ComplexCard() {
 
   return (
     <>
-      <PageTitle crumbs={[['Карта', '/'], ['Новостройки', '/complexes'], [`ЖК «${c.name}»`]]} title={<span className="row" style={{ gap: 14 }}>ЖК «{c.name}» <ZoneTag zone={r.zone} /></span>}
+      <PageTitle crumbs={[['Карта', '/'], ['Новостройки', '/complexes'], [`ЖК «${c.name}»`]]}
+        title={<span className="row wrap-f" style={{ gap: 14 }}>ЖК «{c.name}» <ZoneTag zone={r.zone} />{demoCx && <Origin kind="demo" label="Демо-сценарий (вымышленный ЖК)" />}</span>}
         sub={<>{c.address}, Усть-Каменогорск · <span className="row" style={{ display: 'inline-flex', gap: 4 }}><IcMap size={14} />{c.district}</span></>} />
+      {kase && (
+        <div className="case-banner">
+          <span className="tag dark">Сценарий {kase.id}</span>
+          <span className="grow"><b>Демо-сценарий {kase.id} из ТЗ §5:</b> {kase.title} · ожидание: {zoneShort[kase.zone].toLowerCase()} зона, {points(kase.score)}</span>
+          {r.score === kase.score && r.zone === kase.zone
+            ? <span className="tag green"><IcCheck size={12} strokeWidth={3} />сейчас совпадает</span>
+            : <span className="tag yellow" title="Данные объекта изменились после демо-набора">сейчас {points(r.score)}</span>}
+          <Link to="/method#cases" className="link t-sm bold">Сценарии в методике</Link>
+        </div>
+      )}
 
       <div className="cols-r">
         <div>
@@ -146,16 +171,17 @@ export default function ComplexCard() {
             <div className="fade">
               <h2 className="t-h2" style={{ marginBottom: 16 }}>Основание привлечения средств</h2>
               <div className="promo-tiles" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
-                {basis('Гарантия ЕО (КЖК)', c.basis.guarantee, c.basis.guaranteeRef)}
-                {basis('Разрешение МИО', c.basis.mio, c.basis.mioRef, c.basis.guarantee === 'yes' && c.basis.mio === 'no' ? 'При действующей гарантии ЕО отсутствие отдельного разрешения МИО — не R1' : undefined)}
-                {basis('Банк второго уровня', c.basis.bvu, c.basis.bank)}
-                {basis('Перечень ГАСК', c.inPublishedList, c.inPublishedList === 'unknown' ? o1?.text : `Сверено: ${publishedListMeta.source} от ${fmtDate(publishedListMeta.updated)}`,
-                  o1?.state === 'flag' ? o1.text : undefined, 'вне балла · наблюдение O1')}
+                {basis('Гарантия ЕО (КЖК)', c.basis.guarantee, c.basis.guaranteeRef, undefined, undefined, docProv('guarantee', c.basis.guarantee))}
+                {basis('Разрешение МИО', c.basis.mio, c.basis.mioRef, c.basis.guarantee === 'yes' && c.basis.mio === 'no' ? 'При действующей гарантии ЕО отсутствие отдельного разрешения МИО — не R1' : undefined, undefined, docProv('mio', c.basis.mio))}
+                {basis('Банк второго уровня', c.basis.bvu, c.basis.bank, undefined, undefined, docProv('bvu', c.basis.bvu))}
+                {basis('Перечень ГАСК', c.inPublishedList, c.inPublishedList === 'unknown' ? o1?.text : c.inPublishedList === 'yes' ? 'Объект есть в перечне' : 'Объекта нет в перечне',
+                  o1?.state === 'flag' ? o1.text : undefined, 'вне балла · наблюдение O1',
+                  c.inPublishedList === 'unknown' ? <DocSourceLine src={null} none="Не сверялся с перечнем" /> : <DocSourceLine src={listSrc} />)}
               </div>
               <div className={`src-line ${b.source && b.checkedAt ? '' : 'none'}`}>
                 <IcDoc size={16} />
                 <span>{b.source
-                  ? <>Источник сверки: {b.source} · {b.checkedAt ? `сверено ${fmtDate(b.checkedAt)}` : 'дата сверки не указана'}</>
+                  ? <>Общая сверка оснований: {b.source} · {b.checkedAt ? `сверено ${fmtDate(b.checkedAt)}` : 'дата сверки не указана'}. Источник и дата по каждому документу — на плитках</>
                   : 'Источник сверки не указан — без него отсутствие основания не считается установленным'}</span>
               </div>
               <div style={{ marginTop: 8 }}><FactorList factors={fac('R1')} items={false} /></div>
@@ -224,6 +250,7 @@ export default function ComplexCard() {
                     <div className="row between">
                       <div className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={20} /><span className="bold">{a.account}</span><span className="t-sm c2">{fmtDT(a.date)}</span></div>
                       <div className="row" style={{ gap: 6 }}>
+                        {isDemoAd(a) && <Origin kind="demo" label="демо" title="Демонстрационная публикация: вымышленный текст и аккаунт" />}
                         {!linkConfirmed(a) && <span className="tag yellow" title="Гипотеза ИИ: аналитик ещё не подтвердил, что публикация про этот ЖК, — в балл не входит">привязка — гипотеза ИИ {Math.round((a.matchConfidence || 0) * 100)}%</span>}
                         <StatusTag s={a.status} />
                       </div>
@@ -273,7 +300,7 @@ export default function ComplexCard() {
           {tab === 'dev' && dev && (
             <div className="fade">
               <div className="kv" style={{ maxWidth: 560 }}>
-                {[['Наименование', dev.name], ['БИН', dev.bin], ['Руководитель', dev.director], ['Дата регистрации', fmtDate(dev.registered)], ['Объектов всего', dev.objects], ['Незавершённых', dev.unfinished], ['Сайт', dev.site ?? '—'], ['Instagram', dev.instagram ?? '—']].flatMap(([k, v]) => [<span key={`${k}k`}>{k}</span>, <span key={`${k}v`}>{v}</span>])}
+                {[['Наименование', isDemo(dev) ? <>{dev.name}<span className="c2"> · {DEMO_ORG}</span></> : dev.name], ['БИН', dev.bin], ['Руководитель', dev.director], ['Дата регистрации', fmtDate(dev.registered)], ['Объектов всего', dev.objects], ['Незавершённых', dev.unfinished], ['Сайт', dev.site ?? '—'], ['Instagram', dev.instagram ?? '—']].flatMap(([k, v]) => [<span key={`${k}k`}>{k}</span>, <span key={`${k}v`}>{v}</span>])}
               </div>
               <div style={{ marginTop: 24, maxWidth: 560 }}><ObservationList items={r.observations.filter((o) => o.code === 'O2')} /></div>
             </div>
@@ -300,7 +327,7 @@ export default function ComplexCard() {
             <div className="row" style={{ marginTop: 18, alignItems: 'flex-start', gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <a className="link" onClick={() => setTab('dev')} style={{ cursor: 'pointer' }}>Застройщик {dev?.name}</a>
-                <div className="t-xs c3" style={{ marginTop: 2 }}>{(dev?.objects ?? 0) - (dev?.unfinished ?? 0)} сдано · {dev?.unfinished} строится</div>
+                <div className="t-xs c3" style={{ marginTop: 2 }}>{(dev?.objects ?? 0) - (dev?.unfinished ?? 0)} сдано · {dev?.unfinished} строится{isDemo(dev) && ` · ${DEMO_ORG}`}</div>
               </div>
               <span className="tag dark" style={{ height: 28 }}><IcUsers size={12} />{dev?.name.replace(/ТОО «|»/g, '').split(' ')[0]}</span>
             </div>

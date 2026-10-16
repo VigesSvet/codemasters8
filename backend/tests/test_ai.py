@@ -798,7 +798,7 @@ def test_ocr_upload_limit_before_reading_body(client, monkeypatch):
         sent.append(message)
 
     scope = {"type": "http", "method": "POST", "path": "/api/ocr",
-             "headers": [(b"content-length", str(UploadLimit.LIMIT + 1).encode())]}
+             "headers": [(b"content-length", str(UploadLimit.LIMITS["/api/ocr"][0] + 1).encode())]}
     asyncio.run(UploadLimit(app_)(scope, receive, send))
     assert sent[0]["status"] == 413 and json.loads(sent[1]["body"])["detail"] == ocr_engine.TOO_BIG and not reads
 

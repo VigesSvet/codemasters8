@@ -115,6 +115,14 @@ export default function Method() {
             <div className="crumbs"><Link to="/">SAQ Qurylys</Link><span>›</span><span>Методика скоринга</span></div>
             <h1 className="t-h1">Как считается риск</h1>
             <div className="row t-body" style={{ gap: 8, marginTop: 12 }}><span style={{ color: 'var(--link)', display: 'flex' }}><IcInfo /></span>{model.disclaimer}</div>
+            <div className="row wrap-f t-sm" style={{ gap: 8, marginTop: 14 }}>
+              <span className="c2">Демо-сценарии ТЗ §5:</span>
+              {model.cases.map((k) => {
+                const c = complexes.find((x) => x.id === k.complexId)
+                return c ? <Link key={k.id} to={`/complexes/${c.id}?tab=risk`} className="chip" style={{ height: 32 }}><b>{k.id}</b>ЖК «{c.name}»<span className="n">{k.score}</span></Link> : null
+              })}
+              <a href="#cases" className="link">Подробнее</a>
+            </div>
           </div>
         </div>
         <div className="mtiles">
@@ -215,8 +223,8 @@ export default function Method() {
         ))}
       </div>
 
-      <h2 className="t-h2" style={{ margin: '48px 0 4px' }}>Контрольные сценарии ТЗ</h2>
-      <p className="c2" style={{ marginBottom: 16, maxWidth: 760 }}>Три кейса из ТЗ §5 и объекты демо-набора, на которых они воспроизводятся. Живой балл считается по текущим данным.</p>
+      <h2 className="t-h2" id="cases" style={{ margin: '48px 0 4px' }}>Контрольные сценарии ТЗ</h2>
+      <p className="c2" style={{ marginBottom: 16, maxWidth: 760 }}>Три кейса из ТЗ §5 и вымышленные ЖК демо-набора, на которых они воспроизводятся. Живой балл считается по текущим данным. Реальные объекты из открытых данных в сценариях не участвуют.</p>
       <div className="promo-tiles cases">
         {model.cases.map((k) => {
           const c = complexes.find((x) => x.id === k.complexId)
@@ -232,13 +240,16 @@ export default function Method() {
               <div className="case-live">
                 {c && r ? (
                   <>
-                    <Link to={`/complexes/${c.id}?tab=risk`} className="link t-sm" style={{ flex: 1, minWidth: 0 }}>Открыть ЖК «{c.name}»</Link>
+                    <span className="t-sm" style={{ flex: 1, minWidth: 0 }}>ЖК «{c.name}» <span className="c3">· демо</span></span>
                     <Score value={r.score} zone={r.zone} />
                     {same ? <span className="tag green"><IcCheck size={12} strokeWidth={3} />совпадает</span> : <span className="tag yellow" title="Данные объекта изменились после демо-набора">отличается</span>}
                   </>
                 ) : <span className="t-sm c3">Объекта {k.complexId} нет в данных</span>}
               </div>
-              <button className="btn o m" onClick={() => toCalc(k)}>В калькулятор</button>
+              <div className="row" style={{ gap: 8 }}>
+                {c && <Link to={`/complexes/${c.id}?tab=risk`} className="btn y m" style={{ flex: 1 }}>Открыть сценарий {k.id}</Link>}
+                <button className="btn o m" style={{ flex: c ? 'none' : 1 }} onClick={() => toCalc(k)}>В калькулятор</button>
+              </div>
             </div>
           )
         })}

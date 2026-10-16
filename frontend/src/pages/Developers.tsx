@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Cell, Faq, Hero, HeroTile, LinkCols, Modal, Score, SectionHead, Seg, ZoneTag, fmtDate } from '../components/ui'
+import { DEMO_ORG, isDemo } from '../lib/provenance'
 import { model } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcCrane, IcMegaphone, IcSearch, IcUsers, IcWarning } from '../ui/icons'
@@ -56,7 +57,7 @@ export default function Developers() {
               <span className="devlogo" style={{ background: color }}>{initials(d.name)}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="t-h3" style={{ fontSize: 18 }}>{d.name}</div>
-                <div className="t-sm c2" style={{ marginTop: 2 }}>БИН {d.bin} · с {new Date(d.registered).getFullYear()} года</div>
+                <div className="t-sm c2" style={{ marginTop: 2 }}>БИН {d.bin} · с {new Date(d.registered).getFullYear()} года{isDemo(d) && ` · ${DEMO_ORG}`}</div>
               </div>
               {max && <Score value={max.r.score} zone={max.r.zone} />}
             </div>
@@ -86,7 +87,7 @@ export default function Developers() {
           footer={<Link to={`/complexes?dev=${cur.d.id}`} className="btn y" onClick={() => setOpen(null)}>Все объекты застройщика</Link>}>
           <div className="row" style={{ gap: 14, padding: '4px 24px 12px' }}>
             <span className="devlogo" style={{ background: cur.color }}>{initials(cur.d.name)}</span>
-            <div><div className="bold">{cur.d.objects - cur.d.unfinished} сдано · {cur.d.unfinished} строится</div><div className="t-sm c2">{cur.max && <ZoneTag zone={cur.max.r.zone} />}</div></div>
+            <div><div className="bold">{cur.d.objects - cur.d.unfinished} сдано · {cur.d.unfinished} строится</div>{isDemo(cur.d) && <div className="t-xs c2">{DEMO_ORG[0].toUpperCase() + DEMO_ORG.slice(1)}</div>}<div className="t-sm c2">{cur.max && <ZoneTag zone={cur.max.r.zone} />}</div></div>
           </div>
           {[['БИН', cur.d.bin], ['Руководитель', cur.d.director], ['Регистрация', fmtDate(cur.d.registered)], ['Сайт', cur.d.site ?? '—'], ['Instagram', cur.d.instagram ?? '—']].map(([k, v]) => (
             <Cell key={k} title={<span className="c2 t-sm">{k}</span>} end={<span style={{ color: 'var(--text)' }}>{v}</span>} />

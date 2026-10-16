@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { model } from '../lib/risk'
 import { safeNext } from '../lib/session'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcCheck, IcKey } from '../ui/icons'
@@ -14,10 +15,10 @@ export default function Login() {
   const [pick, setPick] = useState<string | null>(user?.id ?? null)
   const chosen = analysts.find((a) => a.id === pick)
 
-  const enter = (who = chosen) => {
+  const enter = (who = chosen, to = next) => {
     if (!who) return
     login(who)
-    nav(next, { replace: true })
+    nav(to, { replace: true })
   }
 
   return (
@@ -51,6 +52,13 @@ export default function Login() {
           </div>
           <button type="submit" className="btn y full" style={{ marginTop: 6 }} disabled={!chosen}>{chosen ? `Войти как ${chosen.name}` : 'Выберите сотрудника'}</button>
           <button type="button" className="btn g full" disabled title="Подключим после пилота"><IcKey />Войти по ЭЦП (NCALayer) · после пилота</button>
+          <div className="row wrap-f t-sm" style={{ gap: 6, marginTop: 2 }}>
+            <span className="c2">Войти и открыть демо-сценарий ТЗ §5:</span>
+            {model.cases.map((k) => (
+              <button key={k.id} type="button" className="chip" style={{ height: 30, padding: '0 12px' }} disabled={!chosen}
+                title={chosen ? `${k.title} — вымышленный ЖК` : 'Сначала выберите сотрудника'} onClick={() => enter(chosen, `/complexes/${k.complexId}?tab=risk`)}>{k.id}</button>
+            ))}
+          </div>
           <p className="t-xs c2" style={{ lineHeight: '17px', marginTop: 4 }}>Демо-вход без пароля. В рабочей версии — ЭЦП (NCALayer) или SSO; автор каждого действия попадает в журнал.</p>
         </form>
         <div className="t-xs c3">© 2026 SAQ Qurylys · данные демонстрационные</div>

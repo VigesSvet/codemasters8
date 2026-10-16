@@ -1718,6 +1718,706 @@
       "appeals": []
     },
     {
+      "name": "r1_absent_per_doc_hit",
+      "note": "Гарантии и МИО нет, у каждого документа свой источник и дата (и они важнее общей сверки) → R1, текст по документам, url в доказательствах",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "no",
+          "mio": "no",
+          "bvu": "no",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-01",
+          "sources": {
+            "guarantee": {
+              "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+              "url": "https://homeportal.kz",
+              "checkedAt": "2026-10-09"
+            },
+            "mio": {
+              "source": "Реестр разрешений МИО, elicense.kz (демо)",
+              "url": "https://elicense.kz",
+              "checkedAt": "2026-10-08"
+            },
+            "bvu": {
+              "source": "Ответ БВУ на запрос ДЭР (демо)",
+              "url": null,
+              "checkedAt": "2026-10-07"
+            }
+          }
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [],
+      "appeals": []
+    },
+    {
+      "name": "r1_absent_per_doc_no_general_hit",
+      "note": "Гарантии и МИО нет, провенанс только по документам, общей сверки нет; пустая ссылка не выводится → R1",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "no",
+          "mio": "no",
+          "bvu": "unknown",
+          "sources": {
+            "guarantee": {
+              "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+              "url": "https://homeportal.kz",
+              "checkedAt": "2026-10-09"
+            },
+            "mio": {
+              "source": "Реестр разрешений МИО, elicense.kz (демо)",
+              "url": "",
+              "checkedAt": "2026-10-08"
+            }
+          }
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [],
+      "appeals": []
+    },
+    {
+      "name": "r1_absent_mixed_fallback_hit",
+      "note": "Своя запись есть только у гарантии, МИО берёт общую сверку → R1, у каждого документа свой источник",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "no",
+          "mio": "no",
+          "bvu": "no",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-05",
+          "sources": {
+            "guarantee": {
+              "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+              "url": "https://homeportal.kz",
+              "checkedAt": "2026-10-09"
+            }
+          }
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [],
+      "appeals": []
+    },
+    {
+      "name": "r1_absent_general_only_hit",
+      "note": "Записей по документам нет (sources пуст), есть общая сверка → R1 по общей сверке, короткий текст",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "no",
+          "mio": "no",
+          "bvu": "no",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-09",
+          "sources": {}
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [],
+      "appeals": []
+    },
+    {
+      "name": "r1_absent_same_source_per_doc_hit",
+      "note": "У обоих документов свои записи с одним источником и датой → R1, короткий текст",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "no",
+          "mio": "no",
+          "bvu": "no",
+          "sources": {
+            "guarantee": {
+              "source": "Картотека ГАСК (демо)",
+              "url": null,
+              "checkedAt": "2026-10-09"
+            },
+            "mio": {
+              "source": "Картотека ГАСК (демо)",
+              "url": null,
+              "checkedAt": "2026-10-09T15:30"
+            }
+          }
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [],
+      "appeals": []
+    },
+    {
+      "name": "r1_absent_guarantee_only_sourced_unknown",
+      "note": "Источник есть только у гарантии; у МИО нет ни своего, ни общего → отсутствие не установлено, нужна проверка",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "no",
+          "mio": "no",
+          "bvu": "no",
+          "sources": {
+            "guarantee": {
+              "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+              "url": "https://homeportal.kz",
+              "checkedAt": "2026-10-09"
+            }
+          }
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [],
+      "appeals": []
+    },
+    {
+      "name": "r1_absent_own_without_date_unknown",
+      "note": "У МИО своя запись без даты сверки — общую дату она не занимает → нужна проверка",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "no",
+          "mio": "no",
+          "bvu": "no",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-09",
+          "sources": {
+            "guarantee": {
+              "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+              "url": "https://homeportal.kz",
+              "checkedAt": "2026-10-09"
+            },
+            "mio": {
+              "source": "Реестр разрешений МИО, elicense.kz (демо)",
+              "url": "https://elicense.kz",
+              "checkedAt": null
+            }
+          }
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [],
+      "appeals": []
+    },
+    {
+      "name": "r1_unknown_doc_without_source",
+      "note": "Гарантии нет (по реестру), МИО и банк — «нет данных», общей сверки нет → не R1, у МИО и банка в доказательствах нет источника и даты",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "no",
+          "mio": "unknown",
+          "bvu": "unknown",
+          "sources": {
+            "guarantee": {
+              "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+              "url": "https://homeportal.kz",
+              "checkedAt": "2026-10-09"
+            }
+          }
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [],
+      "appeals": []
+    },
+    {
+      "name": "r1_unknown_doc_with_general_check",
+      "note": "Гарантии нет (по реестру), МИО и банк — «нет данных»; общая сверка есть, у банка даже своя запись — всё равно без источника и даты: документ не сверялся → не R1",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "no",
+          "mio": "unknown",
+          "bvu": "unknown",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-09",
+          "sources": {
+            "guarantee": {
+              "source": "Реестр гарантий КЖК, homeportal.kz (демо)",
+              "url": "https://homeportal.kz",
+              "checkedAt": "2026-10-09"
+            },
+            "bvu": {
+              "source": "Ответ БВУ на запрос ДЭР (демо)",
+              "url": null,
+              "checkedAt": "2026-10-07"
+            }
+          }
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [],
+      "appeals": []
+    },
+    {
       "name": "link_hypothesis_079_unknown",
       "note": "Привязка — гипотеза ИИ (уверенность 0.79), аналитик не подтвердил → R2/R3 нужна проверка",
       "asOf": "2026-10-15",

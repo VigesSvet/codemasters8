@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from . import ai, models, schemas, signals, world
+from . import ai, importer, models, registry, schemas, signals, world
 from .ai import evaluate, ocr as ocr_engine
 from .db import get_db
 from .risk_model import ALMATY, MODEL, T
@@ -57,31 +57,32 @@ class InternalErrors:
 
 
 class UploadLimit:
-    """POST /api/ocr: тело больше предела (файл 10 МБ + запас на разметку multipart) — 413 сразу, а не после того, как весь
-    файл придёт по сети и ляжет во временный файл (FastAPI разбирает форму до вызова обработчика, и предела на размер
-    файла у разбора нет). По Content-Length — не читая тело; без него (chunked) — по мере чтения. Точная проверка размера
-    файла — в ocr.load."""
+    """Загрузка файлов (POST /api/ocr — 10 МБ, POST /api/sources/import — 5 МБ): тело больше предела (файл + запас на
+    разметку multipart) — 413 сразу, а не после того, как весь файл придёт по сети и ляжет во временный файл (FastAPI
+    разбирает форму до вызова обработчика, и предела на размер файла у разбора нет). По Content-Length — не читая тело;
+    без него (chunked) — по мере чтения. Точная проверка размера файла — в ocr.load и importer.parse."""
 
-    PATHS = {"/api/ocr"}
-    LIMIT = ocr_engine.MAX_BYTES + 64 * 1024
+    LIMITS = {"/api/ocr": (ocr_engine.MAX_BYTES + 64 * 1024, ocr_engine.TOO_BIG),
+              "/api/sources/import": (importer.MAX_BYTES + 64 * 1024, importer.TOO_BIG)}
 
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or scope["method"] != "POST" or scope["path"] not in self.PATHS:
+        if scope["type"] != "http" or scope["method"] != "POST" or scope["path"] not in self.LIMITS:
             return await self.app(scope, receive, send)
+        limit, too_big = self.LIMITS[scope["path"]]
         length = next((v for k, v in scope["headers"] if k == b"content-length"), b"")
-        if length.isdigit() and int(length) > self.LIMIT:
-            return await JSONResponse({"detail": ocr_engine.TOO_BIG}, status_code=413)(scope, receive, send)
+        if length.isdigit() and int(length) > limit:
+            return await JSONResponse({"detail": too_big}, status_code=413)(scope, receive, send)
         got = 0
 
         async def counted():
             nonlocal got
             message = await receive()
             got += len(message.get("body", b"")) if message["type"] == "http.request" else 0
-            if got > self.LIMIT:  # FastAPI пропускает HTTPException из разбора тела как есть → 413
-                raise HTTPException(413, ocr_engine.TOO_BIG)
+            if got > limit:  # FastAPI пропускает HTTPException из разбора тела как есть → 413
+                raise HTTPException(413, too_big)
             return message
 
         await self.app(scope, counted, send)
@@ -155,9 +156,10 @@ def complexes(zone: Optional[schemas.Zone] = None, as_of: Optional[date] = AsOf,
 
 
 def _complex(db: Session, cid: str) -> models.Complex:
+    """ЖК демо-реестра; ключ объекта открытых данных — тоже 404, с объяснением (риск и сигналы для них не считаются)."""
     c = db.get(models.Complex, cid)
     if not c:
-        raise HTTPException(404, "ЖК не найден")
+        raise registry.not_found(db, cid)
     return c
 
 
@@ -188,7 +190,7 @@ def complex_one(cid: str, db: Session = Depends(get_db)):
 def complex_risk(cid: str, as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
     r = world.risk_for(db, cid, as_of)
     if r is None:
-        raise HTTPException(404, "ЖК не найден")
+        raise registry.not_found(db, cid)
     return r
 
 
@@ -236,6 +238,7 @@ def create_ad(body: schemas.AdIn, db: Session = Depends(get_db)):
     аналитик выбрал ЖК сам: привязка сразу факт."""
     data = body.model_dump()
     author = data.pop("author") or "Система"
+    data["origin"] = "analyst"  # добавлена аналитиком, не из демо-набора
     confirmed = data.pop("link_confirmed")
     data["id"] = data.get("id") or f"m{uuid.uuid4().hex[:8]}"
     if db.get(models.Ad, data["id"]):
@@ -603,3 +606,7 @@ def stats(as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
 # ---------- сигналы (модуль 05) ----------
 
 app.include_router(signals.router)
+
+# ---------- открытые данные: источники, объекты, импорт (без риска и сигналов) ----------
+
+app.include_router(registry.router)

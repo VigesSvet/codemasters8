@@ -116,3 +116,23 @@ def test_time_in_almaty():
     assert pdf.when("2026-10-09T18:22") == "09.10.2026 18:22"  # дата публикации из источника — как есть
     assert pdf.when("2026-10-09") == "09.10.2026" and pdf.when(None) == "—"
     assert pdf.line("а  б\nв " * 100, 20) == "а б в а б в а б в…" and pdf.line("ж" * 50, 10) == "ж" * 9 + "…"
+
+
+def test_demo_marks_and_document_provenance(client):
+    """Демо-ЖК и демо-застройщик подписаны как вымышленные; у документов-оснований — источник, дата и ссылка по документу,
+    непроверенный документ — «не проверялся» (T-29, T-31)."""
+    text = _story_text(client, _create(client, "c2")["id"])
+    assert "ЖК «Алтай Резиденс» · вымышленный ЖК (демо)" in text
+    assert "ТОО «Altai Build Group» · БИН 200540098761 · вымышленная организация (демо)" in text
+    assert ("Гарантия ЕО (КЖК): нет — источник: Реестр гарантий КЖК, homeportal.kz (демо) · сверено 09.10.2026 · "
+            "https://homeportal.kz") in text
+    assert "Разрешение МИО: нет — источник: Реестр разрешений МИО, elicense.kz (демо) · сверено 09.10.2026 · https://elicense.kz" in text
+    assert "Банк второго уровня: нет — источник: Ответ БВУ на запрос ДЭР (демо) · сверено 09.10.2026" in text
+    docs = pdf._document({"label": "Гарантия ЕО (КЖК)", "value": "yes", "source": "Реестр", "date": "2026-10-09",
+                          "url": 'https://example.kz/a?b=1&c="x"'})
+    assert '<a href="https://example.kz/a?b=1&amp;c=&quot;x&quot;"' in docs
+    assert pdf.link("javascript:alert(1)") == "javascript:alert(1)" and pdf.link(None) == ""  # не http(s) — без ссылки
+    assert pdf._document({"label": "Разрешение МИО", "value": "unknown"}) == "<b>Разрешение МИО</b>: нет данных — не проверялся"
+    assert pdf._document({"label": "Разрешение МИО", "value": "no"}).endswith("— источник не указан")
+    # снимок сигнала без поля origin (созданный до блока E) — тоже демо
+    assert pdf._demo({"name": "x"}) and not pdf._demo({"origin": "analyst"}) and not pdf._demo(None)

@@ -16,6 +16,11 @@ SignalStatus = Literal["new", "confirmed", "returned"]
 FactorState = Literal["hit", "clear", "unknown"]
 EvidenceKind = Literal["ad", "document", "photo", "appeal", "readiness", "deadline"]
 AuditKind = Literal["system", "data", "status", "link", "comment", "request", "signal", "export", "ai"]
+# Происхождение сведений (ТЗ §7 «Достоверность»): demo — вымышленный демо-набор, analyst — добавил аналитик,
+# source — запись открытого источника
+Origin = Literal["demo", "analyst", "source"]
+SourceCode = Literal["homeportal", "homeportal_section", "ashyq"]
+FundingMethod = Literal["guarantee", "mio", "bvu"]
 TermsReview = Literal["accepted", "rejected"]
 TermKind = Literal["booking", "deposit", "down_payment", "installment", "ddu", "direct_payment", "price", "investment"]
 ReasonFeature = Literal["name", "translit", "address", "account", "phone", "history", "district"]
@@ -71,6 +76,7 @@ class DeveloperOut(Camel):
     site: Optional[str] = None
     instagram: Optional[str] = None
     phones: List[str] = []
+    origin: Origin = "demo"
 
 
 class ComplexOut(Camel):
@@ -93,6 +99,7 @@ class ComplexOut(Camel):
     cover: str
     photos: list
     idle_days: int
+    origin: Origin = "demo"
 
 
 class AppealOut(Camel):
@@ -105,6 +112,7 @@ class AppealOut(Camel):
     verified_at: Optional[str] = None
     subject: str
     source: str
+    origin: Origin = "demo"
 
 
 class AdIn(Camel):
@@ -168,6 +176,7 @@ class AdOut(Camel):
     status: AdStatus = "new"
     assignee: Optional[str] = None
     reach: Optional[int] = None
+    origin: Origin = "demo"
 
 
 class AdComplexIn(Camel):
@@ -498,3 +507,127 @@ class AiEvalOut(Camel):
     engine: str
     cases: List[Dict[str, Any]]
     metrics: AiMetricsOut
+
+
+# ---------- открытые данные (T-26…T-31): сведения источников, без риска и сигналов ----------
+
+class SourceRecordOut(Camel):
+    """Запись открытого источника: нормализованные поля строки и провенанс. Полей риска нет (T-31)."""
+
+    id: int
+    key: str
+    origin: Literal["source"] = "source"
+    source: SourceCode
+    source_name: str
+    source_section: Optional[str] = None
+    source_url: Optional[str] = None
+    source_record_id: str
+    collected_at: IsoTime = None
+    provider_loaded_at: Optional[str] = None
+    imported_at: IsoTime = None
+    import_file: Optional[str] = None
+    row: Optional[int] = None
+    name: str
+    address: Optional[str] = None
+    developer: Optional[str] = None
+    developer_bin: Optional[str] = None
+    agent: Optional[str] = None
+    agent_bin: Optional[str] = None
+    stage: Optional[str] = None
+    funding_method: Optional[FundingMethod] = None
+    funding_text: Optional[str] = None
+    doc_number: Optional[str] = None
+    doc_date: Optional[str] = None
+    start: Optional[str] = None
+    planned_end: Optional[str] = None
+    act_number: Optional[str] = None
+    act_date: Optional[str] = None
+    readiness: Optional[float] = None
+    report_period: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    cadastral: Optional[str] = None
+    site: Optional[str] = None
+    note: Optional[str] = None
+
+
+class RegistryFlagsOut(Camel):
+    source_section: Optional[str] = None  # раздел источника — как у источника, без оценки
+    coords_far_km: Optional[int] = None  # координаты источника далеко от Усть-Каменогорска (км от центра)
+
+    @model_serializer(mode="wrap")
+    def _out(self, handler) -> Dict[str, Any]:
+        return _drop_none(handler, self)
+
+
+class RegistryObjectOut(Camel):
+    """Объект открытых данных — группа записей источников по нормализованному названию. Риска, зоны, сигналов нет."""
+
+    key: str
+    origin: Literal["source"] = "source"
+    name: str
+    address: Optional[str] = None
+    developer: Optional[str] = None
+    developer_bin: Optional[str] = None
+    agent: Optional[str] = None
+    funding_methods: List[FundingMethod] = []
+    stage: Optional[str] = None
+    planned_end: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    records: int
+    sources: List[SourceCode]
+    collected_at: Optional[str] = None
+    flags: RegistryFlagsOut = RegistryFlagsOut()
+
+
+class RegistryOut(Camel):
+    objects: List[RegistryObjectOut]
+    without_coords: List[RegistryObjectOut]
+
+
+class RegistryItemOut(Camel):
+    object: RegistryObjectOut
+    records: List[SourceRecordOut]
+
+
+class DemoCountsOut(Camel):
+    complexes: int
+    developers: int
+    ads: int
+    appeals: int
+
+
+class SourceInfoOut(Camel):
+    code: Literal["homeportal", "homeportal_section", "ashyq", "demo"]
+    name: str
+    url: Optional[str] = None
+    records: int
+    objects: int
+    collected_at: Optional[str] = None
+    provider_loaded_at: Optional[str] = None
+    note: str
+    counts: Optional[DemoCountsOut] = None
+
+    @model_serializer(mode="wrap")
+    def _out(self, handler) -> Dict[str, Any]:
+        out = handler(self)
+        return out if out.get("counts") is not None else {k: v for k, v in out.items() if k != "counts"}
+
+
+class ImportReportOut(Camel):
+    file: str
+    format: Literal["xlsx", "csv"]
+    read: int
+    created: int
+    updated: int
+    unchanged: int
+    skipped: int
+    duplicates: int
+    errors: List[str] = []
+    warnings: List[str] = []
+    records: int
+    objects: int
+    without_coords: int
+    sources: Dict[str, int] = {}
+    event_id: int

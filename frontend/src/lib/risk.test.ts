@@ -99,6 +99,29 @@ describe('контрольные кейсы и правила §5', () => {
     expect([r2.state, r2.reason, r2.items.map((i) => i.ref)]).toEqual(['clear', 'offer_rejected', ['a8']])
     expect(r2.evidence).toMatch(/^Аналитик отклонил условия оплаты в публикациях: 1 /)
   })
+  it('R1 по провенансу документов: своя запись целиком, иначе общая сверка; ссылка — только своя', () => {
+    const c2 = cxs.get('c2')!, r1 = scoreSeed(c2).factors[0]
+    expect([r1.state, r1.reason]).toEqual(['hit', 'absent'])
+    expect(r1.evidence).toBe('Проверкой установлено: гарантии ЕО нет (Реестр гарантий КЖК, homeportal.kz (демо), 09.10.2026); ' +
+      'разрешения МИО нет (Реестр разрешений МИО, elicense.kz (демо), 09.10.2026)')
+    expect(r1.items.map((i) => [i.ref, i.url])).toEqual([['guarantee', 'https://homeportal.kz'], ['mio', 'https://elicense.kz'], ['bvu', undefined]])
+    const basis = (sources: object, general = true) => ({
+      ...c2, basis: { guarantee: 'no', mio: 'no', bvu: 'no', sources, ...(general ? { source: 'Картотека ГАСК (демо)', checkedAt: '2026-10-09' } : {}) },
+    } as unknown as Complex)
+    const own = { source: 'Реестр (демо)', url: 'https://example.kz', checkedAt: '2026-10-08' }
+    // только у гарантии, у МИО ни своей записи, ни общей сверки → нужна проверка с перечнем документов
+    const only = scoreSeed(basis({ guarantee: own }, false)).factors[0]
+    expect([only.state, only.reason, only.evidence]).toEqual(['unknown', 'absent_unsourced',
+      'Отсутствие основания указано, но нет источника или даты сверки по документам: Разрешение МИО — нужна проверка'])
+    // своя запись без даты чужую дату не занимает
+    expect(scoreSeed(basis({ mio: { ...own, checkedAt: null } })).factors[0].reason).toBe('absent_unsourced')
+    // один источник и дата у обоих — короткий текст
+    expect(scoreSeed(basis({})).factors[0].evidence)
+      .toBe('Проверкой установлено: гарантии ЕО нет и разрешения МИО нет (Картотека ГАСК (демо), 09.10.2026)')
+    // документ «нет данных» не сверялся — без источника и даты, даже при общей сверке (c6: гарантия)
+    const c6 = scoreSeed(cxs.get('c6')!).factors[0].items.find((i) => i.ref === 'guarantee')!
+    expect(c6).toEqual({ kind: 'document', ref: 'guarantee', label: 'Гарантия ЕО (КЖК)', value: 'unknown' })
+  })
   it('цитата: длинное предложение обрезается вокруг маркера', () => {
     const text = 'Раз два три четыре пять шесть семь восемь девять десять одиннадцать двенадцать бронь тринадцать ' +
       'четырнадцать пятнадцать шестнадцать семнадцать восемнадцать девятнадцать двадцать двадцать один двадцать два. Второе.'

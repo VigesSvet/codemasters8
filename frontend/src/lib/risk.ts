@@ -11,6 +11,8 @@ import type {
 export interface ModelFactor {
   code: string; weight: number; short: string; title: string; when: string; source: string; example: string
   reasons: Record<string, string>
+  /** Другие формулировки той же причины: ключ «<причина>_<вариант>» (R1: absent_same_source — один источник у обоих документов) */
+  variants?: Record<string, string>
 }
 export interface ModelObservation { code: string; title: string; why: string; texts: Record<string, string> }
 export interface ModelZone { zone: Zone; name: string; range: string; rule: string; action: string }
@@ -147,19 +149,46 @@ const byDateDesc = <X extends { id: string; date?: string | null }>(xs: X[]) =>
 
 // ---------- факторы ----------
 
+/** Провенанс документа основания (source / checkedAt / url) */
+export interface DocSource { source?: string | null; checkedAt?: string | null; url?: string | null }
+
+/** Своя запись basis.sources[key] целиком (чужую дату не занимает), иначе — общая сверка basis.source / basis.checkedAt (без ссылки).
+ *  Документ «нет данных» (не yes/no) не сверялся — у него нет ни источника, ни даты, даже при общей сверке */
+export function docSource(b: Partial<Basis>, key: string): DocSource {
+  const state = get(b, key, 'unknown')
+  if (state !== 'yes' && state !== 'no') return { source: null, checkedAt: null, url: null }
+  const all = get(b, 'sources') as Record<string, DocSource | null | undefined> | null | undefined
+  const own = truthy(all) ? all![key] : undefined
+  if (truthy(own)) return { source: own!.source, checkedAt: own!.checkedAt, url: own!.url }
+  return { source: b.source, checkedAt: b.checkedAt, url: null }
+}
+
+const sourced = (p: DocSource) => truthy(p.source) && truthy(p.checkedAt)
+
 export function factorR1(c: Complex): RiskFactor {
   if (c.stage === BUILT) return factor('R1', 'clear', 'built')
   const b = (c.basis || {}) as Partial<Basis>
   const g = get(b, 'guarantee', 'unknown'), m = get(b, 'mio', 'unknown'), k = get(b, 'bvu', 'unknown')
+  const src = Object.fromEntries(model.documents.map((d) => [d.key, docSource(b, d.key)]))
   const items = model.documents.map((d) => item({
-    kind: 'document', ref: d.key, label: d.label, value: get(b, d.key, 'unknown'), quote: get(b, d.refField), source: b.source, date: b.checkedAt,
+    kind: 'document', ref: d.key, label: d.label, value: get(b, d.key, 'unknown'), quote: get(b, d.refField),
+    source: src[d.key].source, date: src[d.key].checkedAt, url: src[d.key].url,
   }))
   // «отсутствие МИО не является R1» — только когда отсутствие МИО установлено; «нет данных» так не называем
   if (g === 'yes') return factor('R1', 'clear', m === 'no' ? 'ok_guarantee_no_mio' : 'ok_guarantee', null, items)
   if (m === 'yes' && k === 'yes') return factor('R1', 'clear', 'ok_mio', null, items)
   if (g === 'no' && m === 'no') {
-    if (truthy(b.source) && truthy(b.checkedAt)) return factor('R1', 'hit', 'absent', { source: b.source, checkedAt: fmtDate(b.checkedAt) }, items)
-    return factor('R1', 'unknown', 'absent_unsourced', null, items)
+    // отсутствие установлено, только если у каждого из двух документов есть источник и дата сверки (свои или общие)
+    const pg = src.guarantee, pm = src.mio
+    if (sourced(pg) && sourced(pm)) {
+      const v = { guaranteeSource: pg.source, guaranteeCheckedAt: fmtDate(pg.checkedAt), mioSource: pm.source, mioCheckedAt: fmtDate(pm.checkedAt) }
+      if (v.guaranteeSource === v.mioSource && v.guaranteeCheckedAt === v.mioCheckedAt) {
+        return factor('R1', 'hit', 'absent', { source: pg.source, checkedAt: v.mioCheckedAt }, items, FACTORS.R1.variants!.absent_same_source)
+      }
+      return factor('R1', 'hit', 'absent', v, items)
+    }
+    const missing = model.documents.filter((d) => (d.key === 'guarantee' || d.key === 'mio') && !sourced(src[d.key])).map((d) => d.label)
+    return factor('R1', 'unknown', 'absent_unsourced', { documents: missing.join(', ') }, items)
   }
   if (m === 'yes') return factor('R1', 'unknown', 'mio_without_bank', null, items)
   return factor('R1', 'unknown', 'unknown', null, items)

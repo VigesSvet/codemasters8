@@ -1,13 +1,13 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
 
 # Меняется при любой правке таблиц: демо-база со старой схемой пересоздаётся при старте (см. seed.init_db).
-SCHEMA_VERSION = "2026.10-ai-2"
+SCHEMA_VERSION = "2026.10-sources-1"
 
 
 def utcnow() -> datetime:
@@ -54,6 +54,7 @@ class Developer(Base):
     site: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     instagram: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     phones: Mapped[list] = mapped_column(JSON, default=list)  # телефоны отдела продаж — признак для сопоставления (ИИ)
+    origin: Mapped[str] = mapped_column(String(16), default="demo")  # demo — вымышленная организация демо-набора
 
     complexes: Mapped[list["Complex"]] = relationship(back_populates="developer")
 
@@ -82,6 +83,7 @@ class Complex(Base):
     cover: Mapped[str] = mapped_column(String(255))
     photos: Mapped[list] = mapped_column(JSON, default=list)
     idle_days: Mapped[int] = mapped_column(Integer, default=0)
+    origin: Mapped[str] = mapped_column(String(16), default="demo")  # demo — вымышленный ЖК демо-набора
 
     developer: Mapped[Developer] = relationship(back_populates="complexes")
 
@@ -115,6 +117,7 @@ class Ad(Base):
     status: Mapped[str] = mapped_column(String(16), default="new", index=True)
     assignee: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     reach: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    origin: Mapped[str] = mapped_column(String(16), default="demo")  # demo — из демо-набора, analyst — добавил аналитик
 
 
 class Appeal(Base):
@@ -131,6 +134,7 @@ class Appeal(Base):
     verified_at: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     subject: Mapped[str] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(255))
+    origin: Mapped[str] = mapped_column(String(16), default="demo")
 
 
 class Signal(Base):
@@ -183,3 +187,50 @@ class AuditEvent(Base):
     who: Mapped[str] = mapped_column(String(128))
     what: Mapped[str] = mapped_column(Text)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class SourceRecord(Base):
+    """Запись открытого источника (T-26): нормализованные поля строки файла и провенанс — источник, раздел, ссылка, ID
+    в источнике, время сбора, дата загрузки у поставщика, когда и из какого файла загружена. Это сведения источника, а не
+    выводы системы: риск, зоны и сигналы для них не рассчитываются (T-31). Объект — группа записей по ключу (key)."""
+
+    __tablename__ = "source_records"
+    __table_args__ = (UniqueConstraint("source", "source_record_id", name="uq_source_records_source_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column("object_key", String(96), index=True)
+    origin: Mapped[str] = mapped_column(String(16), default="source")
+    # провенанс
+    source: Mapped[str] = mapped_column(String(32), index=True)  # homeportal | homeportal_section | ashyq
+    source_name: Mapped[str] = mapped_column(Text)  # «Источник» как в файле
+    source_section: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_record_id: Mapped[str] = mapped_column(String(64))
+    collected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    provider_loaded_at: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # время поставщика, без пояса
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    import_file: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    row: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # поля строки
+    name: Mapped[str] = mapped_column(Text)
+    address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    developer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    developer_bin: Mapped[Optional[str]] = mapped_column(String(12), nullable=True, index=True)
+    agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # уполномоченная компания
+    agent_bin: Mapped[Optional[str]] = mapped_column(String(12), nullable=True)
+    stage: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    funding_method: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # guarantee | mio | bvu
+    funding_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    doc_number: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    doc_date: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    start: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    planned_end: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    act_number: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    act_date: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    readiness: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    report_period: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    lng: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    cadastral: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    site: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

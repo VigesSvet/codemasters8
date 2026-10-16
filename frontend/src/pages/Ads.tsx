@@ -1,17 +1,19 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Origin } from '../components/Provenance'
 import { FilterPop, Highlight, PageTitle, PlatformIcon, Score, StatusTag, adKey, fmtDT, platformMeta, statusMeta } from '../components/ui'
 import type { AdStatus, Platform, Zone } from '../data/types'
+import { isDemoAd } from '../lib/provenance'
 import { linkConfirmed } from '../lib/risk'
 import { useStore } from '../lib/store'
-import { IcClose, IcPlus, IcRefresh, IcSearch } from '../ui/icons'
+import { IcClose, IcPlus, IcSearch } from '../ui/icons'
 
 const ORDER: AdStatus[] = ['new', 'needs_check', 'in_review', 'confirmed', 'dismissed']
 type Sort = 'risk' | 'date' | 'reach'
 
 /** Лента рекламы — как выдача объявлений realty.yandex.ru/…/kupit/kvartira: фильтры сверху, строки с фото */
 export default function Ads() {
-  const { ads, complexes, notify, adScoreOf } = useStore()
+  const { ads, complexes, adScoreOf } = useStore()
   const [q, setQ] = useState('')
   const [plat, setPlat] = useState<Platform[]>([])
   const [status, setStatus] = useState<AdStatus[]>([])
@@ -26,7 +28,7 @@ export default function Ads() {
     ['nocx', 'ЖК не определён', (x) => !x.c],
     ['hyp', 'Привязка — гипотеза ИИ', (x) => !!x.c && !linkConfirmed(x.a)],
     ['ocr', 'Есть текст на фото', (x) => !!x.a.ocr],
-    ['manual', 'Добавлены вручную', (x) => x.a.source === 'manual'],
+    ['manual', 'Добавлены аналитиком', (x) => !isDemoAd(x.a) && (x.a.origin === 'analyst' || x.a.source === 'manual')],
   ]
   const match = (x: R, f: { plat?: Platform[]; status?: AdStatus[]; zone?: Zone[] } = {}) => {
     const p = f.plat ?? plat, st = f.status ?? status, z = f.zone ?? zone
@@ -57,7 +59,8 @@ export default function Ads() {
 
       <PageTitle title="Реклама новостроек в Усть-Каменогорске"
         sub={<>Подсветка: <mark>продажа</mark>, <mark className="fund">предложение денег (R2)</mark>, <mark className="safe">признаки законности</mark></>}
-        actions={<><button className="btn g m" onClick={() => notify('Сбор публикаций запущен (демо)')}><IcRefresh />Запустить сбор</button><Link to="/ads/new" className="btn y m"><IcPlus />Добавить вручную</Link></>} />
+        actions={<Link to="/ads/new" className="btn y m"><IcPlus />Добавить вручную</Link>} />
+      <p className="t-sm c2 row wrap-f" style={{ gap: 8, marginTop: -12, marginBottom: 16 }}><Origin kind="demo" label="демо" />Публикации демо-набора вымышлены. Автоматического сбора из соцсетей нет — новые публикации аналитик добавляет вручную.</p>
       <div className="chips" style={{ marginTop: -8, marginBottom: 24 }}>
         {chips.map(([k, l, fn]) => <button key={k} className={`chip ${chip === k ? 'on' : ''}`} onClick={() => setChip(chip === k ? '' : k)}>{l}<span className="n">{all.filter(fn).length}</span></button>)}
       </div>
@@ -73,7 +76,7 @@ export default function Ads() {
           <Link key={a.id} to={`/ads/${a.id}`} className="offer">
             <div className="ph">
               {a.image ? <img src={a.image} alt="" /> : <div className="noimg"><PlatformIcon p={a.platform} size={48} /></div>}
-              <div className="tl"><span className="tag white">{platformMeta[a.platform].name}</span>{a.source === 'manual' && <span className="tag white">вручную</span>}</div>
+              <div className="tl"><span className="tag white">{platformMeta[a.platform].name}</span>{isDemoAd(a) ? <Origin kind="demo" label="демо" onPhoto title="Демонстрационная публикация: текст и аккаунт вымышлены" /> : <span className="tag white">добавлено аналитиком</span>}</div>
             </div>
             <div className="body">
               <div className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={20} /><span className="bold">{a.account}</span><span className="c2 t-sm">{fmtDT(a.date)}</span></div>

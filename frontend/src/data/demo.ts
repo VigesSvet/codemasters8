@@ -11,7 +11,7 @@ interface Seed {
   ads: Ad[]
   appeals: Appeal[]
   analysts: Analyst[]
-  publishedList: { source: string; updated: string; count: number }
+  publishedList: { source: string; updated: string; count: number; url?: string | null }
 }
 
 const seed = seedJson as unknown as Seed

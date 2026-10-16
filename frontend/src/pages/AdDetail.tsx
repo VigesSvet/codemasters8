@@ -3,12 +3,14 @@ import { Link, useParams } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
 import { FactorList, Quote } from '../components/Factors'
 import { AiBadge, Confidence, HypothesisItem, OcrTag, TermList } from '../components/Hypothesis'
+import { Origin } from '../components/Provenance'
 import { SignalAction } from '../components/SignalPanel'
 import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Score, StatusDot, ZoneTag, adKey, fmtDT, platformMeta, statusMeta } from '../components/ui'
 import type { Ad, AdAnalysis, AdScore, AdStatus, AuditEvent, Complex, LinkHypothesis } from '../data/types'
 import { linkConf, linkText, pct, visibleHypotheses, type LinkConf } from '../lib/ai'
 import { errorText } from '../lib/api'
-import { fmtStamp, initialsOf } from '../lib/audit'
+import { SYSTEM, fmtStamp, initialsOf } from '../lib/audit'
+import { isDemoAd } from '../lib/provenance'
 import { linkConfirmed, model } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcCheck, IcClose, IcExternal, IcSearch, IcSend, IcUsers } from '../ui/icons'
@@ -98,6 +100,10 @@ export default function AdDetail() {
   const noLog = !!mine && !mine.events
   const dm = isDecision(modal) ? modal : null
   const reason = dm ? reasons[dm] ?? '' : ''
+  // происхождение: демо-публикация сида или добавленная аналитиком (кто и когда — первое событие журнала)
+  const demoAd = isDemoAd(a)
+  const byAnalyst = !demoAd && (a.origin === 'analyst' || a.source === 'manual')
+  const added = byAnalyst ? events.find((e) => e.who !== SYSTEM) : undefined
 
   /** to — новый ЖК (null — снять привязку): выбор аналитика — привязка становится фактом с его именем */
   const link = (to: Complex | null) => {
@@ -142,7 +148,8 @@ export default function AdDetail() {
 
   return (
     <>
-      <PageTitle crumbs={[['Карта', '/'], ['Лента публикаций', '/ads'], [adKey(a.id)]]} title={c ? `Реклама ЖК «${c.name}»` : 'Реклама без привязки к ЖК'}
+      <PageTitle crumbs={[['Карта', '/'], ['Лента публикаций', '/ads'], [adKey(a.id)]]}
+        title={<span className="row wrap-f" style={{ gap: 14 }}>{c ? `Реклама ЖК «${c.name}»` : 'Реклама без привязки к ЖК'}{demoAd && <Origin kind="demo" label="Демо-публикация (вымышленная)" />}</span>}
         sub={<span className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={22} />{platformMeta[a.platform].name} · {a.account} · {fmtDT(a.date)}</span>} />
 
       <div className="cols-r">
@@ -160,7 +167,11 @@ export default function AdDetail() {
               <div className="row wrap-f" style={{ gap: 6, marginTop: 'auto' }}>
                 {a.price && <span className="tag gray">Цена: {a.price}</span>}
                 {a.reach && <span className="tag gray">Охват ~{a.reach.toLocaleString('ru')}</span>}
-                <span className="tag gray">{a.source === 'manual' ? 'Добавлено вручную' : a.source === 'parser' ? 'Сбор парсером' : 'Демо'}</span>
+                {demoAd ? <Origin kind="demo" label="Демонстрационные данные" title="Демонстрационная публикация: текст, аккаунт и ссылка вымышлены; автоматического сбора публикаций нет" />
+                  : byAnalyst ? <Origin kind="analyst" label="Добавлено аналитиком" who={added?.who ?? a.assignee} at={added?.at} />
+                    : <span className="tag gray">Источник: {a.source}</span>}
+                {c && (fact ? <Origin kind="analyst" label="Привязка — решение аналитика" who={a.linkConfirmedBy} at={a.linkConfirmedAt} />
+                  : <AiBadge label={`привязка — гипотеза ИИ ${pct(lc.now?.confidence ?? a.matchConfidence ?? 0)}`} />)}
                 <a href={a.url} target="_blank" rel="noreferrer" className="tag outline"><IcExternal size={13} />Источник</a>
               </div>
             </div>

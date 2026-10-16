@@ -26,8 +26,14 @@ export const yLat = (lat: number) => {
 const ll = (lng: number, lat: number): [number, number] => [lng, yLat(lat)]
 export const UKA_CENTER: [number, number] = [82.62, 49.937]
 
+/** Метка открытых данных: серая, без балла — риск для реальных объектов не считается */
+export interface PlainPoint { key: string; name: string; lng: number; lat: number }
+
 interface Props {
   items: { c: Complex; zone: Zone; score: number }[]
+  /** Слой «Открытые данные»: серые метки без балла */
+  points?: PlainPoint[]
+  onPoint?: (key: string) => void
   selected?: string
   onSelect?: (id: string) => void
   zoom?: number
@@ -40,10 +46,11 @@ interface Props {
   fit?: boolean
 }
 
-export default function MapView({ items, selected, onSelect, zoom = 11.6, center = UKA_CENTER, interactive = true, controls = false, labels = false, padLeft = 0, fit = false }: Props) {
+export default function MapView({ items, points, onPoint, selected, onSelect, zoom = 11.6, center = UKA_CENTER, interactive = true, controls = false, labels = false, padLeft = 0, fit = false }: Props) {
   const el = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const markers = useRef<maplibregl.Marker[]>([])
+  const plain = useRef<maplibregl.Marker[]>([])
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -77,10 +84,28 @@ export default function MapView({ items, selected, onSelect, zoom = 11.6, center
 
   useEffect(() => {
     const m = map.current
-    if (!fit || !ready || !m || !items.length) return
-    const lngs = items.map((x) => x.c.lng), lats = items.map((x) => yLat(x.c.lat))
+    if (!m) return
+    plain.current.forEach((mk) => mk.remove())
+    plain.current = (points ?? []).map((p) => {
+      const node = document.createElement('div')
+      node.className = `gpin src ${labels ? 'lbl' : ''}`
+      node.title = `${p.name} — открытые данные, риск не оценивается`
+      const b = document.createElement('span'); b.className = 'b'
+      const n = document.createElement('span'); n.className = 'n'; n.textContent = p.name
+      b.append(n)
+      node.append(b)
+      node.addEventListener('click', (e) => { e.stopPropagation(); onPoint?.(p.key) })
+      return new maplibregl.Marker({ element: node, anchor: 'bottom', offset: [0, -6] }).setLngLat(ll(p.lng, p.lat)).addTo(m)
+    })
+  }, [points, onPoint, labels, ready])
+
+  useEffect(() => {
+    const m = map.current
+    const all = [...items.map((x) => x.c), ...(points ?? [])]
+    if (!fit || !ready || !m || !all.length) return
+    const lngs = all.map((x) => x.lng), lats = all.map((x) => yLat(x.lat))
     m.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: { top: 60, bottom: 40, left: 40, right: 70 }, maxZoom: 14, duration: 400 })
-  }, [fit, ready, items])
+  }, [fit, ready, items, points])
 
   useEffect(() => {
     const c = items.find((x) => x.c.id === selected)?.c

@@ -1,8 +1,10 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import MapView from '../components/MapView'
+import MapView, { type PlainPoint } from '../components/MapView'
+import { Origin } from '../components/Provenance'
 import { Cell, Highlight, PlatformIcon, Score, StatusTag, Toggle, ZoneTag, fmtShort } from '../components/ui'
 import type { Tri, Zone } from '../data/types'
+import { isDemo, onMap, useRegistry } from '../lib/provenance'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcCamera, IcCheck, IcChevronLeft, IcChevronRight, IcClose, IcHelp, IcList, IcMegaphone, IcSearch, IcTraffic, IcUsers } from '../ui/icons'
 
@@ -10,7 +12,7 @@ type F = Zone | 'all' | 'check'
 
 /** Карта: панель как у Такси слева, метки-ценники как у Недвижимости, категории как у Карт */
 export default function Dashboard() {
-  const { complexes, ads, developers, riskOf } = useStore()
+  const { mode, complexes, ads, developers, riskOf } = useStore()
   const nav = useNavigate()
   const [q, setQ] = useState('')
   const [f, setF] = useState<F>('all')
@@ -18,6 +20,12 @@ export default function Dashboard() {
   const [labels, setLabels] = useState(false)
   const [withAds, setWithAds] = useState(false)
   const [idle, setIdle] = useState(false)
+  // слой «Открытые данные»: реальные объекты серыми метками без балла; грузится, когда слой включён
+  const [open, setOpen] = useState(false)
+  const reg = useRegistry(open)
+  const points = useMemo<PlainPoint[]>(() => (open && reg.data ? reg.data.objects : [])
+    .filter(onMap).map((o) => ({ key: o.key, name: o.name, lng: o.lng!, lat: o.lat! })), [open, reg.data])
+  const onPoint = useCallback((key: string) => nav(`/registry/${encodeURIComponent(key)}`), [nav])
 
   const scored = useMemo(() => complexes.map((c) => { const r = riskOf(c); return { c, r, zone: r.zone, score: r.score } }).sort((a, b) => b.score - a.score), [complexes, riskOf])
   const visible = useMemo(() => scored.filter((x) =>
@@ -44,7 +52,7 @@ export default function Dashboard() {
 
   return (
     <div className="mapscreen">
-      <MapView items={visible} selected={sel} onSelect={onSelect} controls labels={labels} padLeft={400} />
+      <MapView items={visible} points={points} onPoint={onPoint} selected={sel} onSelect={onSelect} controls labels={labels} padLeft={400} />
 
       <div className="left">
         {!s ? (
@@ -67,7 +75,7 @@ export default function Dashboard() {
             </div>
 
             <div className="card">
-              <div className="card-head" style={{ paddingBottom: 4 }}><h3 style={{ fontSize: 17 }}>{visible.length} объектов</h3><span className="t-xs c2">по риску</span></div>
+              <div className="card-head" style={{ paddingBottom: 4 }}><h3 style={{ fontSize: 17 }}>{visible.length} объектов</h3><span className="row t-xs c2" style={{ gap: 6 }}><Origin kind="demo" label="демо-сценарии" title="Вымышленные ЖК: на них показана модель риска. Реальные объекты — слой «Открытые данные», без балла" />по риску</span></div>
               {visible.length === 0 && <div className="empty">Ничего не найдено</div>}
               {visible.map(({ c, r }) => (
                 <Cell key={c.id} onClick={() => setSel(c.id)} inset
@@ -81,6 +89,12 @@ export default function Dashboard() {
               <Cell title="Названия на карте" end={<Toggle on={labels} onChange={setLabels} label="Названия" />} />
               <Cell title="Только с рекламой" end={<Toggle on={withAds} onChange={setWithAds} label="Только с рекламой" />} />
               <Cell title="Стройка стоит 30+ дней" end={<Toggle on={idle} onChange={setIdle} label="Простой" />} />
+              <Cell title="Открытые данные" end={<Toggle on={open} onChange={setOpen} label="Открытые данные" />}
+                sub={!open ? 'Реальные объекты — серые метки без балла'
+                  : reg.err && !reg.data ? `Не загрузились: ${reg.err}`
+                      : reg.data ? `${points.length} на карте, ${(reg.total ?? 0) - points.length} без координат · без балла${mode === 'demo' ? ' · встроенная копия' : ''}`
+                        : 'Загружаем…'} />
+              {open && reg.data && <Cell inset title={<span className="link t-sm">Список открытых данных</span>} chevron to="/complexes?layer=open" />}
             </div>
           </div>
         ) : (
@@ -98,7 +112,7 @@ export default function Dashboard() {
                   <Score value={s.score} zone={s.zone} />
                 </div>
                 <div className="t-sm c2" style={{ marginTop: 4 }}>{s.c.address} · {s.c.district}</div>
-                <div style={{ marginTop: 10 }}><ZoneTag zone={s.zone} /></div>
+                <div className="row wrap-f" style={{ marginTop: 10, gap: 6 }}><ZoneTag zone={s.zone} />{isDemo(s.c) && <Origin kind="demo" label="Демо-сценарий (вымышленный ЖК)" />}</div>
                 <p className="t-sm" style={{ marginTop: 10, lineHeight: '19px' }}>{s.r.summary}</p>
               </div>
             </div>

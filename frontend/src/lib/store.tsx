@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { adKey } from '../components/ui'
 import * as demo from '../data/demo'
+import { offlineObject, offlineRegistry, offlineSources } from '../data/openData'
 import type {
-  Ad, AdAnalysis, AdScore, AdStatus, AiEval, Analysis, AnalyzeInput, Analyst, Appeal, AuditEvent, Complex, Developer, OcrResult, OcrStatus,
-  RiskResult, Signal, SignalSummary, TermsReview,
+  Ad, AdAnalysis, AdScore, AdStatus, AiEval, Analysis, AnalyzeInput, Analyst, Appeal, AuditEvent, Complex, Developer, ImportReport, OcrResult,
+  OcrStatus, RegistryCard, RegistryList, RiskResult, Signal, SignalSummary, SourceInfo, TermsReview,
 } from '../data/types'
 import { decisionPatch } from './ai'
 import { API, ApiError, apiGet, apiPatch, apiPost, apiUpload, onReach } from './api'
@@ -90,6 +91,17 @@ interface Store {
   getSignal: (id: number) => Promise<Signal>
   decideSignal: (id: number, action: 'confirm' | 'return', comment: string) => Promise<Signal>
   signalPdfUrl: (id: number) => string
+  // открытые данные (ТЗ §4) — записи источников на сервере; риск, зоны и сигналы для них не считаются.
+  // В demo — встроенная копия shared/registry_ust_kamenogorsk.json (те же объекты, что API после сида); импорт — только с бэкендом
+  /** Источники: что, сколько записей, когда собрано; последним — демо-набор */
+  sources: () => Promise<SourceInfo[]>
+  /** Объекты открытых данных: с координатами и без; q — поиск по названию, адресу, застройщику, БИН */
+  registry: (q?: string) => Promise<RegistryList>
+  /** Объект открытых данных и все его записи источников (404 — нет такого ключа, страница покажет сама) */
+  registryObject: (key: string) => Promise<RegistryCard>
+  /** Импорт xlsx/csv: новые записи — вставка, известные (источник, ID) — обновление; событие в журнале.
+   *  413/415/422 — ошибка файла, её показывает форма */
+  importSource: (file: File) => Promise<ImportReport>
   toast: string | null
   notify: (title: string) => void
 }
@@ -100,6 +112,12 @@ const NO_SIGNALS = 'Сигналы сохраняются на сервере �
 const NO_AUDIT = 'Журнал хранится на сервере — в демо-режиме без бэкенда он недоступен (запустите ./dev.sh)'
 const NO_USER = 'Войдите, чтобы действовать от своего имени'
 const NO_AI = 'Анализ ИИ и OCR выполняются на сервере — в демо-режиме без бэкенда они недоступны (запустите ./dev.sh)'
+/** Демо-набор как источник — для страницы источников без бэкенда */
+const DEMO_SOURCE: SourceInfo = {
+  code: 'demo', name: 'Демонстрационный набор (вымышленные ЖК)', records: demo.complexes.length, objects: demo.complexes.length,
+  note: 'ЖК, застройщики, публикации и обращения вымышлены',
+  counts: { complexes: demo.complexes.length, developers: demo.developers.length, ads: demo.ads.length, appeals: demo.appeals.length },
+}
 /** Ошибки файла скриншота: формат, размер, битое изображение — их показывает форма */
 const FILE_ERRORS = new Set([413, 415, 422])
 
@@ -477,6 +495,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       // автор выгрузки попадает в журнал сигнала
       signalPdfUrl: (id) => `${API}/signals/${id}/pdf?author=${enc(user?.name ?? '')}`,
+      sources: async () => guarded('Список источников не загрузился', async () =>
+        (live ? apiGet<SourceInfo[]>('/sources') : offlineSources().then((xs) => [...xs, DEMO_SOURCE]))),
+      registry: async (q) => {
+        const query = q?.trim()
+        return guarded('Открытые данные не загрузились', () =>
+          (live ? apiGet<RegistryList>(`/registry${query ? `?q=${enc(query)}` : ''}`) : offlineRegistry(query)))
+      },
+      registryObject: async (key) => guarded('Объект открытых данных не загрузился', async () => {
+        if (live) return apiGet<RegistryCard>(`/registry/${enc(key)}`)
+        const got = await offlineObject(key)
+        if (!got) throw new ApiError(404, 'Объект открытых данных не найден')
+        return got
+      }, (e) => e.status === 404),
+      importSource: async (file) => {
+        if (!live) throw new ApiError(0, 'Импорт выполняется на сервере — в демо-режиме без бэкенда он недоступен (запустите ./dev.sh)')
+        const form = new FormData()
+        form.append('file', file)
+        form.append('author', author())
+        // импорт пишет событие в журнал и меняет реестр — страницы перечитают свои загрузки
+        return saved(guarded('Файл не импортирован', () => apiUpload<ImportReport>('/sources/import', form), (e) => FILE_ERRORS.has(e.status)))
+      },
     }
   }, [mode, apiError, offline, lastSync, revision, ads, complexes, complexById, developers, appeals, analysts, user, signedOut, signals, sessionLog, toast, riskOf, adScoreOf]) // eslint-disable-line react-hooks/exhaustive-deps
 
