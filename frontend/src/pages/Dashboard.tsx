@@ -1,10 +1,14 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { LinkMark } from '../components/Hypothesis'
 import MapView, { type PlainPoint } from '../components/MapView'
 import { Origin } from '../components/Provenance'
-import { Cell, Highlight, PlatformIcon, Score, StatusTag, Toggle, ZoneTag, fmtShort } from '../components/ui'
+import { Cell, Highlight, PlatformIcon, Score, StatusTag, Toggle, ZoneTag, fmtShort, plural } from '../components/ui'
 import type { Tri, Zone } from '../data/types'
+import { findComplex } from '../lib/find'
+import { from } from '../lib/nav'
 import { isDemo, onMap, useRegistry } from '../lib/provenance'
+import { linkConfirmed } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcCamera, IcCheck, IcChevronLeft, IcChevronRight, IcClose, IcHelp, IcList, IcMegaphone, IcSearch, IcTraffic, IcUsers } from '../ui/icons'
 
@@ -16,7 +20,10 @@ export default function Dashboard() {
   const nav = useNavigate()
   const [q, setQ] = useState('')
   const [f, setF] = useState<F>('all')
-  const [sel, setSel] = useState<string | undefined>()
+  // выбранный ЖК — в адресе (?sel=, без новой записи истории): «← Карта» и «назад» из карточки ЖК или публикации возвращают с выбором
+  const [sp, setSp] = useSearchParams()
+  const sel = sp.get('sel') ?? undefined
+  const setSel = useCallback((id?: string) => setSp((p) => { const n = new URLSearchParams(p); if (id) n.set('sel', id); else n.delete('sel'); return n }, { replace: true }), [setSp])
   const [labels, setLabels] = useState(false)
   const [withAds, setWithAds] = useState(false)
   const [idle, setIdle] = useState(false)
@@ -30,15 +37,24 @@ export default function Dashboard() {
   const scored = useMemo(() => complexes.map((c) => { const r = riskOf(c); return { c, r, zone: r.zone, score: r.score } }).sort((a, b) => b.score - a.score), [complexes, riskOf])
   const visible = useMemo(() => scored.filter((x) =>
     (f === 'all' || (f === 'check' ? x.r.needsCheck : x.zone === f))
-    && (!q || `${x.c.name} ${x.c.address} ${developers.find((d) => d.id === x.c.developerId)?.bin}`.toLowerCase().includes(q.toLowerCase()))
+    && (!q || findComplex(q, x.c, developers.find((d) => d.id === x.c.developerId)))
     && (!withAds || ads.some((a) => a.complexId === x.c.id && a.status !== 'dismissed'))
     && (!idle || x.c.idleDays >= 30)), [scored, f, q, withAds, idle, ads, developers])
   const n = (z: F) => scored.filter((x) => (z === 'all' ? true : z === 'check' ? x.r.needsCheck : x.zone === z)).length
   const queue = ads.filter((a) => a.status === 'new' || a.status === 'needs_check').length
   const s = scored.find((x) => x.c.id === sel)
-  const onSelect = useCallback((id: string) => setSel(id), [])
   const dev = s && developers.find((d) => d.id === s.c.developerId)
   const linked = s ? ads.filter((a) => a.complexId === s.c.id) : []
+  const back = from('Карта', s ? `/?sel=${s.c.id}` : '/')
+  // «Показать списком» — реестр с тем же поиском и фильтром (реестр держит один признак-чип)
+  const listTo = (() => {
+    const p = new URLSearchParams()
+    if (q.trim()) p.set('q', q.trim())
+    if (f === 'red' || f === 'yellow' || f === 'green') p.set('zone', f)
+    const chip = f === 'check' ? 'check' : withAds ? 'ads' : idle ? 'idle' : ''
+    if (chip) p.set('chip', chip)
+    return `/complexes${p.toString() ? `?${p}` : ''}`
+  })()
 
   const cats: [F, string, string][] = [['all', 'Все', 'all'], ['red', 'Красная', 'red'], ['yellow', 'Жёлтая', 'yellow'], ['green', 'Зелёная', 'green'], ['check', 'Проверка', 'blue']]
   const basis = (name: string, v: Tri) => (
@@ -52,7 +68,7 @@ export default function Dashboard() {
 
   return (
     <div className="mapscreen">
-      <MapView items={visible} points={points} onPoint={onPoint} selected={sel} onSelect={onSelect} controls labels={labels} padLeft={400} />
+      <MapView items={visible} points={points} onPoint={onPoint} selected={sel} onSelect={setSel} controls labels={labels} padLeft={400} />
 
       <div className="left">
         {!s ? (
@@ -75,7 +91,7 @@ export default function Dashboard() {
             </div>
 
             <div className="card">
-              <div className="card-head" style={{ paddingBottom: 4 }}><h3 style={{ fontSize: 17 }}>{visible.length} объектов</h3><span className="row t-xs c2" style={{ gap: 6 }}><Origin kind="demo" label="демо-сценарии" title="Вымышленные ЖК: на них показана модель риска. Реальные объекты — слой «Открытые данные», без балла" />по риску</span></div>
+              <div className="card-head" style={{ paddingBottom: 4 }}><h3 style={{ fontSize: 17 }}>{visible.length} {plural(visible.length, ['объект', 'объекта', 'объектов'])}</h3><span className="row t-xs c2" style={{ gap: 6 }}><Origin kind="demo" label="демо-сценарии" title="Вымышленные ЖК: на них показана модель риска. Реальные объекты — слой «Открытые данные», без балла" />по риску</span></div>
               {visible.length === 0 && <div className="empty">Ничего не найдено</div>}
               {visible.map(({ c, r }) => (
                 <Cell key={c.id} onClick={() => setSel(c.id)} inset
@@ -124,29 +140,32 @@ export default function Dashboard() {
             </div>
             <div className="card">
               <Cell icon={<span className="ico"><IcMegaphone size={18} /></span>} title="Реклама" sub={linked.length ? `${linked.length} публ. · последняя ${fmtShort(linked[0].date)}` : 'Не найдено'} chevron to={`/complexes/${s.c.id}?tab=ads`} inset />
-              <Cell icon={<span className="ico"><IcCamera size={18} /></span>} title="Фото-мониторинг" sub={s.c.idleDays ? `Нет активности ${s.c.idleDays} дн.` : `${s.c.photos.length} снимков · стройка идёт`} chevron to={`/complexes/${s.c.id}?tab=photos`} inset />
-              <Cell icon={<span className="ico"><IcUsers size={18} /></span>} title="Застройщик" sub={`БИН ${dev?.bin}`} chevron to="/developers" inset />
+              <Cell icon={<span className="ico"><IcCamera size={18} /></span>} title="Фото-мониторинг" sub={s.c.idleDays ? `Нет активности ${s.c.idleDays} дн.` : s.c.photos.length ? `${s.c.photos.length} ${plural(s.c.photos.length, ['снимок', 'снимка', 'снимков'])} · стройка идёт` : 'Снимков пока нет'} chevron to={`/complexes/${s.c.id}?tab=photos`} inset />
+              <Cell icon={<span className="ico"><IcUsers size={18} /></span>} title="Застройщик" sub={dev ? `${dev.name} · БИН ${dev.bin}` : 'Не указан'} chevron to={dev ? `/developers?dev=${dev.id}` : '/developers'} inset />
             </div>
             {linked.slice(0, 2).map((a) => (
-              <Link key={a.id} to={`/ads/${a.id}`} className="card card-pad" style={{ display: 'block' }}>
+              <Link key={a.id} to={`/ads/${a.id}`} state={back} className="card card-pad" style={{ display: 'block' }}>
                 <div className="row between"><div className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={22} /><span className="t-sm c2">{a.account}</span></div><StatusTag s={a.status} /></div>
                 <p className="t-sm clamp3" style={{ marginTop: 10, lineHeight: '19px' }}><Highlight text={a.text} /></p>
+                {/* привязка к этому ЖК — гипотеза ИИ: в балл объекта публикация не входит, пока аналитик её не примет */}
+                {!linkConfirmed(a) && <div style={{ marginTop: 8 }}><LinkMark a={a} label="привязка — гипотеза ИИ" /></div>}
               </Link>
             ))}
           </div>
         )}
-        <div className="dock">
-          {s
-            ? <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><button className="btn y" onClick={() => nav(`/complexes/${s.c.id}`)}>Карточка ЖК</button><button className="btn g" onClick={() => nav(`/complexes/${s.c.id}?tab=ads`)}>Реклама · {linked.length}</button></div>
-            : <button className="btn y full" onClick={() => nav('/queue')}>Открыть очередь проверки · {queue}</button>}
-        </div>
+        {/* в очередь ведёт плашка справа внизу — одна кнопка, а не две */}
+        {s && (
+          <div className="dock">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><button className="btn y" onClick={() => nav(`/complexes/${s.c.id}`, { state: back })}>Карточка ЖК</button><button className="btn g" onClick={() => nav(`/complexes/${s.c.id}?tab=ads`, { state: back })}>Реклама · {linked.length}</button></div>
+          </div>
+        )}
       </div>
 
-      <Link to="/complexes" className="mapbtn" style={{ left: 412, top: 16 }}><IcList size={18} />Показать {visible.length} ЖК списком</Link>
+      <Link to={listTo} className="mapbtn" style={{ left: 412, top: 16 }}><IcList size={18} />Показать {visible.length} ЖК списком</Link>
 
       <Link to="/queue" className="promo dark" style={{ right: 16, bottom: 32, width: 280 }}>
         <div className="tx" style={{ padding: '18px 20px' }}>
-          <div className="cond" style={{ fontSize: 26, lineHeight: '26px' }}>{queue} публикаций<br />ждут решения</div>
+          <div className="cond" style={{ fontSize: 26, lineHeight: '26px' }}>{queue ? <>{queue} {plural(queue, ['публикация', 'публикации', 'публикаций'])}<br />{plural(queue, ['ждёт', 'ждут', 'ждут'])} решения</> : <>Очередь<br />проверки пуста</>}</div>
           <span className="mini">Открыть очередь <IcChevronRight size={14} /></span>
         </div>
       </Link>

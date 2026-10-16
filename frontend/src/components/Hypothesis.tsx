@@ -1,7 +1,8 @@
 // Выводы ИИ (ТЗ §6): метка «гипотеза ИИ», уверенность, причины сопоставления, условия оплаты с цитатами.
 // Гипотеза — не факт: в балл она входит, только когда аналитик её примет.
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { LinkHypothesis, LinkReason, ReasonFeature, Term } from '../data/types'
+import { linkConfirmed, type AdDecisions } from '../lib/risk'
 import { IcCamera, IcCheck, IcSparkSearch } from '../ui/icons'
 import { Highlight } from './ui'
 
@@ -10,6 +11,21 @@ export function AiBadge({ label = 'гипотеза ИИ', title }: { label?: st
   return (
     <span className="tag blue" title={title ?? 'Вывод ИИ: не факт, пока аналитик его не примет. Принятие и отклонение пишутся в журнал'}>
       <IcSparkSearch size={12} />{label}
+    </span>
+  )
+}
+
+/** Пометка у названия ЖК, пока привязка — гипотеза: ЖК предложил ИИ, аналитик её не принял, в балл объекта она не входит.
+ *  У факта (привязку принял аналитик или нарушение подтверждено) и у публикации без ЖК — ничего. value — уверенность, если она
+ *  точнее записанной (по текущему анализу); style — например, alignSelf в колонке, чтобы метка не растягивалась */
+export function LinkMark({ a, value, label = 'гипотеза ИИ', style }: {
+  a: AdDecisions & { complexId?: string | null; matchConfidence?: number | null }; value?: number; label?: string; style?: CSSProperties
+}) {
+  if (!a.complexId || linkConfirmed(a)) return null
+  const p = Math.round(Math.max(0, Math.min(1, (value ?? a.matchConfidence) || 0)) * 100)
+  return (
+    <span className="tag yellow" style={style} title="ЖК предложил ИИ, аналитик привязку не принял — это гипотеза: в балл объекта не входит">
+      <IcSparkSearch size={12} />{label} {p}%
     </span>
   )
 }

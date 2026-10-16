@@ -159,7 +159,13 @@ export function Gauge({ value }: { value: number }) {
 export const fmtDate = (d: string) => new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(' г.', '')
 export const fmtDT = (d: string) => new Date(d).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 export const fmtShort = (d: string) => new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
-export const adKey = (id: string) => `AD-${id.replace(/\D/g, '').padStart(3, '0')}`
+/** Склонение по числу: plural(2, ['объект', 'объекта', 'объектов']) → «объекта» */
+export const plural = (n: number, [one, few, many]: readonly [string, string, string]) => {
+  const a = Math.abs(n) % 100, b = a % 10
+  return a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many
+}
+/** Номер публикации (AD-007, AD-M1A2B3C4) — рядом с разбором номера в поиске */
+export { adKey } from '../lib/find'
 
 /** Кнопка фильтра с поповером — как «Комнат ⌄» на realty.yandex.ru: круглые варианты и жёлтая кнопка «Показать N» */
 export function FilterPop<T extends string>({ label, title, value, options, onChange, count, multi }: {
@@ -208,12 +214,13 @@ export function Hero({ crumb, title, info, actions, tiles, children }: { crumb: 
   )
 }
 
-/** Плитка в шапке: иконка, подпись, крупное значение */
+/** Плитка в шапке: иконка, подпись, крупное значение. Без to и onClick — статичная, не выглядит кнопкой */
 export function HeroTile({ icon, label, value, to, onClick, active, tone }: { icon: ReactNode; label: ReactNode; value?: ReactNode; to?: string; onClick?: () => void; active?: boolean; tone?: Zone | 'blue' }) {
   const inner = (<>{icon}<span>{label}{value !== undefined && <b className={tone ? `tone-${tone}` : ''}>{value}</b>}</span></>)
   const cls = `mtile ${active ? 'on' : ''}`
   if (to) return <Link to={to} className={cls}>{inner}</Link>
-  return <button className={cls} onClick={onClick} style={{ textAlign: 'left' }}>{inner}</button>
+  if (onClick) return <button className={cls} onClick={onClick} style={{ textAlign: 'left' }}>{inner}</button>
+  return <div className={`${cls} static`}>{inner}</div>
 }
 
 /** Аккордеон «Вопросы, которые задавал себе каждый» */

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { EvidenceItem, FactorState, Observation, ObservationState, Platform, RiskFactor, Tri } from '../data/types'
+import { from as fromState, type From } from '../lib/nav'
 import { MARKERS } from '../lib/risk'
 import { IcCamera, IcClock, IcDoc, IcUsers, IcWorker } from '../ui/icons'
 import { OcrTag } from './Hypothesis'
@@ -40,8 +41,9 @@ export function Quote({ text, marker }: { text: string; marker?: string }) {
 const when = (d?: string) => (d ? (d.length > 10 ? fmtDT(d) : fmtDate(d)) : undefined)
 const meta = (...xs: (string | undefined)[]) => xs.filter(Boolean).join(' · ')
 
-/** Одно доказательство: публикация, документ, обращение, значение готовности, снимок, срок */
-export function EvidenceView({ item: x, linkAds = true }: { item: EvidenceItem; linkAds?: boolean }) {
+/** Одно доказательство: публикация, документ, обращение, значение готовности, снимок, срок.
+ *  from — откуда пришли: ссылка на публикацию передаёт его, и разбор показывает «← К …» */
+export function EvidenceView({ item: x, linkAds = true, from }: { item: EvidenceItem; linkAds?: boolean; from?: From }) {
   if (x.kind === 'ad') {
     const p = x.source && x.source in platformMeta ? (x.source as Platform) : undefined
     const body = (
@@ -54,7 +56,9 @@ export function EvidenceView({ item: x, linkAds = true }: { item: EvidenceItem; 
         </div>
       </>
     )
-    return linkAds && x.ref ? <Link to={`/ads/${x.ref}`} className="ev">{body}</Link> : <div className="ev">{body}</div>
+    return linkAds && x.ref
+      ? <Link to={`/ads/${x.ref}`} state={from && fromState(from.label, from.to)} className="ev">{body}</Link>
+      : <div className="ev">{body}</div>
   }
   if (x.kind === 'document') return (
     <div className="ev">
@@ -102,7 +106,7 @@ export function EvidenceView({ item: x, linkAds = true }: { item: EvidenceItem; 
 }
 
 /** Факторы R1–R6: статус, пояснение, баллы и доказательства под каждым */
-export function FactorList({ factors, items = true, linkAds = true }: { factors: RiskFactor[]; items?: boolean; linkAds?: boolean }) {
+export function FactorList({ factors, items = true, linkAds = true, from }: { factors: RiskFactor[]; items?: boolean; linkAds?: boolean; from?: From }) {
   return (
     <div>
       {factors.map((f) => (
@@ -111,7 +115,7 @@ export function FactorList({ factors, items = true, linkAds = true }: { factors:
           <div style={{ minWidth: 0 }}>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><span className="t">{f.title}</span><StateTag state={f.state} /></div>
             <div className="e">{f.evidence}</div>
-            {items && f.items.length > 0 && <div className="ev-list">{f.items.map((x, i) => <EvidenceView key={i} item={x} linkAds={linkAds} />)}</div>}
+            {items && f.items.length > 0 && <div className="ev-list">{f.items.map((x, i) => <EvidenceView key={i} item={x} linkAds={linkAds} from={from} />)}</div>}
           </div>
           <span className="p">+{f.points}</span>
         </div>

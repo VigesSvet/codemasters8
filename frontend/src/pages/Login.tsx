@@ -32,10 +32,7 @@ export default function Login() {
         </div>
       </div>
       <div className="side">
-        <div className="row between">
-          <div className="logo"><span className="mark"><IcBuilding /></span>SAQ Qurylys</div>
-          <span className="t-sm c2">RU · KZ</span>
-        </div>
+        <div className="logo"><span className="mark"><IcBuilding /></span>SAQ Qurylys</div>
         <form onSubmit={(e) => { e.preventDefault(); enter() }}>
           <h1 className="t-h1">Войдите в рабочее место</h1>
           <p className="c2" style={{ margin: '4px 0 12px', lineHeight: '21px' }}>Для сотрудников уполномоченного органа. ИИ находит рекламу и считает риск — решение принимаете вы.</p>

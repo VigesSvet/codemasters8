@@ -1,9 +1,10 @@
 // Открытые данные (ТЗ §4, решение 1 SPEC-E): реальные объекты — отдельный слой, не смешивается с демо-ЖК.
 // Только атрибутированные сведения источников: без балла, зон, сигналов и «нужна проверка» (T-31).
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import type { RegistryList, RegistryObject } from '../data/types'
-import { matchObject } from '../data/openData'
+import { findObject } from '../lib/find'
+import { from } from '../lib/nav'
 import { fundingName, onMap, sourceName, when } from '../lib/provenance'
 import { IcChevronRight, IcDatabase } from '../ui/icons'
 import { Origin } from './Provenance'
@@ -15,9 +16,10 @@ export function Fact({ children, from }: { children: ReactNode; from: string }) 
 
 /** Карточка объекта открытых данных в реестре: нейтральная, без балла */
 export function OpenObjectCard({ o }: { o: RegistryObject }) {
-  const from = `${o.sources.map((s) => sourceName(s)).join(', ')}${o.collectedAt ? `, собрано ${when(o.collectedAt)}` : ''}`
+  const loc = useLocation()
+  const src = `${o.sources.map((s) => sourceName(s)).join(', ')}${o.collectedAt ? `, собрано ${when(o.collectedAt)}` : ''}`
   return (
-    <Link to={`/registry/${encodeURIComponent(o.key)}`} className="devcard" style={{ gap: 12 }}>
+    <Link to={`/registry/${encodeURIComponent(o.key)}`} state={from('Открытые данные', loc.pathname + loc.search)} className="devcard" style={{ gap: 12 }}>
       <div className="row between" style={{ gap: 8, alignItems: 'flex-start' }}>
         <div className="od-chips">{o.sources.map((s) => <span key={s} className="tag gray">{sourceName(s, true)}</span>)}</div>
         <Origin kind="source" source={o.sources.map((s) => sourceName(s)).join(', ')} at={o.collectedAt} />
@@ -28,9 +30,9 @@ export function OpenObjectCard({ o }: { o: RegistryObject }) {
       </div>
       <div className="kv t-sm" style={{ gridTemplateColumns: '150px 1fr', gap: '8px 12px' }}>
         <span>Застройщик</span>
-        <span>{o.developer ? <Fact from={from}>{o.developer}{o.developerBin && <span className="c2 num"> · БИН {o.developerBin}</span>}</Fact> : <span className="c3">не указан источником</span>}</span>
+        <span>{o.developer ? <Fact from={src}>{o.developer}{o.developerBin && <span className="c2 num"> · БИН {o.developerBin}</span>}</Fact> : <span className="c3">не указан источником</span>}</span>
         <span>Привлечение средств</span>
-        <span>{o.fundingMethods.length ? <Fact from={from}>{o.fundingMethods.map(fundingName).join(', ')}</Fact> : <span className="c3">не указано источником</span>}</span>
+        <span>{o.fundingMethods.length ? <Fact from={src}>{o.fundingMethods.map(fundingName).join(', ')}</Fact> : <span className="c3">не указано источником</span>}</span>
         {o.flags?.sourceSection && <><span>Раздел источника</span><span>«{o.flags.sourceSection}»</span></>}
         {!!o.flags?.coordsFarKm && <><span>Координаты</span><span className="c2">в {o.flags.coordsFarKm} км от города — как у источника, на карте не показаны</span></>}
         <span>Записей</span><span>{o.records}{o.collectedAt && <span className="c2"> · собрано {when(o.collectedAt)}</span>}</span>
@@ -42,8 +44,8 @@ export function OpenObjectCard({ o }: { o: RegistryObject }) {
 
 /** Список объектов открытых данных: с координатами и отдельно — без координат */
 export function OpenDataList({ data, q }: { data: RegistryList; q: string }) {
-  // порядок — как у сервера (по нормализованному названию)
-  const sort = (xs: RegistryObject[]) => xs.filter((o) => matchObject(o, q))
+  // порядок — как у сервера (по нормализованному названию); поиск — как в шапке: название, адрес, застройщик, БИН
+  const sort = (xs: RegistryObject[]) => xs.filter((o) => findObject(q, o))
   const geo = sort(data.objects.filter(onMap)), nogeo = sort([...data.objects.filter((o) => !onMap(o)), ...data.withoutCoords])
   if (!geo.length && !nogeo.length) return <div className="empty">{q ? 'Ничего не найдено' : 'Открытых данных пока нет — загрузите файл на странице «Источники»'}</div>
   return (

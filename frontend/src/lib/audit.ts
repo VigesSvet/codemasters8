@@ -1,6 +1,6 @@
 // Журнал действий (T-16, T-17): подписи видов событий, темы запроса сведений, формат времени, инициалы авторов.
 import type { AdStatus, Analyst, AuditEvent, AuditKind, Complex } from '../data/types'
-import { IcBolt, IcCheck, IcComment, IcDatabase, IcDownload, IcFlag, IcLink, IcSend, IcSparkSearch } from '../ui/icons'
+import { IcBolt, IcCheck, IcComment, IcDatabase, IcDownload, IcFlag, IcLink, IcPencil, IcSend, IcSparkSearch } from '../ui/icons'
 
 export const SYSTEM = 'Система'
 
@@ -16,7 +16,10 @@ export const AUDIT_KIND: Record<AuditKind, { name: string; tag: string; Icon: ty
   export: { name: 'выгрузка', tag: 'gray', Icon: IcDownload },
   ai: { name: 'ИИ', tag: 'blue', Icon: IcSparkSearch },
 }
-export const kindOf = (e: Pick<AuditEvent, 'kind'>) => AUDIT_KIND[e.kind] ?? AUDIT_KIND.system
+/** Запись вида «система» от имени человека — его ввод (сервер так пишет «Публикация добавлена вручную»), а не действие системы */
+const MANUAL = { name: 'ввод вручную', tag: 'gray', Icon: IcPencil }
+export const kindOf = (e: Pick<AuditEvent, 'kind'> & { who?: string }) =>
+  e.kind === 'system' && e.who && e.who !== SYSTEM ? MANUAL : AUDIT_KIND[e.kind] ?? AUDIT_KIND.system
 
 /** Группы фильтра журнала объекта */
 export type AuditGroup = 'all' | 'data' | 'ads' | 'signals' | 'requests'

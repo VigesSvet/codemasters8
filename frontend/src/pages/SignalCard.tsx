@@ -7,6 +7,7 @@ import { SignalGate, SignalStatusTag, SignalTime } from '../components/SignalPan
 import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Score, StatusTag, ZoneTag, adKey, fmtDT, fmtDate, zoneName } from '../components/ui'
 import type { Appeal, EvidenceItem, ReadinessValue, Signal, SignalAd } from '../data/types'
 import { ApiError } from '../lib/api'
+import { from, useFrom, type From } from '../lib/nav'
 import { DEMO_ORG, isDemo } from '../lib/provenance'
 import { linkConfirmed } from '../lib/risk'
 import { useStore } from '../lib/store'
@@ -29,6 +30,8 @@ export default function SignalCard() {
 
 function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; reload: () => void }) {
   const { complexes, riskOf, user, decideSignal, refreshSignals, signalPdfUrl, notify } = useStore()
+  // откуда пришли (реестр с фильтром, сводка) — туда и ведёт крошка; иначе — весь реестр сигналов
+  const came = useFrom()
   const [decision, setDecision] = useState<Decision | null>(null)
   const [comment, setComment] = useState('')
   const [busy, setBusy] = useState(false)
@@ -39,6 +42,8 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
   const live = complexes.find((x) => x.id === sig.complexId)
   const now = live ? riskOf(live) : null
   const drift = now && (now.score !== sig.score || now.zone !== sig.zone)
+  // публикации-доказательства открываются с «← Сигнал S-…»: разбор ведёт обратно сюда
+  const back: From = { label: `Сигнал ${sig.code}`, to: `/signals/${sig.id}` }
 
   const close = () => { setDecision(null); setComment('') }
   const submit = async () => {
@@ -67,18 +72,18 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
 
   return (
     <>
-      <PageTitle crumbs={[['Сигналы', '/signals'], [sig.code]]}
+      <PageTitle crumbs={came ? [[`← ${came.label}`, came.to], [sig.code]] : [['Сигналы', '/signals'], [sig.code]]}
         title={<span className="row wrap-f" style={{ gap: 14 }}>Сигнал {sig.code} · ЖК «{c.name}»<ZoneTag zone={sig.zone} /><SignalStatusTag s={sig.status} />{isDemo(c) && <Origin kind="demo" label="Демо-сценарий (вымышленный ЖК)" />}</span>}
         sub={<>Создан: {sig.createdBy}, <SignalTime at={sig.createdAt} />. Данные — снимок на момент создания, дальше не пересчитываются.</>} />
 
       <div className="cols-r">
         <div className="stack" style={{ gap: 16 }}>
           <section className="card">
-            <div className="card-head"><h3>Объект</h3><Link to={`/complexes/${c.id}`} className="link t-sm">Карточка ЖК</Link></div>
+            <div className="card-head"><h3>Объект</h3><Link to={`/complexes/${c.id}`} state={from(back.label, back.to)} className="link t-sm">Карточка ЖК</Link></div>
             <div className="sig-obj">
               {c.cover && <img src={c.cover} alt="" />}
               <div className="kv">
-                <span>ЖК</span><span><Link className="link" to={`/complexes/${c.id}`}>ЖК «{c.name}»</Link></span>
+                <span>ЖК</span><span><Link className="link" to={`/complexes/${c.id}`} state={from(back.label, back.to)}>ЖК «{c.name}»</Link></span>
                 <span>Адрес</span><span>{c.address}{c.district && <span className="c2"> · {c.district}</span>}</span>
                 <span>Застройщик</span><span>{dev ? <>{dev.name}<span className="c2 num"> · БИН {dev.bin}</span>{isDemo(dev) && <span className="c2"> · {DEMO_ORG}</span>}</> : <span className="c2">нет данных</span>}</span>
                 <span>Стадия</span><span>{c.stage}, {rd?.confirmed
@@ -103,16 +108,16 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
             {drift && now && (
               <div className="sig-drift">
                 Сейчас у объекта:<Score value={now.score} zone={now.zone} /><ZoneTag zone={now.zone} />
-                <Link to={`/complexes/${c.id}?tab=risk`} className="link" style={{ marginLeft: 'auto' }}>Открыть карточку ЖК</Link>
+                <Link to={`/complexes/${c.id}?tab=risk`} state={from(back.label, back.to)} className="link" style={{ marginLeft: 'auto' }}>Открыть карточку ЖК</Link>
               </div>
             )}
-            <div style={{ marginTop: 8 }}><FactorList factors={sig.factors} /></div>
+            <div style={{ marginTop: 8 }}><FactorList factors={sig.factors} from={back} /></div>
           </section>
 
           <section className="card">
             <div className="card-head"><h3>Доказательства</h3><span className="t-sm c2">на {fmtDT(sig.createdAt)}</span></div>
             <h4 className="sig-h">Публикации · {ev.ads.length}</h4>
-            {ev.ads.length ? ev.ads.map((a) => <SigAd key={a.id} a={a} />) : <p className="t-sm c3">Привязанных публикаций нет</p>}
+            {ev.ads.length ? ev.ads.map((a) => <SigAd key={a.id} a={a} back={back} />) : <p className="t-sm c3">Привязанных публикаций нет</p>}
             <h4 className="sig-h">Обращения граждан · {ev.appeals.length}</h4>
             {ev.appeals.length ? <div className="ev-list">{ev.appeals.map((a) => <EvidenceView key={a.id} item={appealItem(a)} />)}</div> : <p className="t-sm c3">Обращений нет</p>}
             <h4 className="sig-h">Снимки стройки · {ev.photos.length}</h4>
@@ -138,7 +143,7 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
 
           <section className="card">
             <div className="card-head"><h3>Журнал решений</h3><span className="t-sm c2">{sig.journal.length}</span></div>
-            <AuditList events={sig.journal} links={['ad']} />
+            <AuditList events={sig.journal} links={['ad']} from={back} />
           </section>
 
           <p className="row t-sm c2" style={{ gap: 8, alignItems: 'flex-start' }}><IcShield size={16} />Сигнал — рекомендация для проверки, не юридическое заключение. Автоматической отправки в госорганы нет. Данные демонстрационные.</p>
@@ -156,7 +161,7 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
             </div>
             {sig.status === 'new' && (
               <div className="stack" style={{ gap: 8, marginTop: 20 }}>
-                <button className="btn y full" onClick={() => setDecision('confirm')}><IcCheck />Подтвердить</button>
+                <button className="btn y full" onClick={() => setDecision('confirm')}><IcCheck />Подтвердить сигнал</button>
                 <button className="btn g full" onClick={() => setDecision('return')}>Вернуть на доработку</button>
               </div>
             )}
@@ -182,7 +187,7 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
           footer={<>
             <button className="btn g" onClick={close}>Отмена</button>
             <button className={`btn ${decision === 'confirm' ? 'y' : 'd'}`} disabled={!comment.trim() || busy} onClick={submit}>
-              {busy ? 'Сохраняем…' : decision === 'confirm' ? 'Подтвердить' : 'Вернуть на доработку'}
+              {busy ? 'Сохраняем…' : decision === 'confirm' ? 'Подтвердить сигнал' : 'Вернуть на доработку'}
             </button>
           </>}>
           <Cell icon={<span className="ico"><IcBuilding size={20} /></span>} title={`ЖК «${c.name}»`} sub={`балл ${sig.score} · ${zoneName[sig.zone].toLowerCase()}`} />
@@ -202,7 +207,7 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
 }
 
 /** Публикация из снимка: платформа, аккаунт, статус, уверенность привязки, текст с подсветкой, ссылки */
-function SigAd({ a }: { a: SignalAd }) {
+function SigAd({ a, back }: { a: SignalAd; back: From }) {
   const fact = linkConfirmed(a)
   return (
     <div className="sig-ad">
@@ -219,7 +224,7 @@ function SigAd({ a }: { a: SignalAd }) {
             привязка — {fact ? `факт${a.linkConfirmedBy ? ` (подтвердил ${a.linkConfirmedBy})` : ''}` : `гипотеза ИИ ${Math.round(a.matchConfidence * 100)}%, в балл не входит`}
           </span>
           {a.price && <span className="tag gray">{a.price}</span>}
-          <Link to={`/ads/${a.id}`} className="tag outline">{adKey(a.id)}</Link>
+          <Link to={`/ads/${a.id}`} state={from(back.label, back.to)} className="tag outline" title="Открыть разбор публикации">{adKey(a.id)}</Link>
           {a.url && <a href={a.url} target="_blank" rel="noreferrer" className="tag outline"><IcExternal size={13} />Источник</a>}
         </div>
       </div>

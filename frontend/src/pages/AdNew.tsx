@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AiBadge, HypothesisItem, TermList } from '../components/Hypothesis'
-import { Cell, Highlight, Modal, PageTitle, PlatformIcon, Score, ZoneTag, platformMeta } from '../components/ui'
+import { Cell, Highlight, Modal, PageTitle, PlatformIcon, Score, ZoneTag, adKey, platformMeta } from '../components/ui'
 import type { Ad, Analysis, AnalyzeInput, LinkHypothesis, OcrResult, OcrStatus, Platform } from '../data/types'
 import { OCR_EMPTY, OCR_KEPT, ocrNotice, ocrOnEdit, ocrOnNewShot, ocrOnResult, pct, type OcrField } from '../lib/ai'
 import { errorText } from '../lib/api'
+import { finder, rankComplex } from '../lib/find'
 import { scoreAd } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcCheck, IcChevronDown, IcClose, IcSearch, IcUpload } from '../ui/icons'
@@ -25,7 +26,7 @@ const sec = (ms: number) => `${(ms / 1000).toLocaleString('ru-RU', { maximumFrac
 
 /** Ручное добавление — раскладка панели заказа такси: поля «Откуда/Куда», плитки тарифов, жёлтая кнопка внизу */
 export default function AdNew() {
-  const { mode, complexes, addAd, notify, analyze, ocr: recognize, ocrStatus, user } = useStore()
+  const { mode, complexes, developers, addAd, notify, analyze, ocr: recognize, ocrStatus, user } = useStore()
   const nav = useNavigate()
   const file = useRef<HTMLInputElement>(null)
   const ocrSeq = useRef(0)
@@ -111,7 +112,7 @@ export default function AdNew() {
     addAd(ad).then((ok) => {
       setSaving(false)
       if (!ok) return
-      notify('Публикация добавлена в ленту')
+      notify(`Публикация ${adKey(ad.id)} добавлена в ленту`)
       nav(`/ads/${ad.id}`)
     })
   }
@@ -308,10 +309,10 @@ export default function AdNew() {
 
       {modal && (
         <Modal title="Выберите объект" onClose={() => setModal(false)}>
-          <div style={{ padding: '8px 24px' }}><div className="search"><IcSearch size={20} /><input autoFocus placeholder="Название ЖК" value={cq} onChange={(e) => setCq(e.target.value)} />{cq && <button onClick={() => setCq('')}><IcClose size={18} /></button>}</div></div>
+          <div style={{ padding: '8px 24px' }}><div className="search"><IcSearch size={20} /><input autoFocus placeholder="Название, адрес или застройщик" value={cq} onChange={(e) => setCq(e.target.value)} />{cq && <button onClick={() => setCq('')}><IcClose size={18} /></button>}</div></div>
           <Cell title={live ? 'По гипотезе ИИ' : 'Без привязки'} sub={live ? 'ЖК выберет ИИ при сохранении — как гипотезу' : 'Публикацию можно привязать позже в разборе'}
             end={!manual ? <IcCheck size={22} strokeWidth={2.5} style={{ color: 'var(--text)' }} /> : undefined} onClick={() => { setPick({ by: 'auto' }); setModal(false) }} />
-          {complexes.filter((x) => x.name.toLowerCase().includes(cq.toLowerCase())).map((x) => (
+          {complexes.filter(finder(cq, complexes, (q, x) => rankComplex(q, x, developers.find((d) => d.id === x.developerId)))).map((x) => (
             <Cell key={x.id} inset icon={<img className="th" src={x.cover} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name} sub={x.address}
               end={manual && pick.complexId === x.id ? <IcCheck size={22} strokeWidth={2.5} style={{ color: 'var(--text)' }} /> : undefined}
               onClick={() => { setPick({ by: 'manual', complexId: x.id }); setModal(false) }} />

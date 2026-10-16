@@ -4,6 +4,7 @@ import { AiBadge } from '../components/Hypothesis'
 import { Faq, Gauge, Score, Seg, ZoneTag } from '../components/ui'
 import type { AiEval, FactorState } from '../data/types'
 import { errorText } from '../lib/api'
+import { from } from '../lib/nav'
 import { factorDef, model, zoneFor, type ModelCase } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcBank, IcCheck, IcChevronDown, IcChevronUp, IcClock, IcClose, IcHelp, IcInfo, IcMegaphone, IcUsersFamily, IcWallet, IcWorker } from '../ui/icons'
@@ -57,8 +58,11 @@ const CUR: Record<string, string> = { KZT: '₸', USD: '$', RUB: '₽' }
 const termShort = (t: EvalTerm) => [
   TERM[t.kind ?? ''] ?? t.kind,
   t.amount != null && `${t.amount.toLocaleString('ru-RU')} ${CUR[t.currency ?? 'KZT'] ?? t.currency}${t.unit === 'm2' ? '/м²' : ''}`,
-  t.percent != null && `${t.percent}%`, t.months != null && `${t.months} мес.`, t.money === false && '(не деньги)',
+  t.percent != null && `${t.percent}%`, t.months != null && `${t.months} мес.`, t.money === false && '(не предложение денег)',
 ].filter(Boolean).join(' ')
+/** Пояснение кейса без служебных пометок (money=false — «не предложение денег»: уже сказано словами — убираем) */
+const noteText = (s: string) => s.replace(/\s*\(money=false\)/g, '').replace(/:\s*money=false,?/g, ',')
+  .replace(/money=false/g, 'не предложение денег').replace(/money=true/g, 'предложение денег')
 
 /** Ожидание или результат кейса: ЖК (с уверенностью у результата) и условия оплаты */
 function EvalCell({ v, names, got }: { v: Record<string, unknown>; names: Map<string, string>; got?: boolean }) {
@@ -119,7 +123,7 @@ export default function Method() {
               <span className="c2">Демо-сценарии ТЗ §5:</span>
               {model.cases.map((k) => {
                 const c = complexes.find((x) => x.id === k.complexId)
-                return c ? <Link key={k.id} to={`/complexes/${c.id}?tab=risk`} className="chip" style={{ height: 32 }}><b>{k.id}</b>ЖК «{c.name}»<span className="n">{k.score}</span></Link> : null
+                return c ? <Link key={k.id} to={`/complexes/${c.id}?tab=risk`} state={from('Методика', '/method')} className="chip" style={{ height: 32 }}><b>{k.id}</b>ЖК «{c.name}»<span className="n">{k.score}</span></Link> : null
               })}
               <a href="#cases" className="link">Подробнее</a>
             </div>
@@ -247,7 +251,7 @@ export default function Method() {
                 ) : <span className="t-sm c3">Объекта {k.complexId} нет в данных</span>}
               </div>
               <div className="row" style={{ gap: 8 }}>
-                {c && <Link to={`/complexes/${c.id}?tab=risk`} className="btn y m" style={{ flex: 1 }}>Открыть сценарий {k.id}</Link>}
+                {c && <Link to={`/complexes/${c.id}?tab=risk`} state={from('Сценарии в методике', '/method#cases')} className="btn y m" style={{ flex: 1 }}>Открыть сценарий {k.id}</Link>}
                 <button className="btn o m" style={{ flex: c ? 'none' : 1 }} onClick={() => toCalc(k)}>В калькулятор</button>
               </div>
             </div>
@@ -313,7 +317,7 @@ export default function Method() {
                           {k.text}
                           {k.ocr && <div className="c2" style={{ marginTop: 2 }}>OCR: {k.ocr}</div>}
                           {k.account && <div className="c2" style={{ marginTop: 2 }}>Аккаунт: {k.account}</div>}
-                          {k.notes && <div className="t-xs" style={{ marginTop: 4, color: k.ok ? 'var(--text-2)' : 'var(--red-ink)' }}>{k.notes}</div>}
+                          {k.notes && <div className="t-xs" style={{ marginTop: 4, color: k.ok ? 'var(--text-2)' : 'var(--red-ink)' }}>{noteText(k.notes)}</div>}
                         </td>
                         <td><EvalCell v={k.expected} names={names} /></td>
                         <td><EvalCell v={k.got} names={names} got /></td>

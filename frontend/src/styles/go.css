@@ -50,7 +50,9 @@
 }
 
 * { box-sizing: border-box; }
-html, body, #root { height: 100%; }
+/* #root — не выше окна, а по содержимому: иначе липкая шапка (её родитель — #root) уезжает вместе с ним на длинных страницах */
+html, body { height: 100%; }
+#root { min-height: 100%; }
 body { margin: 0; font-family: var(--font); font-size: 15px; line-height: 1.33; color: var(--text); background: var(--page); -webkit-font-smoothing: antialiased; }
 a { color: inherit; text-decoration: none; }
 button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; }
@@ -78,8 +80,7 @@ svg { flex: none; }
 .logo { display: flex; align-items: center; gap: 8px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
 .logo .mark { width: 30px; height: 30px; border-radius: 50%; background: var(--yellow); display: grid; place-items: center; color: #000; }
 .logo .mark svg { width: 18px; height: 18px; }
-.city { display: flex; align-items: center; gap: 4px; font-size: 16px; font-weight: 500; margin-left: 12px; padding: 6px 8px; border-radius: 10px; }
-.city:hover { background: var(--fill); }
+.city { display: flex; align-items: center; gap: 4px; font-size: 16px; font-weight: 500; margin-left: 12px; padding: 6px 8px; white-space: nowrap; }
 .head-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .icon-btn { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; position: relative; color: var(--text); }
 .icon-btn svg { width: 22px; height: 22px; }
@@ -104,6 +105,31 @@ svg { flex: none; }
 .menu .lbl small { display: block; font-size: 13px; color: var(--text-2); margin-top: 1px; }
 .menu-scrim { position: fixed; inset: 0; z-index: 40; }
 
+/* Быстрый поиск в шапке: поле и выпадающий список по группам */
+.qsearch { position: relative; flex: 1 1 360px; max-width: 460px; min-width: 180px; }
+.qsearch .fsearch { min-width: 0; background: var(--fill); box-shadow: none; padding: 0 10px 0 12px; }
+.qsearch .fsearch:focus-within { background: #fff; box-shadow: inset 0 0 0 2px var(--text); }
+.qsearch .fsearch svg { color: var(--text-2); }
+.qsearch .fsearch input { min-width: 0; text-overflow: ellipsis; }
+.qsearch kbd, .qs-keys kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--line-2); font: 500 12px/1 var(--font); color: var(--text-2); }
+.qs-pop { position: absolute; top: calc(100% + 8px); left: 0; z-index: 60; width: max(100%, 560px); max-height: min(72vh, 640px); overflow: auto; padding: 6px 0 0; background: #fff; border-radius: var(--r-l); box-shadow: var(--shadow-float); }
+.qs-g { padding: 12px 16px 4px; font-size: 12px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-2); }
+.qs-hit { display: flex; align-items: center; gap: 12px; padding: 7px 16px; min-height: 52px; }
+.qs-hit.on { background: var(--fill); }
+.qs-hit .ic { width: 36px; height: 36px; border-radius: 10px; background: var(--fill); display: grid; place-items: center; flex: none; overflow: hidden; color: var(--text-2); }
+.qs-hit.on .ic { background: #fff; }
+.qs-hit .ic img { width: 100%; height: 100%; object-fit: cover; }
+.qs-hit .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.qs-hit .ttl { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qs-hit .sub { font-size: 13px; line-height: 17px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qs-hit > .tag, .qs-hit > .score { flex: none; }
+.qs-hit.more { min-height: 36px; padding-left: 64px; font-size: 14px; color: var(--link); }
+.qs-hit.more .ttl { font-weight: 400; font-size: 14px; }
+.qs-help { padding: 10px 16px 12px; font-size: 14px; line-height: 20px; color: var(--text-2); }
+.qs-help b { color: var(--text); font-weight: 500; }
+.qs-keys { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; padding: 10px 16px; border-top: 1px solid var(--line); background: #fff; font-size: 12px; color: var(--text-3); }
+.qs-keys span { display: inline-flex; align-items: center; gap: 4px; }
+
 /* ───── Полоса фильтров (Лёгкий поиск · Комнат ⌄ · поиск) ───── */
 .fbar { max-width: var(--wide); margin: 0 auto; padding: 12px 40px; display: flex; gap: 8px; align-items: center; }
 .fbtn { height: 40px; padding: 0 10px 0 12px; border-radius: var(--r-l); background: #fff; box-shadow: inset 0 0 0 1px var(--line-2); display: inline-flex; align-items: center; gap: 4px; font-size: 15px; font-weight: 500; white-space: nowrap; }
@@ -121,7 +147,8 @@ svg { flex: none; }
 .fsearch:focus-within { box-shadow: inset 0 0 0 2px var(--text); }
 
 /* ───── Страница ───── */
-.screen { min-height: calc(100vh - 113px); padding-bottom: 64px; }
+/* clip, а не hidden: полосы .band шире окна на ширину полосы прокрутки, а липкие колонки (.sticky) должны работать */
+.screen { min-height: calc(100vh - 113px); padding-bottom: 64px; overflow-x: clip; }
 .wrap { max-width: var(--wide); margin: 0 auto; padding: 0 40px; }
 .page-title { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 24px 0; }
 .page-title .t-h1 + p { margin-top: 8px; color: var(--text-2); max-width: 800px; font-size: 15px; line-height: 21px; }
@@ -131,7 +158,9 @@ svg { flex: none; }
 .cols { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 24px; align-items: start; }
 .cols-r { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 32px; align-items: start; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
-.sticky { position: sticky; top: 132px; }
+/* липкая колонка — под шапкой с зазором 19px; --yhead (настоящую высоту шапки) ставит useHeadHeight, иначе 113px.
+   Колонку держать короткой, без своей прокрутки: внизу страницы она уходит вверх вместе с концом контента — действия ставить в её низ */
+.sticky { position: sticky; top: calc(var(--yhead, 113px) + 19px); }
 .row { display: flex; align-items: center; gap: 12px; }
 .between { justify-content: space-between; }
 .wrap-f { flex-wrap: wrap; }
@@ -353,7 +382,6 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 .ph img { width: 100%; height: 100%; object-fit: cover; }
 .ph .tl { position: absolute; left: 12px; top: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
 .ph .tr { position: absolute; right: 12px; top: 12px; }
-.ph .fav { width: 36px; height: 36px; border-radius: 50%; background: rgba(0, 0, 0, 0.32); color: #fff; display: grid; place-items: center; backdrop-filter: blur(6px); }
 
 /* Карточка ЖК из выдачи Недвижимости */
 .gcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 36px 24px; }
@@ -551,6 +579,7 @@ a.ev:hover { background: var(--fill-hover); }
 .mtiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin-bottom: 16px; }
 .mtile { background: #fff; border-radius: var(--r-l); padding: 14px 12px 12px; display: flex; flex-direction: column; gap: 10px; min-height: 104px; transition: box-shadow 0.15s; }
 .mtile:hover { box-shadow: var(--shadow-float); }
+.mtile.static { cursor: default; } .mtile.static:hover { box-shadow: none; }
 .mtile span { font-size: 14px; line-height: 18px; display: flex; flex-direction: column; }
 .mtile b { font-weight: 700; font-size: 15px; margin-top: 2px; }
 /* Калькулятор — как ипотечный: белая форма слева, серый итог справа */
@@ -609,6 +638,8 @@ a.ev:hover { background: var(--fill-hover); }
 .devcard { border-radius: var(--r-l); box-shadow: inset 0 0 0 1px var(--line); padding: 20px; display: flex; flex-direction: column; gap: 14px; cursor: pointer; transition: box-shadow 0.15s; text-align: left; }
 .devcard:hover { box-shadow: inset 0 0 0 1px var(--line), var(--shadow-float); }
 .devcard .objs { display: flex; gap: 6px; }
+/* длинная ссылка источника переносится в любом месте, а не вылезает за карточку */
+.long-url, .long-url .prov-a { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
 .devcard .objs img { width: 64px; height: 48px; border-radius: 8px; object-fit: cover; }
 .modal .shead { margin: 16px 24px 4px; }
 /* Строка рейтинга в шапке */

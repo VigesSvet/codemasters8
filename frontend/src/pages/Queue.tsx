@@ -1,15 +1,20 @@
 import { useState } from 'react'
 import { DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { LinkMark } from '../components/Hypothesis'
 import { Faq, Modal, Hero, HeroTile, Highlight, PlatformIcon, Score, StatusDot, Seg, adKey, fmtShort, statusMeta } from '../components/ui'
 import type { Ad, AdStatus, Complex } from '../data/types'
 import { initialsOf } from '../lib/audit'
+import { from } from '../lib/nav'
 import { scoreAd } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcCheck, IcClock, IcClose, IcFlag, IcHelp, IcInbox, IcUsers } from '../ui/icons'
 
 const COLS: AdStatus[] = ['new', 'needs_check', 'in_review', 'confirmed', 'dismissed']
 type Item = { a: Ad; c?: Complex; s: ReturnType<typeof scoreAd> }
+/** Чьи карточки показывать — в адресе (?who=me|none), чтобы «назад» из публикации не сбрасывал выбор */
+type Who = 'all' | 'me' | 'none'
+const WHO: Who[] = ['all', 'me', 'none']
 
 function QCard({ x, overlay }: { x: Item; overlay?: boolean }) {
   const { a, c, s } = x
@@ -21,6 +26,7 @@ function QCard({ x, overlay }: { x: Item; overlay?: boolean }) {
         <Score value={s.score} zone={s.zone} />
       </div>
       <div className="bold">{c ? `ЖК «${c.name}»` : 'ЖК не определён'}</div>
+      {c && <LinkMark a={a} style={{ alignSelf: 'flex-start' }} />}
       <div className="t-sm c2 clamp2" style={{ lineHeight: '19px' }}>{a.text}</div>
       <div className="row between">
         <span className="t-xs c3">{fmtShort(a.date)}</span>
@@ -64,7 +70,12 @@ export default function Queue() {
   const reason = confirm ? reasons[confirm.a.id] ?? '' : ''
   // мышь: начинаем тащить после сдвига на 6px, чтобы клик по карточке открывал её; тач — после удержания
   const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: 6 } }), useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }), useSensor(KeyboardSensor))
-  const [who, setWho] = useState<'all' | 'me' | 'none'>('all')
+  const [params, setParams] = useSearchParams()
+  const who: Who = WHO.find((w) => w === params.get('who')) ?? 'all'
+  const setWho = (w: Who) => setParams((p) => { const q = new URLSearchParams(p); if (w === 'all') q.delete('who'); else q.set('who', w); return q }, { replace: true })
+  // откуда пришли в разбор — очередь с тем же выбором «Все / Мои / Без исполнителя»
+  const back = from('Очередь проверки', who === 'all' ? '/queue' : `/queue?who=${who}`)
+  const open = (id: string) => nav(`/ads/${id}`, { state: back })
   const me = user?.name
   const items = ads.map((a) => { const c = complexes.find((x) => x.id === a.complexId); return { a, c, s: adScoreOf(a) } })
     .filter(({ a }) => who === 'all' || (who === 'me' ? !!a.assignee && a.assignee === me : !a.assignee))
@@ -89,7 +100,7 @@ export default function Queue() {
   }
   const top = items.find((x) => x.a.status === 'new' || x.a.status === 'needs_check')
   // карточка открывается сразу (статус виден оптимистично); её журнал перечитается, когда PATCH сохранится — по revision стора
-  const take = (x: Item) => { void setAdStatus(x.a.id, 'in_review', { assignee: me }); nav(`/ads/${x.a.id}`) }
+  const take = (x: Item) => { void setAdStatus(x.a.id, 'in_review', { assignee: me }); open(x.a.id) }
   const sigNew = signals.filter((x) => x.status === 'new').length
 
   return (
@@ -103,8 +114,8 @@ export default function Queue() {
           <HeroTile icon={<IcClock size={32} />} label="На проверке" value={n('in_review')} />
           <HeroTile icon={<IcCheck size={32} />} label="Нарушение подтверждено" value={n('confirmed')} tone="red" />
           <HeroTile icon={<IcClose size={32} />} label="Отклонено" value={n('dismissed')} tone="green" />
-          <HeroTile icon={<IcUsers size={32} />} label="Без исполнителя" value={ads.filter((a) => !a.assignee && a.status !== 'dismissed').length} onClick={() => setWho('none')} active={who === 'none'} />
-          <HeroTile icon={<IcFlag size={32} />} label="Сигналы на решении" value={sigNew} tone={sigNew ? 'red' : undefined} to="/signals?status=new" />
+          <HeroTile icon={<IcUsers size={32} />} label="Без исполнителя" value={ads.filter((a) => !a.assignee && a.status !== 'dismissed').length} onClick={() => setWho(who === 'none' ? 'all' : 'none')} active={who === 'none'} />
+          <HeroTile icon={<IcFlag size={32} />} label="Сигналы ждут решения" value={sigNew} tone={sigNew ? 'red' : undefined} to="/signals?status=new" />
         </>}>
         {top && (
           <div className="panel" style={{ gridTemplateColumns: 'minmax(0, 1fr) 320px' }}>
@@ -112,7 +123,7 @@ export default function Queue() {
               {top.a.image ? <img src={top.a.image} alt="" style={{ width: 140, height: 105, borderRadius: 12, objectFit: 'cover', flex: 'none' }} /> : <PlatformIcon p={top.a.platform} size={64} />}
               <div style={{ minWidth: 0 }}>
                 <div className="t-sm c2">Следующая по риску · {adKey(top.a.id)}</div>
-                <div className="t-h3" style={{ margin: '2px 0 6px' }}>{top.c ? `Реклама ЖК «${top.c.name}»` : 'Реклама без ЖК'}</div>
+                <div className="t-h3 row wrap-f" style={{ margin: '2px 0 6px', gap: 10 }}>{top.c ? `Реклама ЖК «${top.c.name}»` : 'Реклама без ЖК'}<LinkMark a={top.a} label="привязка — гипотеза ИИ" /></div>
                 <div className="t-sm clamp2" style={{ lineHeight: '19px' }}><Highlight text={top.a.text} /></div>
               </div>
             </div>
@@ -125,7 +136,7 @@ export default function Queue() {
       </Hero>
       <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={(e) => setDrag(String(e.active.id))} onDragCancel={() => setDrag(null)} onDragEnd={onDragEnd}>
         <div className="board">
-          {COLS.map((st) => <Column key={st} st={st} items={items.filter((x) => x.a.status === st)} dragging={drag} fromSt={dragItem?.a.status} onOpen={(id) => nav(`/ads/${id}`)} />)}
+          {COLS.map((st) => <Column key={st} st={st} items={items.filter((x) => x.a.status === st)} dragging={drag} fromSt={dragItem?.a.status} onOpen={open} />)}
         </div>
         <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(.2,.8,.2,1)' }}>
           {dragItem && <QCard x={dragItem} overlay />}
@@ -134,7 +145,7 @@ export default function Queue() {
 
       {confirm && (
         <Modal title="Подтвердить нарушение?" onClose={() => setConfirm(null)}
-          footer={<><button className="btn g" onClick={() => setConfirm(null)}>Отмена</button><button className="btn y" disabled={!reason.trim()} onClick={() => confirmIt(confirm, reason.trim())}>Подтвердить</button></>}>
+          footer={<><button className="btn g" onClick={() => setConfirm(null)}>Отмена</button><button className="btn y" disabled={!reason.trim()} onClick={() => confirmIt(confirm, reason.trim())}>Подтвердить нарушение</button></>}>
           <div className="row" style={{ gap: 14, padding: '4px 24px 8px' }}>
             {confirm.a.image ? <img src={confirm.a.image} alt="" style={{ width: 72, height: 54, borderRadius: 10, objectFit: 'cover' }} /> : <PlatformIcon p={confirm.a.platform} size={48} />}
             <div style={{ minWidth: 0 }}><div className="bold">{confirm.c ? `ЖК «${confirm.c.name}»` : 'ЖК не определён'}</div><div className="t-sm c2">{confirm.a.account} · оценка {confirm.s.score}</div></div>

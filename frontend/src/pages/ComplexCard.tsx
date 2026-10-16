@@ -1,20 +1,22 @@
-import { useEffect, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useLocation, useNavigationType, useParams, useSearchParams } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
 import Compare from '../components/Compare'
 import { FactorList, ObservationList } from '../components/Factors'
 import MapView from '../components/MapView'
 import { DocSourceLine, Origin } from '../components/Provenance'
 import SignalPanel from '../components/SignalPanel'
-import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Seg, StatusTag, TriTag, ZoneTag, fmtDate, fmtDT, zoneShort } from '../components/ui'
+import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Seg, StatusTag, TriTag, ZoneTag, fmtDate, fmtDT, plural, zoneShort } from '../components/ui'
 import { publishedListMeta } from '../data/demo'
 import type { AppealStatus, AuditEvent, BasisDoc, BasisSource, ReadinessValue, RiskResult, Stage, Tri } from '../data/types'
 import { errorText } from '../lib/api'
 import { AUDIT_GROUPS, REQUEST_TOPICS, inGroup, type AuditGroup, type RequestTopic } from '../lib/audit'
+import { from, useFrom } from '../lib/nav'
 import { DEMO_ORG, isDemo, isDemoAd } from '../lib/provenance'
 import { linkConfirmed, model } from '../lib/risk'
+import { useHeadHeight } from '../lib/sticky'
 import { useStore } from '../lib/store'
-import { IcBuilding, IcCalendar, IcCamera, IcCheck, IcClose, IcCrane, IcDoc, IcHeart, IcHelp, IcMap, IcMore, IcShield, IcUsers, IcWorker } from '../ui/icons'
+import { IcBuilding, IcCalendar, IcCamera, IcCheck, IcClose, IcCrane, IcDoc, IcHelp, IcMap, IcShield, IcUsers, IcWorker } from '../ui/icons'
 
 const STAGES: Stage[] = ['котлован', 'фундамент', 'каркас', 'кровля', 'отделка', 'введён']
 const TABS = ['basis', 'risk', 'ads', 'photos', 'dev', 'log'] as const
@@ -29,36 +31,76 @@ function suggestTopics(r: RiskResult): RequestTopic[] {
 }
 const APPEAL: Record<AppealStatus, [string, string]> = { verified: ['проверено', 'red'], pending: ['на проверке', 'yellow'], rejected: ['отклонено', 'gray'] }
 const quarter = (d: string) => { const x = new Date(d); return `${['I', 'II', 'III', 'IV'][Math.floor(x.getMonth() / 3)]} кв. ${x.getFullYear()}` }
-const points = (n: number) => `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'балл' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'балла' : 'баллов'}`
+const points = (n: number) => `${n} ${plural(n, ['балл', 'балла', 'баллов'])}`
+/** Где была страница: «назад» с публикации возвращает к тому же месту (ключ — запись истории) */
+const scrolls = new Map<string, number>()
 
 /** Карточка ЖК по образцу страницы новостройки на realty.yandex.ru */
 export default function ComplexCard() {
   const { id } = useParams()
-  const [sp] = useSearchParams()
+  const [sp, setSp] = useSearchParams()
+  const loc = useLocation()
+  const navType = useNavigationType()
+  const back = useFrom()
+  useHeadHeight()
   const { mode, complexes, ads, developers, appeals, notify, riskOf, getAudit, requestInfo, user, revision } = useStore()
-  const [tab, setTab] = useState<Tab>(TABS.find((t) => t === sp.get('tab')) ?? 'basis')
+  const tab: Tab = TABS.find((t) => t === sp.get('tab')) ?? 'basis'
+  const tabsRef = useRef<HTMLDivElement>(null)
+  const arrived = useRef<string>(undefined)
   const [ph, setPh] = useState(0)
   const [log, setLog] = useState<Log | null>(null)
   const [ver, setVer] = useState(0)
   const [group, setGroup] = useState<AuditGroup>('all')
   const [req, setReq] = useState<{ topics: RequestTopic[]; comment: string; busy?: boolean; err?: string } | null>(null)
   const live = mode === 'api'
+  const exists = complexes.some((x) => x.id === id)
+  // вкладка — в адресе (replace): «назад» со страницы публикации открывает её же; «откуда пришли» (state) не теряется
+  const setTab = (t: Tab) => setSp((p) => { const n = new URLSearchParams(p); if (t === 'basis') n.delete('tab'); else n.set('tab', t); return n }, { replace: true, state: loc.state })
+  /** Переключить вкладку и прокрутить к ней — для ссылок вне вкладок (правая колонка, галерея) */
+  const goTab = (t: Tab) => { setTab(t); requestAnimationFrame(() => tabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })) }
 
-  // журнал объекта: данные и их источники, публикации, сигналы, запросы — с сервера;
+  // журнал объекта: данные и их источники, публикации, сигналы, запросы — с сервера; несуществующий ЖК не запрашиваем.
   // revision — после сохранённых изменений и восстановления связи перечитываем
   useEffect(() => {
-    if (!live || !id) return
+    if (!live || !id || !exists) return
     let alive = true
     getAudit({ complexId: id }).then(
       (events) => { if (alive) setLog({ id, events }) },
       (e: unknown) => { if (alive) setLog((l) => ({ id, events: l?.id === id ? l.events : undefined, err: errorText(e) })) },
     )
     return () => { alive = false }
-  }, [id, live, ver, revision]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, live, exists, ver, revision]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Вход на страницу: «назад»/«вперёд» — туда, где она была; ссылка на вкладку (?tab=risk) — к вкладкам.
+  // Таймер — после оболочки: она прокручивает новую страницу наверх
+  useEffect(() => {
+    if (!exists || arrived.current === id) return
+    const y = navType === 'POP' ? scrolls.get(loc.key) : undefined
+    if (y === undefined && tab === 'basis') { arrived.current = id; return }
+    const t = setTimeout(() => { arrived.current = id; if (y !== undefined) window.scrollTo(0, y); else tabsRef.current?.scrollIntoView({ block: 'start' }) }, 0)
+    return () => clearTimeout(t)
+  }, [id, exists]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const save = () => scrolls.set(loc.key, window.scrollY)
+    window.addEventListener('scroll', save, { passive: true })
+    return () => window.removeEventListener('scroll', save)
+  }, [loc.key])
 
   const c = complexes.find((x) => x.id === id)
-  if (!c) return <div className="empty">Объект не найден</div>
+  if (!c) return (
+    <>
+      <PageTitle crumbs={back ? [[`← ${back.label}`, back.to], ['Объект']] : [['Карта', '/'], ['Новостройки', '/complexes'], ['Объект']]}
+        title={mode === 'loading' ? 'Карточка ЖК' : 'Объект не найден'} />
+      <div className="empty">{mode === 'loading' ? 'Загружаем данные…' : (
+        <>ЖК с кодом «{id}» нет {mode === 'demo' ? 'в демо-наборе' : 'на сервере'} — возможно, ссылка устарела или объект удалён.<br />
+          <Link to="/complexes" className="btn d m" style={{ marginTop: 16 }}>К списку новостроек</Link></>
+      )}</div>
+    </>
+  )
   const r = riskOf(c)
+  const hitF = r.factors.filter((f) => f.state === 'hit')
+  /** Ссылки на публикации передают, откуда пришли: разбор публикации покажет «← ЖК «…»» и вернёт на ту же вкладку */
+  const here = (t: Tab) => ({ label: `ЖК «${c.name}»`, to: `/complexes/${c.id}?tab=${t}` })
   const dev = developers.find((d) => d.id === c.developerId)
   const linked = ads.filter((a) => a.complexId === c.id)
   const own = appeals.filter((a) => a.complexId === c.id).sort((a, b) => b.date.localeCompare(a.date))
@@ -79,7 +121,8 @@ export default function ComplexCard() {
   const rd = c.readiness ?? { declared: null, confirmed: null }
   // округление как в модели (п.п. до сотых, половина — вверх)
   const gap = rd.declared && rd.confirmed ? Math.floor(Math.abs(rd.declared.value - rd.confirmed.value) * 100 + 0.5) / 100 : null
-  const photos = [c.cover, ...c.photos.map((p) => p.src), '/img/site-b.jpg', '/img/city-3.jpg', '/img/city-panorama.jpg'].filter((v, i, a) => a.indexOf(v) === i).slice(0, 5)
+  // только снимки этого объекта: общие кадры города выдавали бы чужую площадку за эту (ТЗ §7 «Достоверность»)
+  const photos = [c.cover, ...c.photos.map((p) => p.src)].filter((v, i, a) => v && a.indexOf(v) === i).slice(0, 5)
   const stageIdx = STAGES.indexOf(c.stage)
   const events = live && log?.id === c.id ? log.events ?? [] : []
   const logReady = live && log?.id === c.id && !!log.events
@@ -99,7 +142,7 @@ export default function ComplexCard() {
       setReq(null)
       notify('Запрос записан в журнал объекта (во внешние органы не отправляется)')
       setGroup('all')
-      setTab('log') // журнал перечитается сам: запрос сохранён — revision выросла
+      goTab('log') // журнал перечитается сам: запрос сохранён — revision выросла
     }, (e: unknown) => setReq((q) => q && { ...q, busy: false, err: errorText(e) }))
   }
 
@@ -125,7 +168,7 @@ export default function ComplexCard() {
 
   return (
     <>
-      <PageTitle crumbs={[['Карта', '/'], ['Новостройки', '/complexes'], [`ЖК «${c.name}»`]]}
+      <PageTitle crumbs={back ? [[`← ${back.label}`, back.to], [`ЖК «${c.name}»`]] : [['Карта', '/'], ['Новостройки', '/complexes'], [`ЖК «${c.name}»`]]}
         title={<span className="row wrap-f" style={{ gap: 14 }}>ЖК «{c.name}» <ZoneTag zone={r.zone} />{demoCx && <Origin kind="demo" label="Демо-сценарий (вымышленный ЖК)" />}</span>}
         sub={<>{c.address}, Усть-Каменогорск · <span className="row" style={{ display: 'inline-flex', gap: 4 }}><IcMap size={14} />{c.district}</span></>} />
       {kase && (
@@ -150,7 +193,7 @@ export default function ComplexCard() {
               {photos.map((p, i) => (
                 <button key={p} className={ph === i ? 'on' : ''} onClick={() => setPh(i)}>
                   <img src={p} alt="" />
-                  {i === photos.length - 1 && c.photos.length > 1 && <span className="more" onClick={(e) => { e.stopPropagation(); setTab('photos') }}>Снимки · {c.photos.length}</span>}
+                  {i === photos.length - 1 && c.photos.length > 1 && <span className="more" onClick={(e) => { e.stopPropagation(); goTab('photos') }}>Снимки · {c.photos.length}</span>}
                 </button>
               ))}
             </div>
@@ -161,7 +204,7 @@ export default function ComplexCard() {
             {STAGES.map((s, i) => <div key={s} className={i < stageIdx ? 'done' : i === stageIdx ? 'cur' : ''} style={i === stageIdx ? ({ '--p': `${Math.max(15, c.progress)}%` } as React.CSSProperties) : undefined}>{s[0].toUpperCase() + s.slice(1)}</div>)}
           </div>
 
-          <div className="subtabs" style={{ marginTop: 40 }}>
+          <div className="subtabs" ref={tabsRef} style={{ marginTop: 40, scrollMarginTop: 'calc(var(--yhead, 113px) + 19px)' }}>
             {([['basis', 'Основания'], ['risk', 'Риск'], ['ads', 'Реклама', linked.length], ['photos', 'Снимки', c.photos.length], ['dev', 'Застройщик'], ['log', 'Журнал', logReady ? events.length : undefined]] as const).map(([k, l, n]) => (
               <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}{n !== undefined && <span className="n">{n}</span>}</button>
             ))}
@@ -232,7 +275,7 @@ export default function ComplexCard() {
                   ))}
                 </div>
               )}
-              <FactorList factors={r.factors} />
+              <FactorList factors={r.factors} from={here('risk')} />
               <h3 className="t-h3" style={{ margin: '32px 0 2px' }}>Вне балла</h3>
               <p className="t-sm c2" style={{ marginBottom: 4 }}>Наблюдения — повод присмотреться, на балл и зону не влияют</p>
               <ObservationList items={r.observations} />
@@ -244,7 +287,7 @@ export default function ComplexCard() {
               <div style={{ marginBottom: 16 }}><FactorList factors={fac('R2', 'R3')} items={false} /></div>
               {linked.length === 0 && <div className="empty">Публикаций по объекту не найдено</div>}
               {linked.map((a) => (
-                <Link key={a.id} to={`/ads/${a.id}`} className="offer" style={{ gridTemplateColumns: a.image ? '200px minmax(0,1fr)' : '1fr' }}>
+                <Link key={a.id} to={`/ads/${a.id}`} state={from(here('ads').label, here('ads').to)} className="offer" style={{ gridTemplateColumns: a.image ? '200px minmax(0,1fr)' : '1fr' }}>
                   {a.image && <div className="ph"><img src={a.image} alt="" /></div>}
                   <div className="body">
                     <div className="row between">
@@ -264,7 +307,7 @@ export default function ComplexCard() {
           {tab === 'photos' && (
             <div className="fade">
               <div style={{ marginBottom: 16 }}><FactorList factors={fac('R6')} items={false} /></div>
-              {c.photos.length >= 2 ? <Compare before={c.photos[0]} after={c.photos[c.photos.length - 1]} /> : c.photos.length === 0 ? <div className="drop"><div><IcCamera /><p className="c2" style={{ marginTop: 8 }}>Снимков нет. Загрузите фото с дрона или камеры</p></div></div> : null}
+              {c.photos.length >= 2 ? <Compare before={c.photos[0]} after={c.photos[c.photos.length - 1]} /> : c.photos.length === 0 ? <div className="drop"><div><IcCamera /><p className="c2" style={{ marginTop: 8 }}>Снимков по объекту нет — простой по снимкам не оценить. Загрузка снимков — после пилота</p></div></div> : null}
               <div className="gcards" style={{ marginTop: 16, gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 16 }}>
                 {c.photos.map((p, i) => (
                   <div key={i}>
@@ -292,7 +335,7 @@ export default function ComplexCard() {
                 <>
                   {log?.id === c.id && log.err && <div className="alog-err t-sm">Журнал не загрузился: {log.err} <button className="link" onClick={() => setVer((v) => v + 1)}>Повторить</button></div>}
                   {/* без загруженных событий — только ошибка: пустой журнал и незагруженный — не одно и то же */}
-                  {logReady && <AuditList events={shownLog} links={['ad', 'signal']} empty={group === 'all' ? 'Событий по объекту пока нет' : 'Событий этого вида нет'} />}
+                  {logReady && <AuditList events={shownLog} links={['ad', 'signal']} from={here('log')} empty={group === 'all' ? 'Событий по объекту пока нет' : 'Событий этого вида нет'} />}
                 </>
               )}
             </div>
@@ -305,19 +348,37 @@ export default function ComplexCard() {
               <div style={{ marginTop: 24, maxWidth: 560 }}><ObservationList items={r.observations.filter((o) => o.code === 'O2')} /></div>
             </div>
           )}
+
+          {/* карта — в обычном потоке, не в липкой колонке: так та короче окна и внизу страницы действия не уходят под шапку */}
+          <div className="row between" style={{ margin: '40px 0 16px', alignItems: 'flex-end' }}>
+            <div><h2 className="t-h2">Расположение</h2><div className="t-sm c2" style={{ marginTop: 4 }}>{c.address} · {c.district}</div></div>
+            <Link to={`/?sel=${c.id}`} className="link t-sm bold">На общей карте</Link>
+          </div>
+          <div className="ph" style={{ height: 240, borderRadius: 16 }}>
+            <MapView items={[{ c, zone: r.zone, score: r.score }]} center={[c.lng, c.lat]} zoom={14.5} interactive={false} labels />
+          </div>
         </div>
 
+        {/* липкая колонка — только сводка и действия, короче окна: внизу страницы она уходит вверх вместе с концом контента */}
         <aside className="stack sticky">
           <div style={{ padding: '4px 0' }}>
-            <div className="row between"><span className="t-h3">Об объекте</span><div className="row" style={{ gap: 4 }}><button className="icon-btn" aria-label="Ещё"><IcMore /></button><button className="icon-btn" aria-label="В избранное"><IcHeart /></button></div></div>
+            <span className="t-h3">Об объекте</span>
             <div className="kv" style={{ marginTop: 14, gridTemplateColumns: '130px 1fr' }}>
               <span>Стадия</span><span>{c.stage}, {c.progress}%</span>
               <span>Квартир</span><span>{c.flats} · {c.floors} эт.</span>
               <span>Срок сдачи</span><span>{quarter(c.plannedEnd)}</span>
-              <span>Реклама</span><span>{linked.length ? `${linked.length} публикации` : 'не найдена'}</span>
+              <span>Реклама</span><span>{linked.length ? `${linked.length} ${plural(linked.length, ['публикация', 'публикации', 'публикаций'])}` : 'не найдена'}</span>
               <span>Риск-скоринг</span><span className="bold" style={{ color: `var(--${r.zone === 'yellow' ? 'amber' : r.zone})` }}>{r.score} из 100</span>
             </div>
-            <div style={{ margin: '18px 0 20px' }}><Gauge value={r.score} /></div>
+            <button type="button" className="why" onClick={() => goTab('risk')} title="Вкладка «Риск»: факторы, пояснения и доказательства">
+              <Gauge value={r.score} />
+              <div className="why-f">
+                {hitF.length > 0
+                  ? hitF.map((f) => <div key={f.code}><span className="code">{f.code}</span><span>{f.title}</span><b>+{f.points}</b></div>)
+                  : <span className="c2">Подтверждённых факторов нет</span>}
+              </div>
+              <span className="why-l">Почему {points(r.score)} →</span>
+            </button>
             {r.needsCheck && <div style={{ marginBottom: 12 }}><NeedsCheck /></div>}
             <div className="stack" style={{ gap: 8 }}>
               <SignalPanel complex={c} />
@@ -326,15 +387,12 @@ export default function ComplexCard() {
             </div>
             <div className="row" style={{ marginTop: 18, alignItems: 'flex-start', gap: 12 }}>
               <div style={{ flex: 1 }}>
-                <a className="link" onClick={() => setTab('dev')} style={{ cursor: 'pointer' }}>Застройщик {dev?.name}</a>
+                <button type="button" className="link" onClick={() => goTab('dev')} style={{ textAlign: 'left' }}>Застройщик {dev?.name}</button>
                 <div className="t-xs c3" style={{ marginTop: 2 }}>{(dev?.objects ?? 0) - (dev?.unfinished ?? 0)} сдано · {dev?.unfinished} строится{isDemo(dev) && ` · ${DEMO_ORG}`}</div>
               </div>
               <span className="tag dark" style={{ height: 28 }}><IcUsers size={12} />{dev?.name.replace(/ТОО «|»/g, '').split(' ')[0]}</span>
             </div>
             <p className="t-xs c2 row" style={{ marginTop: 16, gap: 6, alignItems: 'flex-start' }}><IcShield size={14} />ИИ даёт рекомендацию. Решение о нарушении принимает аналитик.</p>
-          </div>
-          <div className="ph" style={{ height: 180, borderRadius: 16 }}>
-            <MapView items={[{ c, zone: r.zone, score: r.score }]} center={[c.lng, c.lat]} zoom={14.5} interactive={false} labels />
           </div>
         </aside>
       </div>

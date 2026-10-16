@@ -1,25 +1,42 @@
-import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useMemo } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Origin } from '../components/Provenance'
-import { FilterPop, Highlight, PageTitle, PlatformIcon, Score, StatusTag, adKey, fmtDT, platformMeta, statusMeta } from '../components/ui'
+import { FilterPop, Highlight, PageTitle, PlatformIcon, Score, StatusTag, adKey, fmtDT, platformMeta, plural, statusMeta } from '../components/ui'
 import type { AdStatus, Platform, Zone } from '../data/types'
+import { useSearchText } from '../lib/find'
+import { from } from '../lib/nav'
 import { isDemoAd } from '../lib/provenance'
 import { linkConfirmed } from '../lib/risk'
+import { matches, norm } from '../lib/search'
 import { useStore } from '../lib/store'
-import { IcClose, IcPlus, IcSearch } from '../ui/icons'
+import { IcClose, IcPlus } from '../ui/icons'
 
 const ORDER: AdStatus[] = ['new', 'needs_check', 'in_review', 'confirmed', 'dismissed']
+const ZONES: Zone[] = ['red', 'yellow', 'green']
 type Sort = 'risk' | 'date' | 'reach'
 
 /** Лента рекламы — как выдача объявлений realty.yandex.ru/…/kupit/kvartira: фильтры сверху, строки с фото */
 export default function Ads() {
   const { ads, complexes, adScoreOf } = useStore()
-  const [q, setQ] = useState('')
-  const [plat, setPlat] = useState<Platform[]>([])
-  const [status, setStatus] = useState<AdStatus[]>([])
-  const [zone, setZone] = useState<Zone[]>([])
-  const [chip, setChip] = useState('')
-  const [sort, setSort] = useState<Sort>('risk')
+  // поиск, фильтры и сортировка — в адресе: «назад» из публикации возвращает в ту же выборку
+  const [sp, setSp] = useSearchParams()
+  const put = (patch: Record<string, string | string[]>) => setSp((p) => {
+    const n = new URLSearchParams(p)
+    for (const [k, v] of Object.entries(patch)) { const x = Array.isArray(v) ? v.join(',') : v; if (x) n.set(k, x); else n.delete(k) }
+    return n
+  }, { replace: true })
+  const list = (k: string) => sp.get(k)?.split(',').filter(Boolean) ?? []
+  const [q, setQ] = useSearchText()
+  const plat = list('plat').filter((p): p is Platform => p in platformMeta)
+  const status = list('status').filter((x): x is AdStatus => ORDER.includes(x as AdStatus))
+  const zone = list('zone').filter((z): z is Zone => ZONES.includes(z as Zone))
+  const chip = sp.get('chip') ?? ''
+  const sort: Sort = sp.get('sort') === 'date' || sp.get('sort') === 'reach' ? sp.get('sort') as Sort : 'risk'
+  const setPlat = (v: Platform[]) => put({ plat: v })
+  const setStatus = (v: AdStatus[]) => put({ status: v })
+  const setZone = (v: Zone[]) => put({ zone: v })
+  const setChip = (v: string) => put({ chip: v })
+  const setSort = (v: Sort) => put({ sort: v === 'risk' ? '' : v })
 
   const all = useMemo(() => ads.map((a) => { const c = complexes.find((x) => x.id === a.complexId); return { a, c, s: adScoreOf(a) } }), [ads, complexes, adScoreOf])
   type R = (typeof all)[number]
@@ -32,21 +49,22 @@ export default function Ads() {
   ]
   const match = (x: R, f: { plat?: Platform[]; status?: AdStatus[]; zone?: Zone[] } = {}) => {
     const p = f.plat ?? plat, st = f.status ?? status, z = f.zone ?? zone
-    return (!q || `${x.a.text} ${x.a.account} ${x.c?.name ?? ''}`.toLowerCase().includes(q.toLowerCase()))
+    return (!q || matches(q, adKey(x.a.id), x.a.account, x.c?.name) || norm(x.a.text).includes(norm(q)))
       && (!p.length || p.includes(x.a.platform)) && (!st.length || st.includes(x.a.status)) && (!z.length || z.includes(x.s.zone))
       && (!chip || chips.find((c) => c[0] === chip)![2](x))
   }
   const rows = all.filter((x) => match(x)).sort((x, y) => sort === 'risk' ? y.s.score - x.s.score : sort === 'date' ? y.a.date.localeCompare(x.a.date) : (y.a.reach ?? 0) - (x.a.reach ?? 0))
   const plats = (Object.keys(platformMeta) as Platform[]).filter((p) => ads.some((a) => a.platform === p))
-  const dirty = plat.length || status.length || zone.length || chip || q
+  // строку поиска очищает её крестик; «Сбросить» — когда выбран хоть один фильтр
+  const back = from('Реклама', `/ads${sp.toString() ? `?${sp}` : ''}`)
+  const dirty = !!(plat.length || status.length || zone.length || chip)
 
   return (
     <>
       <div className="fbar" style={{ marginTop: 12 }}>
-        <button className="fbtn gray" onClick={() => { setPlat([]); setStatus([]); setZone([]); setChip(''); setQ('') }}><IcSearch />{dirty ? 'Сбросить' : 'Вся реклама'}</button>
-        <span className="vsep" />
+        {dirty && <><button className="fbtn gray" onClick={() => setQ('', { plat: '', status: '', zone: '', chip: '' })}><IcClose />Сбросить</button><span className="vsep" /></>}
         <FilterPop label="Площадка" title="Где опубликовано" multi value={plat} onChange={setPlat} count={(v) => all.filter((x) => match(x, { plat: v })).length}
-          options={plats.map((p) => [p, <span className="row" style={{ gap: 8 }}><PlatformIcon p={p} size={20} />{platformMeta[p].name}</span>] as [Platform, React.ReactNode])} />
+          options={plats.map((p) => [p, <span key={p} className="row" style={{ gap: 8 }}><PlatformIcon p={p} size={20} />{platformMeta[p].name}</span>] as [Platform, React.ReactNode])} />
         <FilterPop label="Статус" title="Статус проверки" multi value={status} onChange={setStatus} count={(v) => all.filter((x) => match(x, { status: v })).length}
           options={ORDER.map((s) => [s, statusMeta[s].name] as [AdStatus, string])} />
         <FilterPop label="Оценка" title="Оценка публикации" multi value={zone} onChange={setZone} count={(v) => all.filter((x) => match(x, { zone: v })).length}
@@ -66,14 +84,14 @@ export default function Ads() {
       </div>
 
       <div className="sorter">
-        <b>{rows.length} публикаций:</b>
+        <b>{rows.length} {plural(rows.length, ['публикация', 'публикации', 'публикаций'])}:</b>
         {([['risk', 'по риску'], ['date', 'по дате'], ['reach', 'по охвату']] as const).map(([k, l]) => <button key={k} className={sort === k ? 'on' : ''} onClick={() => setSort(k)}>{l}</button>)}
       </div>
 
       {rows.length === 0 && <div className="empty">Ничего не найдено</div>}
       <div className="fade">
         {rows.map(({ a, c, s }) => (
-          <Link key={a.id} to={`/ads/${a.id}`} className="offer">
+          <Link key={a.id} to={`/ads/${a.id}`} state={back} className="offer">
             <div className="ph">
               {a.image ? <img src={a.image} alt="" /> : <div className="noimg"><PlatformIcon p={a.platform} size={48} /></div>}
               <div className="tl"><span className="tag white">{platformMeta[a.platform].name}</span>{isDemoAd(a) ? <Origin kind="demo" label="демо" onPhoto title="Демонстрационная публикация: текст и аккаунт вымышлены" /> : <span className="tag white">добавлено аналитиком</span>}</div>

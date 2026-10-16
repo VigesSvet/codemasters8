@@ -68,9 +68,9 @@ export function linkConf(a: Pick<Ad, 'complexId' | 'matchConfidence' | 'source'>
 /** Чья привязка и на каком основании: факт — после подтверждения аналитиком; иначе гипотеза ИИ — с уверенностью по текущему
  *  анализу (сохранённая — отдельно, если отличается) или, без анализа, с сохранённой и пометкой, когда она получена. short — метка в панели */
 export function linkText(a: Pick<Ad, 'linkConfirmedBy' | 'linkConfirmedAt' | 'status'>, lc: LinkConf, short = false) {
-  if (a.linkConfirmedBy) return `факт · ${short ? '' : 'подтвердил '}${a.linkConfirmedBy}${a.linkConfirmedAt && !short ? `, ${fmtStamp(a.linkConfirmedAt)}` : ''}`
+  if (a.linkConfirmedBy) return `факт · ${short ? '' : 'принял '}${a.linkConfirmedBy}${a.linkConfirmedAt && !short ? `, ${fmtStamp(a.linkConfirmedAt)}` : ''}`
   if (a.status === 'confirmed') return short ? 'факт · нарушение' : 'факт · публикация подтверждена как нарушение'
-  const tail = short ? '' : ' · аналитик не подтвердил'
+  const tail = short ? '' : ' · аналитик не принял'
   const { now } = lc
   if (!now) return `гипотеза ИИ ${lc.when} ${pct(lc.saved)}${tail}`
   const low = now.low ? (short ? ' · низкая' : ', низкая уверенность') : ''

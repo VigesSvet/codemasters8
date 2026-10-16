@@ -95,10 +95,10 @@ export default function Sources() {
                         </div>
                         <span className="tag gray">{live ? 'импорт файла' : 'встроенная копия'}</span>
                       </div>
-                      <div className="kv t-sm" style={{ gridTemplateColumns: '170px 1fr', gap: '6px 12px' }}>
+                      <div className="kv t-sm" style={{ gridTemplateColumns: '170px minmax(0, 1fr)', gap: '6px 12px' }}>
                         <span>Когда собрано</span><span>{s.collectedAt ? <span title={s.collectedAt}>{when(s.collectedAt)}</span> : '—'}</span>
                         {s.providerLoadedAt && <><span>Загружено у поставщика</span><span title={s.providerLoadedAt}>{when(s.providerLoadedAt)}</span></>}
-                        {s.url && <><span>Ссылка</span><span style={{ overflowWrap: 'anywhere' }}><SrcLink url={s.url}>{s.url.replace(/^https?:\/\//, '')}</SrcLink></span></>}
+                        {s.url && <><span>Ссылка</span><span className="long-url"><SrcLink url={s.url}>{s.url.replace(/^https?:\/\//, '')}</SrcLink></span></>}
                       </div>
                       {s.note && <div className="t-sm c2" style={{ lineHeight: '19px' }}>{s.note}</div>}
                     </div>

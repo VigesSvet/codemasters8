@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Cell, Faq, Hero, HeroTile, LinkCols, Modal, Score, SectionHead, Seg, ZoneTag, fmtDate } from '../components/ui'
 import { DEMO_ORG, isDemo } from '../lib/provenance'
 import { model } from '../lib/risk'
+import { matches } from '../lib/search'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcCrane, IcMegaphone, IcSearch, IcUsers, IcWarning } from '../ui/icons'
 
@@ -12,7 +13,10 @@ type F = 'all' | 'risk' | 'unfinished' | 'ads'
 /** Застройщики — шапка с поиском по БИН, карточки-профили, FAQ «Как проверить застройщика» */
 export default function Developers() {
   const { complexes, ads, developers, riskOf } = useStore()
-  const [open, setOpen] = useState<string | null>(null)
+  // открытый профиль — в адресе (?dev=d1): на него ведут ссылки «Застройщик» с карты и из карточек
+  const [sp, setSp] = useSearchParams()
+  const open = sp.get('dev')
+  const setOpen = (id: string | null) => setSp((p) => { const n = new URLSearchParams(p); if (id) n.set('dev', id); else n.delete('dev'); return n }, { replace: true })
   const [q, setQ] = useState('')
   const [f, setF] = useState<F>('all')
   const data = useMemo(() => developers.map((d, i) => {
@@ -22,7 +26,7 @@ export default function Developers() {
   }).sort((a, b) => (b.max?.r.score ?? 0) - (a.max?.r.score ?? 0)), [complexes, ads, developers, riskOf])
   type D = (typeof data)[number]
   const test: Record<F, (x: D) => boolean> = { all: () => true, risk: (x) => x.max?.r.zone === 'red', unfinished: (x) => x.d.unfinished > 0, ads: (x) => x.adsCount > 0 }
-  const rows = data.filter((x) => test[f](x) && (!q || `${x.d.name} ${x.d.bin} ${x.d.director}`.toLowerCase().includes(q.toLowerCase())))
+  const rows = data.filter((x) => test[f](x) && (!q || matches(q, x.d.name, x.d.bin, x.d.director)))
   const cur = data.find((x) => x.d.id === open)
   const initials = (n: string) => n.replace(/ТОО «|»/g, '').split(/[\s-]+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase()
 
@@ -84,7 +88,7 @@ export default function Developers() {
 
       {cur && (
         <Modal title={cur.d.name} onClose={() => setOpen(null)}
-          footer={<Link to={`/complexes?dev=${cur.d.id}`} className="btn y" onClick={() => setOpen(null)}>Все объекты застройщика</Link>}>
+          footer={<Link to={`/complexes?dev=${cur.d.id}`} className="btn y">Все объекты застройщика</Link>}>
           <div className="row" style={{ gap: 14, padding: '4px 24px 12px' }}>
             <span className="devlogo" style={{ background: cur.color }}>{initials(cur.d.name)}</span>
             <div><div className="bold">{cur.d.objects - cur.d.unfinished} сдано · {cur.d.unfinished} строится</div>{isDemo(cur.d) && <div className="t-xs c2">{DEMO_ORG[0].toUpperCase() + DEMO_ORG.slice(1)}</div>}<div className="t-sm c2">{cur.max && <ZoneTag zone={cur.max.r.zone} />}</div></div>

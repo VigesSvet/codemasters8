@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { SignalStatusTag } from '../components/SignalPanel'
 import { Faq, Hero, HeroTile, Score, ZoneTag, fmtDT } from '../components/ui'
 import type { SignalStatus } from '../data/types'
+import { from } from '../lib/nav'
 import { useStore } from '../lib/store'
 import { IcCheck, IcClose, IcFlag, IcHelp, IcInbox, IcRefresh } from '../ui/icons'
 
@@ -27,6 +28,8 @@ export default function Signals() {
     const q = p.toString()
     return q ? `/signals?${q}` : '/signals'
   }
+  // сигнал и ЖК открываются с «← Сигналы» на эту же выборку: фильтр статуса и объекта сохраняется при возврате
+  const back = from('Сигналы', `/signals${sp.toString() ? `?${sp}` : ''}`)
 
   // список мог поменяться у других аналитиков — перечитываем при открытии реестра; ошибка — баннером под шапкой
   useEffect(() => {
@@ -71,12 +74,12 @@ export default function Signals() {
             {shown.map((s) => {
               const c = complexes.find((x) => x.id === s.complexId)
               return (
-                <tr key={s.id} onClick={() => nav(`/signals/${s.id}`)}>
+                <tr key={s.id} onClick={() => nav(`/signals/${s.id}`, { state: back })}>
                   <td className="b">{s.code}</td>
                   <td>
                     <div className="row" style={{ gap: 12 }}>
                       {c && <img src={c.cover} alt="" style={{ width: 56, height: 42, borderRadius: 8, objectFit: 'cover' }} />}
-                      <div><Link to={`/complexes/${s.complexId}`} className="link" onClick={(e) => e.stopPropagation()}>ЖК «{s.complexName}»</Link>{c && <div className="t-sm c2">{c.district} · {c.stage}</div>}</div>
+                      <div><Link to={`/complexes/${s.complexId}`} state={back} className="link" onClick={(e) => e.stopPropagation()}>ЖК «{s.complexName}»</Link>{c && <div className="t-sm c2">{c.district} · {c.stage}</div>}</div>
                     </div>
                   </td>
                   <td><div className="row" style={{ gap: 8 }}><Score value={s.score} zone={s.zone} /><ZoneTag zone={s.zone} /></div></td>
@@ -100,7 +103,7 @@ export default function Signals() {
       <Faq title="Вопросы о сигналах"
         items={[
           ['Что такое сигнал?', 'Краткий отчёт по ЖК для проверки: данные объекта, факторы риска R1–R6 с доказательствами, ссылки на публикации, обращения и снимки. Сигнал формирует аналитик из карточки ЖК — по одному объекту одновременно может ждать решения только один сигнал.'],
-          ['Кто решает и что фиксируется?', 'Решение принимает аналитик: «Подтвердить» или «Вернуть на доработку». Без комментария решение не сохранится. В журнал сигнала записываются автор, дата, время и комментарий, туда же — каждая выгрузка PDF.'],
+          ['Кто решает и что фиксируется?', 'Решение принимает аналитик: «Подтвердить сигнал» или «Вернуть на доработку». Без комментария решение не сохранится. В журнал сигнала записываются автор, дата, время и комментарий, туда же — каждая выгрузка PDF.'],
           ['Можно ли отправить сигнал в госорган?', 'Нет, автоматической отправки нет. Сигнал — рекомендация для проверки, не юридическое заключение. Для внутреннего маршрута есть PDF и печатная версия с местом для отметки аналитика.'],
           ['Почему балл в сигнале отличается от текущего?', <>Сигнал — снимок на момент создания: дальше он не пересчитывается, чтобы было видно, на каком основании его сформировали. Если по объекту появились новые данные, карточка сигнала покажет текущий балл рядом. Как считается балл — в <Link className="link" to="/method">методике</Link>.</>],
         ]} />

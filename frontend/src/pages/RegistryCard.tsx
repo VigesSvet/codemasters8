@@ -6,6 +6,7 @@ import { PageTitle } from '../components/ui'
 import { OFFLINE_FILE } from '../data/openData'
 import type { RegistryCard as Card, SourceRecord } from '../data/types'
 import { ApiError, errorText } from '../lib/api'
+import { useFrom } from '../lib/nav'
 import { fundingName, onMap, sourceName, when } from '../lib/provenance'
 import { useStore } from '../lib/store'
 
@@ -82,6 +83,8 @@ export default function RegistryCard() {
   const { mode, registryObject, revision } = useStore()
   const [load, setLoad] = useState<Load | null>(null)
   const [ver, setVer] = useState(0)
+  // из списка открытых данных пришли с поиском и слоем в адресе — «← Открытые данные» возвращает в ту же выборку
+  const back = useFrom()
   useEffect(() => {
     if (mode === 'loading' || !key) return
     let alive = true
@@ -92,7 +95,7 @@ export default function RegistryCard() {
     return () => { alive = false }
   }, [key, mode, ver, revision]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const crumbs: [string, string?][] = [['Карта', '/'], ['Новостройки', '/complexes'], ['Открытые данные', '/complexes?layer=open']]
+  const crumbs: [string, string?][] = back ? [[`← ${back.label}`, back.to]] : [['Карта', '/'], ['Новостройки', '/complexes'], ['Открытые данные', '/complexes?layer=open']]
   const mine = load?.key === key && load.mode === mode ? load : null
   if (!mine?.data) return (
     <>

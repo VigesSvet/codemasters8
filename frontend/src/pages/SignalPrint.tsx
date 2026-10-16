@@ -172,17 +172,34 @@ function Sheet({ sig, at }: { sig: Signal; at: string }) {
           </table>
         </section>
 
-        <section className="sheet-sign keep">
-          <h2>Отметка аналитика</h2>
-          <div className="sign-choice"><span><i />Подтвердить</span><span><i />Вернуть на доработку</span></div>
-          <div className="sign-line wide"><span>Основание / комментарий</span><i /></div>
-          <div className="sign-line wide"><span /><i /></div>
-          <div className="sign-row">
-            <div className="sign-line"><span>Аналитик (ФИО)</span><i /></div>
-            <div className="sign-line"><span>Подпись</span><i /></div>
-            <div className="sign-line"><span>Дата</span><i /></div>
-          </div>
-        </section>
+        {sig.status === 'new' ? (
+          // решения ещё нет — поля для отметки на бумаге
+          <section className="sheet-sign keep">
+            <h2>Отметка аналитика</h2>
+            <div className="sign-choice"><span><i />Подтвердить сигнал</span><span><i />Вернуть на доработку</span></div>
+            <div className="sign-line wide"><span>Основание / комментарий</span><i /></div>
+            <div className="sign-line wide"><span /><i /></div>
+            <div className="sign-row">
+              <div className="sign-line"><span>Аналитик (ФИО)</span><i /></div>
+              <div className="sign-line"><span>Подпись</span><i /></div>
+              <div className="sign-line"><span>Дата</span><i /></div>
+            </div>
+          </section>
+        ) : (
+          // решение уже в журнале — итог вместо пустых полей; подпись — под принятым решением
+          <section className="sheet-sign keep">
+            <h2>Решение аналитика</h2>
+            <table className="sheet-kv"><tbody>
+              <tr><th>Итог</th><td><b>{sig.status === 'confirmed' ? 'Сигнал подтверждён' : 'Возвращён на доработку'}</b></td></tr>
+              <tr><th>Кто и когда</th><td>{sig.decidedBy ?? '—'}{sig.decidedAt && <>, <SignalTime at={sig.decidedAt} numeric /></>}</td></tr>
+              <tr><th>{sig.status === 'confirmed' ? 'Основание' : 'Что доработать'}</th><td>{sig.decisionComment || '—'}</td></tr>
+            </tbody></table>
+            <div className="sign-row">
+              <div className="sign-line"><span>Подпись</span><i /></div>
+              <div className="sign-line"><span>Дата</span><i /></div>
+            </div>
+          </section>
+        )}
 
         <footer className="sheet-foot">SAQ Qurylys · {sig.code} · Рекомендация для проверки, не юридическое заключение. Решение принимает сотрудник.</footer>
       </article>

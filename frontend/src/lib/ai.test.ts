@@ -92,11 +92,11 @@ describe('уверенность в текущей привязке-гипоте
     expect(lc.now?.confidence).toBe(0.34)
     expect(lc.differs).toBe(true)
     expect(linkText(a9, lc, true)).toBe('гипотеза ИИ 34% · низкая')
-    expect(linkText(a9, lc)).toBe('гипотеза ИИ 34%, низкая уверенность (при сборе — 54%) · аналитик не подтвердил')
+    expect(linkText(a9, lc)).toBe('гипотеза ИИ 34%, низкая уверенность (при сборе — 54%) · аналитик не принял')
   })
 
   it('без анализа (демо, загрузка, ЖК нет в выдаче) — сохранённая, с пометкой когда получена', () => {
-    expect(linkText(a9, linkConf(a9))).toBe('гипотеза ИИ при сборе 54% · аналитик не подтвердил')
+    expect(linkText(a9, linkConf(a9))).toBe('гипотеза ИИ при сборе 54% · аналитик не принял')
     expect(linkText(a9, linkConf(a9, { hypotheses: [hyp('c3', 0.8)] }), true)).toBe('гипотеза ИИ при сборе 54%')
     const manual = { ...a9, source: 'manual' as const }
     expect(linkText(manual, linkConf(manual), true)).toBe('гипотеза ИИ при добавлении 54%')
@@ -105,7 +105,7 @@ describe('уверенность в текущей привязке-гипоте
   it('те же числа — без второго', () => {
     const lc = linkConf({ ...a9, matchConfidence: 0.7 }, { hypotheses: [hyp('c12', 0.704)] })
     expect(lc.differs).toBe(false)
-    expect(linkText(a9, lc)).toBe('гипотеза ИИ 70% · аналитик не подтвердил')
+    expect(linkText(a9, lc)).toBe('гипотеза ИИ 70% · аналитик не принял')
   })
 
   it('факт — без уверенности ИИ', () => {

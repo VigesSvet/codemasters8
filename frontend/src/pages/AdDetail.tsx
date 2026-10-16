@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
 import { FactorList, Quote } from '../components/Factors'
-import { AiBadge, Confidence, HypothesisItem, OcrTag, TermList } from '../components/Hypothesis'
+import { AiBadge, Confidence, HypothesisItem, LinkMark, OcrTag, TermList } from '../components/Hypothesis'
 import { Origin } from '../components/Provenance'
 import { SignalAction } from '../components/SignalPanel'
 import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Score, StatusDot, ZoneTag, adKey, fmtDT, platformMeta, statusMeta } from '../components/ui'
@@ -10,8 +10,11 @@ import type { Ad, AdAnalysis, AdScore, AdStatus, AuditEvent, Complex, LinkHypoth
 import { linkConf, linkText, pct, visibleHypotheses, type LinkConf } from '../lib/ai'
 import { errorText } from '../lib/api'
 import { SYSTEM, fmtStamp, initialsOf } from '../lib/audit'
+import { from, useFrom } from '../lib/nav'
 import { isDemoAd } from '../lib/provenance'
 import { linkConfirmed, model } from '../lib/risk'
+import { matches } from '../lib/search'
+import { useHeadHeight } from '../lib/sticky'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcCheck, IcClose, IcExternal, IcSearch, IcSend, IcUsers } from '../ui/icons'
 
@@ -21,7 +24,7 @@ const TEXT_MAX = 2000
 /** Решения с основанием: для «Нарушение» оно обязательно, для остальных — по желанию */
 type Decision = 'confirmed' | 'dismissed' | 'needs_check'
 const DECISION: Record<Decision, { title: string; label: string; button: string; done: string; required: boolean; hint: string }> = {
-  confirmed: { title: 'Подтвердить нарушение?', label: 'Основание решения — обязательно', button: 'Подтвердить', done: 'Нарушение подтверждено, основание записано в журнал', required: true,
+  confirmed: { title: 'Подтвердить нарушение?', label: 'Основание решения — обязательно', button: 'Подтвердить нарушение', done: 'Нарушение подтверждено, основание записано в журнал', required: true,
     hint: 'Например: сверено с картотекой ГАСК, гарантии ЕО и разрешения МИО нет' },
   dismissed: { title: 'Отклонить публикацию?', label: 'Почему отклонено — необязательно', button: 'Отклонить', done: 'Публикация отклонена', required: false,
     hint: 'Например: у объекта действующая гарантия ЕО, номер указан в профиле' },
@@ -52,18 +55,22 @@ export default function AdDetail() {
   const [aiLoad, setAiLoad] = useState<AiLoad | null>(null)
   const [aiVer, setAiVer] = useState(0)
   const live = mode === 'api'
+  // откуда пришли (сигнал, очередь, ЖК) — крошка «← …» ведёт туда
+  const back = useFrom()
+  useHeadHeight()
 
   // журнал — с сервера; revision растёт после каждого сохранённого изменения (статус, привязка, комментарий —
   // в том числе из очереди, если PATCH завершился уже здесь) и после восстановления связи — тогда перечитываем
   useEffect(() => {
-    if (!live || !id) return
+    // нет такой публикации — журнал не запрашиваем: вместо баннера «Журнал не загрузился» — понятное «не найдена»
+    if (!live || !id || !found) return
     let alive = true
     getAudit({ adId: id }).then(
       (events) => { if (alive) setLog({ id, events }) },
       (e: unknown) => { if (alive) setLog((l) => ({ id, events: l?.id === id ? l.events : undefined, err: errorText(e) })) },
     )
     return () => { alive = false }
-  }, [id, live, ver, revision]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, live, found, ver, revision]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // анализ ИИ — один на страницу: по нему и карточка «Анализ ИИ», и уверенность в текущей привязке в панели справа.
   // Решения меняют revision — анализ перечитывается (отклонённые гипотезы уходят, решение по условиям приходит с сервера)
@@ -77,7 +84,16 @@ export default function AdDetail() {
     return () => { alive = false }
   }, [id, live, found, aiVer, revision]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!a) return <div className="empty">Публикация не найдена</div>
+  if (!a) return mode === 'loading' ? <div className="empty">Загружаем публикацию…</div> : (
+    <div className="empty">
+      <div className="t-h3" style={{ color: 'var(--text)', marginBottom: 6 }}>Публикация не найдена</div>
+      <div>Публикации «{id}» нет в ленте — ссылка устарела или база была пересоздана.</div>
+      <div className="row" style={{ justifyContent: 'center', gap: 8, marginTop: 16 }}>
+        {back && <Link to={back.to} className="btn g m">← {back.label}</Link>}
+        <Link to="/ads" className="btn g m">К ленте публикаций</Link>
+      </div>
+    </div>
+  )
   // ЖК — только сохранённая привязка из стора (с бэкендом — PATCH /ads/{id}/complex, событие в журнале)
   const c = a.complexId ? complexes.find((x) => x.id === a.complexId) : undefined
   const s = adScoreOf(a)
@@ -109,20 +125,20 @@ export default function AdDetail() {
   const link = (to: Complex | null) => {
     setModal(null)
     const same = !!to && to.id === a.complexId
-    const msg = !to ? 'Привязка к ЖК снята' : same ? `Привязка к ЖК «${to.name}» подтверждена` : `Публикация привязана к ЖК «${to.name}»`
+    const msg = !to ? 'Привязка к ЖК снята' : same ? `Привязка к ЖК «${to.name}» принята` : `Публикация привязана к ЖК «${to.name}»`
     setLinking(true)
     // при ошибке стор откатывает привязку и показывает баннер
     linkAd(a.id, to?.id ?? null).then((ok) => {
       if (ok) notify(demo ? `${msg} — демо-режим, на сервере не сохранено` : `${msg}, оценка пересчитана, событие в журнале`)
     }).finally(() => setLinking(false))
   }
-  /** Подтвердить текущую гипотезу ИИ: с бэкендом — «Принять» (уверенность ИИ сохраняется, событие ИИ в журнале), в демо — локально */
+  /** «Принять привязку» — текущую гипотезу ИИ: с бэкендом — принятие гипотезы (уверенность ИИ сохраняется, событие ИИ в журнале), в демо — локально */
   const confirmLink = (to: Complex) => {
     if (!live) { link(to); return }
     setLinking(true)
     acceptHypothesis(a.id, to.id).then(
       () => notify(`Гипотеза принята: привязка к ЖК «${to.name}» теперь факт, риск объекта пересчитан`),
-      (e: unknown) => notify(`Привязка не подтверждена: ${errorText(e)}`),
+      (e: unknown) => notify(`Привязка не принята: ${errorText(e)}`),
     ).finally(() => setLinking(false))
   }
 
@@ -148,8 +164,9 @@ export default function AdDetail() {
 
   return (
     <>
-      <PageTitle crumbs={[['Карта', '/'], ['Лента публикаций', '/ads'], [adKey(a.id)]]}
-        title={<span className="row wrap-f" style={{ gap: 14 }}>{c ? `Реклама ЖК «${c.name}»` : 'Реклама без привязки к ЖК'}{demoAd && <Origin kind="demo" label="Демо-публикация (вымышленная)" />}</span>}
+      <PageTitle crumbs={back ? [[`← ${back.label}`, back.to], [adKey(a.id)]] : [['Карта', '/'], ['Лента публикаций', '/ads'], [adKey(a.id)]]}
+        title={<span className="row wrap-f" style={{ gap: 14 }}>{c ? `Реклама ЖК «${c.name}»` : 'Реклама без привязки к ЖК'}
+          {c && <LinkMark a={a} value={lc.now?.confidence} label="привязка — гипотеза ИИ" />}{demoAd && <Origin kind="demo" label="Демо-публикация (вымышленная)" />}</span>}
         sub={<span className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={22} />{platformMeta[a.platform].name} · {a.account} · {fmtDT(a.date)}</span>} />
 
       <div className="cols-r">
@@ -170,10 +187,30 @@ export default function AdDetail() {
                 {demoAd ? <Origin kind="demo" label="Демонстрационные данные" title="Демонстрационная публикация: текст, аккаунт и ссылка вымышлены; автоматического сбора публикаций нет" />
                   : byAnalyst ? <Origin kind="analyst" label="Добавлено аналитиком" who={added?.who ?? a.assignee} at={added?.at} />
                     : <span className="tag gray">Источник: {a.source}</span>}
-                {c && (fact ? <Origin kind="analyst" label="Привязка — решение аналитика" who={a.linkConfirmedBy} at={a.linkConfirmedAt} />
-                  : <AiBadge label={`привязка — гипотеза ИИ ${pct(lc.now?.confidence ?? a.matchConfidence ?? 0)}`} />)}
+                {/* гипотеза помечена у заголовка; здесь — только факт с автором */}
+                {c && fact && <Origin kind="analyst" label="Привязка — решение аналитика" who={a.linkConfirmedBy} at={a.linkConfirmedAt} />}
                 <a href={a.url} target="_blank" rel="noreferrer" className="tag outline"><IcExternal size={13} />Источник</a>
               </div>
+            </div>
+          </div>
+
+          {/* оценка с факторами — в обычном потоке: липкая колонка справа держит только статус и решения */}
+          <div className="card">
+            <div className="card-head"><h3>Оценка публикации</h3><ZoneTag zone={s.zone} /></div>
+            <div style={{ display: 'grid', gridTemplateColumns: '290px minmax(0, 1fr)', gap: 32, alignItems: 'start' }}>
+              <div>
+                <div className="row" style={{ alignItems: 'flex-end', gap: 6, margin: '8px 0 16px' }}><span className="big-num" style={{ fontSize: 52 }}>{s.score}</span><span className="c3" style={{ paddingBottom: 4 }}>из 100</span></div>
+                <Gauge value={s.score} />
+                {s.needsCheck && <div style={{ marginTop: 14 }}><NeedsCheck /></div>}
+                {c && cr && (
+                  <Link to={`/complexes/${c.id}`} state={from(`Публикация ${adKey(a.id)}`, `/ads/${a.id}`)} className="row" style={{ marginTop: 18, background: 'var(--bg)', borderRadius: 16, padding: 8, gap: 12 }}>
+                    <img src={c.cover} alt="" style={{ width: 52, height: 52, borderRadius: 12, objectFit: 'cover' }} />
+                    <div style={{ flex: 1, minWidth: 0 }}><div className="bold t-sm">ЖК «{c.name}»</div><div className="t-xs c2">риск объекта · привязка — {fact ? 'факт' : linkText(a, lc, true)}</div></div>
+                    <Score value={cr.score} zone={cr.zone} />
+                  </Link>
+                )}
+              </div>
+              <FactorList factors={s.factors} items={false} />
             </div>
           </div>
 
@@ -209,7 +246,7 @@ export default function AdDetail() {
             )}
           </div>
 
-          <AiCard key={a.id} a={a} s={s} c={c} load={ai} lc={lc} retry={() => setAiVer((v) => v + 1)} />
+          <AiCard key={a.id} a={a} s={s} c={c} load={ai} lc={lc} retry={() => setAiVer((v) => v + 1)} onLink={() => setModal('cx')} />
 
           <div className="card">
             <div className="card-head"><h3>История</h3>{mine?.events && <span className="t-sm c2">{mine.events.length} · журнал сервера</span>}</div>
@@ -228,47 +265,38 @@ export default function AdDetail() {
           </div>
         </div>
 
+        {/* липкие — только статус и решения: колонка короче окна, без своей прокрутки; внизу страницы она уходит вверх
+            вместе с концом контента, а решения в её низу остаются рядом с полем комментария */}
         <aside className="stack sticky">
           <div className="card">
             <Cell title="Статус" end={<><StatusDot s={a.status} /><span style={{ color: 'var(--text)' }}>{statusMeta[a.status].name}</span></>} chevron onClick={() => setModal('status')} />
             <Cell title="Ответственный" end={a.assignee ? <><span className="ava sm">{initialsOf(a.assignee, analysts)}</span><span style={{ color: 'var(--text)' }}>{a.assignee}</span></> : 'не назначен'} />
             <Cell title="Объект" end={<span style={{ color: 'var(--text)', maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c ? c.name : 'не определён'}</span>} chevron onClick={() => setModal('cx')}
               sub={c ? <span className={`tag ${fact ? 'green' : 'yellow'}`} style={{ marginTop: 4 }}
-                title={fact ? `Привязка к ЖК — ${linkText(a, lc)}` : `Привязка к ЖК — ${linkText(a, lc)}. Пока аналитик не подтвердит, публикация не даёт баллов объекту`}>{linkText(a, lc, true)}</span> : undefined} />
+                title={fact ? `Привязка к ЖК — ${linkText(a, lc)}` : `Привязка к ЖК — ${linkText(a, lc)}. Пока аналитик её не примет, публикация не даёт баллов объекту`}>{linkText(a, lc, true)}</span> : undefined} />
             {c && !fact && (
-              <div style={{ padding: '4px 24px 20px' }}>
-                <button className="btn g m full" disabled={linking} onClick={() => confirmLink(c)}><IcCheck size={20} />{linking ? 'Сохраняем…' : 'Подтвердить привязку'}</button>
-                <p className="t-xs c2" style={{ marginTop: 8, lineHeight: '17px' }}>Привязку предложил ИИ — это гипотеза, аналитик её не подтвердил. Пока так, публикация не даёт объекту баллов R2/R3, а R1 объекта не входит в её оценку.
-                  {live && lc.now && ` При подтверждении сохранится уверенность по текущему анализу — ${pct(lc.now.confidence)}${lc.differs ? ` (${lc.when} — ${pct(lc.saved)})` : ''}.`}</p>
+              <div style={{ padding: '2px 0 14px' }}>
+                <button className="btn g m full" disabled={linking} onClick={() => confirmLink(c)}
+                  title="Привязку предложил ИИ — это гипотеза. Пока её не приняли, публикация не даёт объекту баллов R2/R3, а R1 объекта не входит в её оценку">
+                  <IcCheck size={20} />{linking ? 'Сохраняем…' : 'Принять привязку'}</button>
+                <p className="t-xs c2" style={{ marginTop: 6, lineHeight: '17px' }}>Пока привязка — гипотеза ИИ, публикация не даёт объекту баллов R2/R3
+                  {live && lc.now ? `; при принятии сохранится уверенность ${pct(lc.now.confidence)}${lc.differs ? ` (${lc.when} — ${pct(lc.saved)})` : ''}` : ''}.</p>
               </div>
-            )}
-          </div>
-
-          <div className="card card-pad">
-            <div className="row between"><span className="bold">Оценка публикации</span><ZoneTag zone={s.zone} /></div>
-            <div className="row" style={{ alignItems: 'flex-end', gap: 6, margin: '12px 0 16px' }}><span className="big-num" style={{ fontSize: 52 }}>{s.score}</span><span className="c3" style={{ paddingBottom: 4 }}>из 100</span></div>
-            <Gauge value={s.score} />
-            {s.needsCheck && <div style={{ marginTop: 14 }}><NeedsCheck /></div>}
-            <div style={{ marginTop: 8 }}><FactorList factors={s.factors} items={false} /></div>
-            {c && cr && (
-              <Link to={`/complexes/${c.id}`} className="row" style={{ marginTop: 18, background: 'var(--bg)', borderRadius: 16, padding: 8, gap: 12 }}>
-                <img src={c.cover} alt="" style={{ width: 52, height: 52, borderRadius: 12, objectFit: 'cover' }} />
-                <div style={{ flex: 1, minWidth: 0 }}><div className="bold t-sm">ЖК «{c.name}»</div><div className="t-xs c2">риск объекта · привязка — {fact ? 'факт' : linkText(a, lc, true)}</div></div>
-                <Score value={cr.score} zone={cr.zone} />
-              </Link>
             )}
           </div>
 
           <div className="card">
-            <div className="stack">
+            <div className="stack" style={{ gap: 8 }}>
               {(a.status === 'new' || a.status === 'needs_check') && <button className="btn y full" onClick={() => decide('in_review', 'Публикация взята в работу')}>Взять в работу</button>}
-              <button className="btn d full" onClick={() => setModal('confirmed')}>Подтвердить нарушение</button>
-              <div className="row" style={{ gap: 8 }}>
-                <button className="btn g m" style={{ flex: 1 }} onClick={() => setModal('dismissed')}>Отклонить</button>
-                <button className="btn g m" style={{ flex: 1 }} onClick={() => setModal('needs_check')}>Доп. проверка</button>
-              </div>
+              {/* решение, совпадающее с текущим статусом, не предлагаем повторно — только сменить его */}
+              {a.status !== 'confirmed' && <button className="btn d full" onClick={() => setModal('confirmed')}>Подтвердить нарушение</button>}
               {c ? <SignalAction complex={c} label="Сформировать сигнал по ЖК" compact />
                 : <p className="t-sm c2" style={{ lineHeight: '18px' }}><button className="link" disabled={linking} onClick={() => setModal('cx')}>Привяжите публикацию к ЖК</button> — привязка сохраняется в журнале, после этого можно сформировать сигнал</p>}
+              {(a.status === 'confirmed' || a.status === 'dismissed') && <div className="t-xs c2" style={{ marginTop: 4 }}>Решение принято — «{statusMeta[a.status].name}», основание в истории. Изменить решение:</div>}
+              <div className="row" style={{ gap: 8 }}>
+                {a.status !== 'dismissed' && <button className="btn g m" style={{ flex: 1 }} onClick={() => setModal('dismissed')}>Отклонить</button>}
+                {a.status !== 'needs_check' && <button className="btn g m" style={{ flex: 1 }} onClick={() => setModal('needs_check')}>Доп. проверка</button>}
+              </div>
             </div>
             <p className="t-xs c2" style={{ marginTop: 12, lineHeight: '17px' }}>ИИ даёт рекомендацию. Решение принимает сотрудник, автоматической отправки в госорганы нет.</p>
           </div>
@@ -278,16 +306,16 @@ export default function AdDetail() {
       {modal === 'status' && (
         <Modal title="Статус публикации" onClose={() => setModal(null)}>
           {ORDER.map((st) => <Cell key={st} icon={<StatusDot s={st} />} title={statusMeta[st].name} end={a.status === st ? <IcCheck size={22} strokeWidth={2.5} style={{ color: 'var(--text)' }} /> : undefined}
-            onClick={() => (isDecision(st) ? setModal(st) : st === a.status ? setModal(null) : decide(st, `Статус: ${statusMeta[st].name}`))} />)}
+            onClick={() => (st === a.status ? setModal(null) : isDecision(st) ? setModal(st) : decide(st, `Статус: ${statusMeta[st].name}`))} />)}
         </Modal>
       )}
       {modal === 'cx' && (
         <Modal title="Привязать к объекту" onClose={() => setModal(null)}>
-          <div style={{ padding: '8px 16px' }}><div className="search"><IcSearch size={20} /><input autoFocus placeholder="Название ЖК" value={cq} onChange={(e) => setCq(e.target.value)} /></div></div>
+          <div style={{ padding: '8px 16px' }}><div className="search"><IcSearch size={20} /><input autoFocus placeholder="Название или адрес ЖК" value={cq} onChange={(e) => setCq(e.target.value)} /></div></div>
           {a.complexId && <Cell icon={<span className="ico"><IcClose size={20} /></span>} title="Снять привязку" sub="Публикация останется без ЖК — нужна ручная привязка" onClick={() => link(null)} />}
-          {complexes.filter((x) => x.name.toLowerCase().includes(cq.toLowerCase())).map((x) => (
+          {complexes.filter((x) => matches(cq, x.name, x.address)).map((x) => (
             <Cell key={x.id} inset icon={<img className="th" src={x.cover} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name}
-              sub={x.id === a.complexId ? (fact ? 'привязка подтверждена' : `${linkText(a, lc, true)} — выбор подтвердит её`) : x.address}
+              sub={x.id === a.complexId ? (fact ? 'привязка — факт' : `${linkText(a, lc, true)} — выбор примет привязку`) : x.address}
               end={x.id === a.complexId ? <IcCheck size={22} strokeWidth={2.5} style={{ color: 'var(--text)' }} /> : undefined}
               onClick={() => (x.id === a.complexId && fact ? setModal(null) : link(x))} />
           ))}
@@ -319,8 +347,8 @@ const whyKey = (m: AiModal) => (m.kind === 'reject' ? `r:${m.h.complexId}` : 't'
 const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1)
 
 /** «Анализ ИИ» (ТЗ §6): гипотезы ЖК и условия оплаты с цитатами и уверенностью; принять или отклонить — решение аналитика в журнал.
- *  load — анализ страницы (AdDetail), lc — уверенность в текущей привязке по нему же */
-function AiCard({ a, s, c, load, lc, retry }: { a: Ad; s: AdScore; c?: Complex; load: AiLoad | null; lc: LinkConf; retry: () => void }) {
+ *  load — анализ страницы (AdDetail), lc — уверенность в текущей привязке по нему же, onLink — открыть ручную привязку */
+function AiCard({ a, s, c, load, lc, retry, onLink }: { a: Ad; s: AdScore; c?: Complex; load: AiLoad | null; lc: LinkConf; retry: () => void; onLink: () => void }) {
   const { mode, complexes, acceptHypothesis, rejectHypothesis, reviewTerms, notify } = useStore()
   const live = mode === 'api'
   const [busy, setBusy] = useState<string | null>(null)
@@ -342,6 +370,8 @@ function AiCard({ a, s, c, load, lc, retry }: { a: Ad; s: AdScore; c?: Complex; 
   const orphan: LinkHypothesis | null = c && !fact && data && !hyps.some((h) => h.complexId === c.id)
     ? { complexId: c.id, complexName: c.name, confidence: conf, low: conf < model.thresholds.lowConfidence, reasons: [] } : null
   const wk = modal ? whyKey(modal) : ''
+  // без гипотез пояснение сервера «привязку делает аналитик вручную» повторяет подсказку в блоке привязки — его не показываем
+  const note = hyps.length ? data?.note : data?.note?.split('. ').filter((x) => !x.includes('привязку делает')).join('. ')
 
   /** wk — черновик комментария этого решения: после успеха очищается, при ошибке остаётся для повтора */
   const act = (k: string, p: () => Promise<unknown>, done: string, key?: string) => {
@@ -357,7 +387,7 @@ function AiCard({ a, s, c, load, lc, retry }: { a: Ad; s: AdScore; c?: Complex; 
     act(`r:${m.h.complexId}`, () => rejectHypothesis(a.id, m.h.complexId, whys[key]), `Гипотеза отклонена: ЖК «${m.h.complexName}» ИИ больше не предлагает`, key)
   }
   const terms = (d: 'accepted' | 'rejected') => act(`t:${d}`, () => reviewTerms(a.id, d, d === 'rejected' ? whys.t : undefined),
-    d === 'accepted' ? 'Условия оплаты подтверждены — решение в журнале' : 'Отмечено: это не предложение внести деньги — R2 по публикации не засчитывается',
+    d === 'accepted' ? 'Отмечено: условия оплаты верны — решение в журнале' : 'Отмечено: это не предложение внести деньги — R2 по публикации не засчитывается',
     d === 'rejected' ? 't' : undefined)
 
   return (
@@ -366,7 +396,7 @@ function AiCard({ a, s, c, load, lc, retry }: { a: Ad; s: AdScore; c?: Complex; 
       <p className="t-sm c2" style={{ marginBottom: 8 }}>ИИ предлагает — решает аналитик. Гипотеза входит в балл только после того, как её примут; каждое решение пишется в журнал. Юридический вывод ИИ не делает.</p>
       {!live ? (
         <div className="ai-note">{mode === 'loading' ? 'Подключаемся к серверу…'
-          : 'Демо-режим без бэкенда: анализ ИИ (условия оплаты, гипотезы ЖК) выполняется на сервере. Привязку к ЖК можно подтвердить вручную справа — в демо она живёт только до перезагрузки.'}</div>
+          : 'Демо-режим без бэкенда: анализ ИИ (условия оплаты, гипотезы ЖК) выполняется на сервере. Привязку к ЖК можно принять или выбрать вручную справа — в демо она живёт только до перезагрузки.'}</div>
       ) : !data ? (
         load?.err ? <div className="ai-note err">Анализ не загрузился: {load.err} <button className="link" onClick={retry}>Повторить</button></div>
           : <div className="ai-note">Загружаем анализ…</div>
@@ -377,7 +407,7 @@ function AiCard({ a, s, c, load, lc, retry }: { a: Ad; s: AdScore; c?: Complex; 
           {c && !fact && lc.now ? (
             // гипотеза есть в текущей выдаче: её уверенность и сохранится при принятии; записанная при сборе — отдельно, если другая
             <div className="ai-decision no">
-              <div className="row between" style={{ gap: 8, alignItems: 'flex-start' }}><span>ЖК «{c.name}» — гипотеза ИИ, аналитик её не подтвердил</span><Confidence value={lc.now.confidence} low={lc.now.low} /></div>
+              <div className="row between" style={{ gap: 8, alignItems: 'flex-start' }}><span>ЖК «{c.name}» — гипотеза ИИ, аналитик её не принял</span><Confidence value={lc.now.confidence} low={lc.now.low} /></div>
               <div style={{ marginTop: 4 }}>
                 {lc.differs && `${cap(lc.when)} публикации уверенность была ${pct(lc.saved)}, по текущему анализу — ${pct(lc.now.confidence)}: при принятии сохранится ${pct(lc.now.confidence)}. `}
                 В балл объекта не входит, пока аналитик её не примет
@@ -386,13 +416,15 @@ function AiCard({ a, s, c, load, lc, retry }: { a: Ad; s: AdScore; c?: Complex; 
           ) : (
             <div className={`ai-decision ${c ? (fact ? 'ok' : 'no') : ''}`}>
               {c ? <>ЖК «{c.name}» — {linkText(a, lc)}{fact ? '' : '. В балл объекта не входит, пока аналитик её не примет'}</>
-                : 'ЖК не определён: примите гипотезу ниже или привяжите публикацию вручную'}
+                : hyps.length ? 'ЖК не определён: примите одну из гипотез ниже или привяжите публикацию вручную'
+                  // одна подсказка вместо трёх: ИИ не предлагает ЖК — что делать дальше
+                  : <>ЖК не определён: ИИ не нашёл в тексте признаков конкретного ЖК{rejected.length ? ' среди неотклонённых' : ''}. <button className="link" onClick={onLink}>Привязать вручную</button></>}
             </div>
           )}
           {orphan && (
             <div className="row wrap-f" style={{ gap: 8, marginTop: 10 }}>
-              <button className="btn g m" disabled={!!busy} onClick={() => accept(orphan)}><IcCheck size={18} />{busy === `a:${orphan.complexId}` ? 'Сохраняем…' : 'Принять'}</button>
-              <button className="btn g m" disabled={!!busy} onClick={() => setModal({ kind: 'reject', h: orphan, saved: true })}><IcClose size={18} />{busy === `r:${orphan.complexId}` ? 'Сохраняем…' : 'Отклонить'}</button>
+              <button className="btn g m" disabled={!!busy} onClick={() => accept(orphan)}><IcCheck size={18} />{busy === `a:${orphan.complexId}` ? 'Сохраняем…' : 'Принять привязку'}</button>
+              <button className="btn g m" disabled={!!busy} onClick={() => setModal({ kind: 'reject', h: orphan, saved: true })}><IcClose size={18} />{busy === `r:${orphan.complexId}` ? 'Сохраняем…' : 'Отклонить гипотезу'}</button>
             </div>
           )}
           {hyps.length > 0 ? (
@@ -403,32 +435,32 @@ function AiCard({ a, s, c, load, lc, retry }: { a: Ad; s: AdScore; c?: Complex; 
                   <HypothesisItem key={h.complexId} h={h} note={current && !fact ? `текущая привязка — гипотеза${lc.differs ? ` · ${lc.when} — ${pct(lc.saved)}` : ''}` : undefined}>
                     {current && fact ? <span className="tag green"><IcCheck size={12} strokeWidth={3} />{a.linkConfirmedBy ? 'принята — привязка факт' : 'текущая привязка — факт'}</span> : (
                       <>
-                        <button className="btn g m" disabled={!!busy} onClick={() => accept(h)}><IcCheck size={18} />{busy === `a:${h.complexId}` ? 'Сохраняем…' : current ? 'Принять' : 'Принять и привязать'}</button>
-                        <button className="btn g m" disabled={!!busy} onClick={() => setModal({ kind: 'reject', h })}><IcClose size={18} />{busy === `r:${h.complexId}` ? 'Сохраняем…' : 'Отклонить'}</button>
+                        <button className="btn g m" disabled={!!busy} onClick={() => accept(h)}><IcCheck size={18} />{busy === `a:${h.complexId}` ? 'Сохраняем…' : 'Принять привязку'}</button>
+                        <button className="btn g m" disabled={!!busy} onClick={() => setModal({ kind: 'reject', h })}><IcClose size={18} />{busy === `r:${h.complexId}` ? 'Сохраняем…' : 'Отклонить гипотезу'}</button>
                       </>
                     )}
                   </HypothesisItem>
                 )
               })}
             </div>
-          ) : <div className="t-sm c2" style={{ marginTop: 10 }}>{c ? 'Других ЖК ИИ по тексту не предлагает' : `ИИ не нашёл подходящих ЖК${rejected.length ? ' среди неотклонённых' : ''} — привяжите публикацию вручную`}</div>}
+          ) : c && <div className="t-sm c2" style={{ marginTop: 10 }}>Других ЖК ИИ по тексту не предлагает</div>}
           {rejected.length > 0 && <p className="t-xs c2" style={{ marginTop: 8 }}>Отклонены аналитиком: {rejected.map((n) => `ЖК «${n}»`).join(', ')} — ИИ их больше не предлагает</p>}
 
           <div className="ai-sub">Условия оплаты <span className="t-sm c2" style={{ fontWeight: 400 }}>{data.terms.length}</span></div>
           <TermList terms={data.terms} empty="ИИ не нашёл условий оплаты" />
           {review && (
             <div className={`ai-decision ${review === 'accepted' ? 'ok' : 'no'}`}>
-              {review === 'accepted' ? 'Подтверждено аналитиком: это предложение внести деньги' : 'Аналитик отметил: это не предложение внести деньги — R2 по публикации не засчитывается'}
+              {review === 'accepted' ? 'Аналитик отметил: условия верны — это предложение внести деньги' : 'Аналитик отметил: это не предложение внести деньги — R2 по публикации не засчитывается'}
               {reviewBy && ` · ${reviewBy}`}{reviewAt && `, ${fmtStamp(reviewAt)}`}
             </div>
           )}
           {(moneyFound || review) && (
             <div className="row wrap-f" style={{ gap: 8, marginTop: 10 }}>
-              {review !== 'accepted' && <button className="btn g m" disabled={!!busy} onClick={() => terms('accepted')}><IcCheck size={18} />{busy === 't:accepted' ? 'Сохраняем…' : 'Подтвердить'}</button>}
+              {review !== 'accepted' && <button className="btn g m" disabled={!!busy} onClick={() => terms('accepted')}><IcCheck size={18} />{busy === 't:accepted' ? 'Сохраняем…' : 'Условия верны'}</button>}
               {review !== 'rejected' && <button className="btn g m" disabled={!!busy} onClick={() => setModal({ kind: 'terms' })}><IcClose size={18} />{busy === 't:rejected' ? 'Сохраняем…' : 'Это не предложение денег'}</button>}
             </div>
           )}
-          <p className="t-xs c2" style={{ marginTop: 8, lineHeight: '17px' }}>R2 ставит правило модели по словарю — это воспроизводимая цитата, а не вывод ИИ. Отметка «Это не предложение денег» снимает R2 этой публикации и у объекта; подтверждение на балл не влияет.</p>
+          <p className="t-xs c2" style={{ marginTop: 8, lineHeight: '17px' }}>R2 ставит правило модели по словарю — это воспроизводимая цитата, а не вывод ИИ. Отметка «Это не предложение денег» снимает R2 этой публикации и у объекта; отметка «Условия верны» на балл не влияет.</p>
 
           {(data.phones.length > 0 || data.addresses.length > 0) && (
             <div className="row wrap-f" style={{ gap: 6, marginTop: 12 }}>
@@ -437,7 +469,7 @@ function AiCard({ a, s, c, load, lc, retry }: { a: Ad; s: AdScore; c?: Complex; 
               {data.addresses.map((x) => <span key={x} className="tag gray">{x}</span>)}
             </div>
           )}
-          {data.note && <div className="ai-note" style={{ marginTop: 12 }}>{data.note}</div>}
+          {note && <div className="ai-note" style={{ marginTop: 12 }}>{note}</div>}
           <div className="t-xs c3" style={{ marginTop: 12 }}>Движок {data.engine} · офлайн: правила, словари, транслитерация, без внешних API · одинаковый текст — одинаковый результат</div>
         </>
       )}
@@ -446,7 +478,7 @@ function AiCard({ a, s, c, load, lc, retry }: { a: Ad; s: AdScore; c?: Complex; 
         <Modal title={modal.kind === 'reject' ? 'Отклонить гипотезу ИИ?' : 'Это не предложение внести деньги?'} onClose={() => setModal(null)}
           footer={<>
             <button className="btn g" onClick={() => setModal(null)}>Отмена</button>
-            <button className="btn d" onClick={() => (modal.kind === 'reject' ? reject(modal) : terms('rejected'))}>{modal.kind === 'reject' ? 'Отклонить' : 'Да, не предложение денег'}</button>
+            <button className="btn d" onClick={() => (modal.kind === 'reject' ? reject(modal) : terms('rejected'))}>{modal.kind === 'reject' ? 'Отклонить гипотезу' : 'Это не предложение денег'}</button>
           </>}>
           {modal.kind === 'reject' ? (
             <div className="cell" style={{ minHeight: 56 }}><span className="ico"><IcBuilding size={20} /></span><div className="main">

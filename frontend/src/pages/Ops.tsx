@@ -1,23 +1,48 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
+import { LinkMark } from '../components/Hypothesis'
 import MapView from '../components/MapView'
 import { Faq, Hero, HeroTile, Highlight, LinkCols, PlatformIcon, Score, SectionHead, StatusTag, ZoneTag, fmtDT, fmtShort, platformMeta } from '../components/ui'
-import type { AuditEvent, Platform, Zone } from '../data/types'
+import type { Ad, AuditEvent, Platform, Zone } from '../data/types'
 import { errorText } from '../lib/api'
 import { HUMAN_KINDS, SYSTEM } from '../lib/audit'
-import { model } from '../lib/risk'
+import { from } from '../lib/nav'
+import { adSignals, model } from '../lib/risk'
+import { isDemoAd } from '../lib/provenance'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcClock, IcFlag, IcHelp, IcInbox, IcTraffic } from '../ui/icons'
 
-const WEEKS = [3, 5, 4, 7, 6, 9, 8, 12]
 const RECENT = 8
+const WEEKS = 8
+const BACK = from('Оперативная сводка', '/ops')
+
+/** Понедельник недели даты (время браузера) */
+const monday = (d: Date) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x }
+/** Номер недели по ISO 8601 */
+function isoWeek(d: Date) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7))
+  return Math.ceil(((t.getTime() - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7)
+}
+/** Публикации ленты с признаками продажи (маркеры словаря продажи или денег) по неделям: восемь недель, последняя —
+ *  неделя самой свежей такой публикации (сбор ручной — «сегодня» могло ещё ничего не прийти) */
+function salesByWeek(ads: Ad[]) {
+  const dates = ads.filter((a) => { const x = adSignals(a); return x.sale.length + x.funds.length > 0 })
+    .map((a) => new Date(a.date)).filter((d) => !Number.isNaN(d.getTime()))
+  const last = monday(dates.length ? new Date(Math.max(...dates.map(Number))) : new Date())
+  return Array.from({ length: WEEKS }, (_, i) => {
+    const start = new Date(last); start.setDate(start.getDate() - 7 * (WEEKS - 1 - i))
+    const end = new Date(start); end.setDate(end.getDate() + 7)
+    return { week: isoWeek(start), start, n: dates.filter((d) => d >= start && d < end).length }
+  })
+}
 /** Действия людей — без системных событий сбора и сверки данных и без гипотез, записанных ИИ (их отсекает и сервер) */
 const human = (e: AuditEvent) => e.kind !== 'system' && e.kind !== 'data' && e.who !== SYSTEM
 
 /** Оперативная сводка — шапка с показателями, карта с рейтингом прямо в шапке, ниже карусель свежей рекламы */
 export default function Ops() {
-  const { complexes, ads, riskOf, adScoreOf, signals, mode, getAudit, revision } = useStore()
+  const { complexes, developers, ads, riskOf, adScoreOf, signals, mode, getAudit, revision } = useStore()
   const nav = useNavigate()
   const [zone, setZone] = useState<Zone | 'all'>('all')
   const [recent, setRecent] = useState<{ events?: AuditEvent[]; err?: string } | null>(null)
@@ -44,6 +69,11 @@ export default function Ops() {
   const idle = scored.filter((x) => x.c.idleDays >= 30).sort((a, b) => b.c.idleDays - a.c.idleDays)
   const fresh = [...ads].sort((a, b) => b.date.localeCompare(a.date))
   const scroll = (d: number) => strip.current?.scrollBy({ left: d * strip.current.clientWidth, behavior: 'smooth' })
+  const weeks = useMemo(() => salesByWeek(ads), [ads])
+  const maxW = Math.max(1, ...weeks.map((w) => w.n))
+  const [prevW, curW] = weeks.slice(-2)
+  // изменение к предыдущей неделе — только когда есть с чем сравнить
+  const delta = prevW.n ? Math.round(((curW.n - prevW.n) / prevW.n) * 100) : null
 
   return (
     <>
@@ -81,7 +111,7 @@ export default function Ops() {
           <SectionHead title="Сигналы ждут решения" to="/signals?status=new" />
           <div className="sigmini">
             {waiting.slice(0, 5).map((s) => (
-              <Link key={s.id} to={`/signals/${s.id}`}>
+              <Link key={s.id} to={`/signals/${s.id}`} state={BACK}>
                 <span className="row between"><span className="t-sm c2 num">{s.code}</span><Score value={s.score} zone={s.zone} /></span>
                 <span className="bold clamp2">ЖК «{s.complexName}»</span>
                 <span className="t-xs c2">{s.createdBy} · {fmtDT(s.createdAt)}</span>
@@ -113,7 +143,7 @@ export default function Ops() {
           <SectionHead title="Последние действия" right={<span className="t-sm c2">кто, что и когда — из журнала</span>} />
           {recent?.err && <div className="alog-err t-sm">Журнал не загрузился: {recent.err} <button className="link" onClick={() => setVer((v) => v + 1)}>Повторить</button></div>}
           {!recent ? <div className="t-sm c2 alist-empty">Загружаем журнал…</div>
-            : recent.events && <div className="alog-grid"><AuditList events={recent.events} links={['ad', 'signal', 'complex']} empty="Действий аналитиков пока нет" /></div>}
+            : recent.events && <div className="alog-grid"><AuditList events={recent.events} links={['ad', 'signal', 'complex']} from={BACK.from} empty="Действий аналитиков пока нет" /></div>}
         </>
       )}
 
@@ -122,9 +152,10 @@ export default function Ops() {
         {fresh.map((a) => {
           const c = complexes.find((x) => x.id === a.complexId); const s = adScoreOf(a)
           return (
-            <Link key={a.id} to={`/ads/${a.id}`} className="pcard">
+            <Link key={a.id} to={`/ads/${a.id}`} state={BACK} className="pcard">
               <div className="ph">{a.image ? <img src={a.image} alt="" /> : <div style={{ height: '100%', display: 'grid', placeItems: 'center' }}><PlatformIcon p={a.platform} size={44} /></div>}<div className="tl"><span className="tag white">{platformMeta[a.platform].name}</span></div><div className="tr"><Score value={s.score} zone={s.zone} /></div></div>
               <span className="big">{c ? c.name : 'ЖК не определён'}</span>
+              {c && <LinkMark a={a} label="привязка — гипотеза ИИ" style={{ alignSelf: 'flex-start' }} />}
               <span className="t-sm c2">{a.account} · {fmtShort(a.date)}</span>
               <span className="t-sm clamp2" style={{ lineHeight: '19px' }}><Highlight text={a.text} /></span>
               <span style={{ marginTop: 6 }}><StatusTag s={a.status} /></span>
@@ -135,8 +166,13 @@ export default function Ops() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 16, marginTop: 48 }}>
         <div className="box">
-          <div className="row between" style={{ marginBottom: 20 }}><h3 className="t-h3">Реклама продажи</h3><span className="tag red">+50% за неделю</span></div>
-          <div className="bars">{WEEKS.map((v, i) => <div key={i}><span className="num">{v}</span><b style={{ height: v * 11 }} /><span className="t-xs c3">н{34 + i}</span></div>)}</div>
+          <div className="row between" style={{ marginBottom: 4 }}><h3 className="t-h3">Реклама продажи</h3>
+            {delta === null ? <span className="tag gray">за неделю: {curW.n}</span>
+              : <span className={`tag ${delta > 0 ? 'red' : delta < 0 ? 'green' : 'gray'}`}>{delta > 0 ? '+' : delta < 0 ? '−' : ''}{Math.abs(delta)}% к прошлой неделе</span>}</div>
+          <p className="t-xs c2" style={{ marginBottom: 16 }}>Публикации ленты с признаками продажи по неделям (ISO), последняя — неделя с {curW.start.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}</p>
+          {/* столбик — белый на сером фоне блока (как дорожка «По площадкам»), последняя неделя — жёлтая из стилей .bars */}
+          <div className="bars">{weeks.map((w, i) => <div key={+w.start} title={`Неделя с ${w.start.toLocaleDateString('ru-RU')}: ${w.n}`}><span className="num">{w.n}</span>
+            <b style={{ height: Math.max(2, (w.n / maxW) * 120), background: i < weeks.length - 1 ? '#fff' : undefined }} /><span className="t-xs c3">н{w.week}</span></div>)}</div>
         </div>
         <div className="box">
           <h3 className="t-h3" style={{ marginBottom: 16 }}>По площадкам</h3>
@@ -169,8 +205,8 @@ export default function Ops() {
 
       <LinkCols cols={[
         [['Объекты в красной зоне', '/complexes?zone=red', count('red')], ['Объекты в жёлтой зоне', '/complexes?zone=yellow', count('yellow')], ['Объекты в зелёной зоне', '/complexes?zone=green', count('green')]],
-        [['Очередь проверки', '/queue', queue.length], ['Сигналы на решении', '/signals?status=new', waiting.length], ['Вся реклама', '/ads', ads.length], ['Добавлены вручную', '/ads', ads.filter((a) => a.source === 'manual').length]],
-        [['Фото-мониторинг', '/sites', idle.length], ['Застройщики', '/developers', 7], ['Отчёт для руководства', '/reports', 1]],
+        [['Очередь проверки', '/queue', queue.length], ['Сигналы ждут решения', '/signals?status=new', waiting.length], ['Вся реклама', '/ads', ads.length], ['Добавлены аналитиком', '/ads?chip=manual', ads.filter((a) => !isDemoAd(a) && (a.origin === 'analyst' || a.source === 'manual')).length]],
+        [['Фото-мониторинг', '/sites', idle.length], ['Застройщики', '/developers', developers.length], ['Отчёт для руководства', '/reports', 1]],
       ]} />
       <div className="row t-sm c2" style={{ gap: 6, marginTop: 24 }}><IcHelp size={16} />ЖК, застройщики и публикации сводки — демонстрационные (вымышленные). Решение о нарушении принимает сотрудник.</div>
     </>

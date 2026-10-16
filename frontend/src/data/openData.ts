@@ -1,5 +1,6 @@
 // ОТКРЫТЫЕ ДАННЫЕ БЕЗ БЭКЕНДА: копия shared/registry_ust_kamenogorsk.json (его пишет python -m app.importer) — те же объекты
 // и записи, что GET /api/registry после сида. Грузится отдельным чанком и только в демо-режиме. Риска, зон и сигналов нет (T-31).
+import { finder, rankObject } from '../lib/find'
 import type { RegistryCard, RegistryList, RegistryObject, SourceInfo, SourceRecord } from './types'
 
 export const OFFLINE_FILE = 'shared/registry_ust_kamenogorsk.json'
@@ -21,11 +22,6 @@ const ORDER = ['homeportal', 'homeportal_section', 'ashyq']
 const time = (x: string) => new Date(x).getTime() || 0
 const latest = (xs: (string | null | undefined)[]) => xs.filter((x): x is string => !!x).sort((a, b) => time(b) - time(a))[0] ?? null
 
-/** Поиск по открытым данным: без регистра, кавычек и «ЖК/МЖК» */
-const norm = (s: string) => ` ${s.toLowerCase().replace(/ё/g, 'е').replace(/[«»"'“”„()]/g, ' ')} `.replace(/\sм?жк(?=\s)/g, ' ').replace(/\s+/g, ' ').trim()
-export const matchObject = (o: RegistryObject, q: string) =>
-  !q.trim() || norm([o.name, o.address, o.developer, o.agent, o.developerBin].filter(Boolean).join(' ')).includes(norm(q))
-
 /** Источники по встроенной копии: записей, объектов, последний сбор */
 export async function offlineSources(): Promise<SourceInfo[]> {
   const f = await load()
@@ -37,7 +33,8 @@ export async function offlineSources(): Promise<SourceInfo[]> {
 
 export async function offlineRegistry(q?: string): Promise<RegistryList> {
   const f = await load()
-  const m = (o: RegistryObject) => matchObject(o, q ?? '')
+  // поиск — тот же, что в шапке и в списке открытых данных (lib/find): транслит, без «ЖК/МЖК»; есть точные совпадения — только они
+  const m = finder(q ?? '', [...f.objects, ...f.withoutCoords], rankObject)
   return { objects: f.objects.filter(m), withoutCoords: f.withoutCoords.filter(m) }
 }
 
