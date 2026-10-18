@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
 import { FactorList, Quote } from '../components/Factors'
 import { AiBadge, Confidence, HypothesisItem, LinkMark, OcrTag, TermList } from '../components/Hypothesis'
+import { MediaViewer } from '../components/MediaViewer'
 import { Origin } from '../components/Provenance'
 import { SignalAction } from '../components/SignalPanel'
 import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Score, StatusDot, ZoneTag, adKey, fmtDT, plural, statusMeta } from '../components/ui'
@@ -21,7 +22,8 @@ import { linkConfirmed, model } from '../lib/risk'
 import { matches } from '../lib/search'
 import { useHeadHeight } from '../lib/sticky'
 import { useStore } from '../lib/store'
-import { IcBuilding, IcCheck, IcChevronDown, IcChevronUp, IcClose, IcExternal, IcSearch, IcSend, IcUsers } from '../ui/icons'
+import { adGallery } from '../lib/viewer'
+import { IcBuilding, IcCheck, IcChevronDown, IcChevronUp, IcClose, IcExternal, IcSearch, IcSend, IcUsers, IcZoomIn } from '../ui/icons'
 
 const ORDER: AdStatus[] = ['new', 'needs_check', 'in_review', 'confirmed', 'dismissed']
 const TEXT_MAX = 2000
@@ -66,6 +68,8 @@ export default function AdDetail() {
   const [ver, setVer] = useState(0)
   const [aiLoad, setAiLoad] = useState<AiLoad | null>(null)
   const [aiVer, setAiVer] = useState(0)
+  // просмотр файлов публикации на весь экран: номер файла в галерее, null — закрыт
+  const [viewer, setViewer] = useState<number | null>(null)
   const live = mode === 'api'
   // откуда пришли (сигнал, очередь, ЖК) — крошка «← …» ведёт туда
   const back = useFrom()
@@ -184,6 +188,9 @@ export default function AdDetail() {
   const href = externalUrl(a.url)
   // файлы публикации, кроме обложки (она — крупно слева)
   const files = (a.media ?? []).filter((m) => { const src = mediaRefSrc(m); return !!src && src !== img })
+  // все файлы для просмотра: обложка первой, затем файлы публикации по порядку; at — номер файла в просмотре
+  const gallery = adGallery(a)
+  const at = (src?: string) => Math.max(0, gallery.findIndex((g) => g.src === src))
   const proc = a.processing ?? null
   /** «Обновить» у состояния анализа: перечитать ленту сейчас и снова опрашивать */
   const recheck = () => { setPoll({ id, n: 0 }); void refreshAds() }
@@ -240,7 +247,17 @@ export default function AdDetail() {
       <div className="cols-r">
         <div className="stack" style={{ gap: 16 }}>
           <div className="card" style={{ display: 'grid', gridTemplateColumns: img ? '300px 1fr' : '1fr', gap: 28 }}>
-            {img && <div className="ph" style={{ borderRadius: 18, aspectRatio: '1' }}><img src={img} alt="" /></div>}
+            {img && (
+              // обложка целиком, без обрезки: по нажатию — просмотр с масштабом и всеми файлами публикации
+              <div className="mv-cover">
+                <button type="button" className="ph mv-open contain" style={{ borderRadius: 18, aspectRatio: '1' }} onClick={() => setViewer(0)}
+                  aria-label={gallery.length > 1 ? `Открыть файлы публикации в просмотре: ${gallery.length}` : 'Открыть скриншот в просмотре'}
+                  title="Открыть в просмотре: масштаб, листание файлов, текст OCR">
+                  <img src={img} alt="" /><span className="mv-hint"><IcZoomIn />Открыть</span>
+                </button>
+                <button type="button" className="btn g s full" onClick={() => setViewer(0)}><IcZoomIn />{gallery.length > 1 ? `Открыть файлы (${gallery.length})` : 'Открыть скриншот'}</button>
+              </div>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <p style={{ fontSize: 20, lineHeight: '28px' }}><Highlight text={a.text} /></p>
               {a.ocr && (
@@ -253,9 +270,23 @@ export default function AdDetail() {
                 <div>
                   <div className="t-xs c2" style={{ marginBottom: 6 }}>Файлы публикации · {a.media?.length ?? files.length}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(112px, 1fr))', gap: 8 }}>
-                    {files.map((m) => m.kind === 'video'
-                      ? <video key={m.id} controls preload="metadata" src={mediaRefSrc(m)} style={{ gridColumn: '1 / -1', width: '100%', maxHeight: 420, borderRadius: 12, background: '#000' }} />
-                      : <a key={m.id} href={mediaRefSrc(m)} target="_blank" rel="noreferrer" className="ph" style={{ display: 'block', borderRadius: 12, aspectRatio: '1' }} title="Открыть в полном размере"><img src={mediaRefSrc(m)} alt="" /></a>)}
+                    {files.map((m) => {
+                      const src = mediaRefSrc(m)
+                      const k = at(src)
+                      const name = `файл ${k + 1} из ${gallery.length}: ${gallery[k]?.label ?? ''}`
+                      // видео играет на месте, «Открыть» — в просмотре; изображения открываются в просмотре со своего места
+                      return m.kind === 'video' ? (
+                        <div key={m.id} className="mv-inline" style={{ gridColumn: '1 / -1' }}>
+                          <video controls preload="metadata" src={src} />
+                          <button type="button" className="mv-inline-open" onClick={() => setViewer(k)} aria-label={`Открыть в просмотре ${name}`} title="Открыть в просмотре"><IcZoomIn />Открыть</button>
+                        </div>
+                      ) : (
+                        <button key={m.id} type="button" className="ph mv-open" style={{ borderRadius: 12, aspectRatio: '1' }} onClick={() => setViewer(k)}
+                          aria-label={`Открыть в просмотре ${name}`} title="Открыть в просмотре">
+                          <img src={src} alt="" /><span className="mv-hint sm"><IcZoomIn />Открыть</span>
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               )}
@@ -429,6 +460,10 @@ export default function AdDetail() {
               onChange={(e) => setReasons((r) => ({ ...r, [dm]: e.target.value }))} />
           </div>
         </Modal>
+      )}
+      {viewer !== null && gallery.length > 0 && (
+        <MediaViewer items={gallery} start={viewer} title={`Файлы публикации ${adKey(a.id)}`} fileBase={adKey(a.id)}
+          meta={{ platform: a.platform, account: a.account, date: a.date }} ocr={a.ocr} onClose={() => setViewer(null)} />
       )}
     </>
   )

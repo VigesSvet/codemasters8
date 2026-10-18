@@ -5,7 +5,7 @@ import type { ComponentType, CSSProperties, SVGProps } from 'react'
 import {
   ArrowDownToLine, ArrowUpFromLine, ArrowsRotateRight, Bell, Book, ChartColumn, Check, CircleQuestion, Database, Eye, Factory, Flag, House, Key,
   LayoutCellsLarge, ListCheck, Megaphone, PersonWorker, Persons, Plane, ShieldCheck, Smartphone, TrafficLight, Tray, Calendar,
-  Gear, Lock, MapPin, Play, PlugConnection, Sparkles, TriangleExclamation,
+  Gear, Lock, MagnifierPlus, MapPin, Play, PlugConnection, Sparkles, TriangleExclamation,
 } from '@gravity-ui/icons'
 import { Y } from './yandex-svg'
 
@@ -117,3 +117,5 @@ export const IcTriangleExclamation = g(TriangleExclamation)
 export const IcSparkles = g(Sparkles)
 export const IcGear = g(Gear)
 export const IcLock = g(Lock)
+// просмотр файлов публикации: «Открыть» на обложке и миниатюрах
+export const IcZoomIn = g(MagnifierPlus)

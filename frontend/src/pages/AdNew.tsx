@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AiBadge, HypothesisItem, TermList } from '../components/Hypothesis'
+import { MediaViewer } from '../components/MediaViewer'
 import { Cell, Highlight, Modal, PageTitle, PlatformIcon, Score, ZoneTag, adKey, platformMeta } from '../components/ui'
 import type { Ad, Analysis, AnalyzeInput, LinkHypothesis, OcrResult, OcrStatus, Platform } from '../data/types'
 import { OCR_EMPTY, OCR_KEPT, ocrNotice, ocrOnEdit, ocrOnNewShot, ocrOnResult, pct, type OcrField } from '../lib/ai'
@@ -10,7 +11,8 @@ import { UPLOAD_MAX, uploadScreenshot, uploadWarning } from '../lib/media'
 import { KNOWN_PLATFORMS } from '../lib/platform'
 import { scoreAd } from '../lib/risk'
 import { useStore } from '../lib/store'
-import { IcCheck, IcChevronDown, IcClose, IcSearch, IcUpload } from '../ui/icons'
+import { adGallery } from '../lib/viewer'
+import { IcCheck, IcChevronDown, IcClose, IcSearch, IcUpload, IcZoomIn } from '../ui/icons'
 
 const SAMPLE = 'Старт продаж в новом ЖК «Тихий берег»! Квартиры у набережной, бронь от 300 000 ₸, первый взнос 15%, рассрочка от застройщика. Сдача 2027. Продаётся по договору долевого участия.'
 /** Пауза после ввода перед анализом */
@@ -60,6 +62,8 @@ export default function AdNew() {
   const [modal, setModal] = useState(false)
   const [cq, setCq] = useState('')
   const [saving, setSaving] = useState(false)
+  // скриншот на весь экран — сверить с ним распознанный текст
+  const [viewShot, setViewShot] = useState(false)
   const live = mode === 'api'
   const demo = mode === 'demo'
 
@@ -187,6 +191,8 @@ export default function AdNew() {
   }
 
   const ocrMsg = ocrNotice(ocrRes, ocrInfo?.detail, ocrField.kept)
+  // локальный предпросмотр (blob:) — через тот же отбор адресов, что и у файлов публикаций; тип — из выбранного файла
+  const shotItems = adGallery({ image: img }).map((x) => ({ ...x, label: 'скриншот', mime: shot?.type || x.mime }))
   const pickNote = manual ? 'ЖК выбран вами — привязка сохранится как подтверждённая (факт) с вашим именем и попадёт в журнал.'
     : chosen ? `Выбрана гипотеза ИИ: ЖК «${chosen.complexName}», ${pct(chosen.confidence)}. Это ещё не факт — после сохранения примите её в разборе публикации, тогда объект получит баллы R2/R3.`
       : auto ? `Без выбора публикация будет привязана к лучшей гипотезе ИИ — ЖК «${auto.complexName}», ${pct(auto.confidence)} — как к гипотезе: в балл объекта она не войдёт, пока аналитик её не примет.`
@@ -326,7 +332,12 @@ export default function AdNew() {
           <div className="box" style={{ padding: 24 }}>
             <div className="row between"><span className="t-h3">Предпросмотр</span><Score value={s.score} zone={s.zone} /></div>
             <div className="row" style={{ gap: 8, marginTop: 14 }}><PlatformIcon p={platform} size={22} /><span className="bold">{account || '@account'}</span><span style={{ marginLeft: 'auto' }}><ZoneTag zone={s.zone} /></span></div>
-            {img && <div className="ph" style={{ height: 200, marginTop: 14, borderRadius: 12 }}><img src={img} alt="" /></div>}
+            {img && (
+              <button type="button" className="ph mv-open" style={{ height: 200, marginTop: 14, borderRadius: 12 }} onClick={() => setViewShot(true)}
+                aria-label="Открыть скриншот в просмотре" title="Открыть скриншот на весь экран: масштаб, сверка с текстом на изображении">
+                <img src={img} alt="" /><span className="mv-hint"><IcZoomIn />Открыть</span>
+              </button>
+            )}
             <p style={{ fontSize: 16, lineHeight: '23px', minHeight: 96, marginTop: 14 }}>{text ? <Highlight text={text} /> : <span className="c3">Текст появится здесь с подсветкой ключевых формулировок</span>}</p>
             <div className="kv" style={{ gridTemplateColumns: '1fr auto', marginTop: 16 }}>
               <span>Признаки продажи</span><span className="bold num">{s.signals.sale.length}</span>
@@ -349,6 +360,10 @@ export default function AdNew() {
         </aside>
       </div>
 
+      {viewShot && shotItems.length > 0 && (
+        <MediaViewer items={shotItems} title="Скриншот публикации" fileBase="скриншот" meta={{ platform, account: account.trim() || undefined }}
+          ocr={ocrText.trim() || undefined} onClose={() => setViewShot(false)} />
+      )}
       {modal && (
         <Modal title="Выберите объект" onClose={() => setModal(false)}>
           <div style={{ padding: '8px 24px' }}><div className="search"><IcSearch size={20} /><input autoFocus placeholder="Название, адрес или застройщик" value={cq} onChange={(e) => setCq(e.target.value)} />{cq && <button onClick={() => setCq('')}><IcClose size={18} /></button>}</div></div>

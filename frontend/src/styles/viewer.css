@@ -1,0 +1,114 @@
+/* ───── Просмотр файлов публикации (components/MediaViewer): тёмный экран, масштаб, миниатюры, текст OCR ───── */
+
+/* Обложка и миниатюры, открывающие просмотр: курсор-лупа и подсказка «Открыть» при наведении и фокусе */
+.mv-open { display: block; width: 100%; padding: 0; text-align: left; cursor: zoom-in; }
+.mv-open.contain img { object-fit: contain; }
+.mv-open:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.mv-hint { position: absolute; right: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 15px;
+  background: rgba(0, 0, 0, 0.64); color: #fff; font-size: 13px; font-weight: 500; line-height: 1; pointer-events: none; opacity: 0; transform: translateY(4px); transition: opacity 0.15s, transform 0.15s; }
+.mv-hint svg { width: 15px; height: 15px; }
+.mv-hint.sm { right: 6px; bottom: 6px; height: 24px; padding: 0 8px; gap: 4px; border-radius: 12px; font-size: 12px; }
+.mv-hint.sm svg { width: 13px; height: 13px; }
+.mv-open:hover .mv-hint, .mv-open:focus-visible .mv-hint { opacity: 1; transform: none; }
+/* без мыши наведения нет — подсказка видна всегда */
+@media (hover: none) { .mv-hint { opacity: 1; transform: none; } }
+/* обложка в разборе публикации: картинка и кнопка под ней */
+.mv-cover { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* видео в «Файлах публикации»: играет на месте, «Открыть» — в просмотре */
+.mv-inline { position: relative; }
+.mv-inline > video { display: block; width: 100%; max-height: 420px; border-radius: 12px; background: #000; }
+.mv-inline-open { position: absolute; top: 8px; right: 8px; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 15px;
+  background: rgba(0, 0, 0, 0.64); color: #fff; font-size: 13px; font-weight: 500; }
+.mv-inline-open:hover { background: rgba(0, 0, 0, 0.8); }
+.mv-inline-open:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
+.mv-inline-open svg { width: 15px; height: 15px; }
+
+/* Окно просмотра */
+.mv { position: fixed; inset: 0; z-index: 95; display: flex; flex-direction: column; background: #111216; color: #fff; overscroll-behavior: contain; animation: fade 0.15s ease; }
+.mv:focus { outline: none; }
+.mv :focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
+.mv-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+
+.mv-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 16px; }
+.mv-info { flex: 1 1 240px; min-width: 0; }
+.mv-count { font-size: 15px; line-height: 20px; font-weight: 500; }
+.mv-cap { margin-top: 2px; font-size: 13px; line-height: 17px; color: rgba(255, 255, 255, 0.64); overflow-wrap: anywhere; }
+.mv-tools, .mv-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.mv-group { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 12px; background: rgba(255, 255, 255, 0.08); }
+.mv-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; min-width: 36px; padding: 0 10px; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1); color: #fff; font-size: 14px; font-weight: 500; line-height: 1; white-space: nowrap; transition: background 0.12s; }
+.mv-btn:hover { background: rgba(255, 255, 255, 0.2); }
+.mv-btn svg { width: 18px; height: 18px; }
+.mv-group .mv-btn { background: transparent; }
+.mv-group .mv-btn:hover { background: rgba(255, 255, 255, 0.14); }
+.mv-btn[aria-disabled='true'] { opacity: 0.38; cursor: default; }
+.mv-btn[aria-disabled='true']:hover { background: transparent; }
+.mv-btn.on { background: #fff; color: #000; }
+.mv-pct { min-width: 48px; text-align: center; font-size: 13px; color: rgba(255, 255, 255, 0.8); }
+.mv-lbl-s { display: none; }
+
+.mv-body { flex: 1; min-height: 0; display: flex; }
+.mv-stage { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; user-select: none; -webkit-user-select: none; }
+/* жесты изображения — свои: браузер не прокручивает и не масштабирует страницу пальцами */
+.mv-stage.img { touch-action: none; cursor: zoom-in; }
+.mv-stage.img.pan { cursor: grab; }
+.mv-stage.img.pan:active { cursor: grabbing; }
+.mv-img { position: absolute; left: 0; top: 0; max-width: none; -webkit-user-drag: none; }
+.mv-video { position: absolute; inset: 16px; width: calc(100% - 32px); height: calc(100% - 32px); object-fit: contain; background: transparent; }
+
+.mv-state { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 14px; padding: 24px; text-align: center; pointer-events: none; }
+.mv-err p { max-width: 420px; font-size: 16px; line-height: 22px; color: rgba(255, 255, 255, 0.86); }
+.mv-err a { pointer-events: auto; }
+.mv-spin { width: 40px; height: 40px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.18); border-top-color: #fff; animation: mv-spin 0.8s linear infinite; }
+@keyframes mv-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .mv-spin { animation-duration: 2.4s; } .mv { animation: none; } }
+
+.mv-nav { position: absolute; top: 50%; z-index: 2; width: 48px; height: 48px; margin-top: -24px; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(0, 0, 0, 0.5); color: #fff; transition: background 0.12s; }
+.mv-nav:hover { background: rgba(0, 0, 0, 0.75); }
+.mv-nav.prev { left: 12px; }
+.mv-nav.next { right: 12px; }
+
+/* Текст OCR — светлая панель справа (на телефоне — снизу): выделяется и копируется */
+.mv-ocr { flex: none; width: 360px; min-height: 0; display: flex; flex-direction: column; background: #fff; color: var(--text); }
+.mv-ocr :focus-visible { outline-color: var(--link); }
+.mv-ocr-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 12px 4px 16px; font-size: 15px; }
+.mv-ocr-h b { font-weight: 500; }
+.mv-ocr-x { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--text-2); flex: none; }
+.mv-ocr-x:hover { background: var(--fill); color: var(--text); }
+.mv-ocr-note { padding: 0 16px 8px; font-size: 12px; line-height: 16px; color: var(--text-2); }
+.mv-ocr-t { flex: 1; min-height: 0; overflow: auto; padding: 4px 16px 16px; font-size: 15px; line-height: 22px; letter-spacing: 0.02em;
+  white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+
+/* Миниатюры: прокручиваются вбок; немного — по центру */
+.mv-thumbs { position: relative; flex: none; display: flex; gap: 8px; overflow-x: auto; padding: 10px 16px 14px; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.3) transparent; }
+.mv-thumbs > :first-child { margin-left: auto; }
+.mv-thumbs > :last-child { margin-right: auto; }
+.mv-th { position: relative; flex: none; width: 60px; height: 60px; border-radius: 10px; overflow: hidden; background: rgba(255, 255, 255, 0.08); opacity: 0.55; transition: opacity 0.12s; }
+.mv-th:hover, .mv-th.on { opacity: 1; }
+.mv-th.on { box-shadow: inset 0 0 0 2px var(--yellow); }
+.mv-th.on img { padding: 2px; border-radius: 10px; }
+.mv-th img { width: 100%; height: 100%; object-fit: cover; }
+.mv-th-v { width: 100%; height: 100%; display: grid; place-items: center; color: #fff; }
+
+/* Телефон: в первой строке подпись, «Открыть оригинал», «Скачать» и «×» (значками); масштаб и OCR — второй строкой;
+   текст OCR — снизу */
+@media (max-width: 720px) {
+  .mv-bar { padding: 8px 10px; gap: 6px; }
+  .mv-info { flex-basis: 0; }
+  .mv-acts { order: 1; flex-wrap: nowrap; }
+  .mv-x { order: 2; }
+  .mv-tools { order: 3; flex-basis: 100%; }
+  .mv-lbl { display: none; }
+  .mv-lbl-s { display: inline; }
+  .mv-btn { height: 34px; min-width: 34px; padding: 0 8px; font-size: 13px; }
+  .mv-pct { min-width: 40px; }
+  .mv-body { flex-direction: column; }
+  .mv-ocr { width: auto; max-height: 42%; border-radius: 16px 16px 0 0; }
+  .mv-video { inset: 0; width: 100%; height: 100%; }
+  .mv-nav { width: 40px; height: 40px; margin-top: -20px; }
+  .mv-nav.prev { left: 6px; }
+  .mv-nav.next { right: 6px; }
+  .mv-thumbs { padding: 8px 10px 10px; }
+  .mv-th { width: 48px; height: 48px; }
+}

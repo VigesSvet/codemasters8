@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
 import { EvidenceView, FactorList, ObservationList } from '../components/Factors'
+import { MediaViewer } from '../components/MediaViewer'
 import { Origin } from '../components/Provenance'
 import { SignalGate, SignalStatusTag, SignalTime } from '../components/SignalPanel'
 import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Score, StatusTag, ZoneTag, adKey, fmtDT, fmtDate, zoneName } from '../components/ui'
@@ -13,7 +14,8 @@ import { externalUrl } from '../lib/platform'
 import { DEMO_ORG, isDemo } from '../lib/provenance'
 import { linkConfirmed } from '../lib/risk'
 import { useStore } from '../lib/store'
-import { IcBuilding, IcCheck, IcDoc, IcDownload, IcExternal, IcShield } from '../ui/icons'
+import { adGallery } from '../lib/viewer'
+import { IcBuilding, IcCheck, IcDoc, IcDownload, IcExternal, IcShield, IcZoomIn } from '../ui/icons'
 
 type Decision = 'confirm' | 'return'
 
@@ -214,9 +216,20 @@ function SigAd({ a, back }: { a: SignalAd; back: From }) {
   // снимок публикации в сигнале: обложка — через mediaSrc (серверные /api/media/… учитывают VITE_API_URL), ссылка — только http(s)
   const img = mediaSrc(a.image)
   const href = externalUrl(a.url)
+  // изображение публикации из снимка — по нажатию в просмотре на весь экран (масштаб, текст OCR рядом)
+  const [open, setOpen] = useState(false)
+  const items = adGallery({ image: a.image })
   return (
     <div className="sig-ad">
-      <div className="ph">{img ? <img src={img} alt="" /> : <span className="noimg"><PlatformIcon p={a.platform} size={36} /></span>}</div>
+      {img ? (
+        <button type="button" className="ph mv-open" onClick={() => setOpen(true)} aria-label={`Открыть изображение публикации ${adKey(a.id)} в просмотре`} title="Открыть в просмотре: масштаб, текст OCR">
+          <img src={img} alt="" /><span className="mv-hint sm"><IcZoomIn />Открыть</span>
+        </button>
+      ) : <div className="ph"><span className="noimg"><PlatformIcon p={a.platform} size={36} /></span></div>}
+      {open && items.length > 0 && (
+        <MediaViewer items={items} title={`Изображение публикации ${adKey(a.id)}`} fileBase={adKey(a.id)}
+          meta={{ platform: a.platform, account: a.account, date: a.date }} ocr={a.ocr} onClose={() => setOpen(false)} />
+      )}
       <div style={{ minWidth: 0 }}>
         <div className="row between" style={{ gap: 8 }}>
           <div className="row" style={{ gap: 8, minWidth: 0 }}><PlatformIcon p={a.platform} size={20} /><span className="bold">{a.account}</span><span className="t-sm c2">{fmtDT(a.date)}</span></div>
