@@ -17,9 +17,10 @@ log = logging.getLogger("saq.integrations")
 
 # код → модуль; порядок — порядок на странице
 MODULES = {"instagram": "instagram", "telegram": "telegram", "tiktok": "tiktok", "krisha": "krisha",
-           "telegram_bot": "telegram_bot", "intake": "intake_api", "dgis": "dgis", "openai": "analyzer_openai",
+           "telegram_bot": "telegram_bot", "intake": "intake_api", "dgis": "dgis", "anthropic": "analyzer_anthropic",
            "olx": "olx"}
-ConnectorCode = Literal["instagram", "telegram", "tiktok", "krisha", "telegram_bot", "intake", "dgis", "openai", "olx"]
+ConnectorCode = Literal["instagram", "telegram", "tiktok", "krisha", "telegram_bot", "intake", "dgis", "anthropic",
+                        "olx"]
 BROKEN = "Модуль подключения не загрузился — подробности в журнале API"
 NOT_FOUND = "Подключение не найдено"
 
@@ -29,7 +30,8 @@ _FALLBACK = {"instagram": ("collector", "collectors", "Instagram"),
              "tiktok": ("collector", "collectors", "TikTok"), "krisha": ("collector", "collectors", "Krisha.kz"),
              "telegram_bot": ("intake", "intake", "Telegram-бот заявок"),
              "intake": ("intake", "intake", "Приём публикаций API"), "dgis": ("geo", "geo", "2ГИС — геокодер"),
-             "openai": ("analyzer", "analyzer", "OpenAI — анализатор"), "olx": ("oauth", "limited", "OLX.kz")}
+             "anthropic": ("analyzer", "analyzer", "Claude (Anthropic) — анализатор"),
+             "olx": ("oauth", "limited", "OLX.kz")}
 
 
 class BrokenConnector(Connector):

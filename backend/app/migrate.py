@@ -24,6 +24,7 @@ log = logging.getLogger("saq")
 BASELINE = "2026.10-sources-1"
 NEW_TABLES = ("collectors", "collection_runs", "ingest_items", "ingest_versions", "media_assets", "jobs",
               "worker_leases", "oauth_states", "integration_tokens", "geo_checks", "bot_submissions", "quota_counters")
+LLM_TABLES = ("llm_analyses",)  # 2026.10-llm-1
 ADVISORY_LOCK = 724001  # pg_advisory_xact_lock: два процесса не обновляют схему одновременно
 
 Step = tuple[str, Callable[[Connection], None]]
@@ -61,7 +62,14 @@ def _intake_1(conn: Connection) -> None:
     add_column(conn, "ads", models.Ad.__table__.c.collected_at)
 
 
-STEPS: list[Step] = [("2026.10-intake-1", _intake_1)]
+def _llm_1(conn: Connection) -> None:
+    """2026.10-llm-1: результаты анализа ИИ (Claude) — таблица llm_analyses. Строка прежнего анализатора (только
+    статус) в collectors не удаляется (шаги только добавляют): её кода в реестре нет, её никто не читает."""
+    for name in LLM_TABLES:
+        Base.metadata.tables[name].create(conn, checkfirst=True)
+
+
+STEPS: list[Step] = [("2026.10-intake-1", _intake_1), ("2026.10-llm-1", _llm_1)]
 assert STEPS[-1][0] == models.SCHEMA_VERSION, "SCHEMA_VERSION должна совпадать с последним шагом migrate.STEPS"
 
 
@@ -142,12 +150,12 @@ def upgrade(eng: Engine, version: Optional[str]) -> None:
     log.warning("Схема БД обновлена: %s → %s, данные сохранены", version, models.SCHEMA_VERSION)
 
 
-DURABLE_TABLES = ("ingest_items", "media_assets", "integration_tokens", "bot_submissions", "geo_checks")
+DURABLE_TABLES = ("ingest_items", "media_assets", "integration_tokens", "bot_submissions", "geo_checks", "llm_analyses")
 
 
 def durable_rows(eng: Engine, present_tables: set) -> dict[str, int]:
     """Ненулевые счётчики невосстановимых данных: ingest_items, media_assets, integration_tokens, bot_submissions,
-    geo_checks; collectors с updated_by IS NOT NULL; ads с origin IN ('collected','analyst') — только если таблица/столбец есть."""
+    geo_checks, llm_analyses (оплаченные результаты анализа ИИ); collectors с updated_by IS NOT NULL; ads с origin IN ('collected','analyst') — только если таблица/столбец есть."""
     out: dict[str, int] = {}
     insp = inspect(eng)
 

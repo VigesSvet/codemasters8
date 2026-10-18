@@ -125,6 +125,7 @@ export const LABEL_OVERRIDES: Partial<Record<string, Partial<Record<ConnectorSta
   telegram_bot: { working: 'принимает заявки' },
   intake: { working: 'принимает публикации' },
   dgis: { ready: 'готов' },
+  anthropic: { ready: 'готов', working: 'анализирует публикации', rate_limited: 'пауза: лимит' },
   olx: { not_configured: 'заявка отправлена', unchecked: 'не подключён', ready: 'подключено · ограничено', working: 'подключено · ограничено' },
 }
 
@@ -191,11 +192,11 @@ export function groupConnectors(list: readonly Connector[]): ConnectorSection[] 
 }
 
 /** Значок карточки: площадка для PlatformIcon (telegram_bot — Telegram, dgis — 2ГИС); null — свой значок
- *  (intake — PlugConnection, openai — Sparkles) */
+ *  (intake — PlugConnection, анализатор anthropic — Sparkles) */
 export function iconPlatform(c: Pick<Connector, 'code' | 'platform'>): Platform | null {
   if (c.code === 'dgis') return '2gis'
   if (c.code === 'telegram_bot') return 'telegram'
-  if (c.code === 'intake' || c.code === 'openai') return null
+  if (c.code === 'intake' || c.code === 'anthropic') return null
   const p = c.platform ?? c.code
   return (['instagram', 'tiktok', 'krisha', 'olx', 'telegram', 'facebook', '2gis'] as const).find((x) => x === p) ?? null
 }
@@ -244,6 +245,10 @@ export function lastOkRow(c: Pick<Connector, 'kind' | 'lastSuccessAt' | 'checked
   if (c.kind === 'collector') return { label: 'Последний успех', at: c.lastSuccessAt ?? null }
   if (c.kind === 'geo' || c.kind === 'oauth') return c.checkedAt ? { label: 'Последняя проверка', at: c.checkedAt } : null
   if (c.kind === 'intake') return c.lastSuccessAt ? { label: 'Последний успех', at: c.lastSuccessAt } : null
+  if (c.kind === 'analyzer') {
+    if (c.lastSuccessAt) return { label: 'Последний анализ', at: c.lastSuccessAt }
+    return c.checkedAt ? { label: 'Последняя проверка', at: c.checkedAt } : null
+  }
   return null
 }
 
@@ -252,6 +257,7 @@ export function testOkLine(c: Pick<Connector, 'kind' | 'enabled'>): string {
   if (c.kind === 'collector') return c.enabled ? 'Подключение проверено — сбор по расписанию включён.' : 'Подключение проверено — можно включать сбор.'
   if (c.kind === 'geo') return 'Ключ 2ГИС работает — сверка адреса доступна в карточке ЖК.'
   if (c.kind === 'oauth') return 'Аккаунт OLX доступен — только ресурсы своего аккаунта.'
+  if (c.kind === 'analyzer') return 'Ключ Anthropic принят, модель доступна — новые публикации анализирует Claude (гипотезы для аналитика).'
   return 'Подключение проверено.'
 }
 
@@ -490,6 +496,7 @@ export const STAGE_LABEL: Record<string, string> = {
   frames: 'кадры видео',
   ocr: 'распознавание текста',
   rules: 'правила ИИ',
+  llm: 'анализ ИИ (Claude)',
   events: 'запись в журнал',
 }
 export const stageLabel = (s?: string | null) => (s ? (Object.hasOwn(STAGE_LABEL, s) ? STAGE_LABEL[s] : s) : null)

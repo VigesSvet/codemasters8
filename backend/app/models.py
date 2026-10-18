@@ -11,7 +11,7 @@ from .db import Base
 # Версия схемы БД. Меняется только добавлением шага в migrate.STEPS (последний шаг = SCHEMA_VERSION): база известной
 # прошлой версии обновляется на месте с резервной копией, неизвестной — пересоздаётся, только если в ней нет собранных и
 # внесённых данных (см. seed.init_db, migrate).
-SCHEMA_VERSION = "2026.10-intake-1"
+SCHEMA_VERSION = "2026.10-llm-1"
 
 # JSON со слежением за изменениями верхнего уровня (row.state["x"] = 1 сохраняется при commit). Код всё равно
 # переприсваивает (row.state = {**row.state, **patch}) и не меняет словари, полученные из другой сессии.
@@ -165,12 +165,22 @@ class Ad(Base):
     # Запись приёма (собранная публикация): версия содержимого и состояние анализа
     ingest: Mapped[Optional["IngestItem"]] = relationship(
         primaryjoin="foreign(IngestItem.ad_id) == Ad.id", uselist=False, lazy="selectin", viewonly=True)
+    # Анализы ИИ (Claude) публикации: последний — по времени последнего использования результата
+    llm_analyses: Mapped[list["LlmAnalysis"]] = relationship(
+        primaryjoin="foreign(LlmAnalysis.ad_id) == Ad.id",
+        order_by="(LlmAnalysis.updated_at.desc(), LlmAnalysis.id.desc())", lazy="selectin", viewonly=True)
 
     @property
     def processing(self) -> Optional[dict]:
         """Состояние анализа собранной публикации (AdOut.processing); None — публикация не из приёма."""
         item = self.ingest
         return item.processing_view() if item is not None else None
+
+    @property
+    def llm(self) -> Optional[dict]:
+        """Последний анализ ИИ (Claude) — гипотезы для аналитика (AdOut.llm); None — анализа не было."""
+        rows = self.llm_analyses
+        return rows[0].view() if rows else None
 
 
 class Appeal(Base):
@@ -466,7 +476,8 @@ class Job(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     kind: Mapped[str] = mapped_column(String(16), index=True)  # collect | test | analyze
     status: Mapped[str] = mapped_column(String(16), default="queued")  # queued | running | done | failed | cancelled
-    priority: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # test 10, collect 5, analyze 0
+    # test 10, collect 5, analyze 0 (повторный анализ ИИ 1, дозапрос Claude −1 — app.llm)
+    priority: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     collector: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("collection_runs.id"), nullable=True, index=True)
     ad_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
@@ -573,8 +584,65 @@ class BotSubmission(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class LlmAnalysis(Base):
+    """Анализ публикации языковой моделью (Claude, этап «llm» задания анализа, app.llm). Одна строка на (публикация,
+    хеш отправленного материала, модель, версия промпта): тот же материал повторно не отправляется. Результат —
+    проверенные гипотезы (цитаты сверены с отправленным текстом, ЖК — из отправленного списка); решений аналитика
+    (статус, привязка, подтверждение, вердикт) он не содержит и не задаёт.
+
+    status: done — результат есть; refused — модель отказалась (это не «риск отсутствует»); failed — не выполнен
+    (retry_at задан — ждёт повтора); skipped — не отправлялся (бюджет, ключ отклонён, нечего анализировать).
+
+    История: после «Проанализировать ещё раз» прежний ответ остаётся строкой с производным content_hash
+    (llm.archived_hash), исходный хеш материала — в meta.materialHash, время замены — meta.supersededAt."""
+
+    __tablename__ = "llm_analyses"
+    __table_args__ = (UniqueConstraint("ad_id", "content_hash", "model", "prompt_version", name="uq_llm_analyses_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ad_id: Mapped[str] = mapped_column(String(32), index=True)  # публикация (без FK)
+    item_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # запись приёма (без FK)
+    content_version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # версия публикации в источнике
+    content_hash: Mapped[str] = mapped_column(String(64))  # SHA-256 отправленного материала
+    model: Mapped[str] = mapped_column(String(64))  # запрошенная модель
+    served_model: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # ответила (резервная — при отказе)
+    prompt_version: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(16))  # done | refused | failed | skipped
+    result: Mapped[Optional[dict]] = mapped_column(MutableJSONDict, nullable=True)
+    dropped: Mapped[dict] = mapped_column(MutableJSONDict, default=dict)  # отброшено при проверке: {причина: n}
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    retry_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    cache_read_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    cache_creation_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    cost_usd: Mapped[float] = mapped_column(Float, default=0, server_default="0")
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # по-русски, замаскировано
+    request_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # request-id Anthropic (в API нет)
+    # stopReason, refusalCategory, fallback, effort, catalogSize, skipCode; у строки истории — materialHash, supersededAt
+    meta: Mapped[dict] = mapped_column(MutableJSONDict, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    def view(self) -> dict:
+        """AdOut.llm: результат как гипотеза, без request-id и без сырых ответов модели."""
+        res = dict(self.result or {})
+        meta = dict(self.meta or {})
+        return {"status": self.status, "provider": "anthropic", "model": self.model, "served_model": self.served_model,
+                "prompt_version": self.prompt_version, "content_version": self.content_version,
+                "sale_signals": list(res.get("saleSignals") or []), "amounts": list(res.get("amounts") or []),
+                "complex_candidates": list(res.get("complexCandidates") or []),
+                "uncertainties": list(res.get("uncertainties") or []), "summary": res.get("summary"),
+                "dropped": dict(self.dropped or {}), "error": self.error, "retry_at": self.retry_at,
+                "attempts": self.attempts or 0, "refusal_category": meta.get("refusalCategory"),
+                "fallback": bool(meta.get("fallback")), "input_tokens": self.input_tokens or 0,
+                "output_tokens": self.output_tokens or 0, "cost_usd": round(float(self.cost_usd or 0), 6),
+                "created_at": self.created_at, "updated_at": self.updated_at}
+
+
 class QuotaCounter(Base):
-    """Атомарные счётчики расхода квот (dgis:{keyFp}:{periodStart|all}, dgis-day:{keyFp}:{YYYY-MM-DD})."""
+    """Атомарные счётчики расхода квот (dgis:{keyFp}:{periodStart|all}, dgis-day:{keyFp}:{YYYY-MM-DD}) и дневного
+    бюджета анализа ИИ (anthropic-usd:{YYYY-MM-DD} — в микродолларах, день по Усть-Каменогорску)."""
 
     __tablename__ = "quota_counters"
 

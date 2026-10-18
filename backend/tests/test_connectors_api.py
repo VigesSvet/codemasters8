@@ -12,10 +12,10 @@ from app.integrations import registry, service
 from app.integrations.base import ConfigError, Connector
 
 AUTHOR = "Омарова Ж."
-ORDER = ["instagram", "telegram", "tiktok", "krisha", "telegram_bot", "intake", "dgis", "openai", "olx"]
+ORDER = ["instagram", "telegram", "tiktok", "krisha", "telegram_bot", "intake", "dgis", "anthropic", "olx"]
 SECRETS = {"META_USER_ACCESS_TOKEN": "FAKEMETA-0123456789abcdefgh", "META_APP_SECRET": "FAKEAPPSECRET-0123456789",
            "APIFY_TOKEN": "FAKEAPIFY-0123456789abcdefgh", "DGIS_API_KEY": "FAKEDGIS-0123456789abcdefgh",
-           "OLX_CLIENT_SECRET": "FAKEOLX-0123456789abcdefghij", "OPENAI_API_KEY": "FAKEOPENAI-0123456789abcdefg",
+           "OLX_CLIENT_SECRET": "FAKEOLX-0123456789abcdefghij", "ANTHROPIC_API_KEY": "FAKEANTHROPIC-0123456789abcd",
            "TG_API_HASH": "FAKETGHASH-0123456789abcdefg", "TG_PHONE": "+77010000000",
            "SAQ_ADMIN_TOKEN": FAKE_ADMIN_TOKEN, "INTEGRATION_INGEST_TOKEN": "t-ingest-abcdefghijklmnop0123",
            "SERVICE_API_TOKEN": "t-service-qrstuvwxyz98765432"}
@@ -77,7 +77,7 @@ def test_connectors_configured_without_secret_values(client, env):
     assert body["adminConfigured"] is True
     assert st["instagram"] == ("unchecked", "не проверен") and st["tiktok"][0] == "unchecked"
     assert st["telegram"] == ("not_configured", "не настроен")  # ключи есть, сессии нет
-    assert st["openai"] == ("off", "не используется")
+    assert st["anthropic"] == ("unchecked", "не проверен")  # ключ есть, проверки ещё не было
     assert st["intake"] == ("waiting", "ожидает публикаций")
     assert st["telegram_bot"] == ("waiting", "ожидает заявок")  # токен есть, заявок ещё не было
     assert st["olx"] == ("unchecked", "не подключён") and st["dgis"] == ("unchecked", "не проверен")

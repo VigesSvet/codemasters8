@@ -155,6 +155,50 @@ export interface Ad {
   media?: MediaRef[]
   /** Анализ собранной публикации на сервере: очередь, идёт, готов, не выполнен. Нет у публикаций без приёма */
   processing?: Processing | null
+  /** Последний анализ ИИ (Claude) — гипотезы для аналитика. Нет — анализа не было (ключ не задан, демо, ручной ввод) */
+  llm?: LlmAnalysis | null
+}
+
+// ---------- Анализ ИИ (Claude, этап «llm» анализа публикации) ----------
+
+/** Вид признака продажи в ответе модели */
+export type LlmSignalType = 'sale' | 'presale' | 'booking' | 'installment' | 'down_payment' | 'ddu' | 'price' | 'discount' | 'keys_handover' | 'other'
+/** done — результат есть; refused — модель отказалась; failed — не выполнен (retryAt — ждёт повтора); skipped — не отправлялся */
+export type LlmStatus = 'done' | 'refused' | 'failed' | 'skipped'
+
+/** Элемент ответа: quote — дословно из текста публикации или OCR (сервер сверил), source — откуда цитата */
+export interface LlmSignal { type: LlmSignalType; quote: string; source?: 'text' | 'ocr' }
+export interface LlmAmount { value: number; currency: string; kind: string; quote: string; source?: 'text' | 'ocr' }
+/** Кандидат ЖК — гипотеза: complexName — из справочника сервера, не из ответа модели */
+export interface LlmCandidate { complexId: string; complexName: string; confidence: 'low' | 'medium' | 'high'; quote: string; source?: 'text' | 'ocr' }
+
+/** Анализ ИИ (Claude): только гипотезы — статус, привязку и вывод о нарушении модель не задаёт.
+ *  failed / refused / skipped — «анализ ИИ не выполнен», а не «риска нет» */
+export interface LlmAnalysis {
+  status: LlmStatus
+  provider: 'anthropic'
+  model: string
+  servedModel?: string | null
+  promptVersion: string
+  contentVersion?: number | null
+  saleSignals: LlmSignal[]
+  amounts: LlmAmount[]
+  complexCandidates: LlmCandidate[]
+  uncertainties: string[]
+  summary?: string | null
+  /** Сколько элементов ответа сервер отбросил: quote — цитаты нет в тексте, complex — ЖК не из справочника, amount — не число, limit — сверх предела */
+  dropped: Record<string, number>
+  error?: string | null
+  retryAt?: string | null
+  attempts: number
+  refusalCategory?: string | null
+  /** Ответила резервная модель Anthropic после отказа основной (fallbacks: default) */
+  fallback: boolean
+  inputTokens: number
+  outputTokens: number
+  costUsd: number
+  createdAt?: string | null
+  updatedAt?: string | null
 }
 
 // ---------- Сбор публикаций: файлы, анализ, версии (integration-spec §11.2) ----------
@@ -172,7 +216,7 @@ export interface MediaRef {
 export type ProcessingStatus = 'queued' | 'running' | 'done' | 'failed'
 
 /** Состояние анализа собранной публикации: version — текущая версия в источнике, analyzedVersion — последняя проанализированная;
- *  stage — этап (media | frames | ocr | rules | events) во время анализа или этап, на котором анализ упал */
+ *  stage — этап (media | frames | ocr | rules | llm | events) во время анализа или этап, на котором анализ упал */
 export interface Processing {
   status: ProcessingStatus
   version: number
@@ -203,7 +247,7 @@ export interface MediaUpload {
 // ---------- Подключения источников и запуски сбора (integration-spec §10–§11) ----------
 
 /** Код подключения; порядок — как в реестре сервера */
-export type ConnectorCode = 'instagram' | 'telegram' | 'tiktok' | 'krisha' | 'telegram_bot' | 'intake' | 'dgis' | 'openai' | 'olx'
+export type ConnectorCode = 'instagram' | 'telegram' | 'tiktok' | 'krisha' | 'telegram_bot' | 'intake' | 'dgis' | 'anthropic' | 'olx'
 
 /** collector — сборщик публикаций, intake — приём заявок и публикаций, geo — геосервис, oauth — ограниченный доступ (OLX),
  *  analyzer — анализатор */

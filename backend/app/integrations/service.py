@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session
 
 from .. import jobs, models, schemas
@@ -464,15 +464,16 @@ def processing_view(item: Optional[models.IngestItem]) -> Optional[dict]:
 
 # ---------- квоты ----------
 
-def reserve_quota(name: str, limit: int, now: Optional[datetime] = None) -> bool:
-    """Учесть один запрос квоты атомарно, в своей сессии (commit — до сетевого вызова): UPDATE … count + 1 WHERE
-    count < limit; строки нет — создать и повторить. False — квота исчерпана."""
+def reserve_quota(name: str, limit: int, now: Optional[datetime] = None, *, amount: int = 1) -> bool:
+    """Учесть amount единиц квоты (по умолчанию один запрос) атомарно, в своей сессии (commit — до сетевого вызова):
+    UPDATE … count + amount WHERE count + amount <= limit; строки нет — создать и повторить. False — квота исчерпана."""
     Q = models.QuotaCounter
     now = models.as_utc(now) or models.utcnow()
+    amount = max(int(amount), 0)
     with SessionLocal() as db:
         for _ in range(2):
-            res = db.execute(update(Q).where(Q.name == name, Q.count < int(limit))
-                             .values(count=Q.count + 1, limit_value=int(limit), updated_at=now)
+            res = db.execute(update(Q).where(Q.name == name, Q.count + amount <= int(limit))
+                             .values(count=Q.count + amount, limit_value=int(limit), updated_at=now)
                              .execution_options(synchronize_session=False))
             if res.rowcount == 1:
                 db.commit()
@@ -482,6 +483,21 @@ def reserve_quota(name: str, limit: int, now: Optional[datetime] = None) -> bool
                 break  # строка есть, а счётчик уже на пределе
         db.commit()
         return False
+
+
+def adjust_quota(name: str, delta: int, now: Optional[datetime] = None) -> None:
+    """Поправка учтённого расхода (резерв → фактический): UPDATE … count + delta атомарно, не ниже нуля, в своей
+    сессии. Строки нет — ничего не делает (резерва не было)."""
+    Q = models.QuotaCounter
+    now = models.as_utc(now) or models.utcnow()
+    delta = int(delta)
+    if not delta:
+        return
+    with SessionLocal() as db:
+        db.execute(update(Q).where(Q.name == name)
+                   .values(count=case((Q.count + delta < 0, 0), else_=Q.count + delta), updated_at=now)
+                   .execution_options(synchronize_session=False))
+        db.commit()
 
 
 def quota_used(db: Session, name: str) -> int:

@@ -19,7 +19,7 @@ from . import settings as _settings
 
 MASK = "***"
 FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
-NOISY = ("httpx", "httpcore", "telethon")
+NOISY = ("httpx", "httpcore", "httpx2", "httpcore2", "anthropic", "telethon")  # SDK anthropic 1.x — на httpx2
 WRAPPED = ("", "uvicorn", "uvicorn.access", "uvicorn.error")
 REGISTER_MIN = 8  # короче — не регистрируется (маскировались бы случайные совпадения в обычном тексте)
 SETTINGS_MIN = 4
@@ -199,7 +199,7 @@ def install(level=logging.INFO, *, stream=None, handler: bool = True, force: boo
        «%(asctime)s %(levelname)s %(name)s: %(message)s», root.setLevel(level);
     3) у каждого обработчика root, «uvicorn», «uvicorn.access», «uvicorn.error» форматтер оборачивается в
        RedactingFormatter (повторно не оборачивать);
-    4) httpx, httpcore, telethon → WARNING. Логгер «saq» не трогается (без своих обработчиков, propagate=True)."""
+    4) httpx, httpcore, httpx2, httpcore2, anthropic, telethon → WARNING. Логгер «saq» не трогается (без своих обработчиков, propagate=True)."""
     global _installed
     if _installed and not force:
         return

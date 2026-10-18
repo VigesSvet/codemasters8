@@ -1,8 +1,10 @@
 """Анализ собранной публикации — задание analyze воркера (integration-spec §8; план: AnalysisJob).
 
 Этапы: media (файлы по ссылкам приёма через API) → frames (кадры видео, ffmpeg) → ocr (Tesseract по изображениям и
-кадрам) → rules (правила saq-ai-1: условия оплаты, гипотезы ЖК) → events (журнал). Начало каждого этапа пишется в
-ingest_items.analysis_stage и jobs.payload.stage — при сбое видно, на каком этапе он случился.
+кадрам) → rules (правила saq-ai-1: условия оплаты, гипотезы ЖК) → llm (Claude, app.llm — только если задан
+ANTHROPIC_API_KEY) → events (журнал). Начало каждого этапа пишется в ingest_items.analysis_stage и jobs.payload.stage —
+при сбое видно, на каком этапе он случился. Сбой этапа llm анализ не роняет: «анализ ИИ не выполнен» — в журнале,
+повтор при сетевой ошибке, 429 и 5xx — новым заданием к сроку повтора (как повтор загрузки файла).
 
 Транзакции короткие: загрузка, OCR и ffmpeg выполняются между фиксациями, без открытой транзакции записи; состояние
 каждого файла фиксируется сразу. Проблемы отдельных файлов (не скачался, нет Tesseract или ffmpeg) задание не роняют —
@@ -11,6 +13,10 @@ ingest_items.analysis_stage и jobs.payload.stage — при сбое видно
 
 Привязку к ЖК анализ собранной публикации не назначает (гипотеза ≠ факт, D5); SAQ_COLLECTED_AUTOLINK=1 включает правило
 ручного ввода (лучшая гипотеза от порога — привязка-гипотеза, не подтверждённая). app.main не импортируется.
+
+Повторный запуск по той же версии (повтор загрузки или запроса к Claude, дозапрос Claude, «Проанализировать ещё раз» —
+force) журнал не дублирует: события OCR — если изменился текст OCR, файлов — по новым неудачам, гипотезы правил — если
+назначена привязка, событие Claude — только по новому итогу этапа llm.
 """
 import logging
 import time
@@ -20,7 +26,7 @@ from typing import Callable, Optional
 
 from sqlalchemy import func, or_, select, update
 
-from . import ads_service, ai, media, models, video, world
+from . import ads_service, ai, llm, media, models, video, world
 from .ai import ocr as ocr_engine  # тесты подменяют analysis.ocr_engine.recognize
 from .db import SessionLocal
 from .integrations import http
@@ -33,7 +39,7 @@ log = logging.getLogger("saq.analysis")
 TERM_LABELS = {"booking": "бронь", "deposit": "депозит", "down_payment": "первоначальный взнос",
                "installment": "рассрочка", "ddu": "ДДУ", "direct_payment": "оплата напрямую застройщику",
                "investment": "инвестиции"}  # «price» — не условие оплаты
-STAGES = ("media", "frames", "ocr", "rules", "events")
+STAGES = ("media", "frames", "ocr", "rules", "llm", "events")
 FETCH_ATTEMPTS = 3
 RETRY_BASE_S = 60
 SYSTEM = ads_service.SYSTEM
@@ -409,9 +415,10 @@ def _terms_event(res: dict) -> Optional[str]:
 
 # ---------- задание ----------
 
-def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime) -> dict:
-    """Анализ публикации ad_id (задание job_id): этапы media → frames → ocr → rules → events. Итог — jobs.result.
-    now — время захвата задания; сроки повтора загрузок и время событий — от текущего момента (clock)."""
+def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: bool = False) -> dict:
+    """Анализ публикации ad_id (задание job_id): этапы media → frames → ocr → rules → llm → events. Итог — jobs.result.
+    now — время захвата задания; сроки повтора загрузок и время событий — от текущего момента (clock). force —
+    «Проанализировать ещё раз»: анализ идёт и по уже проанализированной версии, Claude запрашивается снова."""
     now = models.as_utc(now) or models.utcnow()
     t0 = MONOTONIC()
 
@@ -427,7 +434,7 @@ def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime) -> dict:
         if item is None:
             return {"skipped": "no ingest item"}
         v, item_id, prev = item.version, item.id, item.analyzed_version
-        if prev == v and not _has_work(_assets(db, item_id), now):
+        if not force and prev == v and not _has_work(_assets(db, item_id), now) and not llm.due(db, ad_id, now):
             db.execute(update(I).where(I.id == item_id, I.analysis_status.in_(("queued", "running")))
                        .values(analysis_status="done", analysis_stage=None, analysis_error=None)
                        .execution_options(synchronize_session=False))
@@ -447,6 +454,10 @@ def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime) -> dict:
     ocr_changed = _ocr_text(item_id, ad_id)
     _stage(job_id, item_id, "rules")
     res, linked, why_not, source = _rules(ad_id)
+    claude = None
+    if not get_settings().missing("ANTHROPIC_API_KEY"):
+        _stage(job_id, item_id, "llm")
+        claude = llm.run_stage(ad_id, item_id, v, res.get("hypotheses") or [], now=clock(), force=force)
     _stage(job_id, item_id, "events")
 
     suffix = f" (версия {v})" if v > 1 else ""
@@ -461,31 +472,36 @@ def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime) -> dict:
             for what in (_image_event(cur, None if first else changed), _video_event(cur, None if first else changed)):
                 if what:
                     events.append(("system", what, None))
-        if first:
+        if first or linked:  # привязка-гипотеза, назначенная при повторном запуске, тоже видна в журнале
             what, cid = _hypothesis_event(res, linked, source)
             events.append(("ai", what + suffix, cid))
+        if first:
             terms = _terms_event(res)
             if terms:
                 events.append(("ai", terms + suffix, None))
+        if claude is not None and claude.event is not None and (claude.fresh or first):
+            events.append((claude.event[0], claude.event[1] + suffix, None))  # гипотезы Claude — без привязки к ЖК
         at = clock()
         for kind, what, cid in events:
             ads_service._event(db, kind, SYSTEM, what, at=at, ad_id=ad_id, complex_id=cid)
         counts = {k: sum(a.ocr_status == k for a in cur if a.kind in ("image", "frame"))
                   for k in ("done", "empty", "unavailable", "failed")}
         retry_times = [t for t in (_retry_at(a) for a in cur if a.status == "pending" and a.parent_id is None) if t]
+        llm_retry = claude.retry_at if claude is not None else None
         db.execute(update(I).where(I.id == item_id, or_(I.analyzed_version.is_(None), I.analyzed_version <= v))
                    .values(analyzed_version=v, analyzed_engine=ai.ENGINE, analyzed_at=at)
                    .execution_options(synchronize_session=False))
         db.execute(update(I).where(I.id == item_id, I.version == v, I.analysis_status == "running")
                    .values(analysis_status="done", analysis_stage=None, analysis_error=None)
                    .execution_options(synchronize_session=False))
-        if retry_times:  # файлы ждут повтора загрузки — новое задание к сроку первого повтора
+        if retry_times or llm_retry:  # файлы или запрос к Claude ждут повтора — новое задание к сроку первого повтора
             from . import jobs
 
             jobs.enqueue(db, "analyze", ad_id=ad_id, content_version=v, dedupe_key=f"analyze:{ad_id}",
-                         run_after=min(retry_times), priority=0)
-            db.execute(update(I).where(I.id == item_id).values(analysis_status="queued")
-                       .execution_options(synchronize_session=False))
+                         run_after=min(retry_times + ([llm_retry] if llm_retry else [])), priority=0)
+            if retry_times:  # повтор только запроса к Claude — правила и OCR готовы, анализ не «в очереди»
+                db.execute(update(I).where(I.id == item_id).values(analysis_status="queued")
+                           .execution_options(synchronize_session=False))
         db.commit()
     out = {"engine": ai.ENGINE, "version": v, "ocr": counts,
            "terms": list(dict.fromkeys(t["kind"] for t in res.get("terms") or [])),
@@ -495,4 +511,8 @@ def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime) -> dict:
         out["autolinkSkipped"] = why_not
     if retry_times:
         out["mediaRetryAt"] = models.iso(min(retry_times))
+    if claude is not None:
+        out["llm"] = claude.summary()
+    if force:
+        out["force"] = True
     return out

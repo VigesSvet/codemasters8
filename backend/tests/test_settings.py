@@ -33,39 +33,39 @@ def _warnings(caplog) -> str:
 # ---------- источники значений ----------
 
 def test_env_wins_over_file_and_empty_falls_back(tmp_path):
-    p = _env_file(tmp_path, "META_GRAPH_VERSION=v1.0\nOPENAI_MODEL=from-file\n")
-    s = load_settings({"SAQ_ENV_FILE": str(p), "META_GRAPH_VERSION": "v9.9", "OPENAI_MODEL": ""})
+    p = _env_file(tmp_path, "META_GRAPH_VERSION=v1.0\nANTHROPIC_MODEL=from-file\n")
+    s = load_settings({"SAQ_ENV_FILE": str(p), "META_GRAPH_VERSION": "v9.9", "ANTHROPIC_MODEL": ""})
     assert s.meta_graph_version == "v9.9"  # окружение важнее файла
-    assert s.openai_model == "from-file"  # пустое в окружении → значение из файла
+    assert s.anthropic_model == "from-file"  # пустое в окружении → значение из файла
     assert s.env_file == p
     s = load_settings({"SAQ_ENV_FILE": str(_env_file(tmp_path, "META_GRAPH_VERSION=\n"))})
     assert s.meta_graph_version == "v26.0"  # пусто и там, и там → по умолчанию
 
 
 def test_env_file_disabled_and_custom_path(tmp_path, monkeypatch):
-    p = _env_file(tmp_path, "OPENAI_MODEL=custom\n")
-    assert load_settings({"SAQ_ENV_FILE": str(p)}).openai_model == "custom"
-    assert load_settings({"SAQ_ENV_FILE": ""}).openai_model == ""
+    p = _env_file(tmp_path, "ANTHROPIC_MODEL=custom\n")
+    assert load_settings({"SAQ_ENV_FILE": str(p)}).anthropic_model == "custom"
+    assert load_settings({"SAQ_ENV_FILE": ""}).anthropic_model == "claude-sonnet-5-5"  # по умолчанию
     assert load_settings({"SAQ_ENV_FILE": ""}).env_file is None
     assert load_settings({"SAQ_ENV_FILE": str(tmp_path / "нет.env")}).env_file is None
     # без SAQ_ENV_FILE — .env в корне репозитория (его содержимое тест не читает: подменён путь по умолчанию)
     monkeypatch.setattr(settings, "DEFAULT_ENV_FILE", p)
-    assert settings.env_file_path({}) == p and load_settings({}).openai_model == "custom"
+    assert settings.env_file_path({}) == p and load_settings({}).anthropic_model == "custom"
 
 
 def test_env_file_literal_and_environ_untouched(tmp_path, env):
-    p = _env_file(tmp_path, "OPENAI_MODEL=$HOME/x\nSAQ_USER_AGENT='SAQ test ${USER}'\n")
+    p = _env_file(tmp_path, "META_BUSINESS_ID=$HOME/x\nSAQ_USER_AGENT='SAQ test ${USER}'\n")
     before = dict(os.environ)
     s = env(SAQ_ENV_FILE=str(p))
-    assert s.openai_model == "$HOME/x"  # interpolate=False: без подстановки
+    assert s.meta_business_id == "$HOME/x"  # interpolate=False: без подстановки
     assert s.user_agent == "SAQ test ${USER}"
     assert settings.get_settings() is s
     after = dict(os.environ)
     assert after.pop("SAQ_ENV_FILE") == str(p)
     before.pop("SAQ_ENV_FILE", None)
     assert after == before  # значения из файла в os.environ не попадают
-    assert "OPENAI_MODEL" not in os.environ
-    assert settings.env_str("OPENAI_MODEL") == "$HOME/x" and settings.env_str("НЕТ_ТАКОЙ", "d") == "d"
+    assert "META_BUSINESS_ID" not in os.environ
+    assert settings.env_str("META_BUSINESS_ID") == "$HOME/x" and settings.env_str("НЕТ_ТАКОЙ", "d") == "d"
 
 
 def test_env_helpers(env):

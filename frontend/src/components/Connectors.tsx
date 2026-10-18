@@ -32,7 +32,7 @@ const GROUP_NOTE: Record<ConnectorGroup, string> = {
   collectors: 'Читают публичные аккаунты, каналы и выдачу площадок из списка, который задаёт администратор. Таргетированную рекламу так не увидеть.',
   intake: 'Сюда присылают: Telegram-бот — заявки жителей, внешние сборщики — готовые публикации. Доступ — по серверному токену.',
   geo: 'Не сбор рекламы: кандидаты адреса для карточки ЖК. Сверку запускает аналитик в карточке ЖК, решение принимает он же.',
-  analyzer: 'Анализ публикаций сейчас выполняют правила saq-ai-1 на сервере, без внешних API.',
+  analyzer: 'После правил saq-ai-1 новые публикации разбирает Claude (Anthropic): признаки продажи, суммы и кандидаты ЖК с дословными цитатами — только гипотезы. Без ключа на сервере работают одни правила.',
   limited: 'Доступ только к ресурсам своего авторизованного аккаунта — это не сборщик чужих объявлений.',
 }
 
@@ -464,7 +464,7 @@ function ConnectorCard({ c }: { c: Connector }) {
     <div className="devcard lnk-card">
       <div className="lnk-head">
         {plat ? <PlatformIcon p={plat} size={48} />
-          : <span className="lnk-ico">{c.code === 'openai' || c.kind === 'analyzer' ? <IcSparkles size={22} /> : <IcPlugConnection size={22} />}</span>}
+          : <span className="lnk-ico">{c.kind === 'analyzer' ? <IcSparkles size={22} /> : <IcPlugConnection size={22} />}</span>}
         <div className="who">
           <div className="t-h3">{c.name}</div>
           <div className="t-sm c2" style={{ marginTop: 2 }}>{c.via}</div>
@@ -499,6 +499,7 @@ function ConnectorCard({ c }: { c: Connector }) {
       )}
 
       {c.kind === 'geo' && <div className="lnk-lim"><IcInfo size={16} />Сверка адреса — в карточке ЖК: «Сверить адрес» запускает аналитик, кандидата принимает тоже он.</div>}
+      {c.kind === 'analyzer' && <div className="lnk-lim"><IcInfo size={16} />Результат — в карточке публикации, блок «Анализ ИИ (Claude)»: гипотезы с цитатами; привязку и решение по публикации принимает аналитик.</div>}
       {limitation && (
         <div className={`lnk-lim ${c.group === 'limited' ? 'strong' : ''}`}>
           {c.group === 'limited' ? <IcTriangleExclamation size={16} /> : <IcInfo size={16} />}{limitation}

@@ -293,14 +293,16 @@ def has_decisions(ad: models.Ad) -> bool:
                 or ad.status not in ("new", "needs_check"))
 
 
-def enqueue_analysis(db: Session, ad_id: str, item: Optional[models.IngestItem] = None) -> bool:
-    """Задание анализа публикации (одно активное на публикацию) и состояние «в очереди» у записи приёма."""
+def enqueue_analysis(db: Session, ad_id: str, item: Optional[models.IngestItem] = None, *,
+                     payload: Optional[dict] = None, priority: int = 0) -> bool:
+    """Задание анализа публикации (одно активное на публикацию) и состояние «в очереди» у записи приёма. payload и
+    priority — у нового задания (дозапрос Claude, повторный анализ); активное задание остаётся как есть."""
     from . import jobs  # jobs импортирует обработчики, которые сами импортируют приём, — только здесь
 
     if item is None:
         item = db.scalar(select(models.IngestItem).where(models.IngestItem.ad_id == ad_id))
     job, created = jobs.enqueue(db, "analyze", ad_id=ad_id, content_version=item.version if item is not None else None,
-                                dedupe_key=f"analyze:{ad_id}", priority=0)
+                                dedupe_key=f"analyze:{ad_id}", payload=payload, priority=priority)
     now = models.utcnow()
     if not created and job.status == "queued" and models.as_utc(job.run_after) > now:
         job.run_after = now  # ждущий повтора загрузки анализ: новое содержимое или файлы — анализировать сейчас

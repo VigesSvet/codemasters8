@@ -103,7 +103,14 @@ describe('статусы подключений (§10.4)', () => {
     expect(statusText(conn({ code: 'dgis', kind: 'geo', group: 'geo', status: 'working', statusLabel: 'работает' }))).toBe('готов')
     // «работает» при другом статусе — подпись по статусу
     expect(statusText(conn({ status: 'ready', statusLabel: 'работает' }))).toBe('готов к сбору')
-    expect(statusText(conn({ code: 'openai', kind: 'analyzer', group: 'analyzer', status: 'off', statusLabel: '' }))).toBe('не используется')
+    expect(statusText(conn({ code: 'anthropic', kind: 'analyzer', group: 'analyzer', status: 'off', statusLabel: '' }))).toBe('не используется')
+    // анализатор Claude: «готов» после проверки, «анализирует публикации» после анализа, бюджет — «пауза: лимит»
+    const ai = conn({ code: 'anthropic', kind: 'analyzer', group: 'analyzer', statusLabel: '' })
+    expect(statusText({ ...ai, status: 'ready' })).toBe('готов')
+    expect(statusText({ ...ai, status: 'working' })).toBe('анализирует публикации')
+    expect(statusText({ ...ai, status: 'working', statusLabel: 'работает' })).toBe('анализирует публикации')
+    expect(statusText({ ...ai, status: 'rate_limited' })).toBe('пауза: лимит')
+    expect(statusText({ ...ai, configured: false, status: 'ready' })).toBe('не настроен')
   })
 
   it('сборщик со сбором — «работает»; приём — свои подписи', () => {
@@ -130,7 +137,7 @@ describe('статусы подключений (§10.4)', () => {
 describe('группы подключений', () => {
   const list = [
     conn({ code: 'olx', kind: 'oauth', group: 'limited' }),
-    conn({ code: 'openai', kind: 'analyzer', group: 'analyzer' }),
+    conn({ code: 'anthropic', kind: 'analyzer', group: 'analyzer' }),
     conn({ code: 'instagram' }),
     conn({ code: 'dgis', kind: 'geo', group: 'geo' }),
     conn({ code: 'telegram' }),
@@ -264,7 +271,7 @@ describe('строки карточки подключения', () => {
     expect(nextRun(conn({ code: 'dgis', kind: 'geo', group: 'geo', status: 'ready', nextRunAt: later }), now)).toBeNull()
   })
 
-  it('«Последний успех» — у сборщика; у 2ГИС и OLX — «Последняя проверка»; у приёма — только если есть', () => {
+  it('«Последний успех» — у сборщика; у 2ГИС и OLX — «Последняя проверка»; у приёма — только если есть; у анализатора — «Последний анализ»', () => {
     expect(lastOkRow(conn({ lastSuccessAt: null }))).toEqual({ label: 'Последний успех', at: null })
     expect(lastOkRow(conn({ lastSuccessAt: earlier }))).toEqual({ label: 'Последний успех', at: earlier })
     expect(lastOkRow(conn({ kind: 'geo', lastSuccessAt: null, checkedAt: earlier }))).toEqual({ label: 'Последняя проверка', at: earlier })
@@ -272,7 +279,9 @@ describe('строки карточки подключения', () => {
     expect(lastOkRow(conn({ kind: 'geo', checkedAt: null }))).toBeNull()
     expect(lastOkRow(conn({ kind: 'intake', lastSuccessAt: null }))).toBeNull()
     expect(lastOkRow(conn({ kind: 'intake', lastSuccessAt: earlier }))?.at).toBe(earlier)
-    expect(lastOkRow(conn({ kind: 'analyzer', lastSuccessAt: earlier }))).toBeNull()
+    expect(lastOkRow(conn({ kind: 'analyzer', lastSuccessAt: earlier }))).toEqual({ label: 'Последний анализ', at: earlier })
+    expect(lastOkRow(conn({ kind: 'analyzer', lastSuccessAt: null, checkedAt: earlier }))).toEqual({ label: 'Последняя проверка', at: earlier })
+    expect(lastOkRow(conn({ kind: 'analyzer', lastSuccessAt: null, checkedAt: null }))).toBeNull()
   })
 
   it('успешная проверка: «можно включать сбор» — только у сборщика', () => {
@@ -281,6 +290,7 @@ describe('строки карточки подключения', () => {
     expect(testOkLine(conn({ kind: 'geo', enabled: false }))).toBe('Ключ 2ГИС работает — сверка адреса доступна в карточке ЖК.')
     expect(testOkLine(conn({ kind: 'oauth', enabled: false }))).toBe('Аккаунт OLX доступен — только ресурсы своего аккаунта.')
     expect(testOkLine(conn({ kind: 'intake' }))).toBe('Подключение проверено.')
+    expect(testOkLine(conn({ kind: 'analyzer' }))).toBe('Ключ Anthropic принят, модель доступна — новые публикации анализирует Claude (гипотезы для аналитика).')
     for (const kind of ['geo', 'oauth', 'intake', 'analyzer'] as const) expect(testOkLine(conn({ kind }))).not.toMatch(/сбор/)
   })
 
@@ -364,6 +374,7 @@ describe('анализ собранной публикации', () => {
   it('очередь, этап, ошибка; готово — без пояснения', () => {
     expect(processingNote({ status: 'queued', version: 1 })).toBe('Анализ публикации в очереди')
     expect(processingNote({ status: 'running', version: 1, stage: 'ocr' })).toBe('Идёт анализ: распознавание текста')
+    expect(processingNote({ status: 'running', version: 1, stage: 'llm' })).toBe('Идёт анализ: анализ ИИ (Claude)')
     expect(processingNote({ status: 'running', version: 1 })).toBe('Идёт анализ публикации')
     expect(processingNote({ status: 'failed', version: 2, stage: 'media', error: 'Файл недоступен (404)' })).toBe('Анализ не выполнен: Файл недоступен (404) — проверьте вручную')
     expect(processingNote({ status: 'failed', version: 2 })).toBe('Анализ не выполнен — проверьте вручную')

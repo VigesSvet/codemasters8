@@ -1,9 +1,10 @@
 """API подключений и приёма публикаций (integration-spec §11.1, §7.4).
 
 Чтение (состояние подключений, запуски, версии публикации, файлы) токена не требует и секретов не содержит. Настройка
-подключений и ручной запуск — только администратору (SAQ_ADMIN_TOKEN, проверяет сервер). Приём публикаций — по
-отдельному токену INTEGRATION_INGEST_TOKEN; токен проверяется ДО разбора тела запроса, отказы записываются в состояние
-подключения «Приём публикаций API». Сбор и проверки в запросе не выполняются: запрос ставит задание воркеру (202).
+подключений, ручной запуск и повторный анализ ИИ (платный запрос к Claude) — только администратору (SAQ_ADMIN_TOKEN,
+проверяет сервер). Приём публикаций — по отдельному токену INTEGRATION_INGEST_TOKEN; токен проверяется ДО разбора тела
+запроса, отказы записываются в состояние подключения «Приём публикаций API». Сбор, проверки и анализ в запросе не
+выполняются: запрос ставит задание воркеру (202).
 """
 import logging
 import uuid
@@ -17,8 +18,8 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import auth, ingest, media, models, schemas
-from ..ads_service import COLLECTOR
+from .. import auth, ingest, jobs, llm, media, models, schemas
+from ..ads_service import COLLECTOR, _event
 from ..db import SessionLocal, get_db
 from ..settings import get_settings
 from . import registry, service
@@ -31,6 +32,8 @@ router = APIRouter(tags=["integrations"])
 RUN_NOT_FOUND = "Запуск не найден"
 AD_NOT_FOUND = "Публикация не найдена"
 FILE_NOT_FOUND = "Файл не найден"
+REANALYZE_NOT_COLLECTED = "Повторный анализ доступен для собранных публикаций"
+REANALYZE_EMPTY = "Нечего анализировать: у публикации нет текста и OCR"
 INTAKE_NOTE = "приём публикаций API"
 MEDIA_ID = Path(pattern=r"^[0-9a-f]{32}$", description="ID файла (32 шестнадцатеричных символа)")
 
@@ -247,6 +250,73 @@ def ad_versions(aid: str, db: Session = Depends(get_db)):
     rows = db.scalars(select(V).where(V.item_id == item.id).order_by(V.version.desc()))
     return [{"version": v.version, "collected_at": v.collected_at, "text": v.text, "price": v.price,
              "media_keys": list(v.media_keys or []), "current": v.version == item.version} for v in rows]
+
+
+# ---------- анализ ИИ (Claude): «Проанализировать ещё раз» ----------
+
+def _active_analysis(db: Session, aid: str) -> Optional[models.Job]:
+    """Задание анализа публикации, которое выполняется (у него dedupe_key уже обнулён), иначе — в очереди; None — нет."""
+    J = models.Job
+    found = list(db.scalars(select(J).where(J.kind == "analyze", J.ad_id == aid, J.status.in_(jobs.ACTIVE))
+                            .order_by(J.id.desc())))
+    return next((j for j in found if j.status == "running"), found[0] if found else None)
+
+
+def _ad_response(ad: models.Ad, status: int) -> JSONResponse:
+    body = schemas.AdOut.model_validate(ad).model_dump(mode="json", by_alias=True)
+    return JSONResponse(body, status_code=status)
+
+
+@router.post("/api/ads/{aid}/reanalyze", response_model=schemas.AdOut, response_model_by_alias=True, status_code=202,
+             responses={200: {"description": "Анализ публикации уже идёт или повторный анализ уже в очереди"},
+                        401: {"description": "Нет токена администратора"},
+                        403: {"description": "Неверный токен администратора"},
+                        404: {"description": AD_NOT_FOUND},
+                        409: {"description": "Публикация не собрана, нечего анализировать, ключ Claude отклонён, бюджет "
+                                             "0 или дневной бюджет исчерпан — задание не ставится"},
+                        503: {"description": "Администрирование или анализ ИИ (Claude) не настроены на сервере"}})
+def reanalyze(aid: str, body: schemas.AdminActionIn, admin: auth.Admin = Depends(auth.require_admin),
+              db: Session = Depends(get_db)):
+    """«Проанализировать ещё раз» (администратор: запрос к Claude расходует дневной бюджет анализа ИИ). Задание анализа
+    с повторным запросом, даже если этот материал этой моделью уже проанализирован: новая строка результата, прежняя
+    остаётся в истории. Ответ — публикация (processing — состояние анализа): 202 — задание поставлено или задание в
+    очереди стало повторным анализом; 200 — анализ уже идёт или повторный анализ уже в очереди (без дубля и без
+    события). Бюджета на запрос не хватает — 409 без задания. В журнал — «Запрошен повторный анализ ИИ» от автора."""
+    ad = db.get(models.Ad, aid)
+    if ad is None:
+        raise HTTPException(404, AD_NOT_FOUND)
+    item = db.scalar(select(models.IngestItem).where(models.IngestItem.ad_id == aid))
+    if item is None:
+        raise HTTPException(409, REANALYZE_NOT_COLLECTED)
+    s = get_settings()
+    problem = llm.unavailable(db, s)
+    if problem is not None:
+        raise HTTPException(*problem)
+    if not ((ad.text or "").strip() or (ad.ocr or "").strip()):
+        raise HTTPException(409, REANALYZE_EMPTY)
+    job = _active_analysis(db, aid)
+    if job is not None and (job.status == "running" or (job.payload or {}).get("force")):
+        return _ad_response(ad, 200)
+    now = models.utcnow()
+    over = llm.budget_problem(db, s, ad, now)
+    if over:
+        raise HTTPException(409, over)
+    payload = {"force": True, "requestedBy": body.author}
+    created = False
+    if job is None:
+        job, created = jobs.enqueue(db, "analyze", ad_id=aid, content_version=item.version,
+                                    dedupe_key=f"analyze:{aid}", payload=payload, priority=llm.REANALYZE_PRIORITY)
+    if not created:  # в очереди повтор загрузки или запроса, новая версия, дозапрос — теперь это повторный анализ
+        job.payload = {**(job.payload or {}), **payload}
+        job.priority = max(job.priority or 0, llm.REANALYZE_PRIORITY)
+        if models.as_utc(job.run_after) > now:
+            job.run_after = now
+    item.analysis_status, item.analysis_stage, item.analysis_error = "queued", None, None
+    _event(db, "ai", body.author, f"Запрошен повторный анализ ИИ (Claude, модель {s.anthropic_model}): запрос "
+                                  "расходует дневной бюджет, прежний результат сохранится в истории", at=now, ad_id=aid)
+    db.commit()
+    db.refresh(ad)
+    return _ad_response(ad, 202)
 
 
 # ---------- файлы ----------

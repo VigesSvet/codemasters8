@@ -115,7 +115,8 @@ def _optional_module(name: str):
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch):
     """Реальная сеть в тестах запрещена: TRANSPORT/RESOLVER падают, sleep мгновенный, сокеты — только loopback/AF_UNIX
-    (прогон на PostgreSQL подключается к localhost); фабрики клиентов Telegram и браузера Krisha — заглушки-ошибки."""
+    (прогон на PostgreSQL подключается к localhost); фабрики клиентов Telegram и Anthropic и браузера Krisha —
+    заглушки-ошибки."""
     real_connect = socket.socket.connect
     real_connect_ex = socket.socket.connect_ex
     real_create = socket.create_connection
@@ -153,7 +154,8 @@ def _offline(monkeypatch):
         monkeypatch.setattr(http, "SLEEP", lambda s: None)
     _optional_module("app.integrations.registry")  # модули подключений загружены — их фабрики подменяются ниже
     for mod_name, attr, what in (("app.integrations.telegram", "CLIENT_FACTORY", "Клиент Telegram"),
-                                 ("app.integrations.krisha", "BROWSER_FACTORY", "Браузер Krisha")):
+                                 ("app.integrations.krisha", "BROWSER_FACTORY", "Браузер Krisha"),
+                                 ("app.integrations.analyzer_anthropic", "CLIENT_FACTORY", "Клиент Anthropic")):
         mod = sys.modules.get(mod_name)
         if mod is not None and hasattr(mod, attr):
             monkeypatch.setattr(mod, attr, _raiser(what))

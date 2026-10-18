@@ -50,6 +50,7 @@
 - [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) (Apache License 2.0) — распознавание скриншотов объявлений. Ставится в Docker-образ API пакетами Debian `tesseract-ocr`, `tesseract-ocr-rus`, `tesseract-ocr-kaz` вместе с языковыми данными tessdata (Apache License 2.0) и вызывается как отдельная программа; в репозиторий не входит.
 - `pillow` (MIT-CMU) — проверка и предобработка изображения перед OCR.
 - Извлечение условий оплаты и сопоставление публикаций с ЖК — собственный код (`backend/app/ai/`), без сторонних моделей и внешних API.
+- `anthropic` 1.15.0 (MIT, Anthropic) — официальный Python SDK Claude API: необязательный этап анализа ИИ публикаций (`backend/app/llm.py`, `backend/app/integrations/analyzer_anthropic.py`), работает только при заданном `ANTHROPIC_API_KEY`. Вместе с ним ставятся `httpx2` и `httpcore2` (BSD-3-Clause), `jiter` (MIT), `docstring-parser` (MIT), `truststore` (MIT), `sniffio` (MIT или Apache License 2.0); `anyio` (MIT) и `opentelemetry-api` (Apache License 2.0) нужны и FastAPI. Лицензии — по метаданным установленных пакетов.
 
 # Открытые данные
 
@@ -77,3 +78,4 @@
 - Krisha.kz — API нет; HTML-страницы читаются с соблюдением robots.txt и правил сайта, проверки доступа не обходятся.
 - 2ГИС Catalog API (геокодер) — данные © 2ГИС; кандидаты адресов хранятся временно, по условиям API.
 - OLX Partner API — только ресурсы собственного авторизованного аккаунта.
+- Anthropic Claude API (Messages API, модель `ANTHROPIC_MODEL`, по умолчанию Claude Sonnet 5.5) — платный сервис, условия Anthropic API; текст публикаций и OCR отправляются в Anthropic, расход ограничен `ANTHROPIC_DAILY_BUDGET_USD`.

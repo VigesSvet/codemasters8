@@ -192,8 +192,66 @@ class ProcessingOut(Camel):
     error: Optional[str] = None
 
 
+# Анализ ИИ (Claude, app.llm): виды признаков продажи и уверенность в кандидате ЖК — как в схеме ответа модели
+LlmSignalType = Literal["sale", "presale", "booking", "installment", "down_payment", "ddu", "price", "discount",
+                        "keys_handover", "other"]
+LlmConfidence = Literal["low", "medium", "high"]
+
+
+class LlmSignalOut(Camel):
+    type: LlmSignalType
+    quote: str  # дословно из текста публикации или OCR (сверено на сервере)
+    source: Literal["text", "ocr"] = "text"
+
+
+class LlmAmountOut(Camel):
+    value: float
+    currency: str
+    kind: str
+    quote: str
+    source: Literal["text", "ocr"] = "text"
+
+
+class LlmCandidateOut(Camel):
+    """Кандидат ЖК от модели — гипотеза: привязку делает только аналитик."""
+
+    complex_id: str
+    complex_name: str  # из справочника, отправленного модели, — не из ответа модели
+    confidence: LlmConfidence
+    quote: str
+    source: Literal["text", "ocr"] = "text"
+
+
+class LlmOut(Camel):
+    """Последний анализ ИИ (Claude) публикации. Всё — гипотезы для аналитика: статус, привязку и вердикт модель не
+    задаёт. failed / refused / skipped — «анализ ИИ не выполнен», а не «риск отсутствует»."""
+
+    status: Literal["done", "refused", "failed", "skipped"]
+    provider: Literal["anthropic"] = "anthropic"
+    model: str
+    served_model: Optional[str] = None
+    prompt_version: str
+    content_version: Optional[int] = None
+    sale_signals: List[LlmSignalOut] = []
+    amounts: List[LlmAmountOut] = []
+    complex_candidates: List[LlmCandidateOut] = []
+    uncertainties: List[str] = []
+    summary: Optional[str] = None
+    dropped: Dict[str, int] = {}  # отброшено сервером: цитаты нет в тексте, ЖК нет в справочнике, сумма не число…
+    error: Optional[str] = None
+    retry_at: IsoTime = None  # failed с retry_at — ждёт повтора
+    attempts: int = 0
+    refusal_category: Optional[str] = None
+    fallback: bool = False  # ответила резервная модель (серверный fallback после отказа)
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0
+    created_at: IsoTime = None
+    updated_at: IsoTime = None
+
+
 # Поля AdOut, которых нет у демо- и ручных публикаций: пустые не выводятся — их JSON (и world.ad_dict) не меняется
-_AD_OPTIONAL = {"collectedAt": None, "collected_at": None, "media": [], "processing": None}
+_AD_OPTIONAL = {"collectedAt": None, "collected_at": None, "media": [], "processing": None, "llm": None}
 
 
 class AdOut(Camel):
@@ -222,6 +280,7 @@ class AdOut(Camel):
     collected_at: IsoTime = None  # время получения сборщиком/приёмом (UTC), не время публикации
     media: Annotated[List[MediaRefOut], BeforeValidator(lambda v: list(v or []))] = []
     processing: Optional[ProcessingOut] = None  # только у публикаций из приёма (Ad.ingest)
+    llm: Optional[LlmOut] = None  # последний анализ ИИ (Claude) — гипотезы; нет — анализа не было
 
     @model_serializer(mode="wrap")
     def _out(self, handler) -> Dict[str, Any]:

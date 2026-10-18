@@ -6,11 +6,13 @@ import { AiBadge, Confidence, HypothesisItem, LinkMark, OcrTag, TermList } from 
 import { Origin } from '../components/Provenance'
 import { SignalAction } from '../components/SignalPanel'
 import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Score, StatusDot, ZoneTag, adKey, fmtDT, plural, statusMeta } from '../components/ui'
-import type { Ad, AdAnalysis, AdScore, AdStatus, AdVersion, AuditEvent, Complex, LinkHypothesis, Processing } from '../data/types'
+import type { Ad, AdAnalysis, AdScore, AdStatus, AdVersion, AuditEvent, Complex, LinkHypothesis, LlmAnalysis, Processing } from '../data/types'
+import { isAdmin, onAdminChange } from '../lib/admin'
 import { linkConf, linkText, pct, visibleHypotheses, type LinkConf } from '../lib/ai'
 import { errorText } from '../lib/api'
 import { SYSTEM, fmtStamp, initialsOf } from '../lib/audit'
 import { getVersions, processingNote, stageLabel } from '../lib/connectors'
+import { CONF_LABEL, CONF_TONE, REANALYZE_HINT, amountText, costText, droppedText, llmState, modelText, reanalyzeAd, reanalyzeBlock, signalLabel } from '../lib/llm'
 import { adImage, mediaRefSrc } from '../lib/media'
 import { from, useFrom } from '../lib/nav'
 import { externalUrl, platformName } from '../lib/platform'
@@ -334,6 +336,10 @@ export default function AdDetail() {
 
           <AiCard key={a.id} a={a} s={s} c={c} load={ai} lc={lc} retry={() => setAiVer((v) => v + 1)} onLink={() => setModal('cx')} />
 
+          {/* анализа Claude не было (ключ не задан, демо, ручной ввод) — блока нет. «Проанализировать ещё раз» ставит
+              задание — дальше опрос ленты, как у собранной публикации в анализе (recheck) */}
+          {(a.llm || (mode === 'api' && a.origin === 'collected')) && <LlmCard key={`llm-${a.id}`} a={a} x={a.llm ?? null} onQueued={recheck} />}
+
           {proc && live && <SourceVersions key={a.id} a={a} version={proc.version} />}
 
           <div className="card">
@@ -583,6 +589,114 @@ function AiCard({ a, s, c, load, lc, retry, onLink }: { a: Ad; s: AdScore; c?: C
           </div>
         </Modal>
       )}
+    </div>
+  )
+}
+
+/** Claude ещё не разбирал публикацию: собранные публикации дорабатываются постепенно, в пределах дневного бюджета */
+const PENDING_LLM = { tone: 'gray' as const, label: 'ещё не выполнен',
+  note: 'Анализ ИИ ещё не выполнялся: публикация ждёт постепенной доработки в пределах дневного бюджета. Можно не ждать — «Проанализировать сейчас».' }
+
+/** «Анализ ИИ (Claude)»: гипотезы языковой модели по тексту и OCR — признаки продажи, суммы, кандидаты ЖК с дословными
+ *  цитатами (сервер сверил их с текстом), неясности. В балл не входят; привязку и решение принимает аналитик.
+ *  Отказ модели, сбой и пропуск — «анализ ИИ не выполнен», а не «риска нет».
+ *  «Проанализировать ещё раз» — администратор (запрос расходует дневной бюджет); onQueued — перечитать ленту и опрашивать её,
+ *  пока анализ не закончится: новый результат придёт в a.llm. x = null — Claude эту публикацию ещё не разбирал
+ *  (она ждёт постепенной доработки в пределах бюджета) — кнопка позволяет не ждать очереди */
+function LlmCard({ a, x, onQueued }: { a: Ad; x: LlmAnalysis | null; onQueued: () => void }) {
+  const { mode, user, notify } = useStore()
+  const [admin, setAdmin] = useState(() => isAdmin())
+  useEffect(() => onAdminChange(setAdmin), [])
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const author = user?.name ?? ''
+  const block = reanalyzeBlock({ live: mode === 'api', admin, collected: a.origin === 'collected', processing: a.processing, author })
+  const st = llmState(x, fmtDT) ?? PENDING_LLM
+  const dropped = x ? droppedText(x.dropped) : null
+  const done = x?.status === 'done'
+  const again = async () => {
+    if (block || busy) return
+    setBusy(true)
+    setErr(null)
+    try {
+      await reanalyzeAd(a.id, author)
+      notify('Повторный анализ ИИ запрошен — новый результат появится в этом блоке, прежний сохранится в истории')
+      onQueued()
+    } catch (e) {
+      setErr(errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="card">
+      <div className="card-head"><h3>Анализ ИИ (Claude)</h3><span className="row" style={{ gap: 6 }}><span className={`tag ${st.tone}`}>{st.label}</span><AiBadge label="гипотезы ИИ" /></span></div>
+      <p className="t-sm c2" style={{ marginBottom: 8 }}>Языковая модель Anthropic читает текст публикации и OCR. Всё ниже — гипотезы: в балл риска не входят, привязку к ЖК и решение по публикации принимает аналитик. Цитаты сервер сверил с текстом — остальное модель не подтверждает.</p>
+      {st.note && <div className={`ai-note ${!x || (x.status === 'failed' && x.retryAt) ? '' : 'warn'}`}>{st.note}</div>}
+      {x && done && (
+        <>
+          {x.summary && <p className="t-sm" style={{ lineHeight: '20px', marginTop: 4 }}>{x.summary}</p>}
+          <div className="ai-sub">Признаки продажи <span className="t-sm c2" style={{ fontWeight: 400 }}>{x.saleSignals.length}</span></div>
+          {x.saleSignals.length ? (
+            <div className="ev-list">
+              {x.saleSignals.map((g, i) => (
+                <div key={`${g.type}-${i}`} className="ev" style={{ gridTemplateColumns: '150px minmax(0, 1fr)' }}>
+                  <span className="bold">{signalLabel(g.type)}</span>
+                  <div><div className="q">«{g.quote}»</div>{g.source === 'ocr' && <div style={{ marginTop: 4 }}><OcrTag /></div>}</div>
+                </div>
+              ))}
+            </div>
+          ) : <div className="t-sm c2">Модель не выделила признаков продажи — это не вывод об отсутствии риска</div>}
+          {x.amounts.length > 0 && (
+            <>
+              <div className="ai-sub">Суммы <span className="t-sm c2" style={{ fontWeight: 400 }}>{x.amounts.length}</span></div>
+              <div className="ev-list">
+                {x.amounts.map((m, i) => (
+                  <div key={`amt-${i}`} className="ev" style={{ gridTemplateColumns: '150px minmax(0, 1fr)' }}>
+                    <span className="bold num">{amountText(m)}</span>
+                    <div><div className="meta">{m.kind || 'сумма'}</div><div className="q">«{m.quote}»</div>{m.source === 'ocr' && <div style={{ marginTop: 4 }}><OcrTag /></div>}</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          <div className="ai-sub">Кандидаты ЖК <span className="t-sm c2" style={{ fontWeight: 400 }}>{x.complexCandidates.length}</span></div>
+          {x.complexCandidates.length ? (
+            <div className="ev-list">
+              {x.complexCandidates.map((k) => (
+                <div key={k.complexId} className="ev" style={{ gridTemplateColumns: 'minmax(0, 1fr) auto' }}>
+                  <div>
+                    <Link className="bold" to={`/complexes/${k.complexId}`} state={from(`Публикация ${adKey(a.id)}`, `/ads/${a.id}`)}>ЖК «{k.complexName}»</Link>
+                    <div className="q">«{k.quote}»</div>
+                    <div className="meta" style={{ marginTop: 2 }}>гипотеза — решение за аналитиком{k.complexId === a.complexId ? (a.linkConfirmedBy ? ' · совпадает с привязкой аналитика' : ' · совпадает с текущей привязкой-гипотезой') : ''}</div>
+                  </div>
+                  <span className={`tag ${CONF_TONE[k.confidence] ?? 'gray'}`} title="Уверенность модели — не вероятность и не факт">{CONF_LABEL[k.confidence] ?? k.confidence}</span>
+                </div>
+              ))}
+            </div>
+          ) : <div className="t-sm c2">Модель не предложила ЖК из справочника — привязку делает аналитик</div>}
+          {x.uncertainties.length > 0 && (
+            <>
+              <div className="ai-sub">Требует проверки</div>
+              <ul className="t-sm" style={{ margin: '4px 0 0', paddingLeft: 18, lineHeight: '20px' }}>{x.uncertainties.map((u, i) => <li key={i}>{u}</li>)}</ul>
+            </>
+          )}
+          {dropped && <p className="t-xs c2" style={{ marginTop: 8 }}>{dropped} — их нет в выдаче.</p>}
+        </>
+      )}
+      {x && (
+        <div className="t-xs c3" style={{ marginTop: 12 }}>
+          Claude · {modelText(x)}{x.updatedAt ? ` · ${fmtDT(x.updatedAt)}` : ''}{x.contentVersion && x.contentVersion > 1 ? ` · версия ${x.contentVersion}` : ''}
+          {(x.inputTokens > 0 || x.outputTokens > 0) && ` · ${x.inputTokens.toLocaleString('ru-RU')} + ${x.outputTokens.toLocaleString('ru-RU')} токенов, ${costText(x.costUsd)}`}
+          {' '}· промпт {x.promptVersion} · текст и OCR отправлены в Anthropic
+        </div>
+      )}
+      <div className="row wrap-f" style={{ gap: 8, marginTop: 12, alignItems: 'center' }}>
+        <button className="btn g m" disabled={!!block || busy} title={block ?? REANALYZE_HINT} onClick={() => void again()}>
+          {busy ? 'Запрашиваем…' : x ? 'Проанализировать ещё раз' : 'Проанализировать сейчас'}</button>
+        <span className="t-xs c2" style={{ flex: '1 1 240px', lineHeight: '17px' }}>{block ?? REANALYZE_HINT}</span>
+      </div>
+      {err && <div className="ai-note err" style={{ marginTop: 8 }}>Повторный анализ не запрошен: {err}</div>}
     </div>
   )
 }

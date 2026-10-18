@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import Column, Integer, inspect, select, text
+from sqlalchemy import Column, Integer, func, inspect, select, text
 
 from app import migrate, models, schemas
 from app.db import Base, SessionLocal, engine, make_engine
@@ -30,10 +30,10 @@ def _set_meta(value: str) -> None:
 
 
 def _to_baseline() -> None:
-    """База как у версии 2026.10-sources-1: без 12 новых таблиц и ads.collected_at."""
+    """База как у версии 2026.10-sources-1: без 12 новых таблиц, llm_analyses и ads.collected_at."""
     with engine.begin() as conn:
         for t in reversed(Base.metadata.sorted_tables):
-            if t.name in migrate.NEW_TABLES:
+            if t.name in migrate.NEW_TABLES + migrate.LLM_TABLES:
                 t.drop(conn)
         conn.execute(text("ALTER TABLE ads DROP COLUMN collected_at"))
     _set_meta(migrate.BASELINE)
@@ -49,11 +49,11 @@ def _backups() -> set:
 
 
 def test_fresh_db(tmp_path):
-    assert models.SCHEMA_VERSION == migrate.STEPS[-1][0] == "2026.10-intake-1"
+    assert models.SCHEMA_VERSION == migrate.STEPS[-1][0] == "2026.10-llm-1"
     eng = make_engine(f"sqlite:///{tmp_path}/fresh.db")
     try:
         init_db(eng)
-        assert set(migrate.NEW_TABLES) <= set(inspect(eng).get_table_names())
+        assert set(migrate.NEW_TABLES + migrate.LLM_TABLES) <= set(inspect(eng).get_table_names())
         with eng.connect() as conn:
             assert _meta(conn) == models.SCHEMA_VERSION
             assert conn.execute(text("SELECT count(*) FROM ads")).scalar() == 12
@@ -75,7 +75,7 @@ def test_baseline_upgrade_keeps_data(client):
 
     init_db(engine)
 
-    assert set(migrate.NEW_TABLES) <= set(inspect(engine).get_table_names())
+    assert set(migrate.NEW_TABLES + migrate.LLM_TABLES) <= set(inspect(engine).get_table_names())
     assert "collected_at" in {c["name"] for c in inspect(engine).get_columns("ads")}
     with engine.connect() as conn:
         assert _meta(conn) == models.SCHEMA_VERSION
@@ -92,6 +92,48 @@ def test_baseline_upgrade_keeps_data(client):
     init_db(engine)
     assert len(client.get("/api/ads").json()) == 13
     assert _backups() == before
+
+
+def test_intake_upgrade_adds_llm_table_and_keeps_data(client):
+    """2026.10-intake-1 → 2026.10-llm-1: таблица llm_analyses добавляется на месте, собранные публикации, файлы,
+    решения аналитика и строка прежнего анализатора в collectors (кода нет в реестре) сохраняются."""
+    with SessionLocal() as db:
+        aid = _collected_ad(db)
+        db.add(models.Collector(code="openai", status="off", status_detail="только статус"))  # строка прежней версии
+        db.commit()
+    client.patch("/api/ads/a1/status", json={"status": "in_review", "author": "Тест"})
+    with engine.begin() as conn:
+        models.LlmAnalysis.__table__.drop(conn)
+    _set_meta("2026.10-intake-1")
+    assert "llm_analyses" not in inspect(engine).get_table_names()
+    assert migrate.chain_from("2026.10-intake-1") == migrate.STEPS[-1:]
+    before = _backups()
+
+    init_db(engine)
+
+    assert "llm_analyses" in inspect(engine).get_table_names()
+    with engine.connect() as conn:
+        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-llm-1"
+    got = _ad(client, aid)
+    assert got["origin"] == "collected" and got["processing"]["status"] == "queued" and "llm" not in got
+    assert _ad(client, "a1")["status"] == "in_review"
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(models.MediaAsset)) == 5
+        assert db.get(models.Collector, "openai") is not None  # шаги только добавляют
+        db.add(models.LlmAnalysis(ad_id=aid, content_hash="h" * 64, model="claude-opus-5-5",
+                                  prompt_version="saq-llm-1", status="done", result={"summary": "тест"}))
+        db.commit()
+    assert _ad(client, aid)["llm"]["summary"] == "тест"
+    # страница подключений и воркер чужую строку не читают
+    codes = [c["code"] for c in client.get("/api/sources/connectors").json()["connectors"]]
+    assert "openai" not in codes and "anthropic" in codes
+    if _sqlite_file():
+        new = _backups() - before
+        assert len(new) == 1 and next(iter(new)).name.startswith(f"{_sqlite_file().name}.bak-2026.10-intake-1-")
+        for f in new:
+            f.unlink()
+    with SessionLocal() as db:  # оплаченные результаты — невосстановимые данные
+        assert migrate.durable_rows(engine, set(inspect(engine).get_table_names()))["llm_analyses"] == 1
 
 
 def test_unknown_version_with_durable_rows(client, env):

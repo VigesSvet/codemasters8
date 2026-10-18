@@ -1,7 +1,8 @@
 """Воркер сбора и анализа: python -m app.worker [--once] [--id ID] [--schema-wait S] (integration-spec §9.2, §9.5).
 
 Один процесс, цикл по таблице jobs: отчёт о локальных сведениях подключений (например, есть ли сессия Telegram) →
-такт лидера (планировщик сборов и плановых проверок, возврат зависших заданий, уборка раз в час) → захват задания →
+такт лидера (планировщик сборов и плановых проверок, возврат зависших заданий, дозапрос Claude по старым публикациям раз
+в ANTHROPIC_BACKFILL_INTERVAL_MIN, уборка раз в час) → захват задания →
 выполнение → пауза SAQ_WORKER_POLL_S. Планирует только держатель аренды «scheduler»; выполнять задания может любой
 воркер. Поток-пульс (раз в 30 с, своя сессия) продлевает пульс воркера, аренду планировщика и блокировку текущего задания
 (не дольше SAQ_JOB_MAX_S — потом зависшее задание сможет забрать recover_stale).
@@ -223,19 +224,52 @@ def housekeeping(db: Session, now: datetime) -> None:
                  "файлов без записей %s", n, res.rowcount, states.rowcount, tmp, orphans)
 
 
-def _housekeeping_due(db: Session, worker_id: str, now: datetime) -> bool:
+def _periodic_due(db: Session, worker_id: str, now: datetime, mark: str, every_s: float) -> bool:
+    """Периодическая работа лидера (отметка mark в info аренды планировщика): прошло every_s с — отметка обновляется
+    (commit), True."""
     lease = db.get(models.WorkerLease, SCHEDULER)
     if lease is None or lease.holder != worker_id:
         return False
-    last = (lease.info or {}).get("housekeepingAt")
+    last = (lease.info or {}).get(mark)
     try:
-        due = last is None or models.as_utc(datetime.fromisoformat(last)) <= now - timedelta(seconds=HOUSEKEEPING_S)
+        due = last is None or models.as_utc(datetime.fromisoformat(last)) <= now - timedelta(seconds=every_s)
     except ValueError:
         due = True
     if due:
-        lease.info = {**(lease.info or {}), "housekeepingAt": models.iso(now)}
+        lease.info = {**(lease.info or {}), mark: models.iso(now)}
         db.commit()
     return due
+
+
+def _housekeeping_due(db: Session, worker_id: str, now: datetime) -> bool:
+    return _periodic_due(db, worker_id, now, "housekeepingAt", HOUSEKEEPING_S)
+
+
+# ---------- дозапрос Claude по старым публикациям ----------
+
+def _backfill_due(db: Session, worker_id: str, now: datetime) -> bool:
+    """Пора дозапросить Claude: ключ задан, партия больше нуля и прошло ANTHROPIC_BACKFILL_INTERVAL_MIN минут."""
+    s = get_settings()
+    if s.missing("ANTHROPIC_API_KEY") or int(s.anthropic_backfill_batch) <= 0:
+        return False
+    return _periodic_due(db, worker_id, now, "llmBackfillAt", float(s.anthropic_backfill_interval_min) * 60)
+
+
+def backfill(db: Session, now: datetime) -> list[str]:
+    """Задания анализа для старых публикаций без ответа Claude (app.llm.backfill: новые первыми, партия, бюджет).
+    Фиксирует транзакцию; сбой — предупреждение в журнал, такт лидера продолжается."""
+    from . import llm
+
+    try:
+        ids = llm.backfill(db, now)
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        log.warning("Дозапрос анализа ИИ (Claude) не выполнен", exc_info=True)
+        return []
+    if ids:
+        log.info("Дозапрос анализа ИИ (Claude): поставлено заданий анализа %s", len(ids))
+    return ids
 
 
 # ---------- сведения, видимые только воркеру ----------
@@ -268,7 +302,7 @@ def report_local(db: Session) -> None:
 # ---------- цикл ----------
 
 def _tick(worker_id: str, now: datetime) -> None:
-    """Такт лидера: аренда планировщика, сборы и проверки по расписанию, зависшие задания, уборка."""
+    """Такт лидера: аренда планировщика, сборы и проверки по расписанию, зависшие задания, дозапрос Claude, уборка."""
     s = get_settings()
     with SessionLocal() as db:
         if not acquire_lease(db, SCHEDULER, worker_id, LEASE_TTL_S, now=models.utcnow()):
@@ -279,6 +313,8 @@ def _tick(worker_id: str, now: datetime) -> None:
         db.commit()
         schedule_due(db, now)
         db.commit()
+        if _backfill_due(db, worker_id, now):
+            backfill(db, now)
         if _housekeeping_due(db, worker_id, now):
             try:
                 housekeeping(db, now)

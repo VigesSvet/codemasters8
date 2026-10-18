@@ -63,6 +63,8 @@ def check_one(code: str) -> str:
         out += "".join(f"\n  · {n['text']}" for n in ctx.notes)
     if code == "dgis":
         out += "\n  (запрос не учтён в счётчике квоты)"
+    if code == "anthropic":
+        out += "\n  (только сведения о модели — без генерации и без оплаты)"
     return out
 
 

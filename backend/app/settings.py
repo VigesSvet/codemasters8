@@ -10,6 +10,7 @@
 import hashlib
 import logging
 import os
+import re
 import threading
 from dataclasses import dataclass, field, fields
 from datetime import date
@@ -31,6 +32,9 @@ OCR_MAX_BYTES = 10 * 1024 * 1024
 TOKEN_MIN_LEN = 24
 TOKEN_MIN_DISTINCT = 12
 TRUE_WORDS = frozenset({"1", "true", "yes", "on"})
+# Уровни ANTHROPIC_EFFORT (output_config.effort): думать меньше/больше — расход и время ответа
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+_MODEL_ID = re.compile(r"[a-z0-9][a-z0-9._-]{1,63}")
 FALSE_WORDS = frozenset({"0", "false", "no", "off"})
 
 
@@ -122,9 +126,17 @@ class Settings:
     olx_client_secret: Secret = field(default_factory=_no_secret)
     olx_redirect_uri: str = ""
     olx_scopes: str = "read v2"
-    # OpenAI (только статус)
-    openai_api_key: Secret = field(default_factory=_no_secret)
-    openai_model: str = ""
+    # Anthropic (Claude) — этап анализа ИИ публикаций (app.llm)
+    anthropic_api_key: Secret = field(default_factory=_no_secret)
+    anthropic_model: str = "claude-sonnet-5-5"
+    anthropic_effort: str = "medium"
+    anthropic_max_tokens: int = 16000
+    anthropic_daily_budget_usd: float = 5.0
+    anthropic_timeout_s: float = 120.0
+    anthropic_workspace_id: str = ""
+    # дозапрос старых публикаций без ответа Claude (такт лидера воркера): сколько за проход и как часто
+    anthropic_backfill_batch: int = 5
+    anthropic_backfill_interval_min: int = 10
     # значения, отброшенные правилами токенов (слабые/совпадающие): для подключения не используются, но в логах маскируются
     ignored_secrets: tuple = field(default=(), repr=False)
 
@@ -171,8 +183,9 @@ class Settings:
 class _Var:
     env: str
     field: str
-    kind: str  # str | secret | token | int | float | bool | path | date | optint | optstr | ua
+    kind: str  # str | secret | token | int | float | bool | path | date | optint | optstr | ua | model | effort
     lo: Optional[float] = None  # нижняя граница чисел: меньше — значение по умолчанию с предупреждением
+    hi: Optional[float] = None  # верхняя граница чисел: больше — значение по умолчанию с предупреждением
 
 
 VARS: tuple[_Var, ...] = (
@@ -226,8 +239,18 @@ VARS: tuple[_Var, ...] = (
     _Var("OLX_CLIENT_SECRET", "olx_client_secret", "secret"),
     _Var("OLX_REDIRECT_URI", "olx_redirect_uri", "str"),
     _Var("OLX_SCOPES", "olx_scopes", "str"),
-    _Var("OPENAI_API_KEY", "openai_api_key", "secret"),
-    _Var("OPENAI_MODEL", "openai_model", "str"),
+    _Var("ANTHROPIC_API_KEY", "anthropic_api_key", "secret"),
+    _Var("ANTHROPIC_MODEL", "anthropic_model", "model"),
+    _Var("ANTHROPIC_EFFORT", "anthropic_effort", "effort"),
+    _Var("ANTHROPIC_MAX_TOKENS", "anthropic_max_tokens", "int", 1024, 64000),
+    # счётчик расхода — целые микродоллары в quota_counters (Integer): верхняя граница держит его в 32 битах
+    _Var("ANTHROPIC_DAILY_BUDGET_USD", "anthropic_daily_budget_usd", "float", 0, 1000),
+    _Var("ANTHROPIC_TIMEOUT_S", "anthropic_timeout_s", "float", 10, 600),
+    # рабочее пространство для ключа организации, не привязанного к нему (заголовок anthropic-workspace-id)
+    _Var("ANTHROPIC_WORKSPACE_ID", "anthropic_workspace_id", "str"),
+    # дозапрос старых публикаций: 0 — выключен
+    _Var("ANTHROPIC_BACKFILL_BATCH", "anthropic_backfill_batch", "int", 0, 100),
+    _Var("ANTHROPIC_BACKFILL_INTERVAL_MIN", "anthropic_backfill_interval_min", "int", 1, 1440),
 )
 _BY_ENV = {v.env: v for v in VARS}
 # Все имена, которые читает приложение (SAQ_ENV_FILE — только из реального окружения)
@@ -292,7 +315,7 @@ def _raw(name: str, environ: Mapping[str, str], file: Mapping[str, str]) -> Opti
 
 # ---------- разбор значений ----------
 
-def _num(name: str, raw: Optional[str], default, cast, lo, warns: list):
+def _num(name: str, raw: Optional[str], default, cast, lo, warns: list, hi=None):
     if raw is None:
         return default
     fallback = "значение не используется" if default is None else f"используется значение по умолчанию ({default})"
@@ -306,6 +329,9 @@ def _num(name: str, raw: Optional[str], default, cast, lo, warns: list):
         return default
     if lo is not None and v < lo:
         warns.append(f"{name}: значение меньше {lo:g} — {fallback}")
+        return default
+    if hi is not None and v > hi:
+        warns.append(f"{name}: значение больше {hi:g} — {fallback}")
         return default
     return v
 
@@ -355,11 +381,27 @@ def _parse(environ: Mapping[str, str]) -> tuple[Settings, list[str]]:
                     v = Secret(raw)
                     tokens[var.env] = raw
         elif var.kind == "int":
-            v = _num(var.env, raw, default, int, var.lo, warns)
+            v = _num(var.env, raw, default, int, var.lo, warns, var.hi)
         elif var.kind == "optint":
-            v = _num(var.env, raw, None, int, var.lo, warns)
+            v = _num(var.env, raw, None, int, var.lo, warns, var.hi)
         elif var.kind == "float":
-            v = _num(var.env, raw, default, float, var.lo, warns)
+            v = _num(var.env, raw, default, float, var.lo, warns, var.hi)
+        elif var.kind == "model":
+            v = default
+            if raw is not None:
+                if _MODEL_ID.fullmatch(raw):
+                    v = raw
+                else:
+                    warns.append(f"{var.env}: ожидается идентификатор модели (например, {default}) — используется "
+                                 "значение по умолчанию")
+        elif var.kind == "effort":
+            v = default
+            if raw is not None:
+                if raw.lower() in EFFORTS:
+                    v = raw.lower()
+                else:
+                    warns.append(f"{var.env}: ожидается одно из {', '.join(EFFORTS)} — используется значение по "
+                                 f"умолчанию ({default})")
         elif var.kind == "bool":
             v = _bool(var.env, raw, default, warns)
         elif var.kind == "path":
