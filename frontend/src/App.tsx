@@ -4,6 +4,7 @@ import { StoreProvider, useStore } from './lib/store'
 import AdDetail from './pages/AdDetail'
 import AdNew from './pages/AdNew'
 import Ads from './pages/Ads'
+import Changes from './pages/Changes'
 import ComplexCard from './pages/ComplexCard'
 import Check from './pages/Check'
 import Complexes from './pages/Complexes'
@@ -70,6 +71,7 @@ export default function App() {
               <Route path="residents" element={<Residents />} />
               <Route path="reports" element={<Reports />} />
               <Route path="sellers" element={<Sellers />} />
+              <Route path="changes" element={<Changes />} />
             </Route>
           </Route>
         </Routes>

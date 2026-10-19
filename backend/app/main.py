@@ -12,8 +12,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from . import (ads_service, ai, decisions, discovery, importer, logs, media, models, registry, schemas, screening,
-               signals, verification, world)
+from . import (ads_service, ai, changes, decisions, discovery, importer, logs, media, models, registry, satstage,
+               schemas, screening, signals, verification, world)
 from .ads_service import REASON_NAMES, _event, _pct, _why  # noqa: F401 — прежние имена main (журнал, гипотезы)
 from .ai import evaluate, ocr as ocr_engine
 from .db import get_db
@@ -671,6 +671,8 @@ app.include_router(decisions.router)
 # ---------- сбор публикаций: подключения, запуски, приём, файлы; маршруты модулей подключений ----------
 
 app.include_router(integration_routes.router)
+app.include_router(satstage.router)  # спутник против рекламы: GET /api/complexes/{id}/sat-stage
+app.include_router(changes.router)  # удалено в источнике и изменения: /api/ads/{id}/source-status, /api/changes
 for _router in connectors.routers():
     app.include_router(_router)
 

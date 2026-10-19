@@ -164,6 +164,8 @@ export const ru = {
   'nav.sourcesSub': 'Откуда берём данные',
   'nav.residents': 'Жителям',
   'nav.residentsSub': 'Идея: push-уведомления',
+  'nav.changes': 'Изменения в источниках',
+  'nav.changesSub': 'Удалённые публикации, правки условий',
   'nav.adNew': 'Ручной ввод публикации',
   'nav.adNewSub': 'Текст, ссылка, скриншот',
   'nav.sellers': 'Кто продаёт',

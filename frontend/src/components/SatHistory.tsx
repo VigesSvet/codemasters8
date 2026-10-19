@@ -6,6 +6,7 @@ import * as maplibregl from 'maplibre-gl'
 import type { Complex } from '../data/types'
 import { SAT_ZOOM, WAYBACK_ATTR, shotDate, shotsAt, tileUrl, type SatShot } from '../lib/wayback'
 import { IcMinus, IcPlus } from '../ui/icons'
+import SatStage from './SatStage'
 
 const fmt = (d: string) => new Date(`${d.slice(0, 10)}T12:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
 const year = (d: string) => Number(d.slice(0, 4))
@@ -134,8 +135,12 @@ export default function SatHistory({ c }: { c: Complex }) {
   const pick = (id: number) => { setPlay(false); if (pickFor === 'a') setA(id); else setB(id); if (cut === 0) setCut(50) }
   const meta = (s: SatShot) => [s.acquired ? `съёмка ${fmt(s.acquired)}` : `выпуск ${fmt(s.date)}`, s.sensor, s.res ? `${s.res} м/пкс` : null].filter(Boolean).join(' · ')
 
+  /** «Показать этот снимок на ленте» из карточки «Спутник против рекламы»: снимок — «после», шторка закрыта */
+  const show = (id: number) => { if (!shots.some((x) => x.id === id)) return false; setPlay(false); setB(id); setCut(0); view.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return true }
+
   return (
     <div className="sat">
+      <SatStage c={c} onShow={show} />
       <div className="sat-view" ref={view}>
         <div ref={elA} className="sat-map" />
         <div ref={elB} className="sat-map top" style={{ clipPath: `inset(0 0 0 ${cut}%)` }} />

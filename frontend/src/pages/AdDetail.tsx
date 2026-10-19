@@ -7,6 +7,7 @@ import { MediaViewer } from '../components/MediaViewer'
 import { Origin } from '../components/Provenance'
 import { SellerHints } from '../components/SellerHints'
 import { SignalAction } from '../components/SignalPanel'
+import { ChangeHistory, DeletedBadge } from '../components/SourceChanges'
 import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, RiskScore, SafeImg, StatusDot, ZoneTag, adKey, fmtDT, plural, statusMeta } from '../components/ui'
 import { READ_ONLY } from '../data/snapshot'
 import type { Ad, AdAnalysis, AdScore, AdStatus, AdVersion, AuditEvent, Complex, LinkHypothesis, LlmAnalysis, Processing } from '../data/types'
@@ -253,7 +254,7 @@ export default function AdDetail() {
     <>
       <PageTitle crumbs={back ? [[`← ${back.label}`, back.to], [adKey(a.id)]] : [['Карта', '/'], ['Лента публикаций', '/ads'], [adKey(a.id)]]}
         title={<span className="row wrap-f" style={{ gap: 14 }}>{c ? `Реклама ЖК «${c.name}»` : 'Реклама без привязки к ЖК'}
-          {c && <LinkMark a={a} value={lc.now?.confidence} label="привязка — гипотеза ИИ" />}{demoAd && <Origin kind="demo" label="Демо-публикация (вымышленная)" />}</span>}
+          {c && <LinkMark a={a} value={lc.now?.confidence} label="привязка — гипотеза ИИ" />}{demoAd && <Origin kind="demo" label="Демо-публикация (вымышленная)" />}{collected && <DeletedBadge adId={a.id} />}</span>}
         sub={<span className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={22} /><span>{platformName(a.platform)} · {a.account} · {fmtDT(a.date)}
           {collected && a.collectedAt && <span title="Когда публикацию получил сервер — не время публикации в источнике"> · {bot ? 'прислано' : 'собрано'} {fmtDT(a.collectedAt)}</span>}</span></span>} />
 
@@ -392,6 +393,7 @@ export default function AdDetail() {
           {(a.llm || (mode === 'api' && a.origin === 'collected')) && <LlmCard key={`llm-${a.id}`} a={a} x={a.llm ?? null} onQueued={recheck} />}
 
           {proc && live && <SourceVersions key={`ver-${a.id}`} a={a} version={proc.version} />}
+          {proc && live && <ChangeHistory key={`chg-${a.id}`} adId={a.id} version={proc.version} />}
 
           <SellerHints adId={a.id} />
 

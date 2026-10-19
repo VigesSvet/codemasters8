@@ -149,12 +149,13 @@ export default function Shell() {
             {tab('/method', t('nav.method'))}
           </div>
           <div className="nav-item ytabs-more">
-            <button className={`ytab ${['/sources', '/residents', '/sellers'].includes(loc.pathname) ? 'active' : ''}`} onClick={() => setOpen(open === 'more' ? null : 'more')}>{t('nav.more')}<IcChevronDown size={16} /></button>
+            <button className={`ytab ${['/sources', '/residents', '/sellers', '/changes'].includes(loc.pathname) ? 'active' : ''}`} onClick={() => setOpen(open === 'more' ? null : 'more')}>{t('nav.more')}<IcChevronDown size={16} /></button>
             {open === 'more' && (
               <>
                 <div className="menu-scrim" onClick={() => setOpen(null)} />
                 <div className="menu fade" style={{ top: '100%', left: 'auto', right: 0 }}>
                   <Link to="/sources"><span className="ic"><IcDatabase size={16} /></span><span className="lbl">{t('nav.sources')}<small>{t('nav.sourcesSub')}</small></span><IcChevronRight size={16} /></Link>
+                  <Link to="/changes"><span className="ic"><IcQueue size={16} /></span><span className="lbl">{t('nav.changes')}<small>{t('nav.changesSub')}</small></span><IcChevronRight size={16} /></Link>
                   <Link to="/residents"><span className="ic"><IcPhone size={16} /></span><span className="lbl">{t('nav.residents')}<small>{t('nav.residentsSub')}</small></span><IcChevronRight size={16} /></Link>
                   <Link to="/sellers"><span className="ic"><IcUsers size={16} /></span><span className="lbl">{t('nav.sellers')}<small>{t('nav.sellersSub')}</small></span><IcChevronRight size={16} /></Link>
                   <Link to="/ads/new"><span className="ic"><IcQueue size={16} /></span><span className="lbl">{t('nav.adNew')}<small>{t('nav.adNewSub')}</small></span><IcChevronRight size={16} /></Link>

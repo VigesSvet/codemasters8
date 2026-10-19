@@ -166,6 +166,8 @@ export const kk: Partial<Record<Key, string>> = {
   'nav.sourcesSub': 'Деректерді қайдан аламыз',
   'nav.residents': 'Тұрғындарға',
   'nav.residentsSub': 'Идея: push-хабарландырулар',
+  'nav.changes': 'Дереккөздегі өзгерістер',
+  'nav.changesSub': 'Жойылған жарияланымдар, шарттардың өзгеруі',
   'nav.adNew': 'Жарияланымды қолмен енгізу',
   'nav.adNewSub': 'Мәтін, сілтеме, скриншот',
   'nav.sellers': 'Кім сатады',
