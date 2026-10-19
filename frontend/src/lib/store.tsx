@@ -197,6 +197,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [analysts, setAnalysts] = useState<Analyst[]>([])
   const [snapshot, setSnapshot] = useState<SnapshotMeta | null>(null)
   const [user, setUser] = useState<User | null>(() => readSession())
+  // учётную запись могли переименовать на сервере (роль вместо имени) — сессия берёт актуальные имя, значок и роль по id,
+  // иначе автором новых действий в журнале осталось бы прежнее имя из localStorage
+  useEffect(() => {
+    if (!user) return
+    const a = analysts.find((x) => x.id === user.id)
+    if (!a || (a.name === user.name && a.short === user.short && a.role === user.role)) return
+    const next: User = { id: a.id, name: a.name, short: a.short, role: a.role }
+    writeSession(next)
+    setUser(next)
+  }, [analysts]) // eslint-disable-line react-hooks/exhaustive-deps
   const [signedOut, setSignedOut] = useState(false)
   const [apiRisk, setApiRisk] = useState<Map<string, RiskResult>>(() => new Map())
   const [signals, setSignals] = useState<SignalSummary[]>([])
