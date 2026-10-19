@@ -85,7 +85,6 @@ export default function Shell() {
       <header className="yhead">
         <div className="bar">
           <Link to="/" className="logo"><img src="/logo.svg" alt="" className="mark" />SAQ Qurylys</Link>
-          <span className="city">{t('common.city')}</span>
           <QuickSearch />
           <div className="head-right">
             <LangSwitch />
