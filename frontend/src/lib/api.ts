@@ -25,6 +25,11 @@ const VALIDATION: Record<string, string> = {
   literal_error: 'недопустимое значение',
   enum: 'недопустимое значение',
   extra_forbidden: 'неизвестное поле',
+  int_parsing: 'нужно целое число',
+  int_from_float: 'нужно целое число',
+  float_parsing: 'нужно число',
+  bool_parsing: 'нужно «да» или «нет»',
+  finite_number: 'нужно число',
 }
 // Поля тел запросов — как их называет интерфейс
 const FIELD: Record<string, string> = {
@@ -36,6 +41,10 @@ const FIELD: Record<string, string> = {
   profiles: 'профили', searchUrls: 'URL поиска', cardUrls: 'карточки', resultsPerPage: 'публикаций за запуск',
   downloadVideos: 'загрузка видео', query: 'запрос', candidateId: 'кандидат', targetId: 'объект', targetKind: 'вид объекта',
   apply: 'перенос координат',
+  // сверка сведений аналитиком по ЖК
+  doc: 'документ', value: 'значение', ref: 'номер и дата документа', source: 'источник', sourceUrl: 'ссылка',
+  checkedAt: 'дата сверки', kind: 'вид', date: 'дата', subject: 'суть обращения', applicants: 'заявителей',
+  collective: 'коллективное', activity: 'активность', note: 'примечание',
 }
 const PLACE = new Set(['body', 'query', 'path', 'header'])
 
@@ -119,6 +128,8 @@ const json = (method: string, body: unknown, headers?: ExtraHeaders): RequestIni
 export const apiGet = <T>(path: string, headers?: ExtraHeaders) => apiFetch<T>(path, headers ? { headers } : undefined)
 export const apiPost = <T>(path: string, body: unknown, headers?: ExtraHeaders) => apiFetch<T>(path, json('POST', body, headers))
 export const apiPatch = <T>(path: string, body: unknown, headers?: ExtraHeaders) => apiFetch<T>(path, json('PATCH', body, headers))
+/** DELETE с JSON-телом (автор и причина — например, отмена решения аналитика) */
+export const apiDelete = <T>(path: string, body: unknown, headers?: ExtraHeaders) => apiFetch<T>(path, json('DELETE', body, headers))
 /** multipart/form-data: заголовок с границей ставит сам браузер */
 export const apiUpload = <T>(path: string, form: FormData, headers?: ExtraHeaders) =>
   apiFetch<T>(path, { method: 'POST', body: form, ...(headers ? { headers } : {}) })
@@ -169,7 +180,7 @@ const CONTROL = /[\u0000-\u001f\u007f]/
 const PARSE_BASE = 'https://media.invalid/'
 
 /** Адрес файла для <img>/<video>/<a href> при заданной базе API: /api/media/… → base + /media/…; http(s), blob: (локальный
- *  предпросмотр этой вкладки) и data:image|video — как есть; пути сайта (/img/… демо-набора, /brands/…) — без изменений;
+ *  предпросмотр этой вкладки) и data:image|video — как есть; пути сайта (/img/…, /snapshot-media/… офлайн-копии, /brands/…) — без изменений;
  *  другие схемы (javascript:, file:…) и адреса с управляющими символами — undefined. Схему определяет разбор URL, как в браузере */
 export function mediaUrl(u: string | null | undefined, base: string): string | undefined {
   const s = u?.trim()

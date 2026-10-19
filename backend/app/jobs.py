@@ -630,8 +630,11 @@ def _analyze(info: JobInfo, *, now: datetime, stop: Optional[threading.Event] = 
     from .ads_service import _event
 
     try:
-        # force — «Проанализировать ещё раз» (POST /api/ads/{id}/reanalyze): Claude запрашивается снова
-        result = analysis.run_analysis(info.id, info.ad_id, now=now, force=bool((info.payload or {}).get("force")))
+        # force — «Проанализировать ещё раз» (POST /api/ads/{id}/reanalyze): Claude запрашивается снова; rulesOnly —
+        # пересчёт правил после создания карточки ЖК по рекламе (app.discovery), без запроса к Claude
+        p = info.payload or {}
+        result = analysis.run_analysis(info.id, info.ad_id, now=now, force=bool(p.get("force")),
+                                       rules_only=bool(p.get("rulesOnly")), reason=p.get("reason"))
     except Exception as e:  # noqa: BLE001 — сбой анализа — повтор, затем «анализ не выполнен», не падение воркера
         log.exception("Анализ публикации %s (задание №%s) не выполнен", info.ad_id, info.id)
         error = redact(str(e) or type(e).__name__, limit=300)

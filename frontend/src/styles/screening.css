@@ -1,0 +1,199 @@
+/* ───── «Проверка по рекламе»: без замечаний / требует проверки / подозрение / нет данных ─────
+   Цвет и знак — главный визуальный признак ЖК и застройщика; формальный риск (балл, зона) — вторичный. */
+:root { --scr-ok: var(--green); --scr-check: var(--amber); --scr-suspect: var(--red); --scr-unknown: #8a8c91; }
+
+/* Круглый значок со знаком */
+.scr-pic { width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; color: #fff; font-weight: 800; font-size: 15px; line-height: 1; flex: none; font-family: var(--font-display); }
+.scr-pic.ok { background: var(--scr-ok); } .scr-pic.check { background: var(--scr-check); } .scr-pic.suspect { background: var(--scr-suspect); } .scr-pic.unknown { background: var(--scr-unknown); }
+.scr-pic.all { background: var(--dark); }
+
+/* Метка статуса: tag + знак в кружке */
+.tag.scr-tag { gap: 6px; padding-left: 4px; }
+.scr-tag .scr-g { width: 16px; height: 16px; border-radius: 50%; display: inline-grid; place-items: center; color: #fff; font-size: 11px; font-weight: 800; line-height: 1; flex: none; }
+.tag.green .scr-g { background: var(--scr-ok); } .tag.yellow .scr-g { background: var(--scr-check); } .tag.red .scr-g { background: var(--scr-suspect); } .tag.gray .scr-g { background: var(--scr-unknown); }
+.tag.scr-tag.big { height: 30px; font-size: 14px; border-radius: 10px; padding: 0 10px 0 6px; }
+.tag.scr-tag.big .scr-g { width: 20px; height: 20px; font-size: 13px; }
+
+/* Дисклеймер: коротко, полный текст — в подсказке */
+.scr-disc { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; line-height: 16px; color: var(--text-2); cursor: help; }
+.scr-disc svg { flex: none; color: var(--text-3); }
+
+/* Происхождение «по рекламе» */
+.tag.prov.adv { background: #fff; box-shadow: inset 0 0 0 1px var(--amber); color: var(--amber-ink); }
+
+/* Блок «Проверка по рекламе» в карточке ЖК, на карте, у застройщика */
+.scr-block { border-radius: var(--r-l); padding: 18px 20px; background: var(--fill); display: flex; flex-direction: column; gap: 10px; }
+.scr-block.red { background: var(--red-bg); } .scr-block.yellow { background: var(--amber-bg); } .scr-block.green { background: var(--green-bg); }
+.scr-block .scr-head { display: flex; align-items: center; gap: 12px; }
+.scr-block .scr-head .scr-pic { width: 40px; height: 40px; font-size: 22px; }
+.scr-block .scr-title { font-family: var(--font-display); font-size: 20px; line-height: 24px; font-weight: 700; }
+.scr-block .scr-kicker { font-size: 13px; line-height: 16px; color: var(--text-2); }
+.scr-block.red .scr-title { color: var(--red-ink); } .scr-block.yellow .scr-title { color: var(--amber-ink); } .scr-block.green .scr-title { color: var(--green-ink); }
+.scr-block .ev { background: rgba(255, 255, 255, 0.72); }
+.scr-block a.ev:hover { background: #fff; }
+.scr-block.compact { padding: 14px 16px; gap: 8px; }
+.scr-block.compact .scr-head .scr-pic { width: 32px; height: 32px; font-size: 17px; }
+.scr-block.compact .scr-title { font-size: 17px; line-height: 21px; }
+.scr-line { font-size: 13px; line-height: 18px; color: var(--text-2); }
+.scr-line b { color: var(--text); font-weight: 500; }
+.scr-permit { display: flex; flex-direction: column; gap: 4px; font-size: 14px; line-height: 19px; }
+.scr-permit .tag { align-self: flex-start; }
+.scr-links { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
+.scr-reason { color: var(--text); }
+.scr-q { font-weight: 600; color: var(--text); }
+
+/* Счётчики по статусам: ● 3  ● 1 */
+.scr-counts { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; line-height: 18px; color: var(--text-2); }
+.scr-counts > span { display: inline-flex; align-items: center; gap: 5px; }
+.scr-counts .scr-pic { width: 16px; height: 16px; font-size: 10px; }
+.scr-counts b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Метки на карте: цвет и знак — «Проверка по рекламе»; белый кружок с баллом — формальный риск (кольцо — цвет зоны) */
+.gpin.scr.ok { --c: var(--scr-ok); } .gpin.scr.check { --c: var(--scr-check); } .gpin.scr.suspect { --c: var(--scr-suspect); } .gpin.scr.unknown { --c: var(--scr-unknown); }
+.gpin.scr .b { padding: 0 4px 0 4px; gap: 5px; min-width: 26px; justify-content: center; }
+.gpin.scr .g { width: 18px; text-align: center; font-weight: 800; font-size: 14px; font-style: normal; }
+.gpin.scr .sc { min-width: 20px; height: 18px; border-radius: 9px; padding: 0 5px; display: inline-grid; place-items: center; background: #fff; color: var(--text); font-size: 12px; font-weight: 700; box-shadow: inset 0 0 0 2px var(--z, var(--text-3)); font-variant-numeric: tabular-nums; }
+.gpin.scr .sc.red { --z: var(--red); color: var(--red-ink); } .gpin.scr .sc.yellow { --z: var(--amber); color: var(--amber-ink); } .gpin.scr .sc.green { --z: var(--green); color: var(--green-ink); }
+.gpin.scr .n { padding-right: 4px; }
+.gpin.scr.suspect .b { box-shadow: 0 0 0 4px rgba(228, 64, 45, 0.28), 0 2px 6px rgba(0, 0, 0, 0.25); }
+.gpin.scr.suspect { z-index: 3; }
+.gpin.scr.check { z-index: 2; }
+.gpin.scr.sel .b { height: 32px; border-radius: 16px; box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--dark), 0 4px 10px rgba(0, 0, 0, 0.3); }
+.gpin.scr.sel { z-index: 6; }
+
+/* Легенда карты */
+.mlegend { position: absolute; z-index: 10; left: 412px; top: 68px; width: 252px; background: #fff; border-radius: var(--r-l); box-shadow: var(--shadow-float); padding: 10px 12px; font-size: 12px; line-height: 15px; display: flex; flex-direction: column; gap: 5px; }
+.mlegend .lh { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 600; font-size: 13px; }
+.mlegend .lr { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 6px; align-items: center; }
+.mlegend .lpin { justify-self: start; display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 3px; border-radius: 10px; color: #fff; font-weight: 800; font-size: 12px; background: var(--c); }
+.mlegend .lpin .g { width: 14px; text-align: center; }
+.mlegend .lpin.ok { --c: var(--scr-ok); } .mlegend .lpin.check { --c: var(--scr-check); } .mlegend .lpin.suspect { --c: var(--scr-suspect); } .mlegend .lpin.unknown { --c: var(--scr-unknown); }
+.mlegend .lpin .sc { min-width: 18px; height: 15px; border-radius: 8px; padding: 0 3px; display: inline-grid; place-items: center; background: #fff; color: var(--amber-ink); font-size: 10px; font-weight: 700; box-shadow: inset 0 0 0 2px var(--amber); }
+.mlegend .lnote { color: var(--text-2); font-size: 11px; line-height: 14px; border-top: 1px solid var(--line); padding-top: 5px; cursor: help; }
+.maptools { position: absolute; z-index: 10; top: 16px; display: flex; gap: 8px; flex-wrap: wrap; transition: left .2s; }
+.maptools .mapbtn { position: static; }
+.maptools .mapbtn.on { background: var(--text); color: #fff; }
+.maptools .mapbtn.on:hover { background: var(--text); }
+.mlegend { transition: left .2s; }
+
+/* Фильтры карты: чипы статусов и вторичный фильтр формального риска */
+.scr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.scr-chips .chip { height: 32px; padding: 0 12px 0 6px; font-size: 14px; gap: 6px; }
+.scr-chips .chip.all { padding-left: 12px; }
+.scr-chips .chip .scr-pic { width: 20px; height: 20px; font-size: 12px; }
+.scr-chips .chip.on .scr-pic { box-shadow: 0 0 0 2px #fff; }
+.mini-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.mini-chips .lbl { font-size: 12px; color: var(--text-2); margin-right: 2px; }
+.mini-chips button { height: 24px; padding: 0 8px; border-radius: 12px; font-size: 12px; background: var(--fill); color: var(--text-2); display: inline-flex; align-items: center; gap: 4px; }
+.mini-chips button:hover { background: var(--fill-hover); }
+.mini-chips button.on { background: var(--dark); color: #fff; }
+.mini-chips button .n { opacity: 0.6; }
+
+/* Строка ЖК в панели карты: подпись статуса, причина с цитатой, счётчики */
+.scr-sub { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
+.scr-sub .st { font-weight: 500; }
+.scr-sub .st.red { color: var(--red-ink); } .scr-sub .st.yellow { color: var(--amber-ink); } .scr-sub .st.green { color: var(--green-ink); } .scr-sub .st.gray { color: var(--text-2); }
+.scr-sub .qt { color: var(--text); }
+
+/* Сводка проверки по рекламе (Сводка, карта) */
+.scr-sum { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.scr-sum a, .scr-sum > div { background: var(--fill); border-radius: var(--r-l); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; min-height: 84px; }
+.scr-sum a:hover { background: var(--fill-hover); }
+.band .scr-sum a, .band .scr-sum > div { background: #fff; transition: box-shadow 0.15s; }
+.band .scr-sum a:hover { box-shadow: var(--shadow-float); }
+.scr-sum-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 4px 0 10px; }
+.scr-sum-h h3 { font-size: 17px; font-weight: 600; }
+.scr-sum b { font-family: var(--font-display); font-size: 26px; line-height: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.scr-sum b.red { color: var(--red); } .scr-sum b.yellow { color: var(--amber); } .scr-sum b.green { color: var(--green); } .scr-sum b.gray { color: var(--text-2); } .scr-sum b.blue { color: var(--link); }
+.scr-sum span { font-size: 13px; line-height: 17px; color: var(--text-2); }
+
+/* Карта в карточке ЖК без координат */
+.nomap { height: 240px; border-radius: 16px; background: var(--fill); display: grid; place-items: center; text-align: center; padding: 24px; color: var(--text-2); font-size: 14px; line-height: 20px; }
+.nomap svg { display: block; color: var(--text-3); margin: 0 auto 8px; }
+
+/* ───── Объекты из рекламы ───── */
+.disc-list { display: flex; flex-direction: column; gap: 16px; }
+.disc-card { border-radius: var(--r-l); box-shadow: inset 0 0 0 1px var(--line); padding: 20px 24px; display: flex; flex-direction: column; gap: 12px; }
+.disc-card.suspect { box-shadow: inset 4px 0 0 var(--scr-suspect), inset 0 0 0 1px var(--line); }
+.disc-card.check { box-shadow: inset 4px 0 0 var(--scr-check), inset 0 0 0 1px var(--line); }
+.disc-card .dh { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.disc-card .nm { font-family: var(--font-display); font-size: 22px; line-height: 28px; font-weight: 700; }
+.disc-card .kv { grid-template-columns: 170px minmax(0, 1fr); gap: 6px 16px; font-size: 14px; line-height: 19px; }
+.disc-card .kv > :nth-child(odd) { color: var(--text-2); }
+.disc-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 20px; }
+.disc-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.disc-geo { border-radius: var(--r-m); background: var(--bg); padding: 12px 14px; }
+.disc-geo .ai-item { padding: 10px 0; }
+.pick-list { max-height: 340px; overflow: auto; margin: 0 24px; border-radius: var(--r-m); box-shadow: inset 0 0 0 1px var(--line); }
+.pick-list .ai-pick { border-radius: 0; box-shadow: none; border-bottom: 1px solid var(--line); margin: 0; }
+.pick-list .ai-pick:last-child { border-bottom: 0; }
+.pick-list .ai-pick.on { box-shadow: inset 0 0 0 2px var(--text); }
+@media (max-width: 1100px) { .disc-grid { grid-template-columns: minmax(0, 1fr); } }
+.devcard:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+/* «Свернуть / Развернуть» список объектов в панели карты — текстом со стрелкой вверх/вниз, не «назад» */
+.list-toggle { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 10px 0 12px; border-radius: 10px; background: var(--fill); font-size: 13px; font-weight: 500; color: var(--text); }
+.list-toggle:hover { background: #e9e6e6; }
+
+/* «Решение аналитика» под блоком «Проверка по рекламе» (components/Decision.tsx): у «Требует проверки» — янтарная рамка и
+   заметные кнопки; действующее решение — зелёная карточка; снятое новой рекламой — янтарное уведомление */
+.scr-dec { margin-top: 10px; border-radius: var(--r-l); padding: 14px 18px; background: #fff; box-shadow: inset 0 0 0 1px var(--line-2); display: flex; flex-direction: column; gap: 10px; }
+.scr-dec.ask { box-shadow: inset 0 0 0 2px var(--amber); }
+.scr-dec.on { box-shadow: inset 0 0 0 1px var(--green); }
+.scr-dec-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.scr-dec-h b { font-family: var(--font-display); font-size: 16px; line-height: 20px; }
+.scr-dec-card { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: var(--r-m, 12px); background: var(--green-bg); color: var(--green-ink); line-height: 19px; }
+.scr-dec-card .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.scr-dec-card b { font-weight: 600; }
+.scr-dec-reopen { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; background: var(--amber-bg); color: var(--amber-ink); line-height: 19px; }
+.scr-dec-reopen > svg { flex: none; margin-top: 1px; }
+.scr-dec-reopen b { font-weight: 600; }
+.scr-dec .vf-acts .btn.s svg { width: 14px; height: 14px; }
+
+/* Фильтры панели карты (pages/Dashboard.tsx): три сворачиваемых блока — «Проверка по рекламе», «Формальный риск»,
+   «Показывать»; в заголовке — сводка свёрнутого блока, «Сбросить» и «Свернуть / Развернуть» (как у списка объектов) */
+.mf { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.mf-head { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.mf-head h4 { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mf-sum { margin-top: 2px; font-size: 13px; line-height: 17px; color: var(--text-2); overflow-wrap: anywhere; }
+.mf-sum.on { color: var(--text); }
+.mf-reset { flex: none; font-size: 13px; line-height: 32px; color: var(--link); }
+.mf-reset:hover { color: var(--link-hover); }
+.mf-head .list-toggle { flex: none; }
+.mf-body { margin-top: 10px; }
+.mf-note { margin-top: 8px; font-size: 12px; line-height: 16px; color: var(--text-2); }
+/* Строки-переключатели: подпись, счётчик, пояснение; нажатие на подпись переключает */
+.mf-sw { display: flex; align-items: center; gap: 12px; padding: 8px 0; cursor: pointer; }
+.mf-sw + .mf-sw { border-top: 1px solid var(--line); }
+.mf-sw .tx { flex: 1; min-width: 0; }
+.mf-sw .t, .mf-sw .h { display: block; }
+.mf-sw .t { font-size: 15px; line-height: 20px; }
+.mf-sw .t .n { margin-left: 6px; color: var(--text-3); }
+.mf-sw .h { margin-top: 1px; font-size: 12px; line-height: 16px; color: var(--text-2); }
+.mf .mini-chips { margin-top: 6px; }
+
+/* Ползунок диапазона (components/RangeSlider.tsx): поля «от – до», полоса-градиент, ручки-уголки под полосой, подписи */
+.rs { --rs-pad: 12px; user-select: none; -webkit-user-select: none; }
+.rs-fields { display: flex; align-items: center; gap: 8px; }
+.rs-field { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: var(--r-m); background: var(--fill); cursor: text; }
+.rs-field span { font-size: 13px; color: var(--text-2); }
+.rs-field input { flex: 1; min-width: 0; width: 100%; padding: 0; border: 0; outline: 0; background: none; font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; user-select: text; -webkit-user-select: text; }
+.rs-field:focus-within { background: #fff; box-shadow: inset 0 0 0 2px var(--yellow); }
+.rs-field.bad { background: #fff; box-shadow: inset 0 0 0 2px var(--red); }
+.rs-dash { color: var(--text-3); }
+.rs-err { margin-top: 6px; font-size: 12px; line-height: 16px; color: var(--red-ink); }
+.rs-rail { padding: 14px var(--rs-pad) 0; cursor: pointer; touch-action: pan-y; }
+.rs-track { position: relative; height: 28px; }
+.rs-bar { position: absolute; top: 0; left: 0; right: 0; height: 10px; border-radius: 5px; overflow: hidden; }
+/* вне диапазона — полоса приглушена белой вуалью */
+.rs-dim { position: absolute; top: 0; bottom: 0; background: rgba(255, 255, 255, 0.74); }
+.rs-sel { position: absolute; top: 0; bottom: 0; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14); border-radius: 5px; }
+.rs-h { position: absolute; top: -6px; width: 28px; height: 34px; margin-left: -14px; border-radius: 8px; outline: 0; cursor: grab; touch-action: none; }
+.rs-h .rs-line { position: absolute; top: 2px; left: 13px; width: 2px; height: 18px; border-radius: 1px; background: var(--dark); box-shadow: 0 0 0 1.5px #fff; }
+.rs-h .rs-caret { position: absolute; top: 21px; left: 6px; width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 10px solid var(--dark); transition: transform 0.1s; transform-origin: 50% 0; }
+.rs-h:hover .rs-caret, .rs-h.on .rs-caret { transform: scale(1.15); }
+.rs-h:focus-visible { box-shadow: 0 0 0 2px rgba(0, 101, 217, 0.45); }
+.rs-h:focus-visible .rs-line { background: var(--link); }
+.rs-h:focus-visible .rs-caret { border-bottom-color: var(--link); }
+.rs.drag, .rs.drag .rs-rail, .rs-h.on { cursor: grabbing; }
+.rs-ticks { position: relative; height: 16px; margin: 0 var(--rs-pad); font-size: 12px; line-height: 16px; color: var(--text-2); }
+.rs-ticks span { position: absolute; top: 0; transform: translateX(-50%); }

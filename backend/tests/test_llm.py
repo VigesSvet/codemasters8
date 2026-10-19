@@ -182,7 +182,7 @@ def _all_objects(schema: dict):
 
 def test_schema_strict_and_without_unsupported_constraints():
     objs = list(_all_objects(llm.SCHEMA))
-    assert len(objs) == 4
+    assert len(objs) == 6  # ответ, признак, сумма, кандидат ЖК, упомянутый ЖК, стадия объекта
     for o in objs:
         assert o["additionalProperties"] is False and o["required"] == list(o["properties"])
     raw = json.dumps(llm.SCHEMA)

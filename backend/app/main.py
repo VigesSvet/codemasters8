@@ -1,4 +1,5 @@
 import logging
+import re
 from contextlib import asynccontextmanager
 from datetime import date
 from typing import List, Optional, get_args
@@ -11,7 +12,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from . import ads_service, ai, importer, logs, media, models, registry, schemas, signals, world
+from . import (ads_service, ai, decisions, discovery, importer, logs, media, models, registry, schemas, screening,
+               signals, verification, world)
 from .ads_service import REASON_NAMES, _event, _pct, _why  # noqa: F401 — прежние имена main (журнал, гипотезы)
 from .ai import evaluate, ocr as ocr_engine
 from .db import get_db
@@ -69,8 +71,9 @@ class InternalErrors:
 
 
 class UploadLimit:
-    """Загрузка файлов и тела приёма (POST /api/ocr — 10 МБ, POST /api/sources/import — 5 МБ, POST /api/media — 10 МБ,
-    POST /api/intake/publications — 2 МБ, POST /api/intake/telegram — 60 МБ): тело больше предела (файл + запас на
+    """Загрузка файлов и тела приёма (POST /api/ocr — 10 МБ, POST /api/sources/import — 5 МБ, POST /api/media и снимок
+    площадки POST /api/complexes/{id}/photos — 10 МБ, POST /api/intake/publications — 2 МБ, POST /api/intake/telegram —
+    60 МБ): тело больше предела (файл + запас на
     разметку multipart) — 413 сразу, а не после того, как весь файл придёт по сети и ляжет во временный файл (FastAPI
     разбирает форму до вызова обработчика, и предела на размер файла у разбора нет). По Content-Length — не читая тело;
     без него (chunked) — по мере чтения. Точная проверка размера файла — в ocr.load, importer.parse и media.
@@ -82,14 +85,21 @@ class UploadLimit:
               "/api/intake/publications": (media.INTAKE_JSON_MAX, "Тело запроса больше 2 МБ"),
               "/api/intake/telegram": (media.BOT_MAX_BODY, "Заявка больше 60 МБ")}
     REJECTS = {"/api/intake/publications": "intake", "/api/intake/telegram": "telegram_bot"}
+    PHOTO = re.compile(r"^/api/complexes/[^/]+/photos$")  # снимок площадки — предел как у скриншота
 
     def __init__(self, app):
         self.app = app
 
+    def _limit(self, path: str):
+        if path in self.LIMITS:
+            return self.LIMITS[path]
+        return self.LIMITS["/api/media"] if self.PHOTO.match(path) else None
+
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or scope["method"] != "POST" or scope["path"] not in self.LIMITS:
+        got_limit = self._limit(scope["path"]) if scope["type"] == "http" and scope["method"] == "POST" else None
+        if got_limit is None:
             return await self.app(scope, receive, send)
-        limit, too_big = self.LIMITS[scope["path"]]
+        limit, too_big = got_limit
         reject = self.REJECTS.get(scope["path"])
         length = next((v for k, v in scope["headers"] if k == b"content-length"), b"")
         if length.isdigit() and int(length) > limit:
@@ -188,26 +198,35 @@ def risk_all(as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
 
 @app.get("/api/analysts", response_model=List[schemas.AnalystOut], response_model_by_alias=True)
 def analysts(db: Session = Depends(get_db)):
-    """Демо-аналитики для входа без пароля (в эксплуатации — ЭЦП/SSO); name пишется автором в журнал."""
+    """Аналитики для входа без пароля (пилот; в эксплуатации — ЭЦП/SSO); name пишется автором в журнал."""
     return world.by_id(db.scalars(select(models.Analyst)))
 
 
-@app.get("/api/developers", response_model=List[schemas.DeveloperOut], response_model_by_alias=True)
-def developers(db: Session = Depends(get_db)):
-    return world.by_id(db.scalars(select(models.Developer)))
+@app.get("/api/developers", response_model=List[schemas.DeveloperListOut], response_model_by_alias=True)
+def developers(as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
+    """Застройщики с «Проверкой по рекламе» (screening): худшая оценка их ЖК — предварительная, не вывод о нарушении."""
+    r = screening.compute(db, as_of)
+    return screening.developer_rows(world.by_id(db.scalars(select(models.Developer))), r)
 
 
-@app.get("/api/complexes", response_model=List[schemas.ComplexOut], response_model_by_alias=True)
-def complexes(zone: Optional[schemas.Zone] = None, as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
+@app.get("/api/complexes", response_model=List[schemas.ComplexListOut], response_model_by_alias=True)
+def complexes(zone: Optional[schemas.Zone] = None, screening_status: Optional[schemas.ScreeningStatus] = Query(
+                  None, alias="screening", description="Только ЖК с этой оценкой «Проверка по рекламе»"),
+              as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
+    """ЖК с основанием по открытым данным (permit), «Проверкой по рекламе» (screening) и объектами из рекламы (advert)."""
     items = world.by_id(db.scalars(select(models.Complex)))
-    if zone:
-        keep = {r["complexId"] for r in world.risk_all(db, as_of) if r["zone"] == zone}
+    if zone:  # ЖК, риск по которому не оценивается (реестр без проверенных сведений), ни в одну зону не входит
+        keep = {r["complexId"] for r in world.risk_all(db, as_of) if r["assessed"] and r["zone"] == zone}
         items = [c for c in items if c.id in keep]
-    return items
+    r = screening.compute(db, as_of)
+    if screening_status:
+        items = [c for c in items if r.complexes[c.id]["status"] == screening_status]
+    return screening.complex_rows(db, items, r)
 
 
 def _complex(db: Session, cid: str) -> models.Complex:
-    """ЖК демо-реестра; ключ объекта открытых данных — тоже 404, с объяснением (риск и сигналы для них не считаются)."""
+    """ЖК (демо-набора или карточка из открытого реестра); ключ объекта открытых данных — 404 с объяснением (риск и
+    сигналы для записей источников не считаются)."""
     c = db.get(models.Complex, cid)
     if not c:
         raise registry.not_found(db, cid)
@@ -226,9 +245,10 @@ def _then(text: str, more: str) -> str:
     return f"{text}{'' if text.endswith('.') else '.'} {more}"
 
 
-@app.get("/api/complexes/{cid}", response_model=schemas.ComplexOut, response_model_by_alias=True)
-def complex_one(cid: str, db: Session = Depends(get_db)):
-    return _complex(db, cid)
+@app.get("/api/complexes/{cid}", response_model=schemas.ComplexListOut, response_model_by_alias=True)
+def complex_one(cid: str, as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
+    c = _complex(db, cid)
+    return screening.complex_rows(db, [c], screening.compute(db, as_of))[0]
 
 
 @app.get("/api/complexes/{cid}/risk", response_model=schemas.RiskOut, response_model_by_alias=True)
@@ -251,7 +271,9 @@ def appeals(complex_id: Optional[str] = Query(None, alias="complexId"), db: Sess
 
 @app.get("/api/ads", response_model=List[schemas.AdOut], response_model_by_alias=True)
 def ads(status: Optional[str] = None, platform: Optional[str] = None, db: Session = Depends(get_db)):
-    q = select(models.Ad).order_by(models.Ad.date.desc())
+    """Публикации, новые первыми; при одинаковой дате — по id (порядок одинаков на SQLite и PostgreSQL — офлайн-копия
+    набора, app.snapshot, совпадает с ответом API)."""
+    q = select(models.Ad).order_by(models.Ad.date.desc(), models.Ad.id)
     if status:
         q = q.where(models.Ad.status == status)
     if platform:
@@ -608,11 +630,16 @@ def ai_eval():
 @app.get("/api/stats")
 def stats(as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
     zones = {"red": 0, "yellow": 0, "green": 0}
+    not_assessed = 0
     for r in world.risk_all(db, as_of):
-        zones[r["zone"]] += 1
+        if r["assessed"]:
+            zones[r["zone"]] += 1
+        else:  # карточка из открытого реестра без проверенных сведений — не «зелёная», а не оценивается
+            not_assessed += 1
     ads_all = db.scalars(select(models.Ad)).all()
-    return {"zones": zones, "queue": sum(a.status in ("new", "needs_check") for a in ads_all), "ads": len(ads_all),
-            "signals": signals.counts(db)}
+    return {"zones": zones, "notAssessed": not_assessed, "queue": sum(a.status in ("new", "needs_check") for a in ads_all),
+            "ads": len(ads_all), "signals": signals.counts(db),
+            "screening": screening.summary(screening.compute(db, as_of), db)}
 
 
 # ---------- сигналы (модуль 05) ----------
@@ -622,6 +649,18 @@ app.include_router(signals.router)
 # ---------- открытые данные: источники, объекты, импорт (без риска и сигналов) ----------
 
 app.include_router(registry.router)
+
+# ---------- объекты из рекламы: ЖК, которых нет в справочнике и реестре; «Проверка по рекламе» — app.screening ----------
+
+app.include_router(discovery.router)
+
+# ---------- сверка сведений аналитиком: основание, перечень ГАСК, готовность, обращения, снимки площадки ----------
+
+app.include_router(verification.router)
+
+# ---------- решение аналитика по «Проверке по рекламе»: «Объект сдан», «Проверено — замечаний нет», отмена ----------
+
+app.include_router(decisions.router)
 
 # ---------- сбор публикаций: подключения, запуски, приём, файлы; маршруты модулей подключений ----------
 

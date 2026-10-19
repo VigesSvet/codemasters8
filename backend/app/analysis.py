@@ -17,6 +17,11 @@ ANTHROPIC_API_KEY) → events (журнал). Начало каждого эта
 Повторный запуск по той же версии (повтор загрузки или запроса к Claude, дозапрос Claude, «Проанализировать ещё раз» —
 force) журнал не дублирует: события OCR — если изменился текст OCR, файлов — по новым неудачам, гипотезы правил — если
 назначена привязка, событие Claude — только по новому итогу этапа llm.
+
+Пересчёт правил (rules_only, задание с payload rulesOnly — после создания карточки ЖК по рекламе, app.discovery): только
+этап rules по уже проанализированной версии — без файлов, OCR и без запроса к Claude (справочник ЖК изменился, значит, и
+ключ материала, — новый запрос был бы лишним расходом). Событие гипотезы — если лучшая гипотеза правил сменилась. Новая
+версия, ещё не проанализированная, получает обычный анализ.
 """
 import logging
 import time
@@ -415,10 +420,47 @@ def _terms_event(res: dict) -> Optional[str]:
 
 # ---------- задание ----------
 
-def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: bool = False) -> dict:
+def last_rules_hypothesis(db, ad_id: str) -> tuple[bool, Optional[str]]:
+    """(было ли событие гипотезы правил, её ЖК) — последнее «Гипотеза ИИ: ЖК …» / «ИИ: ЖК не определён» от «Системы»."""
+    from .screening import rules_hypotheses
+
+    got = rules_hypotheses(db, [ad_id])
+    return ad_id in got, got.get(ad_id)
+
+
+def _rules_only(job_id: Optional[int], ad_id: str, item_id: int, v: int, reason: str,
+                clock: Callable[[], datetime]) -> dict:
+    """Пересчёт правил сопоставления по проанализированной версии (без файлов, OCR и Claude)."""
+    I = models.IngestItem
+    _stage(job_id, item_id, "rules")
+    res, linked, why_not, source = _rules(ad_id)
+    _stage(job_id, item_id, "events")
+    best = (res.get("hypotheses") or [None])[0]
+    cid = best["complexId"] if best is not None and best["confidence"] >= T["lowConfidence"] else None
+    with SessionLocal() as db:
+        seen, last = last_rules_hypothesis(db, ad_id)
+        if linked or not seen or last != cid:
+            what, ev_cid = _hypothesis_event(res, linked, source)
+            ads_service._event(db, "ai", SYSTEM, f"{what} (пересчёт правил: {reason})", at=clock(), ad_id=ad_id,
+                               complex_id=ev_cid)
+        db.execute(update(I).where(I.id == item_id, I.analysis_status.in_(("queued", "running")))
+                   .values(analysis_status="done", analysis_stage=None, analysis_error=None)
+                   .execution_options(synchronize_session=False))
+        db.commit()
+    out = {"engine": ai.ENGINE, "version": v, "rulesOnly": True,
+           "hypotheses": [{"complexId": h["complexId"], "confidence": h["confidence"]} for h in res["hypotheses"]],
+           "autolinked": linked}
+    if why_not:
+        out["autolinkSkipped"] = why_not
+    return out
+
+
+def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: bool = False,
+                 rules_only: bool = False, reason: Optional[str] = None) -> dict:
     """Анализ публикации ad_id (задание job_id): этапы media → frames → ocr → rules → llm → events. Итог — jobs.result.
     now — время захвата задания; сроки повтора загрузок и время событий — от текущего момента (clock). force —
-    «Проанализировать ещё раз»: анализ идёт и по уже проанализированной версии, Claude запрашивается снова."""
+    «Проанализировать ещё раз»: анализ идёт и по уже проанализированной версии, Claude запрашивается снова. rules_only —
+    только пересчёт правил по проанализированной версии (без Claude); force его отменяет."""
     now = models.as_utc(now) or models.utcnow()
     t0 = MONOTONIC()
 
@@ -434,6 +476,11 @@ def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: boo
         if item is None:
             return {"skipped": "no ingest item"}
         v, item_id, prev = item.version, item.id, item.analyzed_version
+        rules_only = rules_only and not force and prev == v  # новая версия — обычный анализ
+        if rules_only:
+            item.analysis_status, item.analysis_error = "running", None
+            db.commit()
+            return _rules_only(job_id, ad_id, item_id, v, reason or "справочник ЖК изменился", clock)
         if not force and prev == v and not _has_work(_assets(db, item_id), now) and not llm.due(db, ad_id, now):
             db.execute(update(I).where(I.id == item_id, I.analysis_status.in_(("queued", "running")))
                        .values(analysis_status="done", analysis_stage=None, analysis_error=None)

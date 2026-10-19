@@ -296,13 +296,19 @@ def has_decisions(ad: models.Ad) -> bool:
 def enqueue_analysis(db: Session, ad_id: str, item: Optional[models.IngestItem] = None, *,
                      payload: Optional[dict] = None, priority: int = 0) -> bool:
     """Задание анализа публикации (одно активное на публикацию) и состояние «в очереди» у записи приёма. payload и
-    priority — у нового задания (дозапрос Claude, повторный анализ); активное задание остаётся как есть."""
+    priority — у нового задания (дозапрос Claude, повторный анализ, пересчёт правил); активное задание остаётся как
+    есть, но ждущий пересчёт правил (rulesOnly) становится полным анализом, если ставится обычный."""
     from . import jobs  # jobs импортирует обработчики, которые сами импортируют приём, — только здесь
 
     if item is None:
         item = db.scalar(select(models.IngestItem).where(models.IngestItem.ad_id == ad_id))
     job, created = jobs.enqueue(db, "analyze", ad_id=ad_id, content_version=item.version if item is not None else None,
                                 dedupe_key=f"analyze:{ad_id}", payload=payload, priority=priority)
+    if not created and job.status == "queued" and (job.payload or {}).get("rulesOnly") \
+            and not (payload or {}).get("rulesOnly"):
+        job.payload = {**{k: v for k, v in (job.payload or {}).items() if k not in ("rulesOnly", "reason")},
+                       **(payload or {})}
+        job.priority = max(job.priority or 0, priority)
     now = models.utcnow()
     if not created and job.status == "queued" and models.as_utc(job.run_after) > now:
         job.run_after = now  # ждущий повтора загрузки анализ: новое содержимое или файлы — анализировать сейчас

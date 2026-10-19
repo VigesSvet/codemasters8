@@ -192,7 +192,7 @@ export default function GeoCheck({ target, address, point, canApply, onChange, o
         <input className="input" style={{ flex: '1 1 280px', width: 'auto', minWidth: 0 }} value={def} disabled aria-label="Запрос к 2ГИС" />
         <button className="btn d m" disabled><IcSearch size={18} />{GEO_COPY.run}</button>
       </div>
-      <div className="ai-note" style={{ marginTop: 10 }}>{mode === 'loading' ? 'Подключаемся к серверу…' : GEO_COPY.demo}</div>
+      <div className="ai-note" style={{ marginTop: 10 }}>{mode === 'loading' ? 'Подключаемся к серверу…' : GEO_COPY.offline}</div>
     </section>
   )
 

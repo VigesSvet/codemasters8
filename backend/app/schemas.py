@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date as Date, datetime, timedelta, timezone
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import (AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints, ValidationInfo,
@@ -18,8 +18,11 @@ FactorState = Literal["hit", "clear", "unknown"]
 EvidenceKind = Literal["ad", "document", "photo", "appeal", "readiness", "deadline"]
 AuditKind = Literal["system", "data", "status", "link", "comment", "request", "signal", "export", "ai"]
 # Происхождение сведений (ТЗ §7 «Достоверность»): demo — вымышленный демо-набор, analyst — добавил аналитик,
-# source — запись открытого источника, collected — собрано сборщиком или прислано жителем через бота
-Origin = Literal["demo", "analyst", "source", "collected"]
+# source — запись открытого источника, collected — собрано сборщиком или прислано жителем через бота,
+# registry — карточка ЖК или застройщик, созданные по открытому реестру (app.demo): сведения источника, не проверены;
+# advertised — ЖК (или застройщик), известный только по рекламе: в открытом реестре его нет, карточку создал аналитик или
+# импорт по объекту из рекламы (app.discovery) — сведения рекламы, не проверены
+Origin = Literal["demo", "analyst", "source", "collected", "registry", "advertised"]
 SourceCode = Literal["homeportal", "homeportal_section", "ashyq"]
 FundingMethod = Literal["guarantee", "mio", "bvu"]
 TermsReview = Literal["accepted", "rejected"]
@@ -103,8 +106,8 @@ class ComplexOut(Camel):
     developer_id: str
     address: str
     district: str
-    lng: float
-    lat: float
+    lng: Optional[float] = None  # None — координат нет (объект реестра без координат, ЖК по рекламе до сверки 2ГИС)
+    lat: Optional[float] = None
     stage: str
     progress: int
     floors: int
@@ -118,6 +121,9 @@ class ComplexOut(Camel):
     photos: list
     idle_days: int
     origin: Origin = "demo"
+    # Сверка аналитиком (app.verification): перечень ГАСК и «обращений нет — сверено»; null — не сверялось
+    published_list_check: Optional[dict] = None
+    appeals_check: Optional[dict] = None
 
 
 class AppealOut(Camel):
@@ -131,6 +137,12 @@ class AppealOut(Camel):
     subject: str
     source: str
     origin: Origin = "demo"
+    # внесено и проверено аналитиком (app.verification); у обращений демо-набора — null
+    comment: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: IsoTime = None
+    decided_by: Optional[str] = None
+    decision_comment: Optional[str] = None
 
 
 class AdIn(Camel):
@@ -222,6 +234,27 @@ class LlmCandidateOut(Camel):
     source: Literal["text", "ocr"] = "text"
 
 
+class LlmMentionOut(Camel):
+    """ЖК, который называет публикация (по ответу модели): название и цитата сверены с материалом, адрес — дословно из
+    материала или пустой. Есть и в справочнике, и вне его — тогда это объект из рекламы (GET /api/discovered)."""
+
+    name: str
+    address: str = ""
+    quote: str
+    source: Literal["text", "ocr"] = "text"
+
+
+LlmStage = Literal["under_construction", "completed", "unknown"]
+
+
+class LlmStageOut(Camel):
+    """Стадия рекламируемого объекта по материалу; без дословной цитаты — unknown."""
+
+    value: LlmStage = "unknown"
+    quote: str = ""
+    source: Optional[Literal["text", "ocr"]] = None
+
+
 class LlmOut(Camel):
     """Последний анализ ИИ (Claude) публикации. Всё — гипотезы для аналитика: статус, привязку и вердикт модель не
     задаёт. failed / refused / skipped — «анализ ИИ не выполнен», а не «риск отсутствует»."""
@@ -235,6 +268,8 @@ class LlmOut(Camel):
     sale_signals: List[LlmSignalOut] = []
     amounts: List[LlmAmountOut] = []
     complex_candidates: List[LlmCandidateOut] = []
+    mentioned_complexes: List[LlmMentionOut] = []  # saq-llm-2; у ответов saq-llm-1 — пусто
+    object_stage: Optional[LlmStageOut] = None  # saq-llm-2; у ответов saq-llm-1 — null
     uncertainties: List[str] = []
     summary: Optional[str] = None
     dropped: Dict[str, int] = {}  # отброшено сервером: цитаты нет в тексте, ЖК нет в справочнике, сумма не число…
@@ -376,6 +411,8 @@ class RiskOut(Camel):
     observations: List[ObservationOut]
     summary: str
     model_version: str
+    # False — риск не оценивается: карточка из открытого реестра без проверенных сведений (балл и зона не показываются)
+    assessed: bool = True
 
 
 class RiskRowOut(RiskOut):
@@ -1051,3 +1088,556 @@ class IntakeResultOut(Camel):
     version: int
     media_queued: int = 0
     analysis_queued: bool = False
+
+
+# ---------- «Проверка по рекламе» (app.screening) и объекты из рекламы (app.discovery) ----------
+
+ScreeningStatus = Literal["ok", "check", "suspect", "unknown"]
+ScreeningVariant = Literal["commissioned", "analyst"]
+DecisionKind = Literal["commissioned", "no_issues"]
+# active — решение действует; reopened — снято автоматически новой рекламой после решения (остаётся видно как история)
+DecisionStatus = Literal["active", "reopened"]
+PermitStatus = Literal["permitted", "not_permitted", "unknown"]
+ScreeningBasis = Literal["hypothesis", "confirmed"]
+DiscoveredStatus = Literal["new", "linked", "dismissed"]
+
+
+class PermitOut(Camel):
+    """Основание привлекать деньги дольщиков по открытым данным или сверке аналитика: permitted — есть (Homeportal —
+    документ основания, Казреестр — запись о разрешении, сверенное «есть»); not_permitted — раздел Homeportal «Без
+    разрешения на дольщиков» или сверенное «нет» по всем трём; unknown — сведений нет. Сведения источника — не
+    юридический вывод."""
+
+    status: PermitStatus
+    text: str
+    source: Optional[str] = None  # homeportal | homeportal_section | ashyq | analyst
+    url: Optional[str] = None
+    registry_key: Optional[str] = None  # объект открытых данных (GET /api/registry/{key})
+    registry_stage: Optional[Literal["completed", "under_construction"]] = None  # фильтр источника, не стадия
+    verified: bool = False  # сверено аналитиком (basis «есть/нет» с источником), а не только сведения источника
+
+
+class ScreeningReasonOut(Camel):
+    text: str
+    ad_id: Optional[str] = None
+    quote: Optional[str] = None
+    signal: Optional[str] = None  # presale | booking | ddu | installment | down_payment | money | sale | price | …
+    # decision — причина от решения аналитика (сведения решения или «новая реклама после решения»): такие идут первыми,
+    # следом — строка основания (permit.text), затем остальные
+    kind: Optional[Literal["decision"]] = None
+
+
+class ScreeningCountsOut(Camel):
+    ads: int = 0  # публикаций, отнесённых к ЖК (без отклонённых аналитиком)
+    concerning: int = 0  # из них свежих (окно windowDays) с признаком приёма денег
+    last_ad_at: Optional[str] = None  # дата последней публикации (как Ad.date, местное время)
+    window_days: int = 120
+
+
+class ScreeningOut(Camel):
+    """«Проверка по рекламе» — предварительная автоматическая оценка, не вывод о нарушении (disclaimer). variant — чем
+    обоснован статус ok, если не реестром: commissioned — аналитик подтвердил ввод в эксплуатацию («Дом сдан — замечаний
+    нет»), analyst — «Проверено — замечаний нет»; null — автоматическая оценка."""
+
+    status: ScreeningStatus
+    label: str
+    variant: Optional[ScreeningVariant] = None
+    reasons: List[ScreeningReasonOut] = []
+    counts: ScreeningCountsOut
+    basis: ScreeningBasis = "hypothesis"
+    in_registry: bool = False
+    disclaimer: str
+
+
+class AdvertOut(Camel):
+    """Объекты из рекламы, привязанные к ЖК: другие названия, аккаунты и ссылки рекламы."""
+
+    discovered_ids: List[int] = []
+    aliases: List[str] = []
+    accounts: List[str] = []
+    source_urls: List[str] = []
+    ads: int = 0
+
+
+class ComplexListOut(ComplexOut):
+    """ЖК в списке и карточке (GET /api/complexes, /api/complexes/{id}): основание по открытым данным и «Проверка по
+    рекламе»."""
+
+    permit: Optional[PermitOut] = None
+    screening: Optional[ScreeningOut] = None
+    advert: Optional[AdvertOut] = None
+    # Документы основания, которые называет открытый реестр (карточка «registry»): подсказка для сверки в один клик
+    basis_suggest: Optional[Dict[str, "BasisSuggestionOut"]] = None
+    # Решение аналитика по «Проверке по рекламе» («сдан» / «проверено — замечаний нет»); null — оценка автоматическая
+    decision: Optional["ScreeningDecisionOut"] = None
+
+
+class ScreeningWorstOut(Camel):
+    complex_id: str
+    name: str
+    status: ScreeningStatus
+    label: str
+
+
+class DeveloperScreeningCountsOut(Camel):
+    complexes: int = 0
+    ok: int = 0
+    check: int = 0
+    suspect: int = 0
+    unknown: int = 0
+
+
+class DeveloperScreeningOut(Camel):
+    status: ScreeningStatus
+    label: str
+    reasons: List[ScreeningReasonOut] = []
+    counts: DeveloperScreeningCountsOut
+    worst: List[ScreeningWorstOut] = []
+    basis: ScreeningBasis = "hypothesis"
+    disclaimer: str
+
+
+class DeveloperListOut(DeveloperOut):
+    screening: Optional[DeveloperScreeningOut] = None
+
+
+class DiscoveredQuoteOut(Camel):
+    ad_id: str
+    quote: str
+    name: str = ""
+    address: Optional[str] = None
+    source: str = "parser"  # parser | bot (заявка жителя) | manual
+    date: Optional[str] = None
+    platform: Optional[str] = None
+    account: Optional[str] = None
+
+
+class DiscoveredStageQuoteOut(Camel):
+    ad_id: str
+    value: LlmStage
+    quote: str
+
+
+class DiscoveredStageOut(Camel):
+    under_construction: int = 0
+    completed: int = 0
+    unknown: int = 0
+    quotes: List[DiscoveredStageQuoteOut] = []
+
+
+class DiscoveredSignalsOut(Camel):
+    ads: int = 0
+    concerning: int = 0  # публикаций с признаком приёма денег (любой давности)
+    recent_concerning: int = 0  # из них в окне windowDays
+    types: Dict[str, int] = {}  # вид признака → публикаций
+    last_ad_at: Optional[str] = None
+
+
+class DiscoveredOut(Camel):
+    id: int
+    name: str
+    norm_key: str
+    aliases: List[str] = []
+    address_hint: Optional[str] = None
+    status: DiscoveredStatus
+    origin: Literal["ads", "import"] = "ads"
+    complex_id: Optional[str] = None
+    complex_name: Optional[str] = None
+    first_seen: IsoTime = None
+    last_seen: IsoTime = None
+    ads_count: int = 0
+    accounts: List[str] = []
+    source_urls: List[str] = []
+    note: Optional[str] = None
+    decided_by: Optional[str] = None
+    decided_at: IsoTime = None
+    sources: Dict[str, int] = {}  # parser | bot | manual → упоминаний
+    quotes: List[DiscoveredQuoteOut] = []  # до трёх, новые первыми
+    stage_hints: DiscoveredStageOut
+    sale_signals: DiscoveredSignalsOut
+    geo: List[dict] = []  # последние сверки 2ГИС (форма GeoCheckOut), новые первыми
+    screening: Optional[ScreeningOut] = None  # оценка, как у ЖК вне реестра, по рекламе этого объекта
+
+
+DevName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255), AfterValidator(no_nul)]
+OptDevName = Annotated[Optional[DevName], BeforeValidator(_blank_to_none)]
+Bin = Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\d{12}$")]],
+                BeforeValidator(_blank_to_none)]
+ShortText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=255), AfterValidator(no_nul)]
+Lat = Annotated[Optional[float], Field(None, ge=-90, le=90)]
+Lng = Annotated[Optional[float], Field(None, ge=-180, le=180)]
+
+
+def _pair(lat: Optional[float], lng: Optional[float]) -> None:
+    if (lat is None) != (lng is None):
+        raise PydanticCustomError("value_error", "координаты указываются парой: lat и lng")
+
+
+class DiscoveredCreateIn(Camel):
+    """Создать карточку ЖК по объекту из рекламы. Координаты — парой; без них, но с candidateId — точка выбранного
+    кандидата 2ГИС из сверок этого объекта; без того и другого — карточка без координат (сверка 2ГИС — позже)."""
+
+    author: HumanName
+    name: DevName
+    address: ShortText = ""
+    lat: Lat = None
+    lng: Lng = None
+    developer_name: OptDevName = None
+    developer_bin: Bin = None
+    candidate_id: Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
+                                                                      max_length=64)]],
+                            BeforeValidator(_blank_to_none)] = None
+
+    @model_validator(mode="after")
+    def _coords(self):
+        _pair(self.lat, self.lng)
+        return self
+
+
+class DiscoveredLinkIn(Camel):
+    author: HumanName
+    complex_id: Name
+
+
+class DiscoveredDismissIn(Camel):
+    author: HumanName
+    reason: Comment
+
+
+class DiscoveredGeoIn(Camel):
+    author: HumanName
+    force: bool = False  # мимо кэша — только администратор
+
+
+class GeoErrorOut(Camel):
+    query: str
+    status: int
+    detail: str
+
+
+class DiscoveredGeoOut(Camel):
+    checks: List[dict] = []  # сверки 2ГИС (форма GeoCheckOut): по названию и, если есть, по адресу
+    errors: List[GeoErrorOut] = []
+
+
+UrlItem = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512), AfterValidator(no_nul)]
+AliasItem = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255),
+                      AfterValidator(no_nul)]
+
+
+class AdvertisedItemIn(Camel):
+    """Строка импорта ЖК по рекламе (POST /api/discovered/import, python -m app.demo add-advertised)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: DevName
+    aliases: List[AliasItem] = Field(default_factory=list, max_length=20)
+    address: ShortText = ""
+    lat: Lat = None
+    lng: Lng = None
+    developer_name: OptDevName = None
+    developer_bin: Bin = None
+    accounts: List[AliasItem] = Field(default_factory=list, max_length=50)
+    source_urls: List[UrlItem] = Field(default_factory=list, max_length=50)
+    note: OptNote = None
+
+    @model_validator(mode="after")
+    def _coords(self):
+        _pair(self.lat, self.lng)
+        return self
+
+
+class AdvertisedImportIn(Camel):
+    author: HumanName
+    note: OptNote = None  # что это за импорт (попадает в журнал)
+    items: List[AdvertisedItemIn] = Field(min_length=1, max_length=200)
+
+
+class AdvertisedImportOut(Camel):
+    created: List[str] = []  # id созданных карточек ЖК
+    updated: List[str] = []  # дополнены пустые поля, другие названия, аккаунты или ссылки
+    unchanged: List[str] = []
+    skipped: List[str] = []  # «название: причина» (есть в открытом реестре или справочнике ЖК)
+    developers_created: List[str] = []
+    event_ids: List[int] = []
+
+
+# ---------- сверка сведений аналитиком (app.verification) ----------
+
+BasisDocKey = Literal["guarantee", "mio", "bvu"]
+ReadinessKind = Literal["declared", "confirmed"]
+PhotoActivity = Literal["active", "idle", "unknown"]
+DATE_FORMAT_MSG = "дата в формате ГГГГ-ММ-ДД"
+
+
+def today_local():
+    """«Сегодня» по Усть-Каменогорску (UTC+5) — даты сверки и обращений не позже него."""
+    from .risk_model import ALMATY
+
+    return datetime.now(ALMATY).date()
+
+
+def _parse_day(v: Any, *, required: bool = False) -> Any:
+    """Дата сверки, обращения, снимка: «ГГГГ-ММ-ДД»; пустая строка у необязательной даты — не указана (сегодня);
+    иначе 422 по-русски."""
+    if isinstance(v, Date) and not isinstance(v, datetime):
+        return v
+    if v is None or (isinstance(v, str) and not v.strip()):
+        if required:
+            raise PydanticCustomError("value_error", "укажите дату")
+        return None
+    if isinstance(v, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", v.strip()):
+        try:
+            return Date.fromisoformat(v.strip())
+        except ValueError:
+            pass
+    raise PydanticCustomError("value_error", DATE_FORMAT_MSG)
+
+
+def _not_future(v: Any) -> Any:
+    if v is None:
+        return v
+    if v > today_local():
+        raise PydanticCustomError("value_error", "дата не может быть позже сегодняшней")
+    if v.year < 2000:
+        raise PydanticCustomError("value_error", "дата раньше 2000 года — проверьте год")
+    return v
+
+
+def _http_url(v: Optional[str]) -> Optional[str]:
+    if v is not None and not _HTTP_URL.match(v):
+        raise PydanticCustomError("value_error", "нужна ссылка, начинающаяся с http:// или https://")
+    return v
+
+
+Day = Annotated[Date, BeforeValidator(lambda v: _parse_day(v, required=True)), AfterValidator(_not_future)]
+OptDay = Annotated[Optional[Date], BeforeValidator(_parse_day), AfterValidator(_not_future)]
+SourceText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255), AfterValidator(no_nul)]
+OptSourceText = Annotated[Optional[SourceText], BeforeValidator(_blank_to_none)]
+OptUrl = Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=512), AfterValidator(no_nul)]],
+                   BeforeValidator(_blank_to_none), AfterValidator(_http_url)]
+RefText = Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=500), AfterValidator(no_nul)]],
+                    BeforeValidator(_blank_to_none)]
+Subject = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000), AfterValidator(no_nul)]
+
+
+def _source_for_tri(v: Optional[str], info: ValidationInfo) -> Optional[str]:
+    if v is None and info.data.get("value") in ("yes", "no"):
+        raise PydanticCustomError("value_error", "обязателен, если отмечено «есть» или «нет»: где это проверено")
+    return v
+
+
+class BasisCheckIn(Camel):
+    """Сверка документа основания: value — есть / нет / нет сведений (снять сверку); ref — номер и дата документа или
+    банк; source — где проверено (обязателен для «есть» и «нет»); checkedAt — дата сверки (по умолчанию сегодня)."""
+
+    author: HumanName
+    doc: BasisDocKey
+    value: Tri
+    ref: RefText = None
+    source: OptSourceText = Field(None, validate_default=True)
+    source_url: OptUrl = None
+    checked_at: OptDay = None
+    comment: OptNote = None
+
+    _source = field_validator("source")(_source_for_tri)
+
+
+class PublishedListIn(Camel):
+    """Сверка с опубликованным перечнем ГАСК (наблюдение O1, вне балла)."""
+
+    author: HumanName
+    value: Tri
+    source: OptSourceText = Field(None, validate_default=True)
+    source_url: OptUrl = None
+    checked_at: OptDay = None
+    comment: OptNote = None
+
+    _source = field_validator("source")(_source_for_tri)
+
+
+class ReadinessIn(Camel):
+    """Готовность (R5): заявленная застройщиком или подтверждённая (акт осмотра, фото-мониторинг) — с источником и датой."""
+
+    author: HumanName
+    kind: ReadinessKind
+    value: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]
+    source: SourceText
+    date: Day
+    comment: OptNote = None
+
+
+class AppealIn(Camel):
+    """Обращение граждан (R4), внесённое аналитиком: ждёт проверки (status pending)."""
+
+    author: HumanName
+    date: Day
+    subject: Subject
+    applicants: Annotated[int, Field(ge=1, le=100000)] = 1
+    collective: bool = False
+    source: SourceText
+    comment: OptNote = None
+
+    @field_validator("collective")
+    @classmethod
+    def _two_for_collective(cls, v: bool, info: ValidationInfo) -> bool:
+        if v and (info.data.get("applicants") or 0) < 2:
+            raise PydanticCustomError("value_error", "коллективное обращение — от двух заявителей")
+        return v
+
+
+class AppealDecisionIn(Camel):
+    author: HumanName
+    comment: OptNote = None
+
+
+class AppealsCheckIn(Camel):
+    """«Обращений нет — сверено»: где проверено (ДЭР, ГАСК, eOtinish) и когда."""
+
+    author: HumanName
+    source: SourceText
+    checked_at: OptDay = None
+    comment: OptNote = None
+
+
+class SitePhotoIn(Camel):
+    """Поля формы снимка площадки (POST /api/complexes/{id}/photos, multipart): файл — отдельно."""
+
+    author: HumanName
+    date: Day
+    source: SourceText
+    activity: PhotoActivity
+    note: OptNote = None
+
+
+class BasisSuggestionOut(Camel):
+    """Документ основания, который называет открытый реестр: номер и дата, источник, ссылка — для «Подтвердить»."""
+
+    ref: str
+    source: str  # короткое название для сверки: «Homeportal»
+    source_name: str  # как у источника: «Homeportal — карточки ЖК»
+    url: Optional[str] = None
+    records: int = 1
+
+
+class BasisDocOut(Camel):
+    doc: BasisDocKey
+    label: str
+    value: Tri
+    ref: Optional[str] = None
+    source: Optional[str] = None
+    url: Optional[str] = None
+    checked_at: Optional[str] = None
+    checked_by: Optional[str] = None
+    comment: Optional[str] = None
+    checked: bool = False  # «есть» или «нет» с источником и датой сверки
+    suggestion: Optional[BasisSuggestionOut] = None
+
+
+class BasisViewOut(Camel):
+    """Основание ЖК по документам: значение, сверка (кто, когда, где), подсказка из открытого реестра; перечень ГАСК."""
+
+    complex_id: str
+    documents: List[BasisDocOut]
+    published_list: Dict[str, Any]
+    checked: int
+    total: int
+
+
+# ---------- решение аналитика по «Проверке по рекламе» (app.decisions) ----------
+
+def _min_text(n: int, msg: str):
+    def check(v: str) -> str:
+        if len(v) < n:
+            raise PydanticCustomError("value_error", msg)
+        return v
+    return check
+
+
+ActNumber = Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=128), AfterValidator(no_nul)]],
+                      BeforeValidator(_blank_to_none)]
+DecisionReason = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000), AfterValidator(no_nul),
+                           AfterValidator(_min_text(10, "опишите, что проверено, — не короче 10 символов"))]
+CancelReason = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000), AfterValidator(no_nul),
+                         AfterValidator(_min_text(5, "укажите причину отмены — не короче 5 символов"))]
+
+
+class CommissionedIn(Camel):
+    """«Объект сдан»: ввод в эксплуатацию подтверждён — номер акта (необязателен), дата акта (обязательна, не позже
+    сегодня), источник (ЕГКН, акт приёмки, 2ГИС — жилой дом, ответ акимата / ГАСК или свой текст), ссылка, комментарий."""
+
+    author: HumanName
+    act_number: ActNumber = None
+    act_date: Day
+    source: SourceText
+    source_url: OptUrl = None
+    comment: OptNote = None
+
+
+class ScreeningDecisionIn(Camel):
+    """«Проверено — замечаний нет»: что проверено (не короче 10 символов), источник, ссылка, комментарий."""
+
+    author: HumanName
+    decision: Literal["no_issues"]
+    reason: DecisionReason
+    source: SourceText
+    source_url: OptUrl = None
+    comment: OptNote = None
+
+
+class DecisionCancelIn(Camel):
+    """Отмена решения аналитика: оценка снова автоматическая; причина обязательна."""
+
+    author: HumanName
+    reason: CancelReason
+
+
+class DecisionTriggerOut(Camel):
+    """Новая реклама после решения, которая его сняла: публикация, дата, признак и цитата."""
+
+    ad_id: str
+    date: Optional[str] = None
+    signal: Optional[str] = None
+    quote: Optional[str] = None
+
+
+class ScreeningDecisionOut(Camel):
+    """Действующее (active) или снятое автоматически (reopened) решение аналитика по ЖК."""
+
+    id: int
+    kind: DecisionKind
+    status: DecisionStatus
+    label: str  # «Дом сдан — замечаний нет» | «Проверено — замечаний нет»
+    by: str
+    at: Optional[str] = None  # когда записано (UTC ISO)
+    act_number: Optional[str] = None
+    act_date: Optional[str] = None
+    source: str
+    source_url: Optional[str] = None
+    reason: Optional[str] = None
+    comment: Optional[str] = None
+    reopened_by: Optional[DecisionTriggerOut] = None
+
+
+class DecisionRecordOut(Camel):
+    """Запись истории решений по ЖК (GET /api/complexes/{id}/screening-decisions): действующие, отменённые, заменённые."""
+
+    id: int
+    complex_id: str
+    kind: DecisionKind
+    status: Literal["active", "cancelled", "superseded"]
+    act_number: Optional[str] = None
+    act_date: Optional[str] = None
+    source: str
+    source_url: Optional[str] = None
+    reason: Optional[str] = None
+    comment: Optional[str] = None
+    prev_stage: Optional[str] = None
+    created_by: str
+    created_at: IsoTime = None
+    closed_by: Optional[str] = None
+    closed_at: IsoTime = None
+    close_reason: Optional[str] = None
+
+
+ComplexListOut.model_rebuild()

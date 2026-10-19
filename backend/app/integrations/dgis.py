@@ -1,8 +1,9 @@
 """2ГИС — геокодер (Catalog API 3.0 · items/geocode; integration-spec §12.5, план §11).
 
-Это геоданные, а не сбор рекламы: по адресу ЖК или объекта открытых данных 2ГИС возвращает кандидатов (дом, город,
-корпус), выбирает аналитик. Первый результат вслепую не берётся: «рекомендуется» — только единственный точный дом в
-городе, и это подсказка, а не выбор — ничего не принимается автоматически. Координаты ЖК меняются только явным
+Это геоданные, а не сбор рекламы: по адресу ЖК, объекта открытых данных или объекта из рекламы (app.discovery — по
+«ЖК <название>» и по адресу из рекламы) 2ГИС возвращает кандидатов (дом, город, корпус), выбирает аналитик. Первый
+результат вслепую не берётся: «рекомендуется» — только единственный точный дом в городе, и это подсказка, а не выбор —
+ничего не принимается автоматически. Координаты ЖК меняются только явным
 решением аналитика («перенести координаты») с записью «было → стало» в журнал; сведения открытых данных не меняются.
 
 К 2ГИС обращаются только по кнопке «Сверить адрес»: открытие карточки читает сохранённые сверки. Кандидаты хранятся
@@ -79,6 +80,8 @@ CHECK_NOT_FOUND = "Сверка не найдена"
 NO_CANDIDATE = "Этого кандидата в сверке нет"
 STALE = "Кандидаты устарели — выполните сверку заново"
 REGISTRY_READONLY = "Сведения открытого источника не изменяются — координаты 2ГИС сохраняются как сверка"
+DISCOVERED_READONLY = ("У объекта из рекламы нет карточки ЖК — координаты кандидата переносятся при создании карточки "
+                       "(create-complex, candidateId)")
 POINT_CHANGED = "Координаты ЖК изменились после сверки — обновите карточку и выполните сверку заново"
 NO_ADDRESS = "У объекта нет адреса — укажите запрос для сверки"
 NOTHING_TO_REJECT = "2ГИС не нашёл адрес — отклонять нечего"
@@ -457,7 +460,7 @@ router = APIRouter(tags=["integrations"])
 
 # ---------- схемы API ----------
 
-TargetKind = Literal["complex", "registry"]
+TargetKind = Literal["complex", "registry", "discovered"]
 CheckStatus = Literal["candidates", "not_found", "accepted", "rejected"]
 
 
@@ -570,12 +573,17 @@ def _point(lat: Any, lng: Any) -> Optional[dict]:
 
 
 def _target(db: Session, kind: str, tid: str) -> _Target:
-    """ЖК (models.Complex) или объект открытых данных (ключ записей источников); нет — 404."""
+    """ЖК (models.Complex), объект открытых данных (ключ записей источников) или объект из рекламы (id); нет — 404."""
     if kind == "complex":
         c = db.get(models.Complex, tid)
         if c is None:
             raise HTTPException(404, COMPLEX_NOT_FOUND)
         return _Target(kind, c.id, c.name, c.address, _point(c.lat, c.lng), (c.lat, c.lng))
+    if kind == "discovered":
+        o = db.get(models.DiscoveredObject, int(tid)) if tid.isdigit() and len(tid) < 10 else None
+        if o is None:
+            raise HTTPException(404, "Объект из рекламы не найден")
+        return _Target(kind, str(o.id), o.name, o.address_hint, None)
     from .. import importer
     from .. import registry as opendata
 
@@ -713,9 +721,12 @@ def geo_check(body: GeoCheckIn, request: Request, response: Response, db: Sessio
 
 def _cached(db: Session, t: _Target, qnorm: str, s: Settings, now: datetime) -> Optional[models.GeoCheck]:
     """Кэш: последняя сверка того же объекта и запроса моложе DGIS_CACHE_TTL_DAYS с неудалёнными кандидатами. Нет, а
-    объект сверяли меньше 10 минут назад (другим запросом) — 429."""
+    объект сверяли меньше 10 минут назад (другим запросом) — 429. У объекта из рекламы два запроса (название и адрес):
+    интервал считается по каждому запросу."""
     G = models.GeoCheck
     same_target = (G.target_kind == t.kind, G.target_id == t.id)
+    if t.kind == "discovered":
+        same_target += (G.query_norm == qnorm,)
     hit = db.scalar(select(G).where(*same_target, G.query_norm == qnorm, G.purged_at.is_(None),
                                     G.fetched_at >= models.as_utc(now - timedelta(days=s.dgis_cache_ttl_days)))
                     .order_by(G.fetched_at.desc(), G.id.desc()).limit(1))
@@ -772,8 +783,9 @@ def _check_locked(db: Session, body: GeoCheckIn, t: _Target, query: str, qnorm: 
           status="candidates" if stored else "not_found", applied=False, prev_point=p, requested_by=body.author,
           fetched_at=models.as_utc(now))
     db.add(g)
-    _audit(db, body.author, f"Сверка адреса в 2ГИС: «{query}» — кандидатов: {len(stored)}", complex_id=t.complex_id,
-           at=now)
+    where = f" (объект из рекламы «{t.name}»)" if t.kind == "discovered" else ""
+    _audit(db, body.author, f"Сверка адреса в 2ГИС{where}: «{query}» — кандидатов: {len(stored)}",
+           complex_id=t.complex_id, at=now)
     _provider_back(db, now)
     db.commit()
     return check_out(g, s)
@@ -796,7 +808,7 @@ def geo_accept(body: GeoAcceptIn, check_id: int = Path(..., ge=1), db: Session =
     if cand is None:
         raise HTTPException(422, NO_CANDIDATE)
     if body.apply and g.target_kind != "complex":
-        raise HTTPException(422, REGISTRY_READONLY)
+        raise HTTPException(422, DISCOVERED_READONLY if g.target_kind == "discovered" else REGISTRY_READONLY)
     if g.status != "candidates":
         raise _decided(g)
     t = _target(db, g.target_kind, g.target_id)
@@ -821,8 +833,9 @@ def geo_accept(body: GeoAcceptIn, check_id: int = Path(..., ge=1), db: Session =
         if moved.rowcount != 1:
             db.rollback()
             raise HTTPException(409, POINT_CHANGED)
-        what = (f"Координаты ЖК «{t.name}» уточнены по 2ГИС после проверки аналитиком: было {old_lat:.6f}, "
-                f"{old_lng:.6f} → стало {lat2:.6f}, {lon2:.6f} (объект 2ГИС {cand['id']}, «{full}»)")
+        was = f"{old_lat:.6f}, {old_lng:.6f}" if old_lat is not None and old_lng is not None else "нет координат"
+        what = (f"Координаты ЖК «{t.name}» уточнены по 2ГИС после проверки аналитиком: было {was} → стало "
+                f"{lat2:.6f}, {lon2:.6f} (объект 2ГИС {cand['id']}, «{full}»)")
     else:
         what = f"Сверка адреса 2ГИС принята: «{full}» (объект {cand['id']}); координаты в карточке не изменены"
     if body.comment:

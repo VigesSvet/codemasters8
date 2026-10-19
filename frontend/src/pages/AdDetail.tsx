@@ -6,7 +6,8 @@ import { AiBadge, Confidence, HypothesisItem, LinkMark, OcrTag, TermList } from 
 import { MediaViewer } from '../components/MediaViewer'
 import { Origin } from '../components/Provenance'
 import { SignalAction } from '../components/SignalPanel'
-import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Score, StatusDot, ZoneTag, adKey, fmtDT, plural, statusMeta } from '../components/ui'
+import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, RiskScore, SafeImg, StatusDot, ZoneTag, adKey, fmtDT, plural, statusMeta } from '../components/ui'
+import { READ_ONLY } from '../data/snapshot'
 import type { Ad, AdAnalysis, AdScore, AdStatus, AdVersion, AuditEvent, Complex, LinkHypothesis, LlmAnalysis, Processing } from '../data/types'
 import { isAdmin, onAdminChange } from '../lib/admin'
 import { linkConf, linkText, pct, visibleHypotheses, type LinkConf } from '../lib/ai'
@@ -14,6 +15,7 @@ import { errorText } from '../lib/api'
 import { SYSTEM, fmtStamp, initialsOf } from '../lib/audit'
 import { getVersions, processingNote, stageLabel } from '../lib/connectors'
 import { CONF_LABEL, CONF_TONE, REANALYZE_HINT, amountText, costText, droppedText, llmState, modelText, reanalyzeAd, reanalyzeBlock, signalLabel } from '../lib/llm'
+import { STAGE_LABEL } from '../lib/discovered'
 import { adImage, mediaRefSrc } from '../lib/media'
 import { from, useFrom } from '../lib/nav'
 import { externalUrl, platformName } from '../lib/platform'
@@ -53,7 +55,7 @@ const pending = (p?: Processing | null) => p?.status === 'queued' || p?.status =
 /** Разбор публикации: слева сама реклама и история, справа — решение аналитика */
 export default function AdDetail() {
   const { id } = useParams()
-  const { mode, ads, complexes, setAdStatus, linkAd, acceptHypothesis, getAnalysis, addComment, getAudit, sessionLog, notify, riskOf, adScoreOf, user, analysts, revision, refreshAds } = useStore()
+  const { mode, ads, complexes, setAdStatus, linkAd, acceptHypothesis, getAnalysis, addComment, getAudit, notify, riskOf, adScoreOf, user, analysts, revision, refreshAds } = useStore()
   const a = ads.find((x) => x.id === id)
   const found = !!a
   // опрос ленты, пока сервер анализирует собранную публикацию: n — сколько раз уже опросили эту публикацию
@@ -144,7 +146,7 @@ export default function AdDetail() {
     return (
       <div className="empty">
         <div className="t-h3" style={{ color: 'var(--text)', marginBottom: 6 }}>Публикация не найдена</div>
-        <div>{!live ? `Публикации «${id}» нет в демо-наборе — возможно, ссылка ведёт на публикацию с сервера или устарела.`
+        <div>{!live ? `Публикации «${id}» нет в офлайн-копии стартового набора — возможно, её собрали позже или ссылка устарела. Полная лента — с сервером (./dev.sh).`
           : looked?.ok ? `Публикации «${id}» нет на сервере — ссылка устарела или база была пересоздана.`
             : `Публикации «${id}» нет в ленте этой вкладки, а перечитать ленту с сервера не удалось — проверьте связь и обновите ленту.`}</div>
         <div className="row" style={{ justifyContent: 'center', gap: 8, marginTop: 16 }}>
@@ -167,17 +169,18 @@ export default function AdDetail() {
   const quotes = s.factors.filter((f) => f.code === 'R2' || f.code === 'R3')
     .flatMap((f) => f.items.filter((x) => x.kind === 'ad' && x.quote).slice(0, 1).map((x) => ({ f, x })))
   const ME = user?.name ?? ''
-  const demo = mode === 'demo'
+  // офлайн-копия — только просмотр: решения, привязка и комментарии сохраняет сервер
+  const ro = mode === 'snapshot'
   const reload = () => setVer((v) => v + 1)
-  // с бэкендом — журнал сервера; в демо — только действия этой сессии
+  // журнал — только с сервера: в офлайн-копию он не входит
   const mine = live && log?.id === a.id ? log : null
-  const events = live ? mine?.events ?? [] : sessionLog.filter((e) => e.adId === a.id)
+  const events = mine?.events ?? []
   const loadingLog = mode === 'loading' || (live && (!mine || (!mine.events && !mine.err)))
   // не загрузился и показать нечего: только строка ошибки — не «0 событий» и не «Событий пока нет»
   const noLog = !!mine && !mine.events
   const dm = isDecision(modal) ? modal : null
   const reason = dm ? reasons[dm] ?? '' : ''
-  // происхождение: демо-публикация сида или добавленная аналитиком (кто и когда — первое событие журнала)
+  // происхождение: публикация прежнего демо-набора (старые БД) или добавленная аналитиком (кто и когда — первое событие журнала)
   const demoAd = isDemoAd(a)
   const byAnalyst = !demoAd && (a.origin === 'analyst' || a.source === 'manual')
   const added = byAnalyst ? events.find((e) => e.who !== SYSTEM) : undefined
@@ -203,10 +206,11 @@ export default function AdDetail() {
     setLinking(true)
     // при ошибке стор откатывает привязку и показывает баннер
     linkAd(a.id, to?.id ?? null).then((ok) => {
-      if (ok) notify(demo ? `${msg} — демо-режим, на сервере не сохранено` : `${msg}, оценка пересчитана, событие в журнале`)
+      if (ok) notify(`${msg}, оценка пересчитана, событие в журнале`)
     }).finally(() => setLinking(false))
   }
-  /** «Принять привязку» — текущую гипотезу ИИ: с бэкендом — принятие гипотезы (уверенность ИИ сохраняется, событие ИИ в журнале), в демо — локально */
+  /** «Принять привязку» — текущую гипотезу ИИ: с бэкендом — принятие гипотезы (уверенность ИИ сохраняется, событие ИИ в журнале);
+   *  до ответа сервера — обычная привязка аналитиком */
   const confirmLink = (to: Complex) => {
     if (!live) { link(to); return }
     setLinking(true)
@@ -222,7 +226,7 @@ export default function AdDetail() {
     setAdStatus(a.id, st, { assignee: ME, comment: why }).then((ok) => {
       if (!ok) return
       if (isDecision(st)) setReasons((r) => ({ ...r, [st]: '' }))
-      notify(demo ? `${done} — демо-режим, на сервере не сохранено` : done)
+      notify(done)
     })
   }
 
@@ -253,7 +257,7 @@ export default function AdDetail() {
                 <button type="button" className="ph mv-open contain" style={{ borderRadius: 18, aspectRatio: '1' }} onClick={() => setViewer(0)}
                   aria-label={gallery.length > 1 ? `Открыть файлы публикации в просмотре: ${gallery.length}` : 'Открыть скриншот в просмотре'}
                   title="Открыть в просмотре: масштаб, листание файлов, текст OCR">
-                  <img src={img} alt="" /><span className="mv-hint"><IcZoomIn />Открыть</span>
+                  <SafeImg src={img} alt="" fallback={<span className="noimg"><PlatformIcon p={a.platform} size={56} /></span>} /><span className="mv-hint"><IcZoomIn />Открыть</span>
                 </button>
                 <button type="button" className="btn g s full" onClick={() => setViewer(0)}><IcZoomIn />{gallery.length > 1 ? `Открыть файлы (${gallery.length})` : 'Открыть скриншот'}</button>
               </div>
@@ -283,7 +287,7 @@ export default function AdDetail() {
                       ) : (
                         <button key={m.id} type="button" className="ph mv-open" style={{ borderRadius: 12, aspectRatio: '1' }} onClick={() => setViewer(k)}
                           aria-label={`Открыть в просмотре ${name}`} title="Открыть в просмотре">
-                          <img src={src} alt="" /><span className="mv-hint sm"><IcZoomIn />Открыть</span>
+                          <SafeImg src={src} alt="" fallback={<span className="noimg"><PlatformIcon p={a.platform} size={28} /></span>} /><span className="mv-hint sm"><IcZoomIn />Открыть</span>
                         </button>
                       )
                     })}
@@ -323,9 +327,9 @@ export default function AdDetail() {
                 )}
                 {c && cr && (
                   <Link to={`/complexes/${c.id}`} state={from(`Публикация ${adKey(a.id)}`, `/ads/${a.id}`)} className="row" style={{ marginTop: 18, background: 'var(--bg)', borderRadius: 16, padding: 8, gap: 12 }}>
-                    <img src={c.cover} alt="" style={{ width: 52, height: 52, borderRadius: 12, objectFit: 'cover' }} />
+                    <img src={c.cover || undefined} alt="" style={{ width: 52, height: 52, borderRadius: 12, objectFit: 'cover' }} />
                     <div style={{ flex: 1, minWidth: 0 }}><div className="bold t-sm">ЖК «{c.name}»</div><div className="t-xs c2">риск объекта · привязка — {fact ? 'факт' : linkText(a, lc, true)}</div></div>
-                    <Score value={cr.score} zone={cr.zone} />
+                    <RiskScore r={cr} />
                   </Link>
                 )}
               </div>
@@ -365,28 +369,28 @@ export default function AdDetail() {
             )}
           </div>
 
-          <AiCard key={a.id} a={a} s={s} c={c} load={ai} lc={lc} retry={() => setAiVer((v) => v + 1)} onLink={() => setModal('cx')} />
+          <AiCard key={`ai-${a.id}`} a={a} s={s} c={c} load={ai} lc={lc} retry={() => setAiVer((v) => v + 1)} onLink={() => setModal('cx')} />
 
-          {/* анализа Claude не было (ключ не задан, демо, ручной ввод) — блока нет. «Проанализировать ещё раз» ставит
+          {/* анализа Claude не было (ключ не задан, ручной ввод) — блока нет. «Проанализировать ещё раз» ставит
               задание — дальше опрос ленты, как у собранной публикации в анализе (recheck) */}
           {(a.llm || (mode === 'api' && a.origin === 'collected')) && <LlmCard key={`llm-${a.id}`} a={a} x={a.llm ?? null} onQueued={recheck} />}
 
-          {proc && live && <SourceVersions key={a.id} a={a} version={proc.version} />}
+          {proc && live && <SourceVersions key={`ver-${a.id}`} a={a} version={proc.version} />}
 
           <div className="card">
             <div className="card-head"><h3>История</h3>{mine?.events && <span className="t-sm c2">{mine.events.length} · журнал сервера</span>}</div>
-            {demo && <div className="box warn t-sm alog-note">Демо-режим: журнал не сохраняется на сервере. Здесь — только действия этой сессии; полная история с автором и временем хранится на бэкенде (<code>./dev.sh</code>).</div>}
+            {ro && <div className="box warn t-sm alog-note">Офлайн-копия: журнал публикации хранится на сервере и в копию не входит. История с автором и временем, комментарии и решения — с сервером (<code>./dev.sh</code>).</div>}
             {mine?.err && (
               <div className="alog-err t-sm">Журнал не загрузился: {mine.err} <button className="link" onClick={reload}>Повторить</button></div>
             )}
-            {loadingLog ? <div className="t-sm c2 alist-empty">{mode === 'loading' ? 'Подключаемся к серверу…' : 'Загружаем журнал…'}</div>
-              : !noLog && <AuditList events={events} links={['signal']} empty={demo ? 'В этой сессии действий с публикацией ещё не было' : 'Событий пока нет'} />}
+            {ro ? null : loadingLog ? <div className="t-sm c2 alist-empty">{mode === 'loading' ? 'Подключаемся к серверу…' : 'Загружаем журнал…'}</div>
+              : !noLog && <AuditList events={events} links={['signal']} empty="Событий пока нет" />}
             <div className="row" style={{ paddingTop: 12, gap: 8 }}>
-              <input className="input" placeholder="Комментарий: с чем сверено, на чём основано решение" value={comment} maxLength={TEXT_MAX} aria-label="Комментарий"
-                onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send() }} disabled={mode === 'loading'} />
-              <button className="btn d m" disabled={!comment.trim() || sending || mode === 'loading'} aria-label="Отправить комментарий" onClick={send}><IcSend size={20} /></button>
+              <input className="input" placeholder={ro ? 'Комментарии — с сервером' : 'Комментарий: с чем сверено, на чём основано решение'} value={comment} maxLength={TEXT_MAX} aria-label="Комментарий"
+                onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send() }} disabled={mode !== 'api'} title={ro ? READ_ONLY : undefined} />
+              <button className="btn d m" disabled={!comment.trim() || sending || mode !== 'api'} aria-label="Отправить комментарий" onClick={send}><IcSend size={20} /></button>
             </div>
-            <p className="t-xs c2" style={{ marginTop: 6 }}>Автор комментария в журнале — {ME || '—'}{demo && ' (демо-режим: только до перезагрузки)'}</p>
+            <p className="t-xs c2" style={{ marginTop: 6 }}>{ro ? READ_ONLY : `Автор комментария в журнале — ${ME || '—'}`}</p>
           </div>
         </div>
 
@@ -394,15 +398,15 @@ export default function AdDetail() {
             вместе с концом контента, а решения в её низу остаются рядом с полем комментария */}
         <aside className="stack sticky">
           <div className="card">
-            <Cell title="Статус" end={<><StatusDot s={a.status} /><span style={{ color: 'var(--text)' }}>{statusMeta[a.status].name}</span></>} chevron onClick={() => setModal('status')} />
+            <Cell title="Статус" end={<><StatusDot s={a.status} /><span style={{ color: 'var(--text)' }}>{statusMeta[a.status].name}</span></>} chevron={!ro} onClick={ro ? undefined : () => setModal('status')} />
             <Cell title="Ответственный" end={a.assignee ? <><span className="ava sm">{initialsOf(a.assignee, analysts)}</span><span style={{ color: 'var(--text)' }}>{a.assignee}</span></> : 'не назначен'} />
-            <Cell title="Объект" end={<span style={{ color: 'var(--text)', maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c ? c.name : 'не определён'}</span>} chevron onClick={() => setModal('cx')}
+            <Cell title="Объект" end={<span style={{ color: 'var(--text)', maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c ? c.name : 'не определён'}</span>} chevron={!ro} onClick={ro ? undefined : () => setModal('cx')}
               sub={c ? <span className={`tag ${fact ? 'green' : 'yellow'}`} style={{ marginTop: 4 }}
                 title={fact ? `Привязка к ЖК — ${linkText(a, lc)}` : `Привязка к ЖК — ${linkText(a, lc)}. Пока аналитик её не примет, публикация не даёт баллов объекту`}>{linkText(a, lc, true)}</span> : undefined} />
             {c && !fact && (
               <div style={{ padding: '2px 0 14px' }}>
-                <button className="btn g m full" disabled={linking} onClick={() => confirmLink(c)}
-                  title="Привязку предложил ИИ — это гипотеза. Пока её не приняли, публикация не даёт объекту баллов R2/R3, а R1 объекта не входит в её оценку">
+                <button className="btn g m full" disabled={linking || ro} onClick={() => confirmLink(c)}
+                  title={ro ? READ_ONLY : 'Привязку предложил ИИ — это гипотеза. Пока её не приняли, публикация не даёт объекту баллов R2/R3, а R1 объекта не входит в её оценку'}>
                   <IcCheck size={20} />{linking ? 'Сохраняем…' : 'Принять привязку'}</button>
                 <p className="t-xs c2" style={{ marginTop: 6, lineHeight: '17px' }}>Пока привязка — гипотеза ИИ, публикация не даёт объекту баллов R2/R3
                   {live && lc.now ? `; при принятии сохранится уверенность ${pct(lc.now.confidence)}${lc.differs ? ` (${lc.when} — ${pct(lc.saved)})` : ''}` : ''}.</p>
@@ -412,17 +416,18 @@ export default function AdDetail() {
 
           <div className="card">
             <div className="stack" style={{ gap: 8 }}>
-              {(a.status === 'new' || a.status === 'needs_check') && <button className="btn y full" onClick={() => decide('in_review', 'Публикация взята в работу')}>Взять в работу</button>}
+              {(a.status === 'new' || a.status === 'needs_check') && <button className="btn y full" disabled={ro} title={ro ? READ_ONLY : undefined} onClick={() => decide('in_review', 'Публикация взята в работу')}>Взять в работу</button>}
               {/* решение, совпадающее с текущим статусом, не предлагаем повторно — только сменить его */}
-              {a.status !== 'confirmed' && <button className="btn d full" onClick={() => setModal('confirmed')}>Подтвердить нарушение</button>}
+              {a.status !== 'confirmed' && <button className="btn d full" disabled={ro} title={ro ? READ_ONLY : undefined} onClick={() => setModal('confirmed')}>Подтвердить нарушение</button>}
               {c ? <SignalAction complex={c} label="Сформировать сигнал по ЖК" compact />
-                : <p className="t-sm c2" style={{ lineHeight: '18px' }}><button className="link" disabled={linking} onClick={() => setModal('cx')}>Привяжите публикацию к ЖК</button> — привязка сохраняется в журнале, после этого можно сформировать сигнал</p>}
+                : <p className="t-sm c2" style={{ lineHeight: '18px' }}><button className="link" disabled={linking || ro} onClick={() => setModal('cx')}>Привяжите публикацию к ЖК</button> — привязка сохраняется в журнале, после этого можно сформировать сигнал</p>}
               {(a.status === 'confirmed' || a.status === 'dismissed') && <div className="t-xs c2" style={{ marginTop: 4 }}>Решение принято — «{statusMeta[a.status].name}», основание в истории. Изменить решение:</div>}
               <div className="row" style={{ gap: 8 }}>
-                {a.status !== 'dismissed' && <button className="btn g m" style={{ flex: 1 }} onClick={() => setModal('dismissed')}>Отклонить</button>}
-                {a.status !== 'needs_check' && <button className="btn g m" style={{ flex: 1 }} onClick={() => setModal('needs_check')}>Доп. проверка</button>}
+                {a.status !== 'dismissed' && <button className="btn g m" style={{ flex: 1 }} disabled={ro} title={ro ? READ_ONLY : undefined} onClick={() => setModal('dismissed')}>Отклонить</button>}
+                {a.status !== 'needs_check' && <button className="btn g m" style={{ flex: 1 }} disabled={ro} title={ro ? READ_ONLY : undefined} onClick={() => setModal('needs_check')}>Доп. проверка</button>}
               </div>
             </div>
+            {ro && <p className="t-xs c2" style={{ marginTop: 12, lineHeight: '17px' }}>{READ_ONLY}</p>}
             <p className="t-xs c2" style={{ marginTop: 12, lineHeight: '17px' }}>ИИ даёт рекомендацию. Решение принимает сотрудник, автоматической отправки в госорганы нет.</p>
           </div>
         </aside>
@@ -439,7 +444,7 @@ export default function AdDetail() {
           <div style={{ padding: '8px 16px' }}><div className="search"><IcSearch size={20} /><input autoFocus placeholder="Название или адрес ЖК" value={cq} onChange={(e) => setCq(e.target.value)} /></div></div>
           {a.complexId && <Cell icon={<span className="ico"><IcClose size={20} /></span>} title="Снять привязку" sub="Публикация останется без ЖК — нужна ручная привязка" onClick={() => link(null)} />}
           {complexes.filter((x) => matches(cq, x.name, x.address)).map((x) => (
-            <Cell key={x.id} inset icon={<img className="th" src={x.cover} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name}
+            <Cell key={x.id} inset icon={<img className="th" src={x.cover || undefined} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name}
               sub={x.id === a.complexId ? (fact ? 'привязка — факт' : `${linkText(a, lc, true)} — выбор примет привязку`) : x.address}
               end={x.id === a.complexId ? <IcCheck size={22} strokeWidth={2.5} style={{ color: 'var(--text)' }} /> : undefined}
               onClick={() => (x.id === a.complexId && fact ? setModal(null) : link(x))} />
@@ -525,7 +530,7 @@ function AiCard({ a, s, c, load, lc, retry, onLink }: { a: Ad; s: AdScore; c?: C
       <p className="t-sm c2" style={{ marginBottom: 8 }}>ИИ предлагает — решает аналитик. Гипотеза входит в балл только после того, как её примут; каждое решение пишется в журнал. Юридический вывод ИИ не делает.</p>
       {!live ? (
         <div className="ai-note">{mode === 'loading' ? 'Подключаемся к серверу…'
-          : 'Демо-режим без бэкенда: анализ ИИ (условия оплаты, гипотезы ЖК) выполняется на сервере. Привязку к ЖК можно принять или выбрать вручную справа — в демо она живёт только до перезагрузки.'}</div>
+          : `Офлайн-копия: разбор условий оплаты и гипотез ЖК выполняется на сервере, решения по ним — тоже.${a.llm ? ' Сохранённый анализ Claude этой публикации — в блоке ниже.' : ''}`}</div>
       ) : !data ? (
         load?.err ? <div className="ai-note err">Анализ не загрузился: {load.err} <button className="link" onClick={retry}>Повторить</button></div>
           : <div className="ai-note">Загружаем анализ…</div>
@@ -710,6 +715,34 @@ function LlmCard({ a, x, onQueued }: { a: Ad; x: LlmAnalysis | null; onQueued: (
               ))}
             </div>
           ) : <div className="t-sm c2">Модель не предложила ЖК из справочника — привязку делает аналитик</div>}
+          {(x.mentionedComplexes?.length ?? 0) > 0 && (
+            <>
+              <div className="ai-sub">Упомянутые ЖК <span className="t-sm c2" style={{ fontWeight: 400 }}>{x.mentionedComplexes!.length}</span></div>
+              <div className="ev-list">
+                {x.mentionedComplexes!.map((m, i) => (
+                  <div key={`mc-${i}`} className="ev" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
+                    <div>
+                      <span className="bold">ЖК «{m.name}»</span>{m.address && <span className="meta"> · {m.address}</span>}
+                      <div className="q">«{m.quote}»</div>
+                      {m.source === 'ocr' && <div style={{ marginTop: 4 }}><OcrTag /></div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="t-xs c2" style={{ marginTop: 6 }}>Названия из текста публикации. ЖК, которых нет в справочнике и открытом реестре, попадают в <Link className="link" to="/discovered">«Объекты из рекламы»</Link> — там аналитик создаёт карточку, привязывает к существующему ЖК или отклоняет.</div>
+            </>
+          )}
+          {x.objectStage && (
+            <>
+              <div className="ai-sub">Стадия объекта по рекламе</div>
+              <div className="ev-list">
+                <div className="ev" style={{ gridTemplateColumns: '150px minmax(0, 1fr)' }}>
+                  <span className="bold">{STAGE_LABEL[x.objectStage.value] ?? x.objectStage.value}</span>
+                  <div>{x.objectStage.quote ? <div className="q">«{x.objectStage.quote}»</div> : <div className="meta">дословной цитаты о стадии нет — стадия не ясна</div>}{x.objectStage.source === 'ocr' && <div style={{ marginTop: 4 }}><OcrTag /></div>}</div>
+                </div>
+              </div>
+            </>
+          )}
           {x.uncertainties.length > 0 && (
             <>
               <div className="ai-sub">Требует проверки</div>

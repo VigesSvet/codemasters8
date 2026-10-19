@@ -8,6 +8,7 @@ import ComplexCard from './pages/ComplexCard'
 import Complexes from './pages/Complexes'
 import Dashboard from './pages/Dashboard'
 import Developers from './pages/Developers'
+import Discovered from './pages/Discovered'
 import Ops from './pages/Ops'
 import Login from './pages/Login'
 import Method from './pages/Method'
@@ -51,6 +52,7 @@ export default function App() {
               <Route path="signals" element={<Signals />} />
               <Route path="signals/:id" element={<SignalCard />} />
               <Route path="developers" element={<Developers />} />
+              <Route path="discovered" element={<Discovered />} />
               <Route path="sites" element={<Sites />} />
               <Route path="method" element={<Method />} />
               <Route path="sources" element={<Sources />} />

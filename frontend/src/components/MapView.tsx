@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
-import type { Complex, Zone } from '../data/types'
+import type { Complex, ScreeningStatus, Zone } from '../data/types'
+import { NOT_ASSESSED } from '../lib/risk'
+import { SCREENING_GLYPH, SCREENING_LABEL, VARIANT_SHORT, hasPoint, labelOf, variantOf } from '../lib/screening'
 import { IcLocate, IcMinus, IcPlus } from '../ui/icons'
 
 // Подложка Яндекс Карт (растровые тайлы). Яндекс режет тайлы в эллиптической проекции EPSG:3395,
@@ -29,8 +31,13 @@ export const UKA_CENTER: [number, number] = [82.62, 49.937]
 /** Метка открытых данных: серая, без балла — риск для реальных объектов не считается */
 export interface PlainPoint { key: string; name: string; lng: number; lat: number }
 
+/** ЖК на карте. screen — «Проверка по рекламе»: цвет и знак метки (✓ ? ! —), балл формального риска — белым кружком с кольцом
+ *  цвета зоны (только у оценённых). Без screen (сервер старой версии) — прежняя метка: цвет зоны и балл;
+ *  off — риск не оценивается: серая метка с «—». ЖК без координат на карту не попадают */
+export interface MapItem { c: Complex; zone: Zone; score: number; off?: boolean; screen?: ScreeningStatus | null }
+
 interface Props {
-  items: { c: Complex; zone: Zone; score: number }[]
+  items: MapItem[]
   /** Слой «Открытые данные»: серые метки без балла */
   points?: PlainPoint[]
   onPoint?: (key: string) => void
@@ -65,20 +72,44 @@ export default function MapView({ items, points, onPoint, selected, onSelect, zo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // левая панель свернулась или раскрылась — центр карты плавно сдвигается вслед (первый отступ задан при создании)
+  const firstPad = useRef(padLeft)
+  useEffect(() => {
+    const m = map.current
+    if (!m || padLeft === firstPad.current) return
+    firstPad.current = padLeft
+    m.easeTo({ padding: { left: padLeft, top: 80, right: 0, bottom: 0 }, duration: 300 })
+  }, [padLeft])
+
   useEffect(() => {
     const m = map.current
     if (!m) return
     markers.current.forEach((mk) => mk.remove())
-    markers.current = items.map(({ c, zone, score }) => {
+    markers.current = items.flatMap(({ c, zone, score, off, screen }) => {
+      if (!hasPoint(c)) return []
       const node = document.createElement('div')
-      node.className = `gpin ${zone} ${selected === c.id ? 'sel' : ''} ${labels ? 'lbl' : ''}`
       const b = document.createElement('span'); b.className = 'b'
       const n = document.createElement('span'); n.className = 'n'; n.textContent = c.name
-      const i = document.createElement('i'); i.textContent = String(score)
-      b.append(n, i)
+      if (screen) {
+        node.className = `gpin scr ${screen} ${selected === c.id ? 'sel' : ''} ${labels ? 'lbl' : ''}`
+        // ok по решению аналитика: подпись решения («Дом сдан — замечаний нет»), у названия — «сдан» / «проверено»
+        const v = variantOf(c.screening)
+        if (v) n.textContent = `${c.name} · ${VARIANT_SHORT[v]}`
+        node.title = `${c.name} — ${(c.screening?.status === screen ? labelOf(c.screening) : SCREENING_LABEL[screen]).toLowerCase()}${off ? '' : ` · формальный риск ${score} из 100`}`
+        const g = document.createElement('i'); g.className = 'g'; g.textContent = SCREENING_GLYPH[screen]
+        b.append(g, n)
+        if (!off) { const sc = document.createElement('span'); sc.className = `sc ${zone}`; sc.textContent = String(score); b.append(sc) }
+      } else {
+        node.className = `gpin ${off ? 'na' : zone} ${selected === c.id ? 'sel' : ''} ${labels ? 'lbl' : ''}`
+        if (off) node.title = `${c.name} — ${NOT_ASSESSED.toLowerCase()}`
+        const i = document.createElement('i'); i.textContent = off ? '—' : String(score)
+        b.append(n, i)
+      }
       node.append(b)
+      node.setAttribute('role', 'button')
+      node.setAttribute('aria-label', node.title || c.name)
       node.addEventListener('click', (e) => { e.stopPropagation(); onSelect?.(c.id) })
-      return new maplibregl.Marker({ element: node, anchor: 'bottom', offset: [0, -6] }).setLngLat(ll(c.lng, c.lat)).addTo(m)
+      return [new maplibregl.Marker({ element: node, anchor: 'bottom', offset: [0, -6] }).setLngLat(ll(c.lng, c.lat)).addTo(m)]
     })
   }, [items, selected, onSelect, labels, ready])
 
@@ -101,7 +132,7 @@ export default function MapView({ items, points, onPoint, selected, onSelect, zo
 
   useEffect(() => {
     const m = map.current
-    const all = [...items.map((x) => x.c), ...(points ?? [])]
+    const all = [...items.flatMap(({ c }) => (hasPoint(c) ? [{ lng: c.lng, lat: c.lat }] : [])), ...(points ?? [])]
     if (!fit || !ready || !m || !all.length) return
     const lngs = all.map((x) => x.lng), lats = all.map((x) => yLat(x.lat))
     m.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: { top: 60, bottom: 40, left: 40, right: 70 }, maxZoom: 14, duration: 400 })
@@ -109,7 +140,7 @@ export default function MapView({ items, points, onPoint, selected, onSelect, zo
 
   useEffect(() => {
     const c = items.find((x) => x.c.id === selected)?.c
-    if (c && map.current) map.current.easeTo({ center: ll(c.lng, c.lat), zoom: Math.max(map.current.getZoom(), 14), duration: 600 })
+    if (c && hasPoint(c) && map.current) map.current.easeTo({ center: ll(c.lng, c.lat), zoom: Math.max(map.current.getZoom(), 14), duration: 600 })
   }, [selected, items])
 
   return (

@@ -3,10 +3,12 @@ export type Tri = 'yes' | 'no' | 'unknown'
 
 export type Stage = 'котлован' | 'фундамент' | 'каркас' | 'кровля' | 'отделка' | 'введён'
 
-/** Происхождение сущности (ТЗ §4, §7): demo — вымышленный сценарий из сида, source — запись открытого источника,
+/** Происхождение сущности (ТЗ §4, §7): demo — вымышленный сценарий прежнего демо-набора (только старые БД), source — запись открытого источника,
  *  analyst — добавлено аналитиком (публикация через ручной ввод), collected — собрано подключённым сборщиком
- *  или прислано жителем через Telegram-бота (source = 'bot') */
-export type Origin = 'demo' | 'source' | 'analyst' | 'collected'
+ *  или прислано жителем через Telegram-бота (source = 'bot'), registry — карточка ЖК или застройщик, созданные по открытому
+ *  реестру (сведения источника, аналитиком не проверены), advertised — ЖК или застройщик, известные только по рекламе: в открытом
+ *  реестре их нет, карточку создал аналитик или импорт, сведения не проверены, формальный риск не оценивается */
+export type Origin = 'demo' | 'source' | 'analyst' | 'collected' | 'registry' | 'advertised'
 
 export interface Developer {
   id: string
@@ -18,9 +20,11 @@ export interface Developer {
   unfinished: number
   site?: string
   instagram?: string
-  /** Телефоны отдела продаж (демо) — признак сопоставления публикации с ЖК */
+  /** Телефоны отдела продаж — признак сопоставления публикации с ЖК */
   phones?: string[]
   origin?: Origin
+  /** «Проверка по рекламе» по ЖК застройщика (сервер, в офлайн-копии — из неё); нет — сервер старой версии */
+  screening?: DeveloperScreening | null
 }
 
 export interface Basis {
@@ -43,18 +47,55 @@ export interface Basis {
 /** Документ основания привлечения средств */
 export type BasisDoc = 'guarantee' | 'mio' | 'bvu'
 
-/** Где и когда сверен документ основания */
+/** Где и когда сверен документ основания; checkedBy — кто сверил (сверка аналитиком на сервере), ref — номер и дата
+ *  документа или банк, comment — пояснение */
 export interface BasisSource {
   source: string
   url?: string | null
   checkedAt: string
+  checkedBy?: string | null
+  ref?: string | null
+  comment?: string | null
 }
 
-/** Значение готовности с источником и датой — для R5 нужны оба */
+/** Документ основания, который называет открытый реестр: подсказка для «Подтвердить — совпадает с источником» */
+export interface BasisSuggestion {
+  /** Номер и дата документа («№ KZ40VWE00002526 от 15.07.2025») */
+  ref: string
+  /** Короткое название источника для сверки («Homeportal») */
+  source: string
+  /** Как у источника («Homeportal — карточки ЖК») */
+  sourceName: string
+  url?: string | null
+  records: number
+}
+
+/** Сверка с опубликованным перечнем ГАСК (O1) аналитиком */
+export interface PublishedListCheck {
+  value: Tri
+  source: string
+  url?: string | null
+  checkedAt: string
+  checkedBy: string
+  comment?: string | null
+}
+
+/** «Обращений нет — сверено»: где проверено и когда (R4 у карточек реестра и рекламы) */
+export interface AppealsCheck {
+  source: string
+  checkedAt: string
+  checkedBy: string
+  comment?: string | null
+}
+
+/** Значение готовности с источником и датой — для R5 нужны оба; by/at — кто и когда внёс (сверка аналитиком) */
 export interface ReadinessValue {
   value: number
   source: string
   date: string
+  by?: string | null
+  at?: string | null
+  comment?: string | null
 }
 
 export interface Readiness {
@@ -67,9 +108,14 @@ export interface Readiness {
 export interface SitePhoto {
   date: string
   src: string
-  source: 'дрон' | 'камера' | 'выезд'
-  activity: 'есть' | 'нет' | 'низкая'
+  /** Источник снимка (дрон, камера, выезд) — как указал аналитик */
+  source: string
+  activity: 'есть' | 'нет' | 'низкая' | 'нет сведений'
   note?: string
+  /** Снимок, загруженный аналитиком: файл /api/media/{mediaId}, кто и когда загрузил */
+  mediaId?: string
+  by?: string
+  at?: string
   fence?: Tri
   bins?: Tri
   wheelWash?: Tri
@@ -81,13 +127,17 @@ export interface Complex {
   developerId: string
   address: string
   district: string
-  lng: number
-  lat: number
-  stage: Stage
+  /** null — координат нет (объект реестра без координат, ЖК по рекламе до сверки в 2ГИС) */
+  lng: number | null
+  lat: number | null
+  /** '' — стадия неизвестна (карточка из открытого реестра: «В строительстве / Завершён» источника — фильтр, а не стадия) */
+  stage: Stage | ''
   /** Подтверждённая готовность, % (совпадает с readiness.confirmed.value) */
   progress: number
+  /** 0 — нет сведений (карточка из открытого реестра) */
   floors: number
   flats: number
+  /** '' — нет сведений (у карточки из реестра — если записи источника расходятся или объект завершён по источнику) */
   start: string
   plannedEnd: string
   basis: Basis
@@ -97,6 +147,223 @@ export interface Complex {
   photos: SitePhoto[]
   idleDays: number
   origin?: Origin
+  /** Основание привлекать деньги дольщиков по открытым данным или сверке аналитика (сервер) */
+  permit?: Permit | null
+  /** «Проверка по рекламе» — предварительная автоматическая оценка, не вывод о нарушении (сервер) */
+  screening?: Screening | null
+  /** Объекты из рекламы, привязанные к ЖК: другие названия, аккаунты, ссылки */
+  advert?: Advert | null
+  /** Сверка с перечнем ГАСК аналитиком (сервер); null — не сверялось */
+  publishedListCheck?: PublishedListCheck | null
+  /** «Обращений нет — сверено» (сервер); null — не сверялось */
+  appealsCheck?: AppealsCheck | null
+  /** Документы основания по открытому реестру — подсказка для сверки в один клик (только карточки реестра) */
+  basisSuggest?: Partial<Record<BasisDoc, BasisSuggestion>> | null
+  /** Решение аналитика по «Проверке по рекламе» («сдан» / «проверено — замечаний нет», сервер); null — оценка автоматическая */
+  decision?: ScreeningDecision | null
+}
+
+// ---------- «Проверка по рекламе» (сервер: app.screening) ----------
+
+/** ok — в реестре, замечаний нет; check — требует проверки; suspect — подозрение: продажа без разрешения; unknown — нет данных */
+export type ScreeningStatus = 'ok' | 'check' | 'suspect' | 'unknown'
+/** permitted — основание есть по открытым данным или сверке; not_permitted — раздел «Без разрешения на дольщиков» или сверенное
+ *  «нет»; unknown — сведений нет. Сведения источника — не юридический вывод */
+export type PermitStatus = 'permitted' | 'not_permitted' | 'unknown'
+/** hypothesis — по гипотезам ИИ (привязки не подтверждены); confirmed — по привязкам аналитика и открытым данным */
+export type ScreeningBasis = 'hypothesis' | 'confirmed'
+/** Чем обоснован статус ok, если не реестром: commissioned — аналитик подтвердил ввод в эксплуатацию («Дом сдан — замечаний
+ *  нет»), analyst — «Проверено — замечаний нет»; null — автоматическая оценка */
+export type ScreeningVariant = 'commissioned' | 'analyst'
+/** Вид решения аналитика: «Объект сдан» или «Проверено — замечаний нет» */
+export type DecisionKind = 'commissioned' | 'no_issues'
+
+export interface Permit {
+  status: PermitStatus
+  text: string
+  /** homeportal | homeportal_section | ashyq | analyst */
+  source?: string | null
+  url?: string | null
+  /** Объект открытых данных (/registry/{key}) */
+  registryKey?: string | null
+  /** Фильтр источника «В строительстве / Завершён», не стадия */
+  registryStage?: 'completed' | 'under_construction' | null
+  /** Сверено аналитиком, а не только сведения источника */
+  verified: boolean
+}
+
+/** Причина оценки. Порядок сервера: причины решения аналитика (kind 'decision') — первыми, затем строка основания
+ *  (permit.text), затем остальные — по рекламе, с цитатой и публикацией */
+export interface ScreeningReason {
+  text: string
+  adId?: string | null
+  quote?: string | null
+  /** booking | presale | ddu | installment | down_payment | money | sale | price | … */
+  signal?: string | null
+  /** 'decision' — сведения решения аналитика или «новая реклама после решения» */
+  kind?: 'decision' | null
+}
+
+export interface ScreeningCounts {
+  /** Публикаций, отнесённых к ЖК (без отклонённых) */
+  ads: number
+  /** Из них свежих (окно windowDays) с признаком приёма денег */
+  concerning: number
+  /** Дата последней публикации (местное время) */
+  lastAdAt?: string | null
+  windowDays: number
+}
+
+export interface Screening {
+  status: ScreeningStatus
+  label: string
+  /** ok по решению аналитика: «сдан» или «проверено»; нет (сервер старой версии) или null — автоматическая оценка */
+  variant?: ScreeningVariant | null
+  reasons: ScreeningReason[]
+  counts: ScreeningCounts
+  basis: ScreeningBasis
+  inRegistry: boolean
+  disclaimer: string
+}
+
+/** Новая реклама после решения, которая его сняла */
+export interface DecisionTrigger { adId: string; date?: string | null; signal?: string | null; quote?: string | null }
+
+/** Решение аналитика по ЖК: active — действует; reopened — снято автоматически новой рекламой (видно как история) */
+export interface ScreeningDecision {
+  id: number
+  kind: DecisionKind
+  status: 'active' | 'reopened'
+  /** «Дом сдан — замечаний нет» | «Проверено — замечаний нет» */
+  label: string
+  by: string
+  /** Когда записано, UTC ISO */
+  at?: string | null
+  actNumber?: string | null
+  /** Дата акта ввода, YYYY-MM-DD */
+  actDate?: string | null
+  source: string
+  sourceUrl?: string | null
+  reason?: string | null
+  comment?: string | null
+  reopenedBy?: DecisionTrigger | null
+}
+
+export interface Advert {
+  discoveredIds: number[]
+  aliases: string[]
+  accounts: string[]
+  sourceUrls: string[]
+  ads: number
+}
+
+export interface ScreeningWorst { complexId: string; name: string; status: ScreeningStatus; label: string }
+
+export interface DeveloperScreening {
+  status: ScreeningStatus
+  label: string
+  reasons: ScreeningReason[]
+  counts: { complexes: number; ok: number; check: number; suspect: number; unknown: number }
+  /** Худшие ЖК застройщика (подозрение первыми) */
+  worst: ScreeningWorst[]
+  basis: ScreeningBasis
+  disclaimer: string
+}
+
+/** GET /api/stats — только то, что использует интерфейс */
+export interface Stats {
+  screening?: {
+    complexes: Record<ScreeningStatus, number>
+    developers: Record<ScreeningStatus, number>
+    windowDays: number
+    disclaimer: string
+    discovered: { new: number; linked: number; dismissed: number }
+    /** ЖК «без замечаний» по решению аналитика: сдан, проверено; снятые новой рекламой */
+    decisions?: { commissioned: number; analyst: number; reopened: number }
+  } | null
+}
+
+// ---------- Объекты из рекламы (сервер: app.discovery) ----------
+
+export type DiscoveredStatus = 'new' | 'linked' | 'dismissed'
+
+export interface DiscoveredQuote {
+  adId: string
+  quote: string
+  name: string
+  address?: string | null
+  /** parser | bot (заявка жителя) | manual */
+  source: string
+  date?: string | null
+  platform?: string | null
+  account?: string | null
+}
+
+export interface DiscoveredStageHints {
+  underConstruction: number
+  completed: number
+  unknown: number
+  quotes: { adId: string; value: LlmStage; quote: string }[]
+}
+
+export interface DiscoveredSaleSignals {
+  ads: number
+  /** С признаком приёма денег (любой давности) */
+  concerning: number
+  /** Из них в окне windowDays */
+  recentConcerning: number
+  /** Вид признака → публикаций */
+  types: Record<string, number>
+  lastAdAt?: string | null
+}
+
+/** ЖК, которого нет в справочнике и открытом реестре, — найден в рекламе (или импортирован) */
+export interface Discovered {
+  id: number
+  name: string
+  normKey: string
+  aliases: string[]
+  addressHint?: string | null
+  status: DiscoveredStatus
+  origin: 'ads' | 'import'
+  complexId?: string | null
+  complexName?: string | null
+  firstSeen?: string | null
+  lastSeen?: string | null
+  adsCount: number
+  accounts: string[]
+  sourceUrls: string[]
+  /** Причина отклонения или примечание импорта */
+  note?: string | null
+  decidedBy?: string | null
+  decidedAt?: string | null
+  /** parser | bot | manual → упоминаний */
+  sources: Record<string, number>
+  /** До трёх, новые первыми */
+  quotes: DiscoveredQuote[]
+  stageHints: DiscoveredStageHints
+  saleSignals: DiscoveredSaleSignals
+  /** Последние сверки 2ГИС, новые первыми */
+  geo: GeoCheck[]
+  screening?: Screening | null
+}
+
+/** POST /api/discovered/{id}/geo: сверки по названию и, если реклама называла адрес, по адресу; errors — что не выполнилось */
+export interface DiscoveredGeoResult {
+  checks: GeoCheck[]
+  errors: { query: string; status: number; detail: string }[]
+}
+
+/** POST /api/discovered/{id}/create-complex: координаты — парой; без них, но с candidateId — точка кандидата 2ГИС */
+export interface DiscoveredCreateIn {
+  author: string
+  name: string
+  address?: string
+  lat?: number
+  lng?: number
+  developerName?: string
+  developerBin?: string
+  candidateId?: string
 }
 
 export type AppealStatus = 'verified' | 'pending' | 'rejected'
@@ -113,6 +380,12 @@ export interface Appeal {
   subject: string
   source: string
   origin?: Origin
+  /** Внесено и проверено аналитиком: комментарий, кто и когда внёс, кто решил и почему */
+  comment?: string | null
+  createdBy?: string | null
+  createdAt?: string | null
+  decidedBy?: string | null
+  decisionComment?: string | null
 }
 
 export type Platform = 'instagram' | 'tiktok' | 'krisha' | 'olx' | 'telegram' | 'facebook' | '2gis'
@@ -143,19 +416,20 @@ export interface Ad {
   termsReviewBy?: string | null
   termsReviewAt?: string | null
   price?: string
-  /** manual — ручной ввод, parser — сборщик или приём публикаций API, bot — заявка жителя через Telegram-бота, demo — сид */
+  /** manual — ручной ввод, parser — сборщик или приём публикаций API, bot — заявка жителя через Telegram-бота, demo — прежний демо-набор */
   source: 'manual' | 'parser' | 'demo' | 'bot'
   status: AdStatus
   assignee?: string
   reach?: number
   origin?: Origin
-  /** Когда публикацию получил сервер (сборщик, приём, бот), UTC ISO — не время публикации в источнике. Нет у демо и ручных */
+  /** Когда публикацию получил сервер (сборщик, приём, бот), UTC ISO — не время публикации в источнике. Нет у ручных */
   collectedAt?: string | null
-  /** Сохранённые файлы публикации текущей версии (изображения и видео), адреса /api/media/{id}. Нет у демо и ручных */
+  /** Сохранённые файлы публикации текущей версии (изображения и видео), адреса /api/media/{id} (в офлайн-копии — /snapshot-media/…).
+   *  Нет у ручных */
   media?: MediaRef[]
   /** Анализ собранной публикации на сервере: очередь, идёт, готов, не выполнен. Нет у публикаций без приёма */
   processing?: Processing | null
-  /** Последний анализ ИИ (Claude) — гипотезы для аналитика. Нет — анализа не было (ключ не задан, демо, ручной ввод) */
+  /** Последний анализ ИИ (Claude) — гипотезы для аналитика. Нет — анализа не было (ключ не задан, ручной ввод) */
   llm?: LlmAnalysis | null
 }
 
@@ -171,6 +445,12 @@ export interface LlmSignal { type: LlmSignalType; quote: string; source?: 'text'
 export interface LlmAmount { value: number; currency: string; kind: string; quote: string; source?: 'text' | 'ocr' }
 /** Кандидат ЖК — гипотеза: complexName — из справочника сервера, не из ответа модели */
 export interface LlmCandidate { complexId: string; complexName: string; confidence: 'low' | 'medium' | 'high'; quote: string; source?: 'text' | 'ocr' }
+/** ЖК, который называет публикация: название и цитата сверены с материалом, адрес — дословно или пустой. Может не быть в справочнике
+ *  (тогда это объект из рекламы) */
+export interface LlmMention { name: string; address?: string; quote: string; source?: 'text' | 'ocr' }
+/** Стадия рекламируемого объекта по материалу; без дословной цитаты — unknown */
+export type LlmStage = 'under_construction' | 'completed' | 'unknown'
+export interface LlmObjectStage { value: LlmStage; quote?: string; source?: 'text' | 'ocr' | null }
 
 /** Анализ ИИ (Claude): только гипотезы — статус, привязку и вывод о нарушении модель не задаёт.
  *  failed / refused / skipped — «анализ ИИ не выполнен», а не «риска нет» */
@@ -184,6 +464,10 @@ export interface LlmAnalysis {
   saleSignals: LlmSignal[]
   amounts: LlmAmount[]
   complexCandidates: LlmCandidate[]
+  /** saq-llm-2: ЖК, названные в публикации (в том числе вне справочника); у старых ответов — пусто или нет поля */
+  mentionedComplexes?: LlmMention[]
+  /** saq-llm-2: стадия объекта по материалу; у старых ответов — null */
+  objectStage?: LlmObjectStage | null
   uncertainties: string[]
   summary?: string | null
   /** Сколько элементов ответа сервер отбросил: quote — цитаты нет в тексте, complex — ЖК не из справочника, amount — не число, limit — сверх предела */
@@ -431,7 +715,8 @@ export interface OlxStart {
 
 // ---------- 2ГИС: сверка адреса (integration-spec §12.5) ----------
 
-export type GeoTargetKind = 'complex' | 'registry'
+/** complex — карточка ЖК, registry — объект открытых данных, discovered — объект из рекламы */
+export type GeoTargetKind = 'complex' | 'registry' | 'discovered'
 
 /** Точность совпадения адреса у 2ГИС: exact — точный дом, number — отличается литера/корпус, near — ближайший дом,
  *  street — только улица */
@@ -570,6 +855,8 @@ export interface RiskResult {
   observations: Observation[]
   summary: string
   modelVersion: string
+  /** false — риск не оценивается: карточка из открытого реестра без проверенных сведений (балл и зону не показывать) */
+  assessed?: boolean
 }
 
 export interface AdSignals {
@@ -778,7 +1065,7 @@ export interface OcrStatus {
   detail?: string | null
 }
 
-/** Прогон движка ИИ на кейсах shared/ai_cases.json — тексты, которых нет в демо-наборе */
+/** Прогон движка ИИ на кейсах shared/ai_cases.json — синтетические тестовые тексты, не из собранной рекламы */
 export interface AiEvalCase {
   id: string
   title?: string | null
@@ -810,8 +1097,9 @@ export interface AiEval {
 
 // ---------- Открытые данные (ТЗ §4): записи источников и объекты по ним — без риска, зон и сигналов ----------
 
-/** Код источника: карточки Homeportal, отдельный раздел Homeportal, Казреестр (CSV Ashyq Data); demo — демо-набор */
-export type SourceCode = 'homeportal' | 'homeportal_section' | 'ashyq' | 'demo'
+/** Код источника: карточки Homeportal, отдельный раздел Homeportal, Казреестр (CSV Ashyq Data); demo — прежний демо-набор (старые БД);
+ *  snapshot — офлайн-копия стартового набора (только во фронтенде, когда сервер недоступен) */
+export type SourceCode = 'homeportal' | 'homeportal_section' | 'ashyq' | 'demo' | 'snapshot'
 
 /** Способ привлечения средств дольщиков по данным источника */
 export type FundingMethod = 'guarantee' | 'mio' | 'bvu'
@@ -904,15 +1192,15 @@ export interface SourceInfo {
   code: SourceCode | string
   name: string
   url?: string | null
-  /** Записей в БД (у demo — число вымышленных ЖК) */
+  /** Записей в БД (у demo — число вымышленных ЖК, у snapshot — публикаций копии) */
   records: number
-  /** Объектов с записями этого источника (у demo — ЖК) */
+  /** Объектов с записями этого источника (у demo и snapshot — ЖК) */
   objects?: number
   /** Последний сбор */
   collectedAt?: string | null
   providerLoadedAt?: string | null
   note?: string | null
-  /** Только у demo */
+  /** Только у demo и snapshot */
   counts?: { complexes: number; developers: number; ads: number; appeals: number }
 }
 

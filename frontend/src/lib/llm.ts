@@ -83,7 +83,7 @@ export const NO_REANALYZE_ROUTE = 'На сервере нет повторног
 
 /** Почему кнопка «Проанализировать ещё раз» недоступна (подсказка у кнопки); null — доступна */
 export function reanalyzeBlock(o: { live: boolean; admin: boolean; collected: boolean; processing?: Processing | null; author?: string | null }): string | null {
-  if (!o.live) return 'Повторный анализ выполняется на сервере — в демо-режиме недоступен'
+  if (!o.live) return 'Повторный анализ выполняется на сервере — в офлайн-копии недоступен'
   if (!o.collected) return 'Повторный анализ доступен для собранных публикаций'
   if (o.processing?.status === 'queued' || o.processing?.status === 'running') return 'Анализ публикации уже в очереди или идёт — дождитесь результата'
   if (!o.admin) return 'Нужен режим администратора (страница «Источники»): повторный анализ расходует дневной бюджет анализа ИИ'

@@ -54,7 +54,7 @@ describe('«Проанализировать ещё раз»', () => {
   })
 
   it('иначе — причина у кнопки', () => {
-    expect(reanalyzeBlock({ ...ok, live: false })).toBe('Повторный анализ выполняется на сервере — в демо-режиме недоступен')
+    expect(reanalyzeBlock({ ...ok, live: false })).toBe('Повторный анализ выполняется на сервере — в офлайн-копии недоступен')
     expect(reanalyzeBlock({ ...ok, collected: false })).toBe('Повторный анализ доступен для собранных публикаций')
     for (const status of ['queued', 'running'] as const) {
       expect(reanalyzeBlock({ ...ok, processing: { status, version: 1 } })).toBe('Анализ публикации уже в очереди или идёт — дождитесь результата')

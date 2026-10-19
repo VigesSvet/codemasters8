@@ -11,7 +11,7 @@ from .db import Base
 # Версия схемы БД. Меняется только добавлением шага в migrate.STEPS (последний шаг = SCHEMA_VERSION): база известной
 # прошлой версии обновляется на месте с резервной копией, неизвестной — пересоздаётся, только если в ней нет собранных и
 # внесённых данных (см. seed.init_db, migrate).
-SCHEMA_VERSION = "2026.10-llm-1"
+SCHEMA_VERSION = "2026.10-decisions-1"
 
 # JSON со слежением за изменениями верхнего уровня (row.state["x"] = 1 сохраняется при commit). Код всё равно
 # переприсваивает (row.state = {**row.state, **patch}) и не меняет словари, полученные из другой сессии.
@@ -89,7 +89,9 @@ class Developer(Base):
     site: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     instagram: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     phones: Mapped[list] = mapped_column(JSON, default=list)  # телефоны отдела продаж — признак для сопоставления (ИИ)
-    origin: Mapped[str] = mapped_column(String(16), default="demo")  # demo — вымышленная организация демо-набора
+    # demo — вымышленная организация демо-набора, registry — застройщик из открытого реестра (app.demo): только название и БИН,
+    # advertised — застройщик, названный в рекламе ЖК, которого нет в открытом реестре (app.discovery): сведения рекламы
+    origin: Mapped[str] = mapped_column(String(16), default="demo")
 
     complexes: Mapped[list["Complex"]] = relationship(back_populates="developer")
 
@@ -102,23 +104,35 @@ class Complex(Base):
     developer_id: Mapped[str] = mapped_column(ForeignKey("developers.id"))
     address: Mapped[str] = mapped_column(String(255))
     district: Mapped[str] = mapped_column(String(64))
-    lng: Mapped[float] = mapped_column(Float)
-    lat: Mapped[float] = mapped_column(Float)
+    # координат может не быть (объект реестра без координат, ЖК по рекламе): None — «нет координат», сверка — 2ГИС
+    lng: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     stage: Mapped[str] = mapped_column(String(32))
     progress: Mapped[int] = mapped_column(Integer)
     floors: Mapped[int] = mapped_column(Integer)
     flats: Mapped[int] = mapped_column(Integer)
     start: Mapped[str] = mapped_column(String(10))
     planned_end: Mapped[str] = mapped_column(String(10))
-    # {"guarantee": "yes|no|unknown", "guaranteeRef", "mio", "mioRef", "bvu", "bank", "source", "checkedAt"}
+    # {"guarantee": "yes|no|unknown", "guaranteeRef", "mio", "mioRef", "bvu", "bank", "source", "checkedAt",
+    #  "sources": {документ: {"source", "url", "checkedAt", "checkedBy"?, "ref"?, "comment"?}}} — сверка по документам
+    #  (app.verification пишет checkedBy — кто сверил; общие source/checkedAt — последняя сверка)
     basis: Mapped[dict] = mapped_column(JSON)
-    # {"declared": {"value", "source", "date"} | null, "confirmed": ... | null} — для R5
+    # {"declared": {"value", "source", "date", "by"?, "at"?} | null, "confirmed": ... | null} — для R5
     readiness: Mapped[dict] = mapped_column(JSON, default=lambda: {"declared": None, "confirmed": None})
     in_published_list: Mapped[str] = mapped_column(String(8), default="unknown")
     cover: Mapped[str] = mapped_column(String(255))
+    # [{"date", "src", "source", "activity", "note"?, …}]; снимок аналитика — ещё "mediaId", "by", "at" (app.verification)
     photos: Mapped[list] = mapped_column(JSON, default=list)
     idle_days: Mapped[int] = mapped_column(Integer, default=0)
-    origin: Mapped[str] = mapped_column(String(16), default="demo")  # demo — вымышленный ЖК демо-набора
+    # demo — вымышленный ЖК демо-набора, registry — карточка из открытого реестра (app.demo): сведения источника, не проверены;
+    # advertised — ЖК, известный только по рекламе: в открытом реестре его нет, карточку создал аналитик или импорт
+    # (app.discovery) — сведения рекламы, не проверены
+    origin: Mapped[str] = mapped_column(String(16), default="demo")
+    # Сверка аналитиком (app.verification): перечень ГАСК (O1) — {"value", "source", "url", "checkedAt", "checkedBy",
+    # "comment"?}; «обращений нет — сверено» (R4 карточек реестра и рекламы) — {"source", "checkedAt", "checkedBy",
+    # "comment"?}. None — не сверялось
+    published_list_check: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    appeals_check: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     developer: Mapped[Developer] = relationship(back_populates="complexes")
 
@@ -198,6 +212,12 @@ class Appeal(Base):
     subject: Mapped[str] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(255))
     origin: Mapped[str] = mapped_column(String(16), default="demo")
+    # Внесено и проверено аналитиком (app.verification): кто и когда внёс, комментарий; кто решил и с каким основанием
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    decision_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class Signal(Base):
@@ -550,7 +570,7 @@ class GeoCheck(Base):
     __table_args__ = (Index("ix_geo_checks_target", "target_kind", "target_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    target_kind: Mapped[str] = mapped_column(String(16))  # complex | registry
+    target_kind: Mapped[str] = mapped_column(String(16))  # complex | registry | discovered (объект из рекламы)
     target_id: Mapped[str] = mapped_column(String(96))
     provider: Mapped[str] = mapped_column(String(16), default="2gis")
     query: Mapped[str] = mapped_column(Text)
@@ -632,6 +652,8 @@ class LlmAnalysis(Base):
                 "prompt_version": self.prompt_version, "content_version": self.content_version,
                 "sale_signals": list(res.get("saleSignals") or []), "amounts": list(res.get("amounts") or []),
                 "complex_candidates": list(res.get("complexCandidates") or []),
+                "mentioned_complexes": list(res.get("mentionedComplexes") or []),
+                "object_stage": res.get("objectStage") or None,
                 "uncertainties": list(res.get("uncertainties") or []), "summary": res.get("summary"),
                 "dropped": dict(self.dropped or {}), "error": self.error, "retry_at": self.retry_at,
                 "attempts": self.attempts or 0, "refusal_category": meta.get("refusalCategory"),
@@ -651,3 +673,86 @@ class QuotaCounter(Base):
     limit_value: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DiscoveredObject(Base):
+    """Объект из рекламы (app.discovery): ЖК, проект или очередь, которые реклама называет, а в справочнике ЖК и в открытом
+    реестре их нет. Появляется по ответу Claude (mentionedComplexes) или импортом; решение — за аналитиком: создать
+    карточку ЖК (origin «advertised»), привязать к существующему ЖК (название — его другое написание) или отклонить.
+
+    norm_key — ключ сравнения названия (без «ЖК», кавычек и регистра, латиница ≈ кириллица: discovery.name_key).
+    status: new — ждёт решения; linked — привязан к ЖК complex_id (его упоминания — реклама этого ЖК); dismissed —
+    отклонён (note — причина). Счётчики (ads_count, accounts, first_seen, last_seen) пересчитываются по упоминаниям."""
+
+    __tablename__ = "discovered_objects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    norm_key: Mapped[str] = mapped_column(String(255), unique=True)
+    name: Mapped[str] = mapped_column(String(255))
+    aliases: Mapped[list] = mapped_column(MutableJSONList, default=list)  # другие написания из рекламы и импорта
+    address_hint: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # адрес дословно из рекламы
+    status: Mapped[str] = mapped_column(String(16), default="new", index=True)  # new | linked | dismissed
+    complex_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)  # ЖК (без FK)
+    origin: Mapped[str] = mapped_column(String(16), default="ads", server_default="ads")  # ads (Claude) | import
+    first_seen: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    ads_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    accounts: Mapped[list] = mapped_column(MutableJSONList, default=list)  # аккаунты рекламы (без заявок жителей)
+    source_urls: Mapped[list] = mapped_column(MutableJSONList, default=list)  # ссылки на рекламу из импорта
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # причина отклонения или примечание импорта
+    decided_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DiscoveredMention(Base):
+    """Упоминание объекта из рекламы в публикации: дословная цитата и адрес из проверенного ответа Claude (одна строка на
+    объект и публикацию — повторный анализ её обновляет), источник публикации (parser | bot | manual) и стадия объекта
+    по этой публикации (objectStage)."""
+
+    __tablename__ = "discovered_mentions"
+    __table_args__ = (UniqueConstraint("object_id", "ad_id", name="uq_discovered_mentions_object_ad"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    object_id: Mapped[int] = mapped_column(ForeignKey("discovered_objects.id"), index=True)
+    ad_id: Mapped[str] = mapped_column(String(32), index=True)  # публикация (без FK)
+    name: Mapped[str] = mapped_column(String(255), default="")  # название, как его записал ответ модели
+    quote: Mapped[str] = mapped_column(Text, default="")
+    address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(16), default="parser")
+    stage: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)  # under_construction | completed | unknown
+    stage_quote: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ScreeningDecision(Base):
+    """Решение аналитика по «Проверке по рекламе» (app.decisions): «Объект сдан» — ввод в эксплуатацию подтверждён (акт,
+    дата акта, источник) — или «Проверено — замечаний нет» (причина, источник). Пока решение действует, оценка ЖК —
+    «без замечаний» с этим основанием (app.screening); новая реклама после решения с признаком приёма денег снимает его
+    автоматически (это вычисляется при чтении и не хранится — reopened в ответе API).
+
+    status: active — действует (не больше одного на ЖК: частичный уникальный индекс); cancelled — отменено аналитиком
+    (closed_* — кто, когда, причина); superseded — заменено новым решением. Отменённые и заменённые остаются историей.
+    prev_stage — стадия карточки до отметки «сдан» (отметка ставит «введён»; отмена и замена её возвращают)."""
+
+    __tablename__ = "screening_decisions"
+    __table_args__ = (Index("uq_screening_decisions_active_complex", "complex_id", unique=True,
+                            sqlite_where=text("status = 'active'"), postgresql_where=text("status = 'active'")),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    complex_id: Mapped[str] = mapped_column(String(32), index=True)  # ЖК (без FK — новые таблицы не ссылаются на старые)
+    kind: Mapped[str] = mapped_column(String(16))  # commissioned | no_issues
+    status: Mapped[str] = mapped_column(String(16), default="active", index=True)  # active | cancelled | superseded
+    act_number: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)  # номер акта ввода (необязателен)
+    act_date: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # дата акта, YYYY-MM-DD
+    source: Mapped[str] = mapped_column(String(255))  # где подтверждено: ЕГКН, акт приёмки, 2ГИС, ответ акимата / ГАСК…
+    source_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # «проверено — замечаний нет»: что проверено
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    prev_stage: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    closed_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    close_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

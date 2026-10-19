@@ -1,5 +1,6 @@
 """Схема БД: обновление на месте (migrate), защита собранных данных, новые таблицы, JSON со слежением, помощники
 моделей (as_utc, insert_ignore) и новые поля схем API (AdOut, HumanName, приём публикаций)."""
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -29,13 +30,31 @@ def _set_meta(value: str) -> None:
         conn.execute(text("UPDATE meta SET value = :v WHERE key = 'schema_version'"), {"v": value})
 
 
+# Столбцы шага 2026.10-verification-1 (сверка сведений аналитиком)
+VERIFICATION_COLUMNS = {"complexes": ("published_list_check", "appeals_check"),
+                        "appeals": ("comment", "created_by", "created_at", "decided_by", "decision_comment")}
+
+
+def _drop_verification_columns() -> None:
+    with engine.begin() as conn:
+        for table_name, names in VERIFICATION_COLUMNS.items():
+            for name in names:
+                conn.execute(text(f"ALTER TABLE {table_name} DROP COLUMN {name}"))
+
+
+def _has_verification_columns() -> bool:
+    return all(set(names) <= {c["name"] for c in inspect(engine).get_columns(t)} for t, names in VERIFICATION_COLUMNS.items())
+
+
 def _to_baseline() -> None:
-    """База как у версии 2026.10-sources-1: без 12 новых таблиц, llm_analyses и ads.collected_at."""
+    """База как у версии 2026.10-sources-1: без 12 новых таблиц, llm_analyses, таблиц объектов из рекламы, решений
+    аналитика, ads.collected_at и столбцов сверки аналитиком."""
     with engine.begin() as conn:
         for t in reversed(Base.metadata.sorted_tables):
-            if t.name in migrate.NEW_TABLES + migrate.LLM_TABLES:
+            if t.name in migrate.NEW_TABLES + migrate.LLM_TABLES + migrate.DISCOVERY_TABLES + migrate.DECISION_TABLES:
                 t.drop(conn)
         conn.execute(text("ALTER TABLE ads DROP COLUMN collected_at"))
+    _drop_verification_columns()
     _set_meta(migrate.BASELINE)
 
 
@@ -49,11 +68,12 @@ def _backups() -> set:
 
 
 def test_fresh_db(tmp_path):
-    assert models.SCHEMA_VERSION == migrate.STEPS[-1][0] == "2026.10-llm-1"
+    assert models.SCHEMA_VERSION == migrate.STEPS[-1][0] == "2026.10-decisions-1"
     eng = make_engine(f"sqlite:///{tmp_path}/fresh.db")
     try:
         init_db(eng)
-        assert set(migrate.NEW_TABLES + migrate.LLM_TABLES) <= set(inspect(eng).get_table_names())
+        tables = set(inspect(eng).get_table_names())
+        assert set(migrate.NEW_TABLES + migrate.LLM_TABLES + migrate.DISCOVERY_TABLES + migrate.DECISION_TABLES) <= tables
         with eng.connect() as conn:
             assert _meta(conn) == models.SCHEMA_VERSION
             assert conn.execute(text("SELECT count(*) FROM ads")).scalar() == 12
@@ -75,8 +95,9 @@ def test_baseline_upgrade_keeps_data(client):
 
     init_db(engine)
 
-    assert set(migrate.NEW_TABLES + migrate.LLM_TABLES) <= set(inspect(engine).get_table_names())
+    assert set(migrate.NEW_TABLES + migrate.LLM_TABLES + migrate.DECISION_TABLES) <= set(inspect(engine).get_table_names())
     assert "collected_at" in {c["name"] for c in inspect(engine).get_columns("ads")}
+    assert _has_verification_columns()
     with engine.connect() as conn:
         assert _meta(conn) == models.SCHEMA_VERSION
     assert _ad(client, aid)["origin"] == "analyst"
@@ -106,14 +127,14 @@ def test_intake_upgrade_adds_llm_table_and_keeps_data(client):
         models.LlmAnalysis.__table__.drop(conn)
     _set_meta("2026.10-intake-1")
     assert "llm_analyses" not in inspect(engine).get_table_names()
-    assert migrate.chain_from("2026.10-intake-1") == migrate.STEPS[-1:]
+    assert migrate.chain_from("2026.10-intake-1") == migrate.STEPS[-4:]
     before = _backups()
 
     init_db(engine)
 
     assert "llm_analyses" in inspect(engine).get_table_names()
     with engine.connect() as conn:
-        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-llm-1"
+        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-decisions-1"
     got = _ad(client, aid)
     assert got["origin"] == "collected" and got["processing"]["status"] == "queued" and "llm" not in got
     assert _ad(client, "a1")["status"] == "in_review"
@@ -134,6 +155,149 @@ def test_intake_upgrade_adds_llm_table_and_keeps_data(client):
             f.unlink()
     with SessionLocal() as db:  # оплаченные результаты — невосстановимые данные
         assert migrate.durable_rows(engine, set(inspect(engine).get_table_names()))["llm_analyses"] == 1
+
+
+def _coords_not_null() -> None:
+    """complexes.lat/lng — NOT NULL, как до 2026.10-discovery-1 (SQLite — пересборкой таблицы по прежнему DDL)."""
+    with engine.begin() as conn:
+        if conn.dialect.name == "postgresql":
+            conn.execute(text("ALTER TABLE complexes ALTER COLUMN lat SET NOT NULL"))
+            conn.execute(text("ALTER TABLE complexes ALTER COLUMN lng SET NOT NULL"))
+            return
+        ddl = conn.execute(text("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'complexes'")).scalar()
+        old = re.sub(r"\b(lat|lng) FLOAT\b(?! NOT NULL)", r"\1 FLOAT NOT NULL", ddl)
+        conn.exec_driver_sql(old.replace("CREATE TABLE complexes", "CREATE TABLE complexes_old", 1))
+        conn.exec_driver_sql("INSERT INTO complexes_old SELECT * FROM complexes")
+        conn.exec_driver_sql("DROP TABLE complexes")
+        conn.exec_driver_sql("ALTER TABLE complexes_old RENAME TO complexes")
+        conn.exec_driver_sql("CREATE INDEX ix_complexes_name ON complexes (name)")
+
+
+def _nullable(table_name: str) -> dict:
+    return {c["name"]: c["nullable"] for c in inspect(engine).get_columns(table_name)}
+
+
+def test_discovery_upgrade_keeps_data_and_allows_missing_coords(client):
+    """2026.10-llm-1 → 2026.10-discovery-1: таблицы объектов из рекламы добавляются, у complexes.lat/lng снимается
+    NOT NULL (SQLite — пересборкой таблицы в транзакции шага), ЖК, публикации, решения аналитика и ответы Claude прежней
+    версии промпта сохраняются и показываются."""
+    with SessionLocal() as db:
+        aid = _collected_ad(db, media=False)
+        db.add(models.LlmAnalysis(ad_id=aid, content_hash="h" * 64, model="claude-sonnet-5-5", served_model="x",
+                                  prompt_version="saq-llm-1", status="done", result={"summary": "ответ v1"}))
+        db.commit()
+    assert client.patch("/api/ads/a1/complex", json={"complexId": "c3", "author": "Тест"}).status_code == 200
+    before_cx = {c["id"]: (c["name"], c["lat"], c["lng"], c["developerId"]) for c in client.get("/api/complexes").json()}
+    with engine.begin() as conn:
+        for name in reversed(migrate.DISCOVERY_TABLES):
+            Base.metadata.tables[name].drop(conn)
+    _coords_not_null()
+    assert _nullable("complexes")["lat"] is False and _nullable("complexes")["lng"] is False
+    _set_meta("2026.10-llm-1")
+    assert migrate.chain_from("2026.10-llm-1") == migrate.STEPS[-3:]
+    before = _backups()
+
+    init_db(engine)
+
+    assert set(migrate.DISCOVERY_TABLES) <= set(inspect(engine).get_table_names())
+    assert _nullable("complexes")["lat"] is True and _nullable("complexes")["lng"] is True
+    assert "ix_complexes_name" in {i["name"] for i in inspect(engine).get_indexes("complexes")}
+    with engine.connect() as conn:
+        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-decisions-1"
+    after_cx = {c["id"]: (c["name"], c["lat"], c["lng"], c["developerId"]) for c in client.get("/api/complexes").json()}
+    assert after_cx == before_cx
+    a1 = _ad(client, "a1")
+    assert (a1["complexId"], a1["linkConfirmedBy"]) == ("c3", "Тест")
+    got = _ad(client, aid)["llm"]  # ответ прежней версии промпта — как был
+    assert (got["promptVersion"], got["summary"], got["mentionedComplexes"], got["objectStage"]) == (
+        "saq-llm-1", "ответ v1", [], None)
+    with SessionLocal() as db:  # ЖК без координат теперь можно сохранить
+        db.add(models.Complex(id="nc1", name="Без координат", developer_id="d1", address="", district="", lat=None,
+                              lng=None, stage="", progress=0, floors=0, flats=0, start="", planned_end="", basis={},
+                              cover="", origin="advertised"))
+        db.add(models.DiscoveredObject(norm_key="test", name="Тест"))
+        db.commit()
+    assert client.get("/api/complexes/nc1").json()["lat"] is None
+    assert migrate.durable_rows(engine, set(inspect(engine).get_table_names()))["discovered_objects"] == 1
+    with engine.begin() as conn:
+        assert migrate.relax_not_null(conn, "complexes", ("lat", "lng")) is False  # идемпотентно
+    if _sqlite_file():
+        new = _backups() - before
+        assert len(new) == 1 and next(iter(new)).name.startswith(f"{_sqlite_file().name}.bak-2026.10-llm-1-")
+        for f in new:
+            f.unlink()
+
+
+def test_verification_upgrade_adds_columns_and_keeps_data(client):
+    """2026.10-discovery-1 → 2026.10-verification-1: у ЖК — сверка перечня ГАСК и «обращений нет — сверено», у
+    обращений — кто внёс и кто проверил; ЖК, основание, обращения и журнал сохраняются, сверка сразу работает."""
+    before_cx = {c["id"]: (c["basis"], c["inPublishedList"]) for c in client.get("/api/complexes").json()}
+    before_ap = client.get("/api/appeals").json()
+    _drop_verification_columns()
+    assert not _has_verification_columns()
+    _set_meta("2026.10-discovery-1")
+    assert migrate.chain_from("2026.10-discovery-1") == migrate.STEPS[-2:]
+    before = _backups()
+
+    init_db(engine)
+
+    assert _has_verification_columns()
+    with engine.connect() as conn:
+        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-decisions-1"
+    cxs = client.get("/api/complexes").json()
+    assert {c["id"]: (c["basis"], c["inPublishedList"]) for c in cxs} == before_cx
+    assert all(c["publishedListCheck"] is None and c["appealsCheck"] is None for c in cxs)
+    assert [{k: v for k, v in a.items() if k in before_ap[0]} for a in client.get("/api/appeals").json()] == before_ap
+    r = client.post("/api/complexes/c14/appeals-check", json={"author": "Тест", "source": "ДЭР ВКО"})
+    assert r.status_code == 200 and r.json()["appealsCheck"]["checkedBy"] == "Тест"
+    ap = client.post("/api/complexes/c14/appeals", json={"author": "Тест", "date": "2026-10-01", "subject": "Тема",
+                                                         "source": "eOtinish"})
+    assert ap.status_code == 201 and ap.json()["createdBy"] == "Тест"
+    # сверка аналитика — невосстановимые данные: пересоздание схемы её бы стёрло
+    assert migrate.durable_rows(engine, set(inspect(engine).get_table_names())) == {"appeals": 1, "audit_events": 2}
+    with engine.begin() as conn:
+        assert migrate.add_column(conn, "appeals", models.Appeal.__table__.c.created_by) is False  # идемпотентно
+    if _sqlite_file():
+        new = _backups() - before
+        assert len(new) == 1 and next(iter(new)).name.startswith(f"{_sqlite_file().name}.bak-2026.10-discovery-1-")
+        for f in new:
+            f.unlink()
+
+
+def test_decisions_upgrade_adds_table_and_keeps_data(client):
+    """2026.10-verification-1 → 2026.10-decisions-1: таблица решений аналитика по «Проверке по рекламе» добавляется на
+    месте; ЖК, стадии, оценки и журнал сохраняются, решения сразу работают и защищены от пересоздания схемы."""
+    before = {c["id"]: (c["stage"], c["screening"]["status"]) for c in client.get("/api/complexes").json()}
+    with engine.begin() as conn:
+        models.ScreeningDecision.__table__.drop(conn)
+    _set_meta("2026.10-verification-1")
+    assert "screening_decisions" not in inspect(engine).get_table_names()
+    assert migrate.chain_from("2026.10-verification-1") == migrate.STEPS[-1:]
+    assert migrate.tables_after("2026.10-verification-1") == {"screening_decisions"}
+    assert "screening_decisions" in migrate.tables_after("2026.10-discovery-1")
+    assert migrate.tables_after(models.SCHEMA_VERSION) == set() == migrate.tables_after("old")
+    backups = _backups()
+
+    init_db(engine)
+
+    assert "screening_decisions" in inspect(engine).get_table_names()
+    idx = {i["name"]: i for i in inspect(engine).get_indexes("screening_decisions")}
+    assert idx["uq_screening_decisions_active_complex"]["unique"]
+    with engine.connect() as conn:
+        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-decisions-1"
+    cxs = client.get("/api/complexes").json()
+    assert {c["id"]: (c["stage"], c["screening"]["status"]) for c in cxs} == before
+    assert all(c["decision"] is None and c["screening"]["variant"] is None for c in cxs)
+    r = client.post("/api/complexes/c2/commissioned", json={"author": "Тест", "actDate": "2026-09-01", "source": "ЕГКН"})
+    assert r.status_code == 200 and r.json()["decision"]["kind"] == "commissioned"
+    assert migrate.durable_rows(engine, set(inspect(engine).get_table_names()))["screening_decisions"] == 1
+    with engine.begin() as conn:
+        migrate._decisions_1(conn)  # идемпотентно
+    if _sqlite_file():
+        new = _backups() - backups
+        assert len(new) == 1 and next(iter(new)).name.startswith(f"{_sqlite_file().name}.bak-2026.10-verification-1-")
+        for f in new:
+            f.unlink()
 
 
 def test_unknown_version_with_durable_rows(client, env):
