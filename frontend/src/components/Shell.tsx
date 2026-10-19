@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { IcBell, IcCheck, IcChevronDown, IcChevronRight, IcClose, IcDatabase, IcFlag, IcLogout, IcPhone, IcQueue, IcRefresh, IcUsers, IcWarning } from '../ui/icons'
 import { API } from '../lib/api'
 import { fmtStamp } from '../lib/audit'
+import { roleOf } from '../lib/session'
 import { useStore } from '../lib/store'
 import QuickSearch from './QuickSearch'
 
@@ -111,19 +112,19 @@ export default function Shell() {
             <Link to="/ads/new" className="btn g m">Добавить публикацию</Link>
             <Link to="/queue?who=me" className="btn g m">Моя очередь</Link>
             <div className="nav-item">
-              <button className="user-btn" onClick={() => setOpen(open === 'me' ? null : 'me')} aria-label="Профиль"><span className="ava">{user?.short ?? '?'}</span><IcChevronDown size={16} /></button>
+              <button className="user-btn" onClick={() => setOpen(open === 'me' ? null : 'me')} aria-label="Профиль"><span className="ava">{user ? roleOf(user).short : '?'}</span><IcChevronDown size={16} /></button>
               {open === 'me' && (
                 <>
                   <div className="menu-scrim" onClick={() => setOpen(null)} />
                   <div className="menu fade" style={{ left: 'auto', right: 0, minWidth: 280 }}>
                     <div style={{ padding: '8px 16px 12px', borderBottom: '1px solid var(--line)', marginBottom: 6 }}>
-                      <div className="bold">{user?.name}</div>
-                      <div className="t-sm c2">{user?.role}</div>
-                      <div className="t-xs c3" style={{ marginTop: 4 }}>Вход пилота без пароля: от этого имени действия пишутся в журнал</div>
+                      <div className="bold">{user && roleOf(user).title}</div>
+                      <div className="t-sm c2">{user && roleOf(user).dept}</div>
+                      <div className="t-xs c3" style={{ marginTop: 4 }}>Вход пилота без пароля: действия пишутся в журнал от этой учётной записи</div>
                     </div>
                     <Link to="/queue?who=me"><span className="ic"><IcCheck size={16} /></span><span className="lbl">Мои проверки</span><IcChevronRight size={16} /></Link>
                     <Link to="/signals?status=new"><span className="ic"><IcFlag size={16} /></span><span className="lbl">Сигналы ждут решения</span><IcChevronRight size={16} /></Link>
-                    <Link to={`/login?next=${here}`}><span className="ic"><IcUsers size={16} /></span><span className="lbl">Сменить пользователя</span><IcChevronRight size={16} /></Link>
+                    <Link to={`/login?next=${here}`}><span className="ic"><IcUsers size={16} /></span><span className="lbl">Сменить роль</span><IcChevronRight size={16} /></Link>
                     {/* без ?next: следующий сотрудник на этом месте не должен попасть на страницу предыдущего */}
                     <button onClick={() => { logout(); nav('/login', { replace: true }) }}><span className="ic"><IcLogout size={16} /></span><span className="lbl">Выйти</span><IcChevronRight size={16} /></button>
                   </div>

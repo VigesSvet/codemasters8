@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { isDemo } from '../lib/provenance'
 import { model } from '../lib/risk'
-import { safeNext } from '../lib/session'
+import { roleOf, safeNext } from '../lib/session'
 import { useStore } from '../lib/store'
 import { IcCheck, IcKey } from '../ui/icons'
 
@@ -39,25 +39,25 @@ export default function Login() {
         <form onSubmit={(e) => { e.preventDefault(); enter() }}>
           <h1 className="t-h1">Войдите в рабочее место</h1>
           <p className="c2" style={{ margin: '4px 0 12px', lineHeight: '21px' }}>Для сотрудников уполномоченного органа. ИИ находит рекламу и считает риск — решение принимаете вы.</p>
-          <div className="who-list" role="radiogroup" aria-label="Сотрудник">
+          <div className="who-list" role="radiogroup" aria-label="Роль">
             {analysts.map((a) => (
               <button key={a.id} type="button" role="radio" aria-checked={pick === a.id} className={`cell who ${pick === a.id ? 'on' : ''}`}
                 onClick={() => setPick(a.id)} onDoubleClick={() => { setPick(a.id); enter(a) }}>
-                <span className="ava">{a.short}</span>
-                <div className="main"><div className="ttl">{a.fullName || a.name}</div><div className="sub">{a.role}{user?.id === a.id && ' · вы вошли'}</div></div>
+                <span className="ava">{roleOf(a).short}</span>
+                <div className="main"><div className="ttl">{roleOf(a).title}</div><div className="sub">{roleOf(a).dept}{user?.id === a.id && ' · вы вошли'}</div></div>
                 {pick === a.id && <div className="end"><IcCheck size={22} strokeWidth={2.5} style={{ color: 'var(--text)' }} /></div>}
               </button>
             ))}
-            {analysts.length === 0 && <div className="t-sm c2" style={{ padding: 12 }}>{mode === 'loading' ? 'Загружаем список сотрудников…' : 'Список сотрудников пуст'}</div>}
+            {analysts.length === 0 && <div className="t-sm c2" style={{ padding: 12 }}>{mode === 'loading' ? 'Загружаем список ролей…' : 'Список ролей пуст'}</div>}
           </div>
-          <button type="submit" className="btn y full" style={{ marginTop: 6 }} disabled={!chosen}>{chosen ? `Войти как ${chosen.name}` : 'Выберите сотрудника'}</button>
+          <button type="submit" className="btn y full" style={{ marginTop: 6 }} disabled={!chosen}>{chosen ? `Войти: ${roleOf(chosen).title.toLowerCase()}` : 'Выберите роль'}</button>
           <button type="button" className="btn g full" disabled title="Подключим после пилота"><IcKey />Войти по ЭЦП (NCALayer) · после пилота</button>
           {cases.length > 0 && (
             <div className="row wrap-f t-sm" style={{ gap: 6, marginTop: 2 }}>
               <span className="c2">Войти и открыть сценарий ТЗ §5:</span>
               {cases.map(({ k, c }) => (
                 <button key={k.id} type="button" className="chip" style={{ height: 30, padding: '0 12px' }} disabled={!chosen}
-                  title={chosen ? `${k.title}${isDemo(c) ? ' — вымышленный ЖК' : ''}` : 'Сначала выберите сотрудника'} onClick={() => enter(chosen, `/complexes/${c.id}?tab=risk`)}>{k.id}</button>
+                  title={chosen ? `${k.title}${isDemo(c) ? ' — вымышленный ЖК' : ''}` : 'Сначала выберите роль'} onClick={() => enter(chosen, `/complexes/${c.id}?tab=risk`)}>{k.id}</button>
               ))}
             </div>
           )}

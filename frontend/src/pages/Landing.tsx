@@ -1,70 +1,53 @@
-// Лендинг SAQ Qurylys (/about, без входа) в стиле «манифест»: жёлтый постер, крупный кегль, шаги — нумерованные строки.
-// Что делает система, как работает, принципы; цифры — из тех же данных, что видит аналитик (стартовый набор или сервер)
+// Лендинг SAQ Qurylys (/about, а для гостя — и главная /) в духе apple.com: крупная типографика, полноэкранные кадры
+// продукта, бенто с живыми цифрами. Кадры — реальные экраны системы (public/landing/*.jpg), цифры — из данных системы
 import { Link } from 'react-router-dom'
-import { Emblem, type EmblemName } from '../components/emblems'
 import { statusOf } from '../lib/screening'
 import { useStore } from '../lib/store'
 
-const STEPS: { t: string; d: string }[] = [
-  { t: 'Собираем рекламу', d: 'Instagram, TikTok, Krisha.kz, Telegram и заявки жителей через бота — с файлами, датой и ссылкой на оригинал.' },
-  { t: 'Находим признаки продажи', d: 'Правила и ИИ читают текст, OCR кадров и речь в роликах: цена, бронь, рассрочка, «старт продаж» — с дословной цитатой.' },
-  { t: 'Сверяем с реестром', d: 'Открытые данные Homeportal и Казреестра: есть ли у ЖК разрешение МИО, гарантия ЕО или банк. Адрес — по 2ГИС.' },
-  { t: 'Решает аналитик', d: 'Очередь проверки, сигнальная карточка с доказательствами и журнал: кто, когда и на чём основал решение.' },
-]
-const FEATURES: { em: EmblemName; t: string; d: string }[] = [
-  { em: 'traffic', t: 'Карта риска', d: 'Все ЖК города со статусом «Проверки по рекламе» и формальным баллом 0–100. Схема, спутник и 3D.' },
-  { em: 'photos', t: 'Спутник: было и стало', d: 'Архив снимков с 2014 года по точке ЖК: шторка «до/после» и период стройки по документам.' },
-  { em: 'flag', t: 'Сигнальная карточка', d: 'Снимок риска на момент создания: основания, публикации, цитаты — печатная версия A4 для руководства.' },
-  { em: 'inbox', t: 'Очередь проверки', d: 'Самые рискованные публикации сверху, перетаскивание по статусам, исполнитель и комментарий к решению.' },
-  { em: 'city', t: 'Объекты из рекламы', d: 'ЖК, которых нет в реестре, но их продают в рекламе: создать карточку, привязать или отклонить.' },
-  { em: 'database', t: 'Провенанс каждой строки', d: 'Источник, время сбора и ссылка у каждого факта; гипотеза ИИ всегда помечена как гипотеза.' },
-]
-const PRINCIPLES = [
-  ['ИИ рекомендует — решает человек', 'Ни одна публикация не становится нарушением без решения аналитика с основанием.'],
-  ['Оценка — не приговор', '«Проверка по рекламе» предварительная: по ЖК без проверенных сведений риск не оценивается.'],
-  ['Только открытые данные', 'Публичная реклама и открытые реестры. Секреты подключений — на сервере, не в браузере.'],
-] as const
+const IMG = (n: string) => `/landing/${n}.jpg`
 
-function useNumbers() {
-  const { complexes, ads, developers } = useStore()
-  const suspect = complexes.filter((c) => statusOf(c) === 'suspect').length
-  const check = complexes.filter((c) => statusOf(c) === 'check').length
-  return { complexes: complexes.length, ads: ads.length, developers: developers.length, suspect, check }
+function useNums() {
+  const { complexes, ads } = useStore()
+  const flagged = complexes.filter((c) => { const s = statusOf(c); return s === 'suspect' || s === 'check' }).length
+  return { complexes: complexes.length, ads: ads.length, flagged }
 }
 const n = (x: number) => x.toLocaleString('ru-RU')
-
-const Logo = () => <Link to="/about" className="ld-logo"><img src="/logo.svg" alt="" className="mark" />SAQ Qurylys</Link>
+const Logo = () => <Link to="/about" className="lp-logo"><img src="/logo.svg" alt="" />SAQ Qurylys</Link>
 
 export default function Landing() {
-  const k = useNumbers()
+  const k = useNums()
   return (
-    <div className="ld ld-c">
-      <header className="ld-top"><div className="ld-wrap"><Logo /><Link to="/login" className="ld-btn-black">Войти</Link></div></header>
-      <section className="ld-hero"><div className="ld-wrap">
-        <h1>Деньги дольщиков —<br />только по&nbsp;разрешению</h1>
-        <div className="ld-hero-row">
-          <p>SAQ Qurylys ловит рекламу, где квартиры продают раньше, чем государство разрешило привлекать деньги. Для ДЭР и ГАСК Восточно-Казахстанской области.</p>
-          <Link to="/login" className="ld-btn-black big">Открыть систему →</Link>
+    <div className="lp lp-apple">
+      <header className="lp-nav"><div className="lp-w"><Logo /><nav><a href="#see">Обзор</a><a href="#sat">Спутник</a><a href="#bento">Возможности</a><Link to="/method">Методика</Link></nav><Link to="/login" className="lp-pill">Войти</Link></div></header>
+      <section className="lp-hero" id="see">
+        <h1>Стройка.<br />Под контролем.</h1>
+        <p>Вся реклама новостроек города, риск каждого ЖК и проверка разрешений — в одном окне.</p>
+        <div className="lp-links"><Link to="/login">Открыть систему ›</Link><Link to="/method">Как считается риск ›</Link></div>
+        <img className="lp-hero-img" src={IMG('map-3d')} alt="3D-карта ЖК" />
+      </section>
+      <section className="lp-black" id="sat">
+        <h2>Было.<span> Стало.</span></h2>
+        <p>Снимки места с 2014 года. Сдвиньте шторку — и видно, когда на пустыре вырос котлован.</p>
+        <img src={IMG('satellite')} alt="Спутник: до и после" />
+      </section>
+      <section className="lp-bento-wrap" id="bento"><div className="lp-w">
+        <h2>Каждая деталь — для проверки.</h2>
+        <div className="lp-bento">
+          <div className="t n"><span>На контроле</span><b>{n(k.complexes)}</b><em>жилых комплексов</em></div>
+          <div className="t img2"><span>Сводка</span><h3>Светофор риска по городу.</h3><img src={IMG('ops-board')} alt="" /></div>
+          <div className="t img3"><span>Объекты из рекламы</span><h3>Нет в реестре — есть в рекламе.</h3><img src={IMG('discovered')} alt="" /></div>
+          <div className="t n y"><span>Разобрано</span><b>{n(k.ads)}</b><em>публикаций рекламы</em></div>
+          <div className="t dark"><span>Видео</span><h3>Слышит, что говорят в роликах.</h3><p>Речь и надписи кадров — в анализ.</p></div>
+          <div className="t n r"><span>Ждут проверки</span><b>{n(k.flagged)}</b><em>ЖК с признаками продажи</em></div>
+          <div className="t sat"><span>Спутник</span><h3>С 2014 года.</h3><img src={IMG('satellite')} alt="" /></div>
         </div>
       </div></section>
-      <section className="ld-giant"><div className="ld-wrap">
-        <div><b>{n(k.complexes)}</b><span>ЖК<br />на контроле</span></div>
-        <div><b>{n(k.ads)}</b><span>публикаций<br />разобрано</span></div>
-        <div><b>{n(k.suspect + k.check)}</b><span>ЖК ждут<br />проверки</span></div>
+      <section className="lp-row"><div className="lp-w">
+        <img src={IMG('queue')} alt="Очередь проверки" />
+        <div><span>Очередь проверки</span><h2>Сначала — самое рискованное.</h2><p>Публикации отсортированы по риску. Перетащите карточку — статус и автор решения попадут в журнал.</p><Link to="/login">Открыть очередь ›</Link></div>
       </div></section>
-      <section className="ld-sec" id="how"><div className="ld-wrap">
-        <h2>Четыре шага</h2>
-        {STEPS.map((s, i) => <div key={s.t} className="ld-row"><i>{i + 1}</i><h3>{s.t}</h3><p>{s.d}</p></div>)}
-      </div></section>
-      <section className="ld-photo"><img src="/img/city-panorama.jpg" alt="Усть-Каменогорск" /><blockquote>«ИИ формирует рекомендацию — решение о нарушении принимает аналитик»<span>принцип системы</span></blockquote></section>
-      <section className="ld-sec" id="features"><div className="ld-wrap">
-        <h2>Что внутри</h2>
-        <div className="ld-feat">{FEATURES.map((f) => <div key={f.t}><Emblem name={f.em} size={40} /><h3>{f.t}</h3><p>{f.d}</p></div>)}</div>
-      </div></section>
-      <section className="ld-sec black" id="rules"><div className="ld-wrap">
-        <div className="ld-rules">{PRINCIPLES.map(([t, d]) => <div key={t}><h3>{t}</h3><p>{d}</p></div>)}</div>
-      </div></section>
-      <footer className="ld-foot"><div className="ld-wrap"><span>SAQ Qurylys · Codemasters 8.0 · 2026</span><span>Усть-Каменогорск</span></div></footer>
+      <section className="lp-close"><h2>ИИ подсказывает.<br />Решает человек.</h2><p>Оценка системы — предварительная. Нарушение подтверждает только аналитик.</p><Link to="/login" className="lp-btn blue">Открыть систему</Link></section>
+      <footer className="lp-foot"><div className="lp-w"><span>SAQ Qurylys · Codemasters 8.0 · 2026</span><span>Усть-Каменогорск</span></div></footer>
     </div>
   )
 }

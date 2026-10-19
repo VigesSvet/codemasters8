@@ -79,3 +79,12 @@ export function onSessionChange(cb: (u: User | null) => void): () => void {
   window.addEventListener('storage', h)
   return () => window.removeEventListener('storage', h)
 }
+
+/** Должность без имени: «Аналитик · ДЭР ВКО» → должность «Аналитик», ведомство «ДЭР ВКО», значок «АН».
+ *  Вход и профиль показывают роль, а не человека; в журнал автором по-прежнему пишется name */
+export function roleOf(u: Pick<User, 'role' | 'name'>): { title: string; dept: string; short: string } {
+  const [title = u.name, dept = ''] = (u.role || '').split(' · ').map((x) => x.trim())
+  const words = title.split(/\s+/).filter(Boolean)
+  const short = (words.length > 1 ? words[0][0] + words[1][0] : title.slice(0, 2)).toUpperCase()
+  return { title, dept, short }
+}

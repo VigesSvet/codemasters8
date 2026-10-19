@@ -23,11 +23,13 @@ import Signals from './pages/Signals'
 import Sites from './pages/Sites'
 import Sources from './pages/Sources'
 
-/** Всё, кроме /login и лендинга /about, — только после входа; иначе на вход с возвратом на текущий адрес.
+/** Всё, кроме /login и лендинга (/about, а для гостя — и /), — только после входа; иначе на вход с возвратом на текущий адрес.
  *  После выхода (здесь или в соседней вкладке) — на вход без возврата: страница была чужой сессии */
 function RequireUser() {
   const { user, signedOut } = useStore()
   const loc = useLocation()
+  // гость на главной видит лендинг, а не форму входа; остальные адреса — на вход с возвратом
+  if (!user && loc.pathname === '/') return <Landing />
   if (!user) return <Navigate to={signedOut ? '/login' : `/login?next=${encodeURIComponent(loc.pathname + loc.search + loc.hash)}`} replace />
   return <Outlet />
 }
