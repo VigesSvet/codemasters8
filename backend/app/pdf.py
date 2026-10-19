@@ -4,6 +4,8 @@
 которых нет в шрифте, в PDF не будет: они вырезаются перед выводом, чтобы не печатались «квадратики».
 Время сервера выводится по Алматы (risk_model.ALMATY, фиксированное UTC+5 — в slim-образе может не быть tzdata).
 Длинные списки доказательств и комментарии — отдельные абзацы вне ячеек таблиц: они переносятся постранично.
+У факторов R1–R3 — «Основание: ст. N Закона РК …» (app.law, shared/law.json), после таблицы факторов — нормативная база:
+ссылки справочные, оценка — не юридическое заключение, «нет разрешения МИО» само по себе не «незаконно».
 """
 import math
 from datetime import datetime, timezone
@@ -21,6 +23,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import HRFlowable, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from . import law
 from .risk_model import ALMATY, fmt_date
 
 Obj = Dict[str, Any]
@@ -137,6 +140,7 @@ S = {
     "small": _style("small", fontSize=7.5, leading=10, textColor=MUTED),
     "ev": _style("ev", fontSize=8, leading=10.5, leftIndent=8, bulletIndent=0, bulletFontName=FONT),
     "fx": _style("fx", fontSize=8.5, leading=11, leftIndent=CODE_W + 4, rightIndent=4),
+    "fxs": _style("fxs", fontSize=7.5, leading=10, textColor=MUTED, leftIndent=CODE_W + 4, rightIndent=4),
     "fev": _style("fev", fontSize=8, leading=10.5, leftIndent=CODE_W + 12, bulletIndent=CODE_W + 4, rightIndent=4,
                   bulletFontName=FONT),
     "score": _style("score", fontName=BOLD, fontSize=22, leading=26),
@@ -326,12 +330,28 @@ def _factors(sig: Obj) -> list:
                     P(f'<font color="{color.hexval()}">{esc(label)}</font>'), P(f"{got} из {f['points']}")],
                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1))
         items = [Paragraph(_item(it), S["fev"], bulletText="–") for it in f.get("items") or []]
+        basis = law.basis_text(f["code"])
+        block = [row, P(esc(f["evidence"]), "fx")] + ([P(esc(basis), "fxs")] if basis else [])
         # заголовок фактора не отрывается от пояснения и первого доказательства, остальные переносятся свободно
-        out += [KeepTogether([row, P(esc(f["evidence"]), "fx")] + items[:1]), *items[1:],
+        out += [KeepTogether(block + items[:1]), *items[1:],
                 HRFlowable(width="100%", thickness=0.4, color=LINE, spaceBefore=4, spaceAfter=0)]
     out.append(_row(["", P("<b>Итого</b> (сумма весов подтверждённых факторов, не больше 100)"), "",
                      P(f"<b>{sig['score']}</b>")], ("BACKGROUND", (0, 0), (-1, -1), SOFT)))
-    return out
+    return out + _law(sig)
+
+
+def _law(sig: Obj) -> list:
+    """Нормативная база: статьи, на которые ссылаются факторы карточки, со ссылкой на текст в ИПС «Әділет»."""
+    used = {r["article"] for f in sig["factors"] for r in law.refs(f["code"])}
+    arts = [a for a in law.LAW["articles"] if a["num"] in used]
+    if not arts:
+        return []
+    act = law.ACT
+    lines = [Paragraph(f"<b>Ст. {esc(a['num'])}.</b> {esc(a['title'])} — {link(a['url'])}", S["ev"], bulletText="–")
+             for a in arts]
+    note = (f"{act['title']} от 7 апреля 2016 года № {act['number']} ({act['redaction']}). Ссылки на нормы — "
+            f"справочные: оценка риска — не юридическое заключение. {law.NUANCE}")
+    return [KeepTogether([P("Нормативная база", "h3"), P(esc(note), "small"), *lines[:1]]), *lines[1:]]
 
 
 def _observations(sig: Obj) -> list:

@@ -5,20 +5,21 @@ import MapView, { type MapItem, type PlainPoint } from '../components/MapView'
 import { Origin } from '../components/Provenance'
 import RangeSlider from '../components/RangeSlider'
 import { Disclaimer, NoScreening, ScreeningBlock, ScreeningPic, ScreeningTag } from '../components/Screening'
-import { Cell, Highlight, PlatformIcon, RiskScore, RiskZone, StatusTag, Toggle, fmtShort, plural } from '../components/ui'
+import { Cell, Highlight, PlatformIcon, RiskScore, RiskZone, StatusTag, Toggle } from '../components/ui'
 import type { RiskResult, ScreeningStatus, Tri } from '../data/types'
 import { findComplex } from '../lib/find'
+import { countsLineT, useT, type I18n } from '../lib/i18n'
 import { from } from '../lib/nav'
 import { isAdvertised, isDemo, isRegistry, onMap, placeText, registryKeyOf, stageText, useRegistry } from '../lib/provenance'
 import {
-  RED_FROM, RISK_DEFAULT, RISK_MAX, SHOW_DEFAULT, SHOW_GROUPS, SHOW_HINT, SHOW_LABEL, YELLOW_FROM, countShowGroups, isRiskDefault, isShowDefault,
-  passesMapFilters, riskCounts, riskSummary, screeningSummary, showSummary, toggleStatus, type MapFilters, type RiskFilter, type ShowFlags,
+  RED_FROM, RISK_DEFAULT, RISK_MAX, SHOW_DEFAULT, SHOW_GROUPS, YELLOW_FROM, countShowGroups, isRiskDefault, isShowDefault,
+  passesMapFilters, riskCounts, toggleStatus, type MapFilters, type RiskFilter, type ShowFlags,
 } from '../lib/mapFilters'
 import { bandGradient, rangeText } from '../lib/range'
 import { isAssessed, linkConfirmed, model } from '../lib/risk'
 import {
-  LEGEND_LABEL, OK_LEGEND, SCREENING_FILTER_LABEL, SCREENING_GLYPH, SCREENING_HINT, SCREENING_TONE, anyScreening, compareScreening, countByStatus,
-  countsLine, hasPoint, labelOf, reasonShort, statusOf, topReason,
+  DISCLAIMER, DISCLAIMER_SHORT, SCREENING_GLYPH, SCREENING_ORDER, SCREENING_TONE, anyScreening, compareScreening, countByStatus,
+  hasPoint, labelOf, reasonShort, statusOf, topReason,
 } from '../lib/screening'
 import { useStore } from '../lib/store'
 import { IcCheck, IcChevronDown, IcChevronLeft, IcChevronRight, IcChevronUp, IcClose, IcHelp, IcInfo, IcList, IcMapPin, IcMegaphone, IcSearch, IcCamera, IcGlobe, IcUsers } from '../ui/icons'
@@ -32,9 +33,25 @@ const RISK_TRACK = bandGradient([
   { from: RED_FROM, to: RISK_MAX, color: 'var(--red)' },
 ], 0, RISK_MAX, 8)
 const RISK_TICKS = [0, YELLOW_FROM, RED_FROM, RISK_MAX]
-/** Подсказка к полосе: зоны по баллу из модели риска (красной зоне нужны ещё и подтверждённые R1 и R2) */
-const ZONES_HINT = `Цвет полосы — зоны по баллу: ${model.zones.items.map((z) => `${z.name.toLowerCase()} ${z.range}`).join(', ')}. ${model.zones.items.find((z) => z.zone === 'red')?.rule ?? ''}`
-const scoreText = (n: number) => `${n} ${plural(n, ['балл', 'балла', 'баллов'])}`
+/** Подсказка к полосе: зоны по баллу из модели риска (красной зоне нужны ещё и подтверждённые R1 и R2); подписи модели — через tr */
+const zonesHint = ({ t, tr }: I18n) => t('map.zonesHint', {
+  list: model.zones.items.map((z) => `${tr(z.name).toLowerCase()} ${z.range}`).join(', '),
+  rule: tr(model.zones.items.find((z) => z.zone === 'red')?.rule ?? ''),
+})
+
+// Сводки свёрнутых блоков — как screeningSummary / riskSummary / showSummary (lib/mapFilters), на языке интерфейса
+const scrSummaryT = (t: I18n['t'], sel: readonly ScreeningStatus[]) =>
+  sel.length ? SCREENING_ORDER.filter((x) => sel.includes(x)).map((x) => t(`scr.filter.${x}`)).join(' · ') : t('map.allStatuses')
+function riskSummaryT(t: I18n['t'], f: RiskFilter): string {
+  const parts = [f.min <= 0 && f.max >= RISK_MAX ? t('map.allScores') : t('map.scores', { a: f.min, b: f.max })]
+  if (!f.withNA) parts.push(t('map.naHiddenShort'))
+  if (f.needsCheck) parts.push(t('common.needsCheckLow'))
+  return parts.join(' · ')
+}
+function showSummaryT(t: I18n['t'], f: ShowFlags): string {
+  const off = SHOW_GROUPS.filter((g) => !f[g])
+  return off.length ? t('map.hiddenGroups', { list: off.map((g) => t(`show.short.${g}`)).join(', ') }) : t('map.allGroups')
+}
 
 /** Флаг экрана карты, запомненный в этом браузере (легенда, панель); без доступа к хранилищу — значение по умолчанию */
 function useFlag(key: string, initial: boolean): [boolean, (v: boolean) => void] {
@@ -53,14 +70,15 @@ function useFlag(key: string, initial: boolean): [boolean, (v: boolean) => void]
 function FilterBlock({ id, title, summary, dirty, open, onOpen, onReset, children }: {
   id: string; title: string; summary: string; dirty: boolean; open: boolean; onOpen: (v: boolean) => void; onReset: () => void; children: ReactNode
 }) {
+  const { t } = useT()
   return (
     <section className="mf" aria-labelledby={`${id}-h`}>
       <div className="mf-head">
         <h4 id={`${id}-h`}>{title}</h4>
-        {dirty && <button className="mf-reset" onClick={onReset} title={`Сбросить: ${title}`}>Сбросить</button>}
+        {dirty && <button className="mf-reset" onClick={onReset} title={t('common.resetWhat', { what: title })}>{t('common.reset')}</button>}
         <button className="list-toggle" onClick={() => onOpen(!open)} aria-expanded={open} aria-controls={id}
-          title={open ? `Свернуть блок «${title}» — фильтр останется` : `Развернуть блок «${title}»`}>
-          {open ? <>Свернуть<IcChevronUp size={16} /></> : <>Развернуть<IcChevronDown size={16} /></>}
+          title={open ? t('map.collapseBlock', { title }) : t('map.expandBlock', { title })}>
+          {open ? <>{t('common.collapse')}<IcChevronUp size={16} /></> : <>{t('common.expand')}<IcChevronDown size={16} /></>}
         </button>
       </div>
       {/* свёрнутый блок — сводка выбора во всю ширину под заголовком */}
@@ -85,6 +103,8 @@ function SwitchRow({ title, count, hint, on, onChange }: { title: string; count:
 export default function Dashboard() {
   const { mode, complexes, ads, developers, riskOf, stats } = useStore()
   const nav = useNavigate()
+  const i18n = useT()
+  const { t, tn, tr } = i18n
   const [q, setQ] = useState('')
   // три блока фильтров: выбор живёт, пока открыт экран карты; свёрнут ли блок — запоминается в браузере
   const [scrSel, setScrSel] = useState<ScreeningStatus[]>([])
@@ -138,7 +158,7 @@ export default function Dashboard() {
   const s = scored.find((x) => x.c.id === sel)
   const dev = s && developers.find((d) => d.id === s.c.developerId)
   const linked = s ? ads.filter((a) => a.complexId === s.c.id) : []
-  const back = from('Карта', s ? `/?sel=${s.c.id}` : '/')
+  const back = from(t('nav.map'), s ? `/?sel=${s.c.id}` : '/')
   const devSc = stats?.screening?.developers ?? countByStatus(developers, statusOf)
   const discNew = stats?.screening?.discovered?.new
   // «Показать списком» — реестр с тем же поиском и проверкой по рекламе (реестр держит один признак-чип). Диапазона балла и
@@ -157,19 +177,19 @@ export default function Dashboard() {
       <span className={`zone-pic ${v === 'yes' ? 'green' : v === 'no' ? 'red' : 'gray'}`} style={{ width: 28, height: 28 }}>
         {v === 'yes' ? <IcCheck size={14} /> : v === 'no' ? <IcClose size={14} /> : <IcHelp size={14} />}
       </span>
-      <div><div className="t-xs c2">{name}</div><div className="bold t-sm">{v === 'yes' ? 'Есть' : v === 'no' ? 'Нет' : 'Нет сведений'}</div></div>
+      <div><div className="t-xs c2">{name}</div><div className="bold t-sm">{t(v === 'yes' ? 'common.yes' : v === 'no' ? 'common.no' : 'common.noInfo')}</div></div>
     </div>
   )
   /** Строка ЖК в списке: статус, главная причина с цитатой, счётчики рекламы */
   const sub = (x: (typeof scored)[number]) => {
     const scr = x.c.screening
-    if (!scr) return `${placeText(x.c) || 'адрес не указан'} · ${stageText(x.c)}`
+    if (!scr) return `${placeText(x.c) || t('common.noAddress')} · ${tr(stageText(x.c))}`
     const why = topReason(scr)
     return (
       <span className="scr-sub">
-        <span className={`st ${SCREENING_TONE[scr.status]}`}>{labelOf(scr)}</span>
+        <span className={`st ${SCREENING_TONE[scr.status]}`}>{tr(labelOf(scr))}</span>
         {why && <span className={`clamp2 ${why.quote && why.signal ? 'qt' : ''}`}>{reasonShort(why)}</span>}
-        <span>{countsLine(scr.counts)}</span>
+        <span>{countsLineT(t, scr.counts, i18n.dayMonth)}</span>
       </span>
     )
   }
@@ -184,59 +204,59 @@ export default function Dashboard() {
             <div className="card" style={{ padding: 16 }}>
               <div className="fsearch" style={{ height: 44 }}>
                 <IcSearch size={18} />
-                <input placeholder="ЖК, адрес или БИН застройщика" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Поиск" />
-                {q && <button onClick={() => setQ('')} className="c3" aria-label="Очистить"><IcClose size={16} /></button>}
+                <input placeholder={t('map.search')} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t('common.search')} />
+                {q && <button onClick={() => setQ('')} className="c3" aria-label={t('common.clear')}><IcClose size={16} /></button>}
               </div>
               {screenOn ? (
-                <FilterBlock id="mf-screening" title="Проверка по рекламе" summary={screeningSummary(scrSel)} dirty={scrSel.length > 0}
+                <FilterBlock id="mf-screening" title={t('scr.title')} summary={scrSummaryT(t, scrSel)} dirty={scrSel.length > 0}
                   open={fScr} onOpen={setFScr} onReset={() => setScrSel([])}>
-                  <div className="scr-chips" role="group" aria-label="Проверка по рекламе: можно выбрать несколько статусов">
-                    <button className={`chip all ${scrSel.length ? '' : 'on'}`} aria-pressed={!scrSel.length} onClick={() => setScrSel([])} title="Все ЖК на контроле">
-                      Все<span className="n num">{scored.length}</span>
+                  <div className="scr-chips" role="group" aria-label={t('map.scrAria')}>
+                    <button className={`chip all ${scrSel.length ? '' : 'on'}`} aria-pressed={!scrSel.length} onClick={() => setScrSel([])} title={t('map.allOnControl')}>
+                      {t('common.all')}<span className="n num">{scored.length}</span>
                     </button>
                     {SCREEN_CHIPS.map((k) => (
                       <button key={k} className={`chip ${scrSel.includes(k) ? 'on' : ''}`} aria-pressed={scrSel.includes(k)} onClick={() => setScrSel(toggleStatus(scrSel, k))}
-                        title={`${SCREENING_HINT[k]} — можно выбрать несколько`}>
-                        <ScreeningPic status={k} />{SCREENING_FILTER_LABEL[k]}<span className="n num">{sc[k]}</span>
+                        title={t('map.multi', { hint: t(`scr.hint.${k}`) })}>
+                        <ScreeningPic status={k} />{t(`scr.filter.${k}`)}<span className="n num">{sc[k]}</span>
                       </button>
                     ))}
                   </div>
                   <div style={{ marginTop: 8 }}><Disclaimer text={stats?.screening?.disclaimer} /></div>
                 </FilterBlock>
-              ) : <div style={{ marginTop: 12 }}><NoScreening> — метки показывают формальный риск.</NoScreening></div>}
+              ) : <div style={{ marginTop: 12 }}><NoScreening>{t('map.noScreeningTail')}</NoScreening></div>}
 
-              <FilterBlock id="mf-risk" title="Формальный риск" summary={riskSummary(risk)} dirty={!isRiskDefault(risk)}
+              <FilterBlock id="mf-risk" title={t('map.formalRisk')} summary={riskSummaryT(t, risk)} dirty={!isRiskDefault(risk)}
                 open={fRisk} onOpen={setFRisk} onReset={() => setRisk(RISK_DEFAULT)}>
                 <RangeSlider value={[risk.min, risk.max]} onChange={([min, max]) => setRisk((r) => ({ ...r, min, max }))} min={0} max={RISK_MAX}
-                  track={RISK_TRACK} ticks={RISK_TICKS} labels={['Минимальный балл', 'Максимальный балл']} valueText={scoreText} />
-                <div className="mf-note" title={ZONES_HINT}>Балл {rangeText([risk.min, risk.max])}: {rc.inRange} из {rc.assessed} ЖК с оценкой риска</div>
+                  track={RISK_TRACK} ticks={RISK_TICKS} labels={[t('map.minScore'), t('map.maxScore')]} fields={[t('map.from'), t('map.to')]} valueText={(n) => tn('map.score', n)} />
+                <div className="mf-note" title={zonesHint(i18n)}>{t('map.scoreNote', { range: rangeText([risk.min, risk.max]), n: rc.inRange, m: rc.assessed })}</div>
                 <div style={{ marginTop: 6 }}>
-                  <SwitchRow title="Показывать ЖК без оценки риска" count={rc.na} on={risk.withNA} onChange={(v) => setRisk((r) => ({ ...r, withNA: v }))}
-                    hint={risk.withNA ? 'Балла нет — видны при любом диапазоне' : 'Скрыты — видны только ЖК с баллом в диапазоне'} />
+                  <SwitchRow title={t('map.showNA')} count={rc.na} on={risk.withNA} onChange={(v) => setRisk((r) => ({ ...r, withNA: v }))}
+                    hint={risk.withNA ? t('map.naShown') : t('map.naHidden')} />
                 </div>
-                <div className="mini-chips" role="group" aria-label="Нужна проверка">
+                <div className="mini-chips" role="group" aria-label={t('common.needsCheck')}>
                   <button className={risk.needsCheck ? 'on' : ''} aria-pressed={risk.needsCheck} onClick={() => setRisk((r) => ({ ...r, needsCheck: !r.needsCheck }))}
-                    title="Только ЖК, где для оценки не хватает проверенных сведений">
-                    только «нужна проверка»<span className="n num">{rc.needsCheck}</span>
+                    title={t('map.needsCheckHint')}>
+                    {t('map.onlyNeedsCheck')}<span className="n num">{rc.needsCheck}</span>
                   </button>
                 </div>
               </FilterBlock>
 
-              <FilterBlock id="mf-show" title="Показывать" summary={showSummary(show)} dirty={!isShowDefault(show)}
+              <FilterBlock id="mf-show" title={t('map.show')} summary={showSummaryT(t, show)} dirty={!isShowDefault(show)}
                 open={fShow} onOpen={setFShow} onReset={() => setShow(SHOW_DEFAULT)}>
                 {SHOW_GROUPS.map((g) => (
-                  <SwitchRow key={g} title={SHOW_LABEL[g]} count={gc[g]} hint={SHOW_HINT[g]} on={show[g]} onChange={(v) => setShow((x) => ({ ...x, [g]: v }))} />
+                  <SwitchRow key={g} title={t(`show.label.${g}`)} count={gc[g]} hint={t(`show.hint.${g}`)} on={show[g]} onChange={(v) => setShow((x) => ({ ...x, [g]: v }))} />
                 ))}
-                <div className="mf-note">Требуют проверки, подозрение и нет данных видны всегда · {gc.other}</div>
+                <div className="mf-note">{t('map.alwaysShown', { n: gc.other })}</div>
               </FilterBlock>
             </div>
 
             {screenOn && (
               <div className="card" style={{ padding: '6px 0' }}>
-                <Cell inset to={`/developers?screening=suspect`} icon={<span className="ico"><IcUsers size={18} /></span>} title="Застройщики"
-                  sub={<>{devSc.suspect ? <b style={{ color: 'var(--red-ink)' }}>подозрение — {devSc.suspect}</b> : 'подозрений нет'} · требуют проверки — {devSc.check} · без замечаний — {devSc.ok}</>} chevron />
-                <Cell inset to="/discovered" icon={<span className="ico"><IcMegaphone size={18} /></span>} title="Объекты из рекламы"
-                  sub={discNew === undefined ? 'ЖК, которых нет в реестре и справочнике' : discNew ? <b style={{ color: 'var(--amber-ink)' }}>{discNew} {plural(discNew, ['новый', 'новых', 'новых'])} — ждут решения</b> : 'новых нет'}
+                <Cell inset to={`/developers?screening=suspect`} icon={<span className="ico"><IcUsers size={18} /></span>} title={t('nav.developers')}
+                  sub={<>{devSc.suspect ? <b style={{ color: 'var(--red-ink)' }}>{t('map.devSuspect', { n: devSc.suspect })}</b> : t('map.devNoSuspect')} · {t('map.devCheck', { n: devSc.check })} · {t('map.devOk', { n: devSc.ok })}</>} chevron />
+                <Cell inset to="/discovered" icon={<span className="ico"><IcMegaphone size={18} /></span>} title={t('foot.discovered')}
+                  sub={discNew === undefined ? t('map.discSub') : discNew ? <b style={{ color: 'var(--amber-ink)' }}>{tn('map.discNew', discNew)}</b> : t('map.discNone')}
                   end={discNew ? <span className="badge">{discNew}</span> : undefined} chevron />
               </div>
             )}
@@ -244,19 +264,19 @@ export default function Dashboard() {
             <div className="card">
               {/* список объектов сворачивается целиком (вместе с «Без координат»): фильтры и переключатели панели остаются */}
               <div className="card-head" style={{ paddingBottom: listOpen ? 4 : 16 }}>
-                <h3 style={{ fontSize: 17 }}>{visible.length} {plural(visible.length, ['объект', 'объекта', 'объектов'])}</h3>
+                <h3 style={{ fontSize: 17 }}>{tn('map.objects', visible.length)}</h3>
                 <button className="list-toggle" onClick={() => setListOpen(!listOpen)} aria-expanded={listOpen} aria-controls="map-objects"
-                  title={listOpen ? 'Свернуть список объектов — фильтры останутся' : 'Показать список объектов'}>
-                  {listOpen ? <>Свернуть<IcChevronUp size={16} /></> : <>Развернуть<IcChevronDown size={16} /></>}
+                  title={listOpen ? t('map.collapseList') : t('map.expandList')}>
+                  {listOpen ? <>{t('common.collapse')}<IcChevronUp size={16} /></> : <>{t('common.expand')}<IcChevronDown size={16} /></>}
                 </button>
               </div>
               {listOpen && <div id="map-objects">
-              <div className="row t-xs c2" style={{ gap: 6, padding: '0 24px 4px' }}>{anyDemo && <Origin kind="demo" label="демо-сценарии" title="Вымышленные ЖК: на них показана модель риска. Реальные объекты — слой «Открытые данные», без балла" />}{complexes.some(isRegistry) && <Origin kind="registry" label="реестр" />}{screenOn ? 'подозрение первыми' : 'по риску'}</div>
-              {visible.length === 0 && <div className="empty">Ничего не найдено</div>}
+              <div className="row t-xs c2" style={{ gap: 6, padding: '0 24px 4px' }}>{anyDemo && <Origin kind="demo" label={t('map.demo')} title={t('map.demoHint')} />}{complexes.some(isRegistry) && <Origin kind="registry" label={t('map.registry')} />}{screenOn ? t('map.suspectFirst') : t('map.byRisk')}</div>
+              {visible.length === 0 && <div className="empty">{t('map.nothing')}</div>}
               {visible.filter((x) => hasPoint(x.c)).map((x) => (
                 <Cell key={x.c.id} onClick={() => setSel(x.c.id)} inset
                   icon={x.screen ? <ScreeningPic status={x.screen} size={40} /> : <img className="th" src={x.c.cover || undefined} alt="" style={{ width: 44, height: 44, borderRadius: 10 }} />}
-                  title={<span className="bold">{x.c.name}{isAdvertised(x.c) && <span className="c2" style={{ fontWeight: 400 }}> · по рекламе</span>}</span>} sub={sub(x)}
+                  title={<span className="bold">{x.c.name}{isAdvertised(x.c) && <span className="c2" style={{ fontWeight: 400 }}>{t('map.byAds')}</span>}</span>} sub={sub(x)}
                   end={!screenOn || !x.off ? <RiskScore r={x.r} /> : undefined} />
               ))}
               </div>}
@@ -264,8 +284,8 @@ export default function Dashboard() {
 
             {listOpen && noCoords.length > 0 && (
               <div className="card">
-                <div className="card-head" style={{ paddingBottom: 0 }}><h3 style={{ fontSize: 17 }}>Без координат · {noCoords.length}</h3></div>
-                <p className="t-xs c2" style={{ padding: '0 24px 6px' }}>Точки на карте нет — в карточке ЖК сверьте адрес в 2ГИС</p>
+                <div className="card-head" style={{ paddingBottom: 0 }}><h3 style={{ fontSize: 17 }}>{t('map.noCoords', { n: noCoords.length })}</h3></div>
+                <p className="t-xs c2" style={{ padding: '0 24px 6px' }}>{t('map.noCoordsHint')}</p>
                 {noCoords.map((x) => (
                   <Cell key={x.c.id} inset to={`/complexes/${x.c.id}`}
                     icon={x.screen ? <ScreeningPic status={x.screen} size={40} /> : <span className="ico"><IcMapPin size={18} /></span>}
@@ -275,40 +295,40 @@ export default function Dashboard() {
             )}
 
             <div className="card">
-              <Cell title="Названия на карте" end={<Toggle on={labels} onChange={setLabels} label="Названия" />} />
-              <Cell title="Только с рекламой" end={<Toggle on={withAds} onChange={setWithAds} label="Только с рекламой" />} />
-              <Cell title="Стройка стоит 30+ дней" end={<Toggle on={idle} onChange={setIdle} label="Простой" />} />
-              <Cell title="Открытые данные" end={<Toggle on={open} onChange={setOpen} label="Открытые данные" />}
-                sub={!open ? 'Реальные объекты — серые метки без балла'
-                  : reg.err && !reg.data ? `Не загрузились: ${reg.err}`
-                      : reg.data ? `${points.length} на карте, ${(reg.total ?? 0) - points.length} без координат · без балла${mode === 'snapshot' ? ' · встроенная копия' : ''}`
-                        : 'Загружаем…'} />
-              {open && reg.data && <Cell inset title={<span className="link t-sm">Список открытых данных</span>} chevron to="/complexes?layer=open" />}
+              <Cell title={t('map.labels')} end={<Toggle on={labels} onChange={setLabels} label={t('map.labelsShort')} />} />
+              <Cell title={t('map.withAds')} end={<Toggle on={withAds} onChange={setWithAds} label={t('map.withAds')} />} />
+              <Cell title={t('map.idle')} end={<Toggle on={idle} onChange={setIdle} label={t('map.idleShort')} />} />
+              <Cell title={t('map.openData')} end={<Toggle on={open} onChange={setOpen} label={t('map.openData')} />}
+                sub={!open ? t('map.openDataOff')
+                  : reg.err && !reg.data ? t('map.openDataErr', { e: reg.err })
+                      : reg.data ? `${t('map.openDataOn', { a: points.length, b: (reg.total ?? 0) - points.length })}${mode === 'snapshot' ? t('map.builtIn') : ''}`
+                        : t('common.loading')} />
+              {open && reg.data && <Cell inset title={<span className="link t-sm">{t('map.openDataList')}</span>} chevron to="/complexes?layer=open" />}
             </div>
           </div>
         ) : (
           <div className="scroll fade" key={s.c.id}>
             <div className="card">
-              <Cell onClick={() => setSel(undefined)} icon={<IcChevronLeft />} title="Все объекты" />
+              <Cell onClick={() => setSel(undefined)} icon={<IcChevronLeft />} title={t('map.allObjects')} />
               {s.c.cover && (
                 <div className="ph" style={{ height: 160, margin: '0 12px', borderRadius: 16 }}>
                   <img src={s.c.cover} alt="" />
-                  <div className="tl"><span className="tag white">{stageText(s.c)}</span>{s.r.needsCheck && <span className="tag white">нужна проверка</span>}</div>
+                  <div className="tl"><span className="tag white">{tr(stageText(s.c))}</span>{s.r.needsCheck && <span className="tag white">{t('common.needsCheckLow')}</span>}</div>
                 </div>
               )}
               <div className="card-pad" style={{ paddingTop: s.c.cover ? 14 : 4 }}>
                 <div className="t-xs c2">{dev?.name}</div>
                 <div className="row between" style={{ alignItems: 'flex-start', marginTop: 2 }}>
-                  <h2 className="t-h2">ЖК «{s.c.name}»</h2>
+                  <h2 className="t-h2">{t('common.complex', { name: s.c.name })}</h2>
                   {(!screenOn || !s.off) && <RiskScore r={s.r} />}
                 </div>
-                <div className="t-sm c2" style={{ marginTop: 4 }}>{placeText(s.c) || 'адрес не указан'}{!hasPoint(s.c) && ' · координат нет'}</div>
+                <div className="t-sm c2" style={{ marginTop: 4 }}>{placeText(s.c) || t('common.noAddress')}{!hasPoint(s.c) && t('map.noCoordsShort')}</div>
                 <div className="row wrap-f" style={{ marginTop: 10, gap: 6 }}>
                   {s.c.screening && <ScreeningTag s={s.c.screening} short />}
                   <RiskZone r={s.r} />
-                  {isDemo(s.c) && <Origin kind="demo" label="Демо-сценарий (вымышленный ЖК)" />}
-                  {isRegistry(s.c) && <Origin kind="registry" label="Открытый реестр · не проверено" />}
-                  {isAdvertised(s.c) && <Origin kind="advertised" label="По рекламе · не проверено" />}
+                  {isDemo(s.c) && <Origin kind="demo" label={t('map.originDemo')} />}
+                  {isRegistry(s.c) && <Origin kind="registry" label={t('map.originRegistry')} />}
+                  {isAdvertised(s.c) && <Origin kind="advertised" label={t('map.originAdvertised')} />}
                 </div>
                 {!s.c.screening && <p className="t-sm" style={{ marginTop: 10, lineHeight: '19px' }}>{s.r.summary}</p>}
               </div>
@@ -319,18 +339,18 @@ export default function Dashboard() {
               </div>
             )}
             <div className="card" style={{ padding: 8 }}>
-              <div className="t-xs c2" style={{ padding: '4px 8px 6px' }}>Формальный риск: основания{!s.off ? ` · ${s.r.score} из 100` : ' · не оценивается'}</div>
+              <div className="t-xs c2" style={{ padding: '4px 8px 6px' }}>{t('map.basisTitle')}{!s.off ? t('map.ofHundred', { n: s.r.score }) : t('map.notAssessed')}</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                {basis('Гарантия ЕО', s.c.basis.guarantee)}{basis('Разрешение МИО', s.c.basis.mio)}
-                {basis('Банк (БВУ)', s.c.basis.bvu)}{basis('Перечень ГАСК', s.c.inPublishedList)}
+                {basis(t('basis.guarantee'), s.c.basis.guarantee)}{basis(t('basis.mio'), s.c.basis.mio)}
+                {basis(t('basis.bvu'), s.c.basis.bvu)}{basis(t('basis.gask'), s.c.inPublishedList)}
               </div>
             </div>
             <div className="card">
-              <Cell icon={<span className="ico"><IcMegaphone size={18} /></span>} title="Реклама" sub={linked.length ? `${linked.length} публ. · последняя ${fmtShort(linked[0].date)}` : 'Не найдено'} chevron to={`/complexes/${s.c.id}?tab=ads`} inset />
-              <Cell icon={<span className="ico"><IcCamera size={18} /></span>} title="Фото-мониторинг" sub={s.c.idleDays ? `Нет активности ${s.c.idleDays} дн.` : s.c.photos.length ? `${s.c.photos.length} ${plural(s.c.photos.length, ['снимок', 'снимка', 'снимков'])} · стройка идёт` : 'Снимков пока нет'} chevron to={`/complexes/${s.c.id}?tab=photos`} inset />
-              {hasPoint(s.c) && <Cell icon={<span className="ico"><IcGlobe size={18} /></span>} title="Спутник" sub="Снимки места с 2014 года · период стройки" chevron to={`/complexes/${s.c.id}?tab=sat`} inset />}
-              <Cell icon={<span className="ico"><IcUsers size={18} /></span>} title="Застройщик" sub={dev ? `${dev.name}${dev.bin ? ` · БИН ${dev.bin}` : ''}` : 'Не указан'}
-                end={dev?.screening ? <span className={`scr-pic ${dev.screening.status}`} title={dev.screening.label} style={{ width: 22, height: 22, fontSize: 12 }}>{SCREENING_GLYPH[dev.screening.status]}</span> : undefined}
+              <Cell icon={<span className="ico"><IcMegaphone size={18} /></span>} title={t('nav.ads')} sub={linked.length ? t('map.adsLast', { n: linked.length, date: i18n.dayMonth(linked[0].date) }) : t('common.notFoundShort')} chevron to={`/complexes/${s.c.id}?tab=ads`} inset />
+              <Cell icon={<span className="ico"><IcCamera size={18} /></span>} title={t('map.photos')} sub={s.c.idleDays ? t('map.idleDays', { n: s.c.idleDays }) : s.c.photos.length ? tn('map.shots', s.c.photos.length) : t('map.noShots')} chevron to={`/complexes/${s.c.id}?tab=photos`} inset />
+              {hasPoint(s.c) && <Cell icon={<span className="ico"><IcGlobe size={18} /></span>} title={t('map.sat')} sub={t('map.satSub')} chevron to={`/complexes/${s.c.id}?tab=sat`} inset />}
+              <Cell icon={<span className="ico"><IcUsers size={18} /></span>} title={t('map.developer')} sub={dev ? `${dev.name}${dev.bin ? t('map.bin', { bin: dev.bin }) : ''}` : t('map.devNone')}
+                end={dev?.screening ? <span className={`scr-pic ${dev.screening.status}`} title={tr(dev.screening.label)} style={{ width: 22, height: 22, fontSize: 12 }}>{SCREENING_GLYPH[dev.screening.status]}</span> : undefined}
                 chevron to={dev ? `/developers?dev=${dev.id}` : '/developers'} inset />
             </div>
             {linked.slice(0, 2).map((a) => (
@@ -338,7 +358,7 @@ export default function Dashboard() {
                 <div className="row between"><div className="row" style={{ gap: 8 }}><PlatformIcon p={a.platform} size={22} /><span className="t-sm c2">{a.account}</span></div><StatusTag s={a.status} /></div>
                 <p className="t-sm clamp3" style={{ marginTop: 10, lineHeight: '19px' }}><Highlight text={a.text} /></p>
                 {/* привязка к этому ЖК — гипотеза ИИ: в балл объекта публикация не входит, пока аналитик её не примет */}
-                {!linkConfirmed(a) && <div style={{ marginTop: 8 }}><LinkMark a={a} label="привязка — гипотеза ИИ" /></div>}
+                {!linkConfirmed(a) && <div style={{ marginTop: 8 }}><LinkMark a={a} label={t('common.aiLink')} /></div>}
               </Link>
             ))}
           </div>
@@ -346,34 +366,34 @@ export default function Dashboard() {
         {/* в очередь ведёт плашка справа внизу — одна кнопка, а не две */}
         {s && (
           <div className="dock">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><button className="btn y" onClick={() => nav(`/complexes/${s.c.id}`, { state: back })}>Карточка ЖК</button><button className="btn g" onClick={() => nav(`/complexes/${s.c.id}?tab=ads`, { state: back })}>Реклама · {linked.length}</button></div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><button className="btn y" onClick={() => nav(`/complexes/${s.c.id}`, { state: back })}>{t('map.card')}</button><button className="btn g" onClick={() => nav(`/complexes/${s.c.id}?tab=ads`, { state: back })}>{t('map.adsN', { n: linked.length })}</button></div>
           </div>
         )}
       </div>
 
       {/* кнопки над картой справа от панели: список ЖК отдельной страницей, легенда */}
       <div className="maptools" style={{ left: 412 }}>
-        <Link to={listTo} className="mapbtn" title={listWider ? 'В списке — поиск, проверка по рекламе и один признак; диапазон балла и «Показывать» список не применяет — ЖК может быть больше' : undefined}>
-          <IcList size={18} />Показать {visible.length} ЖК списком
+        <Link to={listTo} className="mapbtn" title={listWider ? t('map.listWider') : undefined}>
+          <IcList size={18} />{t('map.asList', { n: visible.length })}
         </Link>
-        {screenOn && <button className={`mapbtn ${legend ? 'on' : ''}`} onClick={() => setLegend(!legend)} aria-pressed={legend} aria-controls="map-legend"><IcInfo size={18} />Легенда</button>}
+        {screenOn && <button className={`mapbtn ${legend ? 'on' : ''}`} onClick={() => setLegend(!legend)} aria-pressed={legend} aria-controls="map-legend"><IcInfo size={18} />{t('map.legend')}</button>}
       </div>
 
       {screenOn && legend && (
-        <div className="mlegend" id="map-legend" role="note" aria-label="Легенда карты" style={{ left: 412 }}>
-          <div className="lh">Проверка по рекламе<button className="c3" onClick={() => setLegend(false)} aria-label="Скрыть легенду"><IcClose size={16} /></button></div>
+        <div className="mlegend" id="map-legend" role="note" aria-label={t('map.legendAria')} style={{ left: 412 }}>
+          <div className="lh">{t('scr.title')}<button className="c3" onClick={() => setLegend(false)} aria-label={t('map.hideLegend')}><IcClose size={16} /></button></div>
           {(['ok', 'check', 'suspect', 'unknown'] as const).map((k) => (
-            <div key={k} className="lr" title={k === 'ok' ? OK_LEGEND : undefined}><span className={`lpin ${k}`}><span className="g">{SCREENING_GLYPH[k]}</span></span><span>{LEGEND_LABEL[k]}</span></div>
+            <div key={k} className="lr" title={k === 'ok' ? t('scr.okLegend') : undefined}><span className={`lpin ${k}`}><span className="g">{SCREENING_GLYPH[k]}</span></span><span>{t(`scr.legend.${k}`)}</span></div>
           ))}
-          <div className="lr"><span className="lpin check"><span className="g">?</span><span className="sc">57</span></span><span>Балл формального риска, кольцо — зона (если риск оценён)</span></div>
-          <div className="lnote" title={stats?.screening?.disclaimer || 'Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении'}>Предварительная оценка — не вывод о нарушении{noCoords.length > 0 && <> · без координат: {noCoords.length}, в списке слева</>}</div>
+          <div className="lr"><span className="lpin check"><span className="g">?</span><span className="sc">57</span></span><span>{t('map.legendScore')}</span></div>
+          <div className="lnote" title={tr(stats?.screening?.disclaimer || DISCLAIMER)}>{tr(DISCLAIMER_SHORT)}{noCoords.length > 0 && t('map.legendNoCoords', { n: noCoords.length })}</div>
         </div>
       )}
 
       <Link to="/queue" className="promo dark" style={{ right: 16, bottom: 32, width: 280 }}>
         <div className="tx" style={{ padding: '18px 20px' }}>
-          <div className="cond" style={{ fontSize: 26, lineHeight: '26px' }}>{queue ? <>{queue} {plural(queue, ['публикация', 'публикации', 'публикаций'])}<br />{plural(queue, ['ждёт', 'ждут', 'ждут'])} решения</> : <>Очередь<br />проверки пуста</>}</div>
-          <span className="mini">Открыть очередь <IcChevronRight size={14} /></span>
+          <div className="cond" style={{ fontSize: 26, lineHeight: '26px' }}>{queue ? <>{tn('map.promoN', queue)}<br />{tn('map.promoWait', queue)}</> : <>{t('map.promoEmpty1')}<br />{t('map.promoEmpty2')}</>}</div>
+          <span className="mini">{t('map.openQueue')} <IcChevronRight size={14} /></span>
         </div>
       </Link>
     </div>

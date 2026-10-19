@@ -4,9 +4,10 @@ import { AiBadge } from '../components/Hypothesis'
 import { Faq, Gauge, RiskScore, Seg, ZoneTag, zoneShort } from '../components/ui'
 import type { AiEval, FactorState } from '../data/types'
 import { errorText } from '../lib/api'
+import { excerptsFor, factorsOf, law, lawArticle, lawRefs, refText, refWhy } from '../lib/law'
 import { from } from '../lib/nav'
 import { isDemo } from '../lib/provenance'
-import { factorDef, isAssessed, model, zoneFor, type ModelCase } from '../lib/risk'
+import { factorDef, fmtDate, isAssessed, model, zoneFor, type ModelCase } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcBank, IcCheck, IcChevronDown, IcChevronUp, IcClock, IcClose, IcHelp, IcInfo, IcMegaphone, IcUsersFamily, IcWallet, IcWorker } from '../ui/icons'
 import { Board, Cap } from '../components/StatBoard'
@@ -33,6 +34,66 @@ const DICTS: [Dict, string, string, string][] = [
 ]
 
 const weight = (code: string) => factorDef(code)?.weight ?? 0
+const CODES = model.factors.map((f) => f.code)
+
+/** «ст. 7 п. 1, 2 · ст. 8 п. 6» — ссылки на статьи в ИПС «Әділет»; норма не относится — «—» */
+function LawRefs({ code }: { code: string }) {
+  const rs = lawRefs(code)
+  if (!rs.length) return <span className="c3">—</span>
+  return <>{rs.map((r, i) => {
+    const a = lawArticle(r.article)
+    return <span key={i}>{i > 0 && ' · '}{a ? <a className="link" href={a.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>{refText(r)}</a> : refText(r)}</span>
+  })}</>
+}
+
+/** «Нормативная база»: статьи закона — пересказ, дословные выдержки по раскрытию, ссылка на «Әділет» и факторы, которые на них ссылаются */
+function LawBlock() {
+  const docs = model.documents.filter((d) => refWhy(d.key).length)
+  return (
+    <>
+      <h2 className="t-h2" id="law" style={{ margin: '48px 0 4px' }}>Нормативная база</h2>
+      <p className="c2" style={{ marginBottom: 12, maxWidth: 760 }}>
+        <a className="link" href={law.act.url} target="_blank" rel="noopener noreferrer">{law.act.title}</a> от 7 апреля 2016 года № {law.act.number}.
+        Ориентиры ТЗ — статьи 7, 8 и 18; статья 23 — о рекламе. Текст — {law.act.source}; {law.act.redaction.charAt(0).toLowerCase() + law.act.redaction.slice(1)}, получен {fmtDate(law.act.fetchedAt)}.
+      </p>
+      <div className="box warn t-sm" style={{ lineHeight: '20px', marginBottom: 16, maxWidth: 760 }}>
+        <div className="bold" style={{ marginBottom: 4 }}>Оценка — не юридическое заключение</div>
+        <div>{law.nuance} Поэтому R1 ставится, только когда проверкой установлено отсутствие и гарантии ЕО, и разрешения МИО, а при действующей гарантии ЕО отсутствие разрешения МИО не учитывается (ст. 8 п. 6).</div>
+      </div>
+      <div className="stack" style={{ gap: 12 }}>
+        {law.articles.map((a) => {
+          const codes = factorsOf(a.num, CODES)
+          return (
+            <div key={a.num} className="box t-sm" style={{ lineHeight: '20px' }}>
+              <div className="row between" style={{ gap: 12, alignItems: 'flex-start' }}>
+                <div className="bold">Статья {a.num}. {a.title}</div>
+                <span className="row" style={{ gap: 6, flexShrink: 0 }}>{codes.map((c) => <a key={c} href={`#${c}`} className="tag dark">{c}</a>)}</span>
+              </div>
+              <div style={{ marginTop: 6 }}><span className="c2">Кратко (пересказ, не текст закона): </span>{a.summary}</div>
+              <details style={{ marginTop: 8 }}>
+                <summary className="link" style={{ cursor: 'pointer' }}>Текст статьи — выдержки ({a.excerpts.length})</summary>
+                {a.excerpts.map((e) => <blockquote key={e.part} style={{ margin: '8px 0 0', paddingLeft: 12, borderLeft: '3px solid var(--border)', whiteSpace: 'pre-line' }}>{e.text}</blockquote>)}
+                {a.footnote && <div className="t-xs c3" style={{ marginTop: 8 }}>{a.footnote}</div>}
+              </details>
+              <div style={{ marginTop: 8 }}><a className="link" href={a.url} target="_blank" rel="noopener noreferrer">Полный текст статьи в ИПС «Әділет»</a></div>
+            </div>
+          )
+        })}
+      </div>
+      {docs.length > 0 && (
+        <table className="ytable" style={{ marginTop: 16 }}>
+          <thead><tr><th>Документ основания</th><th>Норма</th><th>Почему</th></tr></thead>
+          <tbody>
+            {docs.map((d) => (
+              <tr key={d.key}><td>{d.label}</td><td className="nowrap"><LawRefs code={d.key} /></td><td className="c2">{refWhy(d.key).map((r) => r.why).join(' ')}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="t-sm c3" style={{ marginTop: 8, maxWidth: 760 }}>{law.note}</p>
+    </>
+  )
+}
 /** «R2 25 + R3 10 = 35» — расчёт по подтверждённым факторам */
 const formula = (hits: string[]) => {
   const sum = Math.min(model.maxScore, hits.reduce((s, c) => s + weight(c), 0))
@@ -120,7 +181,7 @@ export default function Method() {
           <div>
             <div className="crumbs"><Link to="/">SAQ Qurylys</Link><span>›</span><span>Методика скоринга</span></div>
             <h1 className="t-h1">Как считается риск</h1>
-            <div className="row t-body" style={{ gap: 8, marginTop: 12 }}><span style={{ color: 'var(--link)', display: 'flex' }}><IcInfo /></span>{model.disclaimer}</div>
+            <div className="row t-body" style={{ gap: 8, marginTop: 12 }}><span style={{ color: 'var(--link)', display: 'flex' }}><IcInfo /></span><span>{model.disclaimer} <a href="#law" className="link">Нормативная база</a></span></div>
             <div className="row wrap-f t-sm" style={{ gap: 8, marginTop: 14 }}>
               <span className="c2">Контрольные сценарии ТЗ §5:</span>
               {model.cases.map((k) => {
@@ -212,7 +273,7 @@ export default function Method() {
           {model.factors.flatMap((f) => [
             <tr key={f.code} id={f.code} onClick={() => setOpen(open === f.code ? null : f.code)}>
               <td><span className="tag dark">{f.code}</span></td>
-              <td><span className="link">{f.title}</span></td>
+              <td><span className="link">{f.title}</span>{lawRefs(f.code).length > 0 && <div className="t-xs c2" style={{ marginTop: 4 }}>Основание: <LawRefs code={f.code} /></div>}</td>
               <td className="c2">{f.when}</td>
               <td className="r b" style={{ fontSize: 18 }}>+{f.weight}</td>
               <td className="r c2">{open === f.code ? <IcChevronUp size={16} /> : <IcChevronDown size={16} />}</td>
@@ -221,12 +282,26 @@ export default function Method() {
               <tr key={f.code + 'x'} className="xrow"><td />
                 <td colSpan={4}>
                   <div className="xgrid"><div><div className="c2 t-sm">Откуда данные</div>{f.source}</div><div><div className="c2 t-sm">Пример</div>{f.example}</div></div>
+                  <div style={{ marginTop: 12 }}>
+                    <div className="c2 t-sm">Основание в законе</div>
+                    {refWhy(f.code).length ? refWhy(f.code).map((r, i) => (
+                      <div key={i} className="t-sm" style={{ marginTop: 4, lineHeight: '20px' }}>
+                        <b>{refText(r)}</b> — {r.why}
+                        <details style={{ marginTop: 2 }}>
+                          <summary className="link t-xs" style={{ cursor: 'pointer' }}>Текст нормы</summary>
+                          {excerptsFor(r).map((e) => <blockquote key={e.part} className="t-xs" style={{ margin: '4px 0 0', paddingLeft: 10, borderLeft: '3px solid var(--border)', whiteSpace: 'pre-line' }}>{e.text}</blockquote>)}
+                        </details>
+                      </div>
+                    )) : <div className="t-sm c2" style={{ marginTop: 4 }}>Прямой нормы в статьях 7, 8, 18, 23 нет: фактор — признак для проверки по данным мониторинга (<a className="link" href="#law">Нормативная база</a>).</div>}
+                  </div>
                 </td>
               </tr>
             ),
           ])}
         </tbody>
       </table>
+
+      <LawBlock />
 
       <h2 className="t-h2" style={{ margin: '48px 0 4px' }}>Дополнительные наблюдения — вне балла</h2>
       <p className="c2" style={{ marginBottom: 16, maxWidth: 760 }}>Повод присмотреться, но не факт нарушения по объекту. Показываются в карточке ЖК отдельно и на балл и зону не влияют.</p>
@@ -359,6 +434,7 @@ export default function Method() {
       <Faq title="Вопросы о методике"
         items={[
           ['Почему «нет данных» не считается отсутствием основания?', 'По ТЗ R1 ставится, только когда отсутствие гарантии ЕО и разрешения МИО установлено проверенными данными с источником и датой сверки. Нет ответа реестра или сведений — 0 баллов и отметка «Нужна проверка»: аналитик запрашивает документы, а не фиксирует нарушение.'],
+          ['Почему «нет разрешения МИО» не значит «незаконно»?', <>Закон допускает разные способы организации долевого участия (ст. 7 п. 1): гарантию Единого оператора, участие в проекте банка второго уровня и привлечение денег после возведения каркаса. Договор о предоставлении гарантии ЕО сам является основанием и не требует разрешения МИО (ст. 8 п. 6); разрешение МИО нужно при двух других способах (ст. 18 п. 1). Поэтому R1 — только когда установлено отсутствие и гарантии, и разрешения. Подробнее — <a className="link" href="#law">Нормативная база</a>.</>],
           ['Что значит «Нужна проверка»?', 'Хотя бы один фактор нельзя ни подтвердить, ни исключить: нет сведений, обращение ещё не проверено или привязка публикации к ЖК — только гипотеза. Балл от этого не растёт, но объект попадает в фильтр «Нужна проверка».'],
           ['Как учитываются гипотезы ИИ?', 'Привязка публикации к ЖК — факт только после решения аналитика: он принял гипотезу ИИ, выбрал ЖК сам или подтвердил нарушение по публикации. До этого привязка — гипотеза ИИ, как бы ни была высока уверенность: R2 и R3 по такой публикации дают 0 баллов и отметку «Нужна проверка».'],
           ['Может ли ИИ поднять или снизить балл сам?', <>Нет. ИИ находит условия оплаты и предлагает ЖК — это гипотезы. Балл меняют подтверждённые данные и решения аналитика: принятая привязка добавляет R2/R3 публикации объекту, отметка «Это не предложение денег» снимает R2 этой публикации. Подробнее — в разделе <a className="link" href="#ai">ИИ-анализ публикаций</a>.</>],

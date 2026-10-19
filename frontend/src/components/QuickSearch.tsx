@@ -5,6 +5,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { adHit, codeQuery, finder, rankComplex, rankObject } from '../lib/find'
 import { placeText, useRegistry } from '../lib/provenance'
 import { norm, rankIn } from '../lib/search'
+import { useT } from '../lib/i18n'
 import { useStore } from '../lib/store'
 import { IcClose, IcDatabase, IcFlag, IcSearch } from '../ui/icons'
 import { SignalStatusTag } from './SignalPanel'
@@ -19,6 +20,7 @@ const editable = (t: EventTarget | null) => t instanceof HTMLElement && (t.isCon
 const more = (key: string, label: string, to: string): Hit => ({ key, to, title: label, more: true })
 
 export default function QuickSearch() {
+  const { t } = useT()
   const { mode, complexes, developers, ads, signals, riskOf } = useStore()
   const nav = useNavigate()
   const loc = useLocation()
@@ -137,13 +139,13 @@ export default function QuickSearch() {
     <div className="qsearch" ref={root} onKeyDown={onEsc} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false) }}>
       <label className="fsearch">
         <IcSearch size={18} />
-        <input ref={input} value={q} placeholder="Найти ЖК, адрес, БИН" aria-label="Быстрый поиск"
+        <input ref={input} value={q} placeholder={t('qs.placeholder')} aria-label={t('qs.aria')}
           role="combobox" aria-expanded={open} aria-controls="qs-list" aria-autocomplete="list"
           aria-activedescendant={open && flat[active] ? `qs-${active}` : undefined}
           onFocus={() => { setTouched(true); setOpen(true) }}
           onChange={(e) => { setQ(e.target.value); setActive(0); setOpen(true) }} onKeyDown={onKey} />
-        {q ? <button className="c3" onClick={() => { setQ(''); input.current?.focus() }} aria-label="Очистить"><IcClose size={16} /></button>
-          : !open && <kbd title="Клавиша «/» — к поиску с любой страницы">/</kbd>}
+        {q ? <button className="c3" onClick={() => { setQ(''); input.current?.focus() }} aria-label={t('common.clear')}><IcClose size={16} /></button>
+          : !open && <kbd title={t('qs.kbd')}>/</kbd>}
       </label>
       {open && (
         // mousedown внутри списка не уводит фокус из поля: иначе список закрылся бы до клика

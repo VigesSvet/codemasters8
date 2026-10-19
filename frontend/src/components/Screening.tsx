@@ -3,10 +3,11 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { Advert, DeveloperScreening, Permit, Screening, ScreeningReason, ScreeningStatus, ScreeningVariant } from '../data/types'
+import { countsLineT, useT } from '../lib/i18n'
 import type { From } from '../lib/nav'
 import {
   BASIS_HINT, BASIS_LABEL, DISCLAIMER, DISCLAIMER_SHORT, NO_SCREENING, PERMIT_LABEL, PERMIT_TONE, SCREENING_GLYPH, SCREENING_ORDER,
-  SCREENING_SHORT, SCREENING_TONE, adReasons, countsLine, decisionReasons, labelOf, permitLinks, permitReason, permitSource, reasonParts, shortOf,
+  SCREENING_SHORT, SCREENING_TONE, adReasons, decisionReasons, labelOf, permitLinks, permitReason, permitSource, reasonParts, shortOf,
   signalName, variantOf,
 } from '../lib/screening'
 import { IcInfo } from '../ui/icons'
@@ -26,21 +27,29 @@ export const ScreeningPic = ({ status, size }: { status: ScreeningStatus | 'all'
 export function ScreeningTag({ s, dev, short, big }: {
   s: Pick<Screening, 'status' | 'label'> & { disclaimer?: string; variant?: ScreeningVariant | null }; dev?: boolean; short?: boolean; big?: boolean
 }) {
-  const label = labelOf(s, dev)
+  // подписи статуса — на языке интерфейса (tr: серверная label совпадает с нашими фразами); дисклеймер сервера — как есть
+  const { t, tr } = useT()
+  const label = tr(labelOf(s, dev))
   return (
-    <span className={`tag scr-tag ${SCREENING_TONE[s.status]} ${big ? 'big' : ''}`} title={`Проверка по рекламе: ${label}. ${s.disclaimer || DISCLAIMER}`}>
-      <span className="scr-g">{SCREENING_GLYPH[s.status]}</span>{short ? (dev ? SCREENING_SHORT[s.status] : shortOf(s)) : label}
+    <span className={`tag scr-tag ${SCREENING_TONE[s.status]} ${big ? 'big' : ''}`} title={t('scr.tagTitle', { label, disclaimer: tr(s.disclaimer || DISCLAIMER) })}>
+      <span className="scr-g">{SCREENING_GLYPH[s.status]}</span>{short ? tr(dev ? SCREENING_SHORT[s.status] : shortOf(s)) : label}
     </span>
   )
 }
 
 /** Дисклеймер: коротко, полный текст — в подсказке; full — полностью */
-export const Disclaimer = ({ text, full }: { text?: string | null; full?: boolean }) => (
-  <span className="scr-disc" title={text || DISCLAIMER}><IcInfo size={13} />{full ? text || DISCLAIMER : DISCLAIMER_SHORT}</span>
-)
+export function Disclaimer({ text, full }: { text?: string | null; full?: boolean }) {
+  // текст сервера совпадает с нашим — на языке интерфейса (tr); свой текст сервера — как есть
+  const { tr } = useT()
+  const long = tr(text || DISCLAIMER)
+  return <span className="scr-disc" title={long}><IcInfo size={13} />{full ? long : tr(DISCLAIMER_SHORT)}</span>
+}
 
 /** Оценки нет: сервер старой версии */
-export const NoScreening = ({ children }: { children?: ReactNode }) => <div className="ai-note">{NO_SCREENING}{children}</div>
+export function NoScreening({ children }: { children?: ReactNode }) {
+  const { tr } = useT()
+  return <div className="ai-note">{tr(NO_SCREENING)}{children}</div>
+}
 
 /** Основание по открытым данным: статус, текст сервера, источник (карточка открытых данных и внешняя ссылка) */
 export function PermitLine({ p, state }: { p: Permit; state?: State }) {
@@ -100,9 +109,11 @@ export function AdvertLine({ a }: { a: Advert }) {
 
 /** Блок «Проверка по рекламе»: статус, подпись, основание, причины с цитатами, счётчики, на чём основано, дисклеймер.
  *  compact — для панели карты: меньше причин, без названий рекламы */
-export function ScreeningBlock({ s, permit, advert, state, compact, title = 'Проверка по рекламе', extra }: {
+export function ScreeningBlock({ s, permit, advert, state, compact, title: titleProp, extra }: {
   s: Screening; permit?: Permit | null; advert?: Advert | null; state?: State; compact?: boolean; title?: string; extra?: ReactNode
 }) {
+  const { t, tr, dayMonth } = useT()
+  const title = titleProp ?? t('scr.title')
   const tone = SCREENING_TONE[s.status]
   // решение аналитика (сведения решения или «новая реклама после решения») — над основанием, остальные причины — под ним
   const dec = decisionReasons(s).slice(0, compact ? 1 : 2)
@@ -113,16 +124,16 @@ export function ScreeningBlock({ s, permit, advert, state, compact, title = 'П�
       <div className="scr-head">
         <ScreeningPic status={s.status} />
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="scr-kicker">{title}{variantOf(s) && ' · решение аналитика'}</div>
-          <div className="scr-title">{labelOf(s)}</div>
+          <div className="scr-kicker">{title}{variantOf(s) && t('scr.byAnalyst')}</div>
+          <div className="scr-title">{tr(labelOf(s))}</div>
         </div>
-        {!compact && <span className="tag outline" title={BASIS_HINT[s.basis]} style={{ background: 'rgba(255,255,255,.6)' }}>{BASIS_LABEL[s.basis]}</span>}
+        {!compact && <span className="tag outline" title={t(`scr.basisHint.${s.basis}`)} style={{ background: 'rgba(255,255,255,.6)' }}>{t(`scr.basis.${s.basis}`)}</span>}
       </div>
       <Disclaimer text={s.disclaimer} full={!compact} />
       <ReasonList reasons={dec} state={state} />
       {permit ? <PermitLine p={permit} state={state} /> : pr && <div className="t-sm">{pr.text}</div>}
       <ReasonList reasons={reasons} state={state} />
-      <div className="scr-line"><b>Реклама:</b> {countsLine(s.counts)}{!s.inRegistry && <> · <b>в открытом реестре нет</b></>}{compact && <span title={BASIS_HINT[s.basis]}> · оценка {BASIS_LABEL[s.basis]}</span>}</div>
+      <div className="scr-line"><b>{t('scr.adsColon')}</b> {countsLineT(t, s.counts, dayMonth)}{!s.inRegistry && <> · <b>{t('scr.notInRegistry')}</b></>}{compact && <span title={t(`scr.basisHint.${s.basis}`)}>{t('scr.assessedBy', { basis: t(`scr.basis.${s.basis}`) })}</span>}</div>
       {!compact && advert && <AdvertLine a={advert} />}
       {extra}
     </section>
@@ -131,11 +142,12 @@ export function ScreeningBlock({ s, permit, advert, state, compact, title = 'П�
 
 /** Счётчики ЖК застройщика по статусам: ● 1 ● 2 … (нули не показываем) */
 export function StatusCounts({ c }: { c: Partial<Record<ScreeningStatus, number>> }) {
+  const { t } = useT()
   const xs = SCREENING_ORDER.filter((k) => (c[k] ?? 0) > 0)
-  if (!xs.length) return <span className="scr-counts">ЖК на контроле нет</span>
+  if (!xs.length) return <span className="scr-counts">{t('scr.noComplexes')}</span>
   return (
     <span className="scr-counts">
-      {xs.map((k) => <span key={k} title={SCREENING_SHORT[k]}><ScreeningPic status={k} /><b>{c[k]}</b>{SCREENING_SHORT[k]}</span>)}
+      {xs.map((k) => <span key={k} title={t(`scr.short.${k}`)}><ScreeningPic status={k} /><b>{c[k]}</b>{t(`scr.short.${k}`)}</span>)}
     </span>
   )
 }

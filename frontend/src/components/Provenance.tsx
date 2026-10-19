@@ -2,6 +2,7 @@
 // «демо» — только у строк прежнего демо-набора в старых БД. Бейдж — у сущности; вариант «у поля» — мелкой строкой рядом со значением.
 import type { ReactNode } from 'react'
 import type { BasisSource } from '../data/types'
+import { useT } from '../lib/i18n'
 import { ADVERTISED_LABEL, ADVERTISED_NOTE, OPEN_DATA_NOTE, REGISTRY_LABEL, when } from '../lib/provenance'
 import { IcCheck, IcDatabase, IcDoc, IcExternal, IcHelp, IcInfo, IcMegaphone } from '../ui/icons'
 import { AiBadge, Confidence } from './Hypothesis'
@@ -49,9 +50,12 @@ interface OriginProps {
 
 /** Метка происхождения: бейдж (по умолчанию) или строка у поля */
 export function Origin({ kind, label, source, at, url, who, confidence, low, field, onPhoto, title }: OriginProps) {
-  const text = label ?? LABEL[kind]
+  // подписи и пояснения по умолчанию — на языке интерфейса (lib/i18n: tr по русской фразе); переданные страницей — как есть
+  const { tr } = useT()
+  const raw = label ?? LABEL[kind]
+  const text = typeof raw === 'string' ? tr(raw) : raw
   const details = kind === 'source' ? [source, at && `зафиксировано ${when(at)}`] : kind === 'analyst' ? [who, when(at)] : []
-  const hint = title ?? [HINT[kind], ...details.filter(Boolean)].join('. ')
+  const hint = title ?? [tr(HINT[kind]), ...details.filter(Boolean)].join('. ')
   if (field) {
     const Icon = kind === 'source' || kind === 'registry' ? IcDatabase : kind === 'advertised' ? IcMegaphone : kind === 'analyst' ? IcCheck : kind === 'demo' ? IcInfo : null
     if (kind === 'ai') return (

@@ -1,6 +1,8 @@
 // Лендинг SAQ Qurylys (/about, а для гостя — и главная /) в духе apple.com: крупная типографика, полноэкранные кадры
 // продукта, бенто с живыми цифрами. Кадры — реальные экраны системы (public/landing/*.jpg), цифры — из данных системы
 import { Link } from 'react-router-dom'
+import LangSwitch from '../components/LangSwitch'
+import { useT } from '../lib/i18n'
 import { statusOf } from '../lib/screening'
 import { useStore } from '../lib/store'
 
@@ -11,43 +13,43 @@ function useNums() {
   const flagged = complexes.filter((c) => { const s = statusOf(c); return s === 'suspect' || s === 'check' }).length
   return { complexes: complexes.length, ads: ads.length, flagged }
 }
-const n = (x: number) => x.toLocaleString('ru-RU')
 const Logo = () => <Link to="/about" className="lp-logo"><img src="/logo.svg" alt="" />SAQ Qurylys</Link>
 
 export default function Landing() {
   const k = useNums()
+  const { t, tn, num: n } = useT()
   return (
     <div className="lp lp-apple">
-      <header className="lp-nav"><div className="lp-w"><Logo /><nav><a href="#see">Обзор</a><a href="#sat">Спутник</a><a href="#bento">Возможности</a><Link to="/method">Методика</Link></nav><Link to="/login" className="lp-pill">Войти</Link></div></header>
+      <header className="lp-nav"><div className="lp-w"><Logo /><nav><a href="#see">{t('lp.navOverview')}</a><a href="#sat">{t('lp.navSat')}</a><a href="#bento">{t('lp.navFeatures')}</a><Link to="/method">{t('lp.navMethod')}</Link></nav><LangSwitch /><Link to="/login" className="lp-pill">{t('lp.signIn')}</Link></div></header>
       <section className="lp-hero" id="see">
-        <h1>Стройка.<br />Под контролем.</h1>
-        <p>Вся реклама новостроек города, риск каждого ЖК и проверка разрешений — в одном окне.</p>
-        <div className="lp-links"><Link to="/login">Открыть систему ›</Link><Link to="/method">Как считается риск ›</Link></div>
-        <img className="lp-hero-img" src={IMG('map-3d')} alt="3D-карта ЖК" />
+        <h1>{t('lp.heroL1')}<br />{t('lp.heroL2')}</h1>
+        <p>{t('lp.heroText')}</p>
+        <div className="lp-links"><Link to="/login">{t('lp.openSystem')} ›</Link><Link to="/method">{t('lp.howRisk')} ›</Link></div>
+        <img className="lp-hero-img" src={IMG('map-3d')} alt={t('lp.heroAlt')} />
       </section>
       <section className="lp-black" id="sat">
-        <h2>Было.<span> Стало.</span></h2>
-        <p>Снимки места с 2014 года. Сдвиньте шторку — и видно, когда на пустыре вырос котлован.</p>
-        <img src={IMG('satellite')} alt="Спутник: до и после" />
+        <h2>{t('lp.before')}<span>{t('lp.after')}</span></h2>
+        <p>{t('lp.satText')}</p>
+        <img src={IMG('satellite')} alt={t('lp.satAlt')} />
       </section>
       <section className="lp-bento-wrap" id="bento"><div className="lp-w">
-        <h2>Каждая деталь — для проверки.</h2>
+        <h2>{t('lp.bentoTitle')}</h2>
         <div className="lp-bento">
-          <div className="t n"><span>На контроле</span><b>{n(k.complexes)}</b><em>жилых комплексов</em></div>
-          <div className="t img2"><span>Сводка</span><h3>Светофор риска по городу.</h3><img src={IMG('ops-board')} alt="" /></div>
-          <div className="t img3"><span>Объекты из рекламы</span><h3>Нет в реестре — есть в рекламе.</h3><img src={IMG('discovered')} alt="" /></div>
-          <div className="t n y"><span>Разобрано</span><b>{n(k.ads)}</b><em>публикаций рекламы</em></div>
-          <div className="t dark"><span>Видео</span><h3>Слышит, что говорят в роликах.</h3><p>Речь и надписи кадров — в анализ.</p></div>
-          <div className="t n r"><span>Ждут проверки</span><b>{n(k.flagged)}</b><em>ЖК с признаками продажи</em></div>
-          <div className="t sat"><span>Спутник</span><h3>С 2014 года.</h3><img src={IMG('satellite')} alt="" /></div>
+          <div className="t n"><span>{t('lp.onControl')}</span><b>{n(k.complexes)}</b><em>{tn('lp.complexesN', k.complexes)}</em></div>
+          <div className="t img2"><span>{t('lp.ops')}</span><h3>{t('lp.opsH')}</h3><img src={IMG('ops-board')} alt="" /></div>
+          <div className="t img3"><span>{t('lp.disc')}</span><h3>{t('lp.discH')}</h3><img src={IMG('discovered')} alt="" /></div>
+          <div className="t n y"><span>{t('lp.parsed')}</span><b>{n(k.ads)}</b><em>{tn('lp.adsN', k.ads)}</em></div>
+          <div className="t dark"><span>{t('lp.video')}</span><h3>{t('lp.videoH')}</h3><p>{t('lp.videoP')}</p></div>
+          <div className="t n r"><span>{t('lp.waiting')}</span><b>{n(k.flagged)}</b><em>{t('lp.flaggedN')}</em></div>
+          <div className="t sat"><span>{t('lp.sat')}</span><h3>{t('lp.satH')}</h3><img src={IMG('satellite')} alt="" /></div>
         </div>
       </div></section>
       <section className="lp-row"><div className="lp-w">
-        <img src={IMG('queue')} alt="Очередь проверки" />
-        <div><span>Очередь проверки</span><h2>Сначала — самое рискованное.</h2><p>Публикации отсортированы по риску. Перетащите карточку — статус и автор решения попадут в журнал.</p><Link to="/login">Открыть очередь ›</Link></div>
+        <img src={IMG('queue')} alt={t('lp.queue')} />
+        <div><span>{t('lp.queue')}</span><h2>{t('lp.queueH')}</h2><p>{t('lp.queueP')}</p><Link to="/login">{t('lp.openQueue')} ›</Link></div>
       </div></section>
-      <section className="lp-close"><h2>ИИ подсказывает.<br />Решает человек.</h2><p>Оценка системы — предварительная. Нарушение подтверждает только аналитик.</p><Link to="/login" className="lp-btn blue">Открыть систему</Link></section>
-      <footer className="lp-foot"><div className="lp-w"><span>SAQ Qurylys · Codemasters 8.0 · 2026</span><span>Усть-Каменогорск</span></div></footer>
+      <section className="lp-close"><h2>{t('lp.closeL1')}<br />{t('lp.closeL2')}</h2><p>{t('lp.closeP')}</p><Link to="/login" className="lp-btn blue">{t('lp.openSystem')}</Link></section>
+      <footer className="lp-foot"><div className="lp-w"><span>SAQ Qurylys · Codemasters 8.0 · 2026</span><span>{t('common.city')}</span></div></footer>
     </div>
   )
 }

@@ -661,6 +661,7 @@ class LlmAnalysis(Base):
                 "complex_candidates": list(res.get("complexCandidates") or []),
                 "mentioned_complexes": list(res.get("mentionedComplexes") or []),
                 "object_stage": res.get("objectStage") or None,
+                "legal_refs": list(res.get("legalRefs") or []),
                 "uncertainties": list(res.get("uncertainties") or []), "summary": res.get("summary"),
                 "dropped": dict(self.dropped or {}), "error": self.error, "retry_at": self.retry_at,
                 "attempts": self.attempts or 0, "refusal_category": meta.get("refusalCategory"),

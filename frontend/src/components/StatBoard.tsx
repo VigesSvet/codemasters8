@@ -2,6 +2,7 @@
 // собранная из общих деталей — показатель, полоса долей, кольцо, этапы, шкала, строка-действие. Стили — styles/board.css
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { useT } from '../lib/i18n'
 import { Emblem, type EmblemName, type EmTone } from './emblems'
 
 type Act = { to?: string; onClick?: () => void; active?: boolean; title?: string }
@@ -122,9 +123,10 @@ function Arrow({ fork }: { fork?: boolean }) {
 
 /** Шкала «value из of» с подписью */
 export function Meter({ value, of, tone, label, ...act }: Act & { value: number; of: number; tone: EmTone; label: ReactNode }) {
+  const { t } = useT()
   return (
     <Hit className="sb-meter" {...act}>
-      <span className="sb-meter-t"><span>{label}</span><b>{fmt(value)} <span className="c3">из {fmt(of)}</span></b></span>
+      <span className="sb-meter-t"><span>{label}</span><b>{fmt(value)} <span className="c3">{t('common.ofN', { n: of.toLocaleString('ru-RU') })}</span></b></span>
       <span className="sb-meter-b"><i className={tone} style={{ width: `${pct(value, of)}%` }} /></span>
     </Hit>
   )

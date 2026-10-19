@@ -278,6 +278,20 @@ class LlmStageOut(Camel):
     source: Optional[Literal["text", "ocr"]] = None
 
 
+LawArticle = Literal["7", "8", "18", "23"]  # статьи правового контекста анализа ИИ (shared/law.json)
+
+
+class LlmLegalRefOut(Camel):
+    """Норма Закона РК «О долевом участии в жилищном строительстве», к которой может относиться публикация (по ответу
+    модели) — гипотеза, не вывод о нарушении. Статья — из правового контекста, цитата сверена с материалом."""
+
+    article: LawArticle
+    part: str = ""  # номер пункта («6», «1-1») или пусто
+    why: str = ""
+    quote: str
+    source: Literal["text", "ocr"] = "text"
+
+
 class LlmOut(Camel):
     """Последний анализ ИИ публикации. Всё — гипотезы для аналитика: статус, привязку и вердикт модель не
     задаёт. failed / refused / skipped — «анализ ИИ не выполнен», а не «риск отсутствует»."""
@@ -293,6 +307,7 @@ class LlmOut(Camel):
     complex_candidates: List[LlmCandidateOut] = []
     mentioned_complexes: List[LlmMentionOut] = []  # saq-llm-2; у ответов saq-llm-1 — пусто
     object_stage: Optional[LlmStageOut] = None  # saq-llm-2; у ответов saq-llm-1 — null
+    legal_refs: List[LlmLegalRefOut] = []  # saq-llm-3; у ответов прежних версий — пусто
     uncertainties: List[str] = []
     summary: Optional[str] = None
     dropped: Dict[str, int] = {}  # отброшено сервером: цитаты нет в тексте, ЖК нет в справочнике, сумма не число…

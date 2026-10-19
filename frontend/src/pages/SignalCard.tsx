@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
-import { EvidenceView, FactorList, ObservationList } from '../components/Factors'
+import { EvidenceView, FactorList, LawNote, ObservationList } from '../components/Factors'
 import { MediaViewer } from '../components/MediaViewer'
 import { Origin } from '../components/Provenance'
 import { SignalGate, SignalStatusTag, SignalTime } from '../components/SignalPanel'
@@ -94,7 +94,7 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
                   ? <>подтверждённая готовность {rd.confirmed.value}%<span className="c2"> · {origin(rd.confirmed)}</span></>
                   : <>готовность по карточке объекта {c.progress}%<span className="c2"> · без источника</span></>}
                   {rd?.declared && <span className="c2"> · заявлено {rd.declared.value}%</span>}</span>
-                <span>Срок сдачи</span><span>{fmtDate(c.plannedEnd)}{c.start && <span className="c2"> · начало {fmtDate(c.start)}</span>}</span>
+                <span>Срок сдачи</span><span>{c.plannedEnd ? fmtDate(c.plannedEnd) : 'не указан'}{c.start && <span className="c2"> · начало {fmtDate(c.start)}</span>}</span>
               </div>
             </div>
             <h4 className="sig-h">Основание привлечения средств</h4>
@@ -116,6 +116,7 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
               </div>
             )}
             <div style={{ marginTop: 8 }}><FactorList factors={sig.factors} from={back} /></div>
+            <LawNote />
           </section>
 
           <section className="card">

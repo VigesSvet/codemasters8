@@ -13,6 +13,8 @@ export interface ModelFactor {
   reasons: Record<string, string>
   /** Другие формулировки той же причины: ключ «<причина>_<вариант>» (R1: absent_same_source — один источник у обоих документов) */
   variants?: Record<string, string>
+  /** Ссылки на нормы Закона РК «О долевом участии в жилищном строительстве» (shared/law.json, lib/law.ts); пусто — норма не относится */
+  law?: { article: string; parts: string[] }[]
 }
 export interface ModelObservation { code: string; title: string; why: string; texts: Record<string, string> }
 export interface ModelZone { zone: Zone; name: string; range: string; rule: string; action: string }

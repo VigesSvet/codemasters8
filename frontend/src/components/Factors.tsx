@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { EvidenceItem, FactorState, Observation, ObservationState, Platform, RiskFactor, Tri } from '../data/types'
+import { law, lawArticle, lawRefs, refText } from '../lib/law'
 import { from as fromState, type From } from '../lib/nav'
 import { MARKERS } from '../lib/risk'
 import { IcCamera, IcClock, IcDoc, IcUsers, IcWorker } from '../ui/icons'
@@ -105,7 +106,36 @@ export function EvidenceView({ item: x, linkAds = true, from }: { item: Evidence
   )
 }
 
-/** Факторы R1–R6: статус, пояснение, баллы и доказательства под каждым */
+/** «Основание: ст. 7 п. 1, 2; ст. 8 п. 6 Закона РК …» — ссылки на статьи в ИПС «Әділет», пересказ статьи — в подсказке.
+ *  Норма к фактору не относится (R4–R6) — ничего */
+export function LawBasis({ code }: { code: string }) {
+  const rs = lawRefs(code)
+  if (!rs.length) return null
+  return (
+    <div className="t-xs c2" style={{ marginTop: 4 }}>
+      Основание:{' '}
+      {rs.map((r, i) => {
+        const a = lawArticle(r.article)
+        return <span key={i}>{i > 0 && '; '}{a ? <a className="link" href={a.url} target="_blank" rel="noopener noreferrer" title={`Ст. ${a.num}. ${a.title}. Кратко: ${a.summary}`}>{refText(r)}</a> : refText(r)}</span>
+      })}{' '}
+      {law.act.short}
+    </div>
+  )
+}
+
+/** Оговорка к основаниям факторов: ссылки справочные, оценка — не юридическое заключение, «нет разрешения» ≠ «незаконно» */
+export function LawNote() {
+  return (
+    <p className="t-xs c2" style={{ marginTop: 12, lineHeight: '17px' }}>
+      Основания — ссылки на {law.act.short} (справочно, редакция ИПС «Әділет»). Оценка — не юридическое заключение. Закон допускает
+      разные способы организации долевого участия: гарантию ЕО, проект банка второго уровня, привлечение денег после каркаса —
+      при гарантии ЕО разрешение МИО не требуется (ст. 8 п. 6), поэтому «нет разрешения» само по себе не значит «незаконно».{' '}
+      <Link className="link" to="/method#law">Нормативная база</Link>
+    </p>
+  )
+}
+
+/** Факторы R1–R6: статус, пояснение, основание в законе, баллы и доказательства под каждым */
 export function FactorList({ factors, items = true, linkAds = true, from }: { factors: RiskFactor[]; items?: boolean; linkAds?: boolean; from?: From }) {
   return (
     <div>
@@ -115,6 +145,7 @@ export function FactorList({ factors, items = true, linkAds = true, from }: { fa
           <div style={{ minWidth: 0 }}>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><span className="t">{f.title}</span><StateTag state={f.state} /></div>
             <div className="e">{f.evidence}</div>
+            <LawBasis code={f.code} />
             {items && f.items.length > 0 && <div className="ev-list">{f.items.map((x, i) => <EvidenceView key={i} item={x} linkAds={linkAds} from={from} />)}</div>}
           </div>
           <span className="p">+{f.points}</span>

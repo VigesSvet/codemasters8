@@ -4,6 +4,7 @@ import { Quote } from '../components/Factors'
 import { SignalGate, SignalStatusTag, SignalTime } from '../components/SignalPanel'
 import { platformMeta, statusMeta, zoneName } from '../components/ui'
 import type { EvidenceItem, FactorState, ObservationState, Platform, ReadinessValue, Signal, SignalAd } from '../data/types'
+import { basisText, law, lawRefs } from '../lib/law'
 import { DEMO_ORG, isDemo } from '../lib/provenance'
 import { fmtDate as day, linkConfirmed } from '../lib/risk'
 import { IcChevronLeft } from '../ui/icons'
@@ -27,6 +28,23 @@ function Item({ x }: { x: EvidenceItem }) {
   if (x.kind === 'readiness') return <>{x.label}: {x.value}% — {join(x.source, x.date && day(x.date))}</>
   if (x.kind === 'photo') return <>Снимок {join(x.date && day(x.date), x.source, x.value !== undefined && `активность: ${x.value}`)}</>
   return <>{x.label}{x.date && `: ${day(x.date)}`}</>
+}
+
+/** Нормативная база листа — как в PDF: статьи, на которые ссылаются факторы, адрес в ИПС «Әділет», оговорка и нюанс ТЗ */
+function LawBase({ codes }: { codes: string[] }) {
+  const used = new Set(codes.flatMap((c) => lawRefs(c).map((r) => r.article)))
+  const arts = law.articles.filter((a) => used.has(a.num))
+  if (!arts.length) return null
+  return (
+    <>
+      <h3>Нормативная база</h3>
+      <p className="sheet-small">
+        {law.act.title} от 7 апреля 2016 года № {law.act.number} ({law.act.redaction}). Ссылки на нормы — справочные: оценка риска — не
+        юридическое заключение. {law.nuance}
+      </p>
+      <ul>{arts.map((a) => <li key={a.num}><b>Ст. {a.num}.</b> {a.title} — <span className="sheet-url">{a.url}</span></li>)}</ul>
+    </>
+  )
 }
 
 // Формат листа — только пока открыта печатная версия: глобальный @page сломал бы выбор формата на других страницах
@@ -88,7 +106,7 @@ function Sheet({ sig, at }: { sig: Signal; at: string }) {
               <br />Заявлено: {rd?.declared ? sourced(rd.declared) : 'нет данных'}
               {!rd?.confirmed && <><br />Подтверждено: нет данных</>}
             </td></tr>
-            <tr><th>Срок сдачи</th><td>{join(`заявлен ${day(c.plannedEnd)}`, c.start && `начало ${day(c.start)}`)}</td></tr>
+            <tr><th>Срок сдачи</th><td>{join(c.plannedEnd ? `заявлен ${day(c.plannedEnd)}` : 'не указан', c.start && `начало ${day(c.start)}`)}</td></tr>
             <tr><th>Основание привлечения средств</th><td>{ev.documents.length ? ev.documents.map((d, i) => <div key={i}><Item x={d} /></div>) : 'нет данных'}</td></tr>
           </tbody></table>
         </section>
@@ -113,6 +131,7 @@ function Sheet({ sig, at }: { sig: Signal; at: string }) {
               <div>
                 <b>{f.title}</b>
                 <div className="pf-e">{f.evidence}</div>
+                {basisText(f.code) && <div className="pf-e">{basisText(f.code)}</div>}
                 {f.items.length > 0 && <ul>{f.items.map((x, i) => <li key={i}><Item x={x} /></li>)}</ul>}
               </div>
               <span>{STATE[f.state]}</span>
@@ -120,6 +139,7 @@ function Sheet({ sig, at }: { sig: Signal; at: string }) {
             </div>
           ))}
           <div className="pf total"><span /><b>Итого — сумма весов подтверждённых факторов, не больше 100</b><span /><b className="num">{sig.score}</b></div>
+          <LawBase codes={sig.factors.map((f) => f.code)} />
         </section>
 
         {sig.observations.length > 0 && (

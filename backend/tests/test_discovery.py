@@ -100,10 +100,10 @@ def nova_object() -> models.DiscoveredObject:
 # ---------- извлечение Claude v2 ----------
 
 def test_v2_schema_and_prompt():
-    assert llm.PROMPT_VERSION == "saq-llm-2"
+    assert llm.PROMPT_VERSION == "saq-llm-3"  # saq-llm-3: + legalRefs и правовой контекст (test_llm)
     props = llm.SCHEMA["properties"]
     assert list(props) == ["saleSignals", "amounts", "complexCandidates", "mentionedComplexes", "objectStage",
-                           "uncertainties", "summary"] == llm.SCHEMA["required"]
+                           "legalRefs", "uncertainties", "summary"] == llm.SCHEMA["required"]
     assert props["mentionedComplexes"]["items"]["required"] == ["name", "address", "quote"]
     assert props["objectStage"]["properties"]["value"]["enum"] == ["under_construction", "completed", "unknown"]
     assert "mentionedComplexes" in llm.SYSTEM_PROMPT and "objectStage" in llm.SYSTEM_PROMPT
@@ -130,7 +130,7 @@ def test_v2_verification_and_discovered_object(client, run_worker, ocr_stub, key
     res = take(pub(text=NOVA_TEXT))
     run_worker()
     (row,) = rows(res.ad_id)
-    assert row.status == "done" and row.prompt_version == "saq-llm-2"
+    assert row.status == "done" and row.prompt_version == llm.PROMPT_VERSION
     assert row.dropped == {"name": 1, "address": 1, "quote": 1}
     assert row.result["mentionedComplexes"] == [
         {"name": "Nova Park", "address": "ул. Абая, 10", "quote": "ЖК «Nova Park» на ул. Абая, 10", "source": "text"},

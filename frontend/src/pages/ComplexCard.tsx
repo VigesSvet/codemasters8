@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigationType, useParams, useSearchParams } from
 import { AuditList } from '../components/Audit'
 import Compare from '../components/Compare'
 import { DecisionPanel } from '../components/Decision'
-import { FactorList, ObservationList } from '../components/Factors'
+import { FactorList, LawNote, ObservationList } from '../components/Factors'
 import GeoCheck from '../components/GeoCheck'
 import MapView from '../components/MapView'
 import { DocSourceLine, Origin } from '../components/Provenance'
@@ -371,6 +371,7 @@ export default function ComplexCard() {
                 </div>
               )}
               <FactorList factors={r.factors} from={here('risk')} />
+              <LawNote />
               <h3 className="t-h3" style={{ margin: '32px 0 2px' }}>Вне балла</h3>
               <p className="t-sm c2" style={{ marginBottom: 4 }}>Наблюдения — повод присмотреться, на балл и зону не влияют</p>
               <ObservationList items={r.observations} />

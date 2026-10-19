@@ -1,0 +1,8 @@
+/* Переключатель языка «РУС | ҚАЗ» (components/LangSwitch.tsx) — серая капсула как у индикатора связи */
+.lang-sw { display: inline-flex; align-items: center; flex: none; height: 32px; padding: 3px; gap: 2px; border-radius: 10px; background: var(--fill); }
+.lang-sw button { height: 26px; padding: 0 8px; border-radius: 7px; font-size: 12px; font-weight: 600; letter-spacing: 0.02em; color: var(--text-2); white-space: nowrap; }
+.lang-sw button:hover { color: var(--text); }
+.lang-sw button.on { background: #fff; color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); cursor: default; }
+.lp-nav .lang-sw { height: 28px; padding: 2px; }
+.lp-nav .lang-sw button { height: 24px; font-size: 11px; }
+.login .side .lang-sw { margin-left: auto; }

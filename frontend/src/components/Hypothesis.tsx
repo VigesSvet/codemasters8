@@ -2,6 +2,7 @@
 // Гипотеза — не факт: в балл она входит, только когда аналитик её примет.
 import type { CSSProperties, ReactNode } from 'react'
 import type { LinkHypothesis, LinkReason, ReasonFeature, Term } from '../data/types'
+import { useT } from '../lib/i18n'
 import { linkConfirmed, type AdDecisions } from '../lib/risk'
 import { IcCamera, IcCheck, IcSparkSearch } from '../ui/icons'
 import { Highlight } from './ui'
@@ -18,14 +19,15 @@ export function AiBadge({ label = 'гипотеза ИИ', title }: { label?: st
 /** Пометка у названия ЖК, пока привязка — гипотеза: ЖК предложил ИИ, аналитик её не принял, в балл объекта она не входит.
  *  У факта (привязку принял аналитик или нарушение подтверждено) и у публикации без ЖК — ничего. value — уверенность, если она
  *  точнее записанной (по текущему анализу); style — например, alignSelf в колонке, чтобы метка не растягивалась */
-export function LinkMark({ a, value, label = 'гипотеза ИИ', style }: {
+export function LinkMark({ a, value, label, style }: {
   a: AdDecisions & { complexId?: string | null; matchConfidence?: number | null }; value?: number; label?: string; style?: CSSProperties
 }) {
+  const { t } = useT()
   if (!a.complexId || linkConfirmed(a)) return null
   const p = Math.round(Math.max(0, Math.min(1, (value ?? a.matchConfidence) || 0)) * 100)
   return (
-    <span className="tag yellow" style={style} title="ЖК предложил ИИ, аналитик привязку не принял — это гипотеза: в балл объекта не входит">
-      <IcSparkSearch size={12} />{label} {p}%
+    <span className="tag yellow" style={style} title={t('common.aiLinkHint')}>
+      <IcSparkSearch size={12} />{label ?? t('common.aiHypothesis')} {p}%
     </span>
   )
 }

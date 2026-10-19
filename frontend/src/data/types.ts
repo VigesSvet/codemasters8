@@ -451,6 +451,10 @@ export interface LlmMention { name: string; address?: string; quote: string; sou
 /** Стадия рекламируемого объекта по материалу; без дословной цитаты — unknown */
 export type LlmStage = 'under_construction' | 'completed' | 'unknown'
 export interface LlmObjectStage { value: LlmStage; quote?: string; source?: 'text' | 'ocr' | null }
+/** Норма Закона РК «О долевом участии в жилищном строительстве», к которой может относиться публикация (shared/law.json):
+ *  гипотеза модели, не вывод о нарушении. Статья — из правового контекста, quote — дословно из публикации (сервер сверил),
+ *  part — номер пункта или пусто */
+export interface LlmLegalRef { article: '7' | '8' | '18' | '23'; part?: string; why?: string; quote: string; source?: 'text' | 'ocr' }
 
 /** Анализ ИИ: только гипотезы — статус, привязку и вывод о нарушении модель не задаёт.
  *  failed / refused / skipped — «анализ ИИ не выполнен», а не «риска нет» */
@@ -468,6 +472,8 @@ export interface LlmAnalysis {
   mentionedComplexes?: LlmMention[]
   /** saq-llm-2: стадия объекта по материалу; у старых ответов — null */
   objectStage?: LlmObjectStage | null
+  /** saq-llm-3: нормы закона, к которым может относиться публикация, — гипотезы; у старых ответов — пусто или нет поля */
+  legalRefs?: LlmLegalRef[]
   uncertainties: string[]
   summary?: string | null
   /** Сколько элементов ответа сервер отбросил: quote — цитаты нет в тексте, complex — ЖК не из справочника, amount — не число, limit — сверх предела */

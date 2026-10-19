@@ -4,32 +4,36 @@ import { OpenDataList } from '../components/OpenData'
 import { OFFLINE_FILE } from '../data/openData'
 import { OpenDataNote, Origin } from '../components/Provenance'
 import { Disclaimer, NoScreening, ScreeningPic, ScreeningTag } from '../components/Screening'
-import { FilterPop, Modal, NeedsCheck, RiskScore, RiskZone, Seg, fmtDate, plural } from '../components/ui'
+import { FilterPop, Modal, NeedsCheck, RiskScore, RiskZone, Seg } from '../components/ui'
 import type { Stage, Tri, Zone } from '../data/types'
 import { findComplex, useSearchText } from '../lib/find'
+import { useT, type I18n } from '../lib/i18n'
 import { from } from '../lib/nav'
 import { NO_DATA, isAdvertised, isDemo, isRegistry, placeText, stageText, useRegistry } from '../lib/provenance'
 import { NOT_ASSESSED, isAssessed } from '../lib/risk'
 import {
-  SCREENING_FILTER_LABEL, SCREENING_HINT, SCREENING_ORDER, anyScreening, compareScreening, hasPoint, inScreening, parseScreeningParam, reasonShort, statusOf, topReason,
+  SCREENING_ORDER, anyScreening, compareScreening, hasPoint, inScreening, parseScreeningParam, reasonShort, statusOf, topReason,
 } from '../lib/screening'
 import type { ScreeningStatus } from '../data/types'
 import { useStore } from '../lib/store'
 import { IcChevronRight, IcClose, IcGrid, IcList, IcMap, IcSliders } from '../ui/icons'
 
 const STAGES: Stage[] = ['котлован', 'фундамент', 'каркас', 'кровля', 'отделка', 'введён']
-const triText = (v: Tri) => (v === 'yes' ? 'есть' : v === 'no' ? 'нет' : 'нет сведений')
-const quarter = (d: string) => { if (!d) return NO_DATA; const x = new Date(d); return `${['I', 'II', 'III', 'IV'][Math.floor(x.getMonth() / 3)]} кв. ${x.getFullYear()}` }
+const triText = (t: I18n['t'], v: Tri) => t(v === 'yes' ? 'common.yesLow' : v === 'no' ? 'common.noLow' : 'common.noInfoLow')
+const quarter = ({ t, tr }: I18n, d: string) => { if (!d) return tr(NO_DATA); const x = new Date(d); return t('cx.quarter', { q: ['I', 'II', 'III', 'IV'][Math.floor(x.getMonth() / 3)], y: x.getFullYear() }) }
+/** Стадия с заглавной: «Каркас» / «Қаңқа» */
+const cap = (x: string) => x[0].toUpperCase() + x.slice(1)
 type Sort = 'screening' | 'risk' | 'end' | 'progress'
 /** control — ЖК на контроле, open — объекты открытых данных */
 type Layer = 'control' | 'open'
 const ZONES: Zone[] = ['red', 'yellow', 'green']
-const NEW = ['новостройка', 'новостройки', 'новостроек'] as const
 
 /** Выдача ЖК по образцу realty.yandex.ru/…/novostrojka: полоса фильтров, чипы, сортировка, карточки */
 export default function Complexes() {
   const { mode, complexes, ads, developers, riskOf } = useStore()
   const nav = useNavigate()
+  const i18n = useT()
+  const { t, tn, tr } = i18n
   // слой, поиск, фильтры, сортировка и вид — в адресе: «назад» из карточки возвращает в тот же список
   const [sp, setSp] = useSearchParams()
   const put = (patch: Record<string, string | string[]>) => setSp((p) => {
@@ -63,16 +67,16 @@ export default function Complexes() {
   const reg = useRegistry()
   const [allF, setAllF] = useState(false)
   // карточка ЖК покажет «← Новостройки» с этой же выборкой
-  const go = (to: string) => nav(to, { state: from('Новостройки', `/complexes${sp.toString() ? `?${sp}` : ''}`) })
+  const go = (to: string) => nav(to, { state: from(t('nav.complexes'), `/complexes${sp.toString() ? `?${sp}` : ''}`) })
 
   const all = useMemo(() => complexes.map((c) => ({ c, r: riskOf(c), dev: developers.find((d) => d.id === c.developerId), nAds: ads.filter((a) => a.complexId === c.id).length })), [complexes, ads, developers, riskOf])
   const chips: [string, string, (x: (typeof all)[number]) => boolean][] = [
-    ['na', 'Риск не оценивается', (x) => !isAssessed(x.r)],
-    ['check', 'Нужна проверка', (x) => x.r.needsCheck],
-    ['nolist', 'Нет в перечне ГАСК', (x) => x.c.inPublishedList === 'no'],
-    ['idle', 'Стройка стоит', (x) => x.c.idleDays >= 30],
-    ['ads', 'С рекламой', (x) => x.nAds > 0],
-    ['built', 'Сданные', (x) => x.c.stage === 'введён'],
+    ['na', t('cx.chipNA'), (x) => !isAssessed(x.r)],
+    ['check', t('common.needsCheck'), (x) => x.r.needsCheck],
+    ['nolist', t('cx.chipNoList'), (x) => x.c.inPublishedList === 'no'],
+    ['idle', t('cx.chipIdle'), (x) => x.c.idleDays >= 30],
+    ['ads', t('cx.chipAds'), (x) => x.nAds > 0],
+    ['built', t('cx.chipBuilt'), (x) => x.c.stage === 'введён'],
   ]
   const match = (x: (typeof all)[number], f: { zone?: Zone[]; district?: string[]; stage?: Stage[]; screening?: ScreeningStatus[] } = {}) => {
     const z = f.zone ?? zone, d = f.district ?? district, st = f.stage ?? stage, scr = f.screening ?? screening
@@ -92,7 +96,7 @@ export default function Complexes() {
   const shownChips = chips.filter(([k, , fn]) => k !== 'na' || chip === k || all.some(fn))
   // карточки из открытого реестра, по рекламе и (в старых БД) прежние демо-сценарии — от этого подписи слоя и заголовка
   const anyDemo = complexes.some(isDemo), anyReg = complexes.some(isRegistry)
-  const devName = devId ? developers.find((d) => d.id === devId)?.name ?? 'не найден' : ''
+  const devName = devId ? developers.find((d) => d.id === devId)?.name ?? t('cx.devNotFound') : ''
   // строку поиска очищает её крестик; «Сбросить» — когда выбран хоть один фильтр
   const dirty = !!(zone.length || district.length || stage.length || chip || devId || screening.length)
   const reset = () => setQ('', { zone: '', district: '', stage: '', chip: '', dev: '', screening: '' })
@@ -100,8 +104,8 @@ export default function Complexes() {
 
   const layerSeg = (
     <Seg value={layer} onChange={setLayer} items={[
-      ['control', <>{anyDemo && !anyReg ? 'Сценарии (демо)' : 'ЖК на контроле'}<span style={{ opacity: 0.56 }}>{complexes.length}</span></>],
-      ['open', <>Открытые данные{reg.total !== undefined && <span style={{ opacity: 0.56 }}>{reg.total}</span>}</>],
+      ['control', <>{anyDemo && !anyReg ? t('cx.layerDemo') : t('cx.layerControl')}<span style={{ opacity: 0.56 }}>{complexes.length}</span></>],
+      ['open', <>{t('cx.layerOpen')}{reg.total !== undefined && <span style={{ opacity: 0.56 }}>{reg.total}</span>}</>],
     ]} />
   )
 
@@ -110,25 +114,24 @@ export default function Complexes() {
       <div className="fbar" style={{ marginTop: 12 }}>
         {layerSeg}
         <label className="fsearch">
-          <input placeholder="Название, адрес, застройщик или БИН" value={q} onChange={(e) => setQ(e.target.value)} />
-          {q ? <button className="c3" onClick={() => setQ('')}><IcClose size={16} /></button> : <Link to="/" className="link t-sm bold">На карте</Link>}
+          <input placeholder={t('cx.openSearch')} value={q} onChange={(e) => setQ(e.target.value)} />
+          {q ? <button className="c3" onClick={() => setQ('')} aria-label={t('common.clear')}><IcClose size={16} /></button> : <Link to="/" className="link t-sm bold">{t('common.onMap')}</Link>}
         </label>
       </div>
       <div className="page-title" style={{ alignItems: 'center' }}>
         <div>
-          <h1 className="t-h1">Открытые данные: объекты долевого строительства</h1>
-          <p className="c2" style={{ marginTop: 8, maxWidth: 820 }}>Реальные объекты Усть-Каменогорска из Homeportal и Казреестра (CSV Ashyq Data) — как их опубликовал источник, со ссылкой и временем сбора.
-            Записи загружены файлом, автоматической синхронизации с реестрами нет. <Link className="link" to="/sources">Источники и импорт</Link></p>
+          <h1 className="t-h1">{t('cx.openTitle')}</h1>
+          <p className="c2" style={{ marginTop: 8, maxWidth: 820 }}>{t('cx.openLead')} <Link className="link" to="/sources">{t('cx.sourcesLink')}</Link></p>
         </div>
       </div>
       <div style={{ marginBottom: 24 }}><OpenDataNote /></div>
-      {mode === 'snapshot' && <div className="ai-note" style={{ marginBottom: 16 }}>Офлайн-копия: показана встроенная копия открытых данных ({OFFLINE_FILE}) — те же записи, что загружает сервер. Импорт новых файлов — с сервером (./dev.sh).</div>}
+      {mode === 'snapshot' && <div className="ai-note" style={{ marginBottom: 16 }}>{t('cx.openSnapshot', { file: OFFLINE_FILE })}</div>}
       {reg.data ? <>
-          {reg.err && <div className="alog-err t-sm">Список не обновился: {reg.err} <button className="link" onClick={reg.retry}>Повторить</button></div>}
+          {reg.err && <div className="alog-err t-sm">{t('cx.notUpdated', { e: reg.err })} <button className="link" onClick={reg.retry}>{t('common.retry')}</button></div>}
           <OpenDataList data={reg.data} q={q} />
         </>
-          : reg.err ? <div className="empty">Открытые данные не загрузились: {reg.err} <button className="link" onClick={reg.retry}>Повторить</button></div>
-            : <div className="empty">Загружаем открытые данные…</div>}
+          : reg.err ? <div className="empty">{t('cx.openFailed', { e: reg.err })} <button className="link" onClick={reg.retry}>{t('common.retry')}</button></div>
+            : <div className="empty">{t('cx.openLoading')}</div>}
     </>
   )
 
@@ -137,36 +140,36 @@ export default function Complexes() {
       <div className="fbar" style={{ marginTop: 12 }}>
         {layerSeg}
         <span className="vsep" />
-        {dirty && <><button className="fbtn gray" onClick={reset}><IcClose />Сбросить</button><span className="vsep" /></>}
-        <button className="fbtn icon" aria-label="Все фильтры" onClick={() => setAllF(true)}><IcSliders /></button>
-        {screenOn && <FilterPop label="Проверка" title="Проверка по рекламе" multi value={screening} onChange={setScreening} count={(v) => all.filter((x) => match(x, { screening: v })).length}
-          options={SCREENING_ORDER.map((k) => [k, SCREENING_FILTER_LABEL[k]] as [ScreeningStatus, string])} />}
-        <FilterPop label="Зона" title="Зона риска" multi value={zone} onChange={setZone} count={(v) => all.filter((x) => match(x, { zone: v })).length}
-          options={[['red', 'Красная'], ['yellow', 'Жёлтая'], ['green', 'Зелёная']]} />
-        <FilterPop label="Район" title="Район города" multi value={district} onChange={setDistrict} count={(v) => all.filter((x) => match(x, { district: v })).length}
+        {dirty && <><button className="fbtn gray" onClick={reset}><IcClose />{t('common.reset')}</button><span className="vsep" /></>}
+        <button className="fbtn icon" aria-label={t('cx.allFilters')} onClick={() => setAllF(true)}><IcSliders /></button>
+        {screenOn && <FilterPop label={t('cx.fScr')} title={t('scr.title')} multi value={screening} onChange={setScreening} count={(v) => all.filter((x) => match(x, { screening: v })).length}
+          options={SCREENING_ORDER.map((k) => [k, t(`scr.filter.${k}`)] as [ScreeningStatus, string])} />}
+        <FilterPop label={t('cx.fZone')} title={t('cx.fZoneTitle')} multi value={zone} onChange={setZone} count={(v) => all.filter((x) => match(x, { zone: v })).length}
+          options={ZONES.map((z) => [z, t(`zone.short.${z}`)] as [Zone, string])} />
+        <FilterPop label={t('cx.fDistrict')} title={t('cx.fDistrictTitle')} multi value={district} onChange={setDistrict} count={(v) => all.filter((x) => match(x, { district: v })).length}
           options={districts.map((d) => [d, d] as [string, string])} />
-        <FilterPop label="Стадия" title="Стадия строительства" multi value={stage} onChange={setStage} count={(v) => all.filter((x) => match(x, { stage: v })).length}
-          options={STAGES.map((s) => [s, s[0].toUpperCase() + s.slice(1)] as [Stage, string])} />
+        <FilterPop label={t('cx.fStage')} title={t('cx.fStageTitle')} multi value={stage} onChange={setStage} count={(v) => all.filter((x) => match(x, { stage: v })).length}
+          options={STAGES.map((s) => [s, cap(tr(s))] as [Stage, string])} />
         <label className="fsearch">
-          <input placeholder="ЖК, адрес, застройщик или БИН" value={q} onChange={(e) => setQ(e.target.value)} />
-          {q ? <button className="c3" onClick={() => setQ('')}><IcClose size={16} /></button> : <Link to="/" className="link t-sm bold">На карте</Link>}
+          <input placeholder={t('cx.search')} value={q} onChange={(e) => setQ(e.target.value)} />
+          {q ? <button className="c3" onClick={() => setQ('')} aria-label={t('common.clear')}><IcClose size={16} /></button> : <Link to="/" className="link t-sm bold">{t('common.onMap')}</Link>}
         </label>
       </div>
 
       <div className="page-title" style={{ alignItems: 'center' }}>
         <div>
-          <h1 className="t-h1">Новостройки Усть-Каменогорска на контроле</h1>
-          {anyDemo && <p className="t-sm c2 row wrap-f" style={{ marginTop: 8, gap: 8 }}><Origin kind="demo" label="Демо-сценарии" />Вымышленные ЖК и застройщики — на них показана модель риска (ТЗ §4, §5).{!anyReg && ' Реальные объекты — во вкладке «Открытые данные», без оценки риска.'}</p>}
-          {anyReg && <p className="t-sm c2 row wrap-f" style={{ marginTop: 8, gap: 8 }}><Origin kind="registry" />Карточки реальных ЖК по открытому реестру — {NOT_ASSESSED.toLowerCase()}, пока нет подтверждённой привязки публикации, сверенного документа, обращения или снимка площадки.</p>}
-          {complexes.some(isAdvertised) && <p className="t-sm c2 row wrap-f" style={{ marginTop: 8, gap: 8 }}><Origin kind="advertised" />ЖК, которых нет в открытом реестре: карточки созданы по рекламе, данные не проверены. <Link className="link" to="/discovered">Объекты из рекламы</Link></p>}
+          <h1 className="t-h1">{t('cx.title')}</h1>
+          {anyDemo && <p className="t-sm c2 row wrap-f" style={{ marginTop: 8, gap: 8 }}><Origin kind="demo" label={t('cx.demoLabel')} />{t('cx.demoText')}{!anyReg && t('cx.demoReal')}</p>}
+          {anyReg && <p className="t-sm c2 row wrap-f" style={{ marginTop: 8, gap: 8 }}><Origin kind="registry" />{t('cx.registryText', { na: tr(NOT_ASSESSED).toLowerCase() })}</p>}
+          {complexes.some(isAdvertised) && <p className="t-sm c2 row wrap-f" style={{ marginTop: 8, gap: 8 }}><Origin kind="advertised" />{t('cx.advertisedText')} <Link className="link" to="/discovered">{t('cx.discLink')}</Link></p>}
           {screenOn ? (
-            <div className="scr-chips" style={{ marginTop: 16, alignItems: 'center' }} role="group" aria-label="Проверка по рекламе">
-              <span className="t-sm bold" style={{ marginRight: 4 }}>Проверка по рекламе:</span>
+            <div className="scr-chips" style={{ marginTop: 16, alignItems: 'center' }} role="group" aria-label={t('scr.title')}>
+              <span className="t-sm bold" style={{ marginRight: 4 }}>{t('scr.titleColon')}</span>
               {SCREENING_ORDER.map((k) => {
                 const on = screening.length === 1 && screening[0] === k
                 return (
-                  <button key={k} className={`chip ${on ? 'on' : ''}`} aria-pressed={on} title={SCREENING_HINT[k]} onClick={() => setScreening(on ? [] : [k])}>
-                    <ScreeningPic status={k} />{SCREENING_FILTER_LABEL[k]}<span className="n num">{scrCount(k)}</span>
+                  <button key={k} className={`chip ${on ? 'on' : ''}`} aria-pressed={on} title={t(`scr.hint.${k}`)} onClick={() => setScreening(on ? [] : [k])}>
+                    <ScreeningPic status={k} />{t(`scr.filter.${k}`)}<span className="n num">{scrCount(k)}</span>
                   </button>
                 )
               })}
@@ -174,54 +177,54 @@ export default function Complexes() {
             </div>
           ) : mode === 'snapshot' && <div style={{ marginTop: 12, maxWidth: 560 }}><NoScreening /></div>}
           <div className="chips" style={{ marginTop: 16 }}>
-            {devId && <button className="chip on" onClick={() => put({ dev: '' })} title="Убрать фильтр по застройщику">Застройщик: {devName}<IcClose size={14} /></button>}
+            {devId && <button className="chip on" onClick={() => put({ dev: '' })} title={t('cx.devChipHint')}>{t('cx.devChip', { name: devName })}<IcClose size={14} /></button>}
             {shownChips.map(([k, l, fn]) => <button key={k} className={`chip ${chip === k ? 'on' : ''}`} onClick={() => setChip(chip === k ? '' : k)}>{l}<span className="n">{all.filter(fn).length}</span></button>)}
           </div>
         </div>
         <Link to="/" className="ph" style={{ width: 330, height: 100, borderRadius: 24, flex: 'none', background: 'url(/img/city-mountain.jpg) center/cover' }}>
-          <span className="btn w m" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}><IcMap size={16} />Смотреть на карте</span>
+          <span className="btn w m" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}><IcMap size={16} />{t('cx.seeOnMap')}</span>
         </Link>
       </div>
 
       <div className="row between">
         <div className="sorter">
-          <b>{rows.length} {plural(rows.length, NEW)}:</b>
-          {([...(screenOn ? [['screening', 'сначала подозрение']] as const : []), ['risk', 'по риску'], ['end', 'по сроку сдачи'], ['progress', 'по готовности']] as const).map(([k, l]) => <button key={k} className={sort === k ? 'on' : ''} onClick={() => setSort(k)}>{l}</button>)}
+          <b>{tn('cx.countN', rows.length)}:</b>
+          {([...(screenOn ? [['screening', t('cx.sortScreening')]] as const : []), ['risk', t('cx.sortRisk')], ['end', t('cx.sortEnd')], ['progress', t('cx.sortProgress')]] as const).map(([k, l]) => <button key={k} className={sort === k ? 'on' : ''} onClick={() => setSort(k)}>{l}</button>)}
         </div>
         <div className="row" style={{ gap: 16 }}>
-          <Link to="/ads" className="row bold" style={{ gap: 4, fontSize: 16 }}>{ads.length} {plural(ads.length, ['публикация', 'публикации', 'публикаций'])} в ленте<IcChevronRight size={16} /></Link>
-          <div className="seg"><button className={view === 'grid' ? 'on' : ''} onClick={() => setView('grid')} aria-label="Карточки"><IcGrid /></button><button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')} aria-label="Списком"><IcList /></button></div>
+          <Link to="/ads" className="row bold" style={{ gap: 4, fontSize: 16 }}>{tn('cx.feedN', ads.length)}<IcChevronRight size={16} /></Link>
+          <div className="seg"><button className={view === 'grid' ? 'on' : ''} onClick={() => setView('grid')} aria-label={t('cx.viewGrid')}><IcGrid /></button><button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')} aria-label={t('cx.viewList')}><IcList /></button></div>
         </div>
       </div>
 
-      {rows.length === 0 && <div className="empty">Нет объектов под эти фильтры</div>}
+      {rows.length === 0 && <div className="empty">{t('cx.none')}</div>}
       {view === 'grid' ? (
         <div className="gcards fade">
           {rows.map(({ c, r, dev, nAds }) => (
             <div key={c.id} className="gcard" onClick={() => go(`/complexes/${c.id}`)}>
               <div className="ph">
                 <img src={c.cover || undefined} alt="" />
-                <div className="tl">{c.screening && <ScreeningTag s={c.screening} short />}{isDemo(c) && <Origin kind="demo" label="демо" onPhoto title="Демонстрационные данные: вымышленный ЖК" />}{isRegistry(c) && <Origin kind="registry" label="реестр" onPhoto />}{isAdvertised(c) && <Origin kind="advertised" label="по рекламе" onPhoto />}<span className="tag white">{stageText(c)}</span>{r.needsCheck && <span className="tag white">нужна проверка</span>}{c.idleDays >= 30 && <span className="tag white">стоит {c.idleDays} дн.</span>}</div>
+                <div className="tl">{c.screening && <ScreeningTag s={c.screening} short />}{isDemo(c) && <Origin kind="demo" label={t('cx.demo')} onPhoto title={t('cx.demoHint')} />}{isRegistry(c) && <Origin kind="registry" label={t('cx.registry')} onPhoto />}{isAdvertised(c) && <Origin kind="advertised" label={t('cx.advertised')} onPhoto />}<span className="tag white">{tr(stageText(c))}</span>{r.needsCheck && <span className="tag white">{t('common.needsCheckLow')}</span>}{c.idleDays >= 30 && <span className="tag white">{t('cx.idleN', { n: c.idleDays })}</span>}</div>
               </div>
               <div className="b">
                 <span className="dev">{dev?.name}</span>
                 <div className="row between" style={{ alignItems: 'flex-start' }}><span className="nm">{c.name}</span><RiskScore r={r} /></div>
-                <span className="meta">{c.stage ? `${c.stage === 'введён' ? 'Сдан' : 'Строится'} · ${c.floors} эт. · ${c.progress}%` : 'Стадия не известна'} · сдача {quarter(c.plannedEnd)}</span>
-                <span className="meta row" style={{ gap: 6 }}><span className={`zdot ${isAssessed(r) ? r.zone : 'na'}`} />{placeText(c, ', ') || 'адрес не указан'}{!hasPoint(c) && ' · без координат'}</span>
+                <span className="meta">{c.stage ? `${c.stage === 'введён' ? t('cx.built') : t('cx.building')} · ${t('cx.floors', { n: c.floors })} · ${c.progress}%` : t('cx.stageUnknown')} · {t('cx.due', { d: quarter(i18n, c.plannedEnd) })}</span>
+                <span className="meta row" style={{ gap: 6 }}><span className={`zdot ${isAssessed(r) ? r.zone : 'na'}`} />{placeText(c, ', ') || t('common.noAddress')}{!hasPoint(c) && t('common.noCoords')}</span>
                 {c.screening && (() => {
                   const why = topReason(c.screening)
-                  return <span className="meta clamp2" title={c.screening.disclaimer}><b className="bold" style={{ color: 'var(--text)' }}>{c.screening.label}</b>{why && <> · {reasonShort(why)}</>}</span>
+                  return <span className="meta clamp2" title={c.screening.disclaimer}><b className="bold" style={{ color: 'var(--text)' }}>{tr(c.screening.label)}</b>{why && <> · {reasonShort(why)}</>}</span>
                 })()}
                 <div className="rows">
-                  <span>Гарантия ЕО</span><span className={c.basis.guarantee === 'no' ? 'bold' : ''} style={{ color: c.basis.guarantee === 'no' ? 'var(--red)' : undefined }}>{triText(c.basis.guarantee)}</span>
-                  <span>Разрешение МИО</span><span>{triText(c.basis.mio)}</span>
-                  <span>Банк (БВУ)</span><span>{triText(c.basis.bvu)}</span>
-                  <span>Перечень ГАСК</span><span>{c.inPublishedList === 'yes' ? 'в перечне' : triText(c.inPublishedList)}</span>
-                  <span>Реклама</span><span title={!nAds && c.screening?.counts.ads ? 'Публикации отнесены к ЖК по упоминаниям (гипотезы ИИ), привязку подтверждает аналитик' : undefined}>{nAds ? `${nAds} публ.` : c.screening?.counts.ads ? `${c.screening.counts.ads} упом. · гипотезы` : '—'}</span>
+                  <span>{t('basis.guarantee')}</span><span className={c.basis.guarantee === 'no' ? 'bold' : ''} style={{ color: c.basis.guarantee === 'no' ? 'var(--red)' : undefined }}>{triText(t, c.basis.guarantee)}</span>
+                  <span>{t('basis.mio')}</span><span>{triText(t, c.basis.mio)}</span>
+                  <span>{t('basis.bvu')}</span><span>{triText(t, c.basis.bvu)}</span>
+                  <span>{t('basis.gask')}</span><span>{c.inPublishedList === 'yes' ? t('cx.inList') : triText(t, c.inPublishedList)}</span>
+                  <span>{t('cx.ads')}</span><span title={!nAds && c.screening?.counts.ads ? t('cx.mentionsHint') : undefined}>{nAds ? t('common.adsN', { n: nAds }) : c.screening?.counts.ads ? t('cx.mentions', { n: c.screening.counts.ads }) : '—'}</span>
                 </div>
                 <div className="acts">
-                  <button className="btn y" onClick={(e) => { e.stopPropagation(); go(`/complexes/${c.id}`) }}>Открыть</button>
-                  <button className="btn g" onClick={(e) => { e.stopPropagation(); go(`/complexes/${c.id}?tab=ads`) }}>Реклама</button>
+                  <button className="btn y" onClick={(e) => { e.stopPropagation(); go(`/complexes/${c.id}`) }}>{t('common.open')}</button>
+                  <button className="btn g" onClick={(e) => { e.stopPropagation(); go(`/complexes/${c.id}?tab=ads`) }}>{t('cx.ads')}</button>
                 </div>
               </div>
             </div>
@@ -234,22 +237,22 @@ export default function Complexes() {
               <img className="th" src={c.cover || undefined} alt="" style={{ width: 88, height: 64 }} />
               <div style={{ minWidth: 0 }}>
                 <div className="t-xs c2">{dev?.name}</div>
-                <div className="bold row" style={{ fontSize: 17, gap: 8 }}>{c.name}{isDemo(c) && <Origin kind="demo" label="демо" title="Демонстрационные данные: вымышленный ЖК" />}{isRegistry(c) && <Origin kind="registry" label="реестр" />}{isAdvertised(c) && <Origin kind="advertised" label="по рекламе" />}</div>
-                <div className="t-sm c2">{placeText(c) || 'адрес не указан'}{!hasPoint(c) && ' · без координат'}</div>
+                <div className="bold row" style={{ fontSize: 17, gap: 8 }}>{c.name}{isDemo(c) && <Origin kind="demo" label={t('cx.demo')} title={t('cx.demoHint')} />}{isRegistry(c) && <Origin kind="registry" label={t('cx.registry')} />}{isAdvertised(c) && <Origin kind="advertised" label={t('cx.advertised')} />}</div>
+                <div className="t-sm c2">{placeText(c) || t('common.noAddress')}{!hasPoint(c) && t('common.noCoords')}</div>
               </div>
               {screenOn && (
                 <div style={{ minWidth: 0 }}>
                   {c.screening ? <>
                     <ScreeningTag s={c.screening} />
                     {(() => { const why = topReason(c.screening); return why && <div className="t-xs c2 clamp2" style={{ marginTop: 4 }}>{reasonShort(why)}</div> })()}
-                  </> : <span className="t-sm c2">нет оценки</span>}
+                  </> : <span className="t-sm c2">{t('cx.noScore')}</span>}
                 </div>
               )}
               <div className="row wrap-f" style={{ gap: 6 }}><RiskZone r={r} />{r.needsCheck && <NeedsCheck />}</div>
               <div>
-                <div className="t-sm">{c.stage ? <>{c.stage} · <span className="num">{c.progress}%</span></> : 'стадия не известна'}</div>
+                <div className="t-sm">{c.stage ? <>{tr(c.stage)} · <span className="num">{c.progress}%</span></> : t('cx.stageUnknownLow')}</div>
                 <div className="hbar" style={{ margin: '6px 0', height: 4 }}><i style={{ width: `${c.progress}%`, background: '#000' }} /></div>
-                <div className="t-xs c2">сдача {c.plannedEnd ? fmtDate(c.plannedEnd) : NO_DATA}</div>
+                <div className="t-xs c2">{t('cx.due', { d: c.plannedEnd ? i18n.date(c.plannedEnd) : tr(NO_DATA) })}</div>
               </div>
               <div style={{ justifySelf: 'end' }}><RiskScore r={r} /></div>
             </button>
@@ -257,20 +260,20 @@ export default function Complexes() {
         </div>
       )}
       {allF && (
-        <Modal wide title="Все фильтры" onClose={() => setAllF(false)}
-          footer={<><button className="btn g" onClick={reset}>Сбросить</button><button className="btn y" onClick={() => setAllF(false)}>Показать {rows.length} {plural(rows.length, ['новостройку', 'новостройки', 'новостроек'])}</button></>}>
+        <Modal wide title={t('cx.allFilters')} onClose={() => setAllF(false)}
+          footer={<><button className="btn g" onClick={reset}>{t('common.reset')}</button><button className="btn y" onClick={() => setAllF(false)}>{tn('cx.showN', rows.length)}</button></>}>
           <div style={{ padding: '0 24px' }}>
-            {([...(screenOn ? [['Проверка по рекламе', [...SCREENING_ORDER], screening, setScreening, SCREENING_FILTER_LABEL]] : []),
-              ['Зона', ['red', 'yellow', 'green'], zone, setZone, { red: 'Красная', yellow: 'Жёлтая', green: 'Зелёная' }],
-              ['Район', districts, district, setDistrict, null],
-              ['Стадия', STAGES, stage, setStage, null]] as [string, string[], string[], (v: never[]) => void, Record<string, string> | null][]).map(([l, opts, val, set, names]) => (
+            {([...(screenOn ? [[t('scr.title'), [...SCREENING_ORDER], screening, setScreening, Object.fromEntries(SCREENING_ORDER.map((k) => [k, t(`scr.filter.${k}`)]))]] : []),
+              [t('cx.fZone'), ZONES, zone, setZone, Object.fromEntries(ZONES.map((z) => [z, t(`zone.short.${z}`)]))],
+              [t('cx.fDistrict'), districts, district, setDistrict, null],
+              [t('cx.fStage'), STAGES, stage, setStage, Object.fromEntries(STAGES.map((x) => [x, cap(tr(x))]))]] as [string, string[], string[], (v: never[]) => void, Record<string, string> | null][]).map(([l, opts, val, set, names]) => (
               <div className="frow top" key={l}>
                 <label>{l}</label>
                 <div className="chips">{opts.map((o) => <button key={o} className={`chip ${val.includes(o) ? 'on' : ''}`} onClick={() => set((val.includes(o) ? val.filter((x) => x !== o) : [...val, o]) as never[])}>{names?.[o] ?? o[0].toUpperCase() + o.slice(1)}</button>)}</div>
               </div>
             ))}
             <div className="frow top">
-              <label>Признаки</label>
+              <label>{t('cx.signs')}</label>
               <div className="chips">{shownChips.map(([k, l, fn]) => <button key={k} className={`chip ${chip === k ? 'on' : ''}`} onClick={() => setChip(chip === k ? '' : k)}>{l}<span className="n">{all.filter(fn).length}</span></button>)}</div>
             </div>
           </div>

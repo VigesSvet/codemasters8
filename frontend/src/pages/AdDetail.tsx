@@ -14,7 +14,7 @@ import { linkConf, linkText, pct, visibleHypotheses, type LinkConf } from '../li
 import { errorText } from '../lib/api'
 import { SYSTEM, fmtStamp, initialsOf } from '../lib/audit'
 import { getVersions, processingNote, stageLabel } from '../lib/connectors'
-import { CONF_LABEL, CONF_TONE, REANALYZE_HINT, amountText, costText, droppedText, llmState, modelText, reanalyzeAd, reanalyzeBlock, signalLabel } from '../lib/llm'
+import { CONF_LABEL, CONF_TONE, REANALYZE_HINT, amountText, costText, droppedText, legalRefArticle, legalRefText, llmState, modelText, reanalyzeAd, reanalyzeBlock, signalLabel } from '../lib/llm'
 import { STAGE_LABEL } from '../lib/discovered'
 import { adImage, mediaRefSrc } from '../lib/media'
 import { from, useFrom } from '../lib/nav'
@@ -756,6 +756,28 @@ function LlmCard({ a, x, onQueued }: { a: Ad; x: LlmAnalysis | null; onQueued: (
                   <div>{x.objectStage.quote ? <div className="q">«{x.objectStage.quote}»</div> : <div className="meta">дословной цитаты о стадии нет — стадия не ясна</div>}{x.objectStage.source === 'ocr' && <div style={{ marginTop: 4 }}><OcrTag /></div>}</div>
                 </div>
               </div>
+            </>
+          )}
+          {(x.legalRefs?.length ?? 0) > 0 && (
+            <>
+              <div className="ai-sub">Может относиться к нормам закона <span className="t-sm c2" style={{ fontWeight: 400 }}>{x.legalRefs!.length}</span></div>
+              <div className="ev-list">
+                {x.legalRefs!.map((r, i) => {
+                  const art = legalRefArticle(r)
+                  return (
+                    <div key={`lr-${i}`} className="ev" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
+                      <div>
+                        <span className="bold">{legalRefText(r)}</span>
+                        {art && <div className="meta">{art.title} · <a className="link" href={art.url} target="_blank" rel="noopener noreferrer">текст статьи в «Әділет»</a></div>}
+                        {r.why && <div className="t-sm" style={{ marginTop: 2 }}>{r.why}</div>}
+                        <div className="q">«{r.quote}»</div>
+                        {r.source === 'ocr' && <div style={{ marginTop: 4 }}><OcrTag /></div>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="t-xs c2" style={{ marginTop: 6 }}>Связь с нормой предлагает модель — гипотеза, а не вывод о нарушении и не юридическое заключение. Закон допускает разные способы организации долевого участия: при гарантии ЕО разрешение МИО не требуется (ст. 8 п. 6). <Link className="link" to="/method#law">Нормативная база</Link></div>
             </>
           )}
           {x.uncertainties.length > 0 && (

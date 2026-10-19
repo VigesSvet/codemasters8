@@ -2,6 +2,7 @@ import { useEffect, useState, type ImgHTMLAttributes, type ReactNode } from 'rea
 import { Link } from 'react-router-dom'
 import type { AdStatus, Platform, RiskResult, Tri, Zone } from '../data/types'
 import { adKey as codeKey } from '../lib/find'
+import { useT } from '../lib/i18n'
 import { PLATFORMS, platformName, type PlatformInfo } from '../lib/platform'
 import { MARKERS, NOT_ASSESSED, isAssessed } from '../lib/risk'
 import { siFacebook, siInstagram, siTelegram, siTiktok } from 'simple-icons'
@@ -10,23 +11,38 @@ import { IcCheck, IcChevronDown, IcChevronLeft, IcChevronRight, IcChevronUp, IcC
 export const zoneName: Record<Zone, string> = { red: 'Красная зона', yellow: 'Жёлтая зона', green: 'Зелёная зона' }
 export const zoneShort: Record<Zone, string> = { red: 'Красная', yellow: 'Жёлтая', green: 'Зелёная' }
 
+// Подписи зон и статусов на экране — на языке интерфейса (lib/i18n); таблицы zoneName, statusMeta — русские, как в данных
+
 /** Зона риска; off — риск не оценивается (карточка из открытого реестра без проверенных сведений): серая метка без зоны */
-export const ZoneTag = ({ zone, off }: { zone: Zone; off?: boolean }) => (off
-  ? <span className="tag gray" title={NOT_ASSESSED}>Риск не оценивается</span>
-  : <span className={`tag ${zone}`}><span className={`zdot ${zone}`} style={{ width: 6, height: 6 }} />{zoneName[zone]}</span>)
-export const ZoneDot = ({ zone, off }: { zone: Zone; off?: boolean }) => <span className={`zdot ${off ? 'na' : zone}`} title={off ? NOT_ASSESSED : undefined} />
+export function ZoneTag({ zone, off }: { zone: Zone; off?: boolean }) {
+  const { t, tr } = useT()
+  return off
+    ? <span className="tag gray" title={tr(NOT_ASSESSED)}>{t('common.riskNA')}</span>
+    : <span className={`tag ${zone}`}><span className={`zdot ${zone}`} style={{ width: 6, height: 6 }} />{t(`zone.name.${zone}`)}</span>
+}
+export function ZoneDot({ zone, off }: { zone: Zone; off?: boolean }) {
+  const { tr } = useT()
+  return <span className={`zdot ${off ? 'na' : zone}`} title={off ? tr(NOT_ASSESSED) : undefined} />
+}
 /** Балл; off — риск не оценивается: «—» без цвета зоны */
-export const Score = ({ value, zone, off }: { value: number; zone: Zone; off?: boolean }) => (off
-  ? <span className="score na" title={NOT_ASSESSED} aria-label={NOT_ASSESSED}>—</span>
-  : <span className={`score ${zone}`}>{value}</span>)
+export function Score({ value, zone, off }: { value: number; zone: Zone; off?: boolean }) {
+  const { tr } = useT()
+  return off
+    ? <span className="score na" title={tr(NOT_ASSESSED)} aria-label={tr(NOT_ASSESSED)}>—</span>
+    : <span className={`score ${zone}`}>{value}</span>
+}
 /** Балл и зона ЖК по результату риска: не оценённый (assessed false) — без балла и зоны */
 export const RiskScore = ({ r }: { r: RiskResult }) => <Score value={r.score} zone={r.zone} off={!isAssessed(r)} />
 export const RiskZone = ({ r }: { r: RiskResult }) => <ZoneTag zone={r.zone} off={!isAssessed(r)} />
-export const NeedsCheck = () => <span className="tag yellow"><IcHelp size={14} />Нужна проверка</span>
+export function NeedsCheck() {
+  const { t } = useT()
+  return <span className="tag yellow"><IcHelp size={14} />{t('common.needsCheck')}</span>
+}
 
-const triText: Record<Tri, string> = { yes: 'Есть', no: 'Нет', unknown: 'Нет сведений' }
+const TRI_KEY = { yes: 'common.yes', no: 'common.no', unknown: 'common.noInfo' } as const satisfies Record<Tri, string>
 export function TriTag({ v, label }: { v: Tri; label?: string }) {
-  return <span className={`tag ${v === 'yes' ? 'green' : v === 'no' ? 'red' : 'gray'}`}>{v === 'yes' ? <IcCheck size={13} strokeWidth={3} /> : v === 'no' ? <IcClose size={13} strokeWidth={3} /> : null}{label ?? triText[v]}</span>
+  const { t } = useT()
+  return <span className={`tag ${v === 'yes' ? 'green' : v === 'no' ? 'red' : 'gray'}`}>{v === 'yes' ? <IcCheck size={13} strokeWidth={3} /> : v === 'no' ? <IcClose size={13} strokeWidth={3} /> : null}{label ?? t(TRI_KEY[v])}</span>
 }
 
 /** Площадки по коду (таблица — lib/platform). Есть и 'other' — публикация собрана с площадки не из списка: у неё своя подпись
@@ -75,7 +91,10 @@ export const statusMeta: Record<AdStatus, { name: string; tag: string; color: st
   confirmed: { name: 'Нарушение', tag: 'red', color: '#E4402D' },
   dismissed: { name: 'Отклонено', tag: 'green', color: '#00B341' },
 }
-export const StatusTag = ({ s }: { s: AdStatus }) => <span className={`tag ${statusMeta[s].tag}`}>{statusMeta[s].name}</span>
+export function StatusTag({ s }: { s: AdStatus }) {
+  const { t } = useT()
+  return <span className={`tag ${statusMeta[s].tag}`}>{t(`status.${s}`)}</span>
+}
 export const StatusDot = ({ s }: { s: AdStatus }) => <span className="zdot" style={{ background: statusMeta[s].color }} />
 
 // Словари подсветки — из модели риска: money → R2, sale → R3, safe — только подсветка. Длинные маркеры раньше коротких
@@ -155,10 +174,11 @@ export function Modal({ title, onClose, children, footer, wide }: { title: strin
     window.addEventListener('keydown', k)
     return () => window.removeEventListener('keydown', k)
   }, [onClose])
+  const { t } = useT()
   return (
     <div className="scrim" onClick={onClose}>
       <div className="modal-wrap" onClick={(e) => e.stopPropagation()} style={wide ? { width: 'min(1040px, calc(100vw - 120px))' } : undefined}>
-        <button className="x-btn" onClick={onClose} aria-label="Закрыть"><IcClose /></button>
+        <button className="x-btn" onClick={onClose} aria-label={t('common.close')}><IcClose /></button>
         <div className="modal" role="dialog" aria-label={title}>
           <div className="modal-h">{title}</div>
           <div className="modal-b">{children}</div>
@@ -194,11 +214,12 @@ export const adKey = (id: string) => (id.length >= 20 ? `AD-${id.slice(0, 8).toU
 export function FilterPop<T extends string>({ label, title, value, options, onChange, count, multi }: {
   label: string; title: string; value: T[]; options: [T, ReactNode][]; onChange: (v: T[]) => void; count: (v: T[]) => number; multi?: boolean
 }) {
+  const { t } = useT()
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<T[]>(value)
   useEffect(() => { if (open) setDraft(value) }, [open, value])
   const toggle = (v: T) => setDraft((d) => (d.includes(v) ? d.filter((x) => x !== v) : multi ? [...d, v] : [v]))
-  const shown = value.length ? (value.length === 1 ? options.find((o) => o[0] === value[0])?.[1] : `${label}: ${value.length}`) : label
+  const shown = value.length ? (value.length === 1 ? options.find((o) => o[0] === value[0])?.[1] : t('common.labelN', { label, n: value.length })) : label
   return (
     <div className="nav-item">
       <button className={`fbtn ${open ? 'open' : ''} ${value.length && !open ? 'on' : ''}`} onClick={() => setOpen(!open)}>{shown}{open ? <IcChevronUp /> : <IcChevronDown />}</button>
@@ -209,8 +230,8 @@ export function FilterPop<T extends string>({ label, title, value, options, onCh
             <h5>{title}</h5>
             <div className="opts">{options.map(([v, l]) => <button key={v} className={`opt ${draft.includes(v) ? 'on' : ''}`} onClick={() => toggle(v)}>{l}</button>)}</div>
             <div className="row" style={{ gap: 8 }}>
-              {draft.length > 0 && <button className="btn g" onClick={() => setDraft([])}>Сбросить</button>}
-              <button className="btn y" style={{ flex: 1 }} onClick={() => { onChange(draft); setOpen(false) }}>Показать {count(draft)}</button>
+              {draft.length > 0 && <button className="btn g" onClick={() => setDraft([])}>{t('common.reset')}</button>}
+              <button className="btn y" style={{ flex: 1 }} onClick={() => { onChange(draft); setOpen(false) }}>{t('common.showN', { n: count(draft) })}</button>
             </div>
           </div>
         </>

@@ -3,20 +3,17 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { IcBell, IcCheck, IcChevronDown, IcChevronRight, IcClose, IcDatabase, IcFlag, IcLogout, IcPhone, IcQueue, IcRefresh, IcUsers, IcWarning } from '../ui/icons'
 import { API } from '../lib/api'
 import { fmtStamp } from '../lib/audit'
-import { roleOf } from '../lib/session'
+import { roleIn, useT, type I18n } from '../lib/i18n'
 import { useStore } from '../lib/store'
+import LangSwitch from './LangSwitch'
 import QuickSearch from './QuickSearch'
 
 type Conn = 'api' | 'snapshot' | 'loading' | 'down'
-const CONN: Record<Conn, { label: string; dot: string; title: string; text: string }> = {
-  api: { label: 'Данные из API', dot: 'green', title: 'Работаем с сервером', text: 'Публикации, риск, сигналы и журнал берутся с бэкенда. Решения сохраняются на сервере с автором и временем.' },
-  snapshot: { label: 'Офлайн-копия', dot: 'yellow', title: 'Сервер недоступен — офлайн-копия', text: 'Сервер не ответил при запуске — открыта копия стартового набора (shared/snapshot): реальные ЖК, застройщики и публичная реклама с анализом ИИ, риск и «Проверка по рекламе» — как их посчитал сервер. Только просмотр: решения, сверка, сигналы и журнал — с сервером.' },
-  loading: { label: 'Подключение…', dot: 'gray', title: 'Подключаемся к серверу', text: 'Загружаем данные с бэкенда. Если он не ответит, откроется офлайн-копия стартового набора — только для просмотра.' },
-  down: { label: 'Нет связи с сервером', dot: 'red', title: 'Нет связи с сервером', text: 'Последний запрос не дошёл до сервера. Несохранённые изменения отменены — проверьте связь и повторите действие.' },
-}
-/** «на 19.10.2026, выгружена 19.10.2026 03:35» — откуда копия */
-const snapshotLine = (asOf: string | null, exportedAt: string | null) =>
-  [asOf && `данные на ${asOf.split('-').reverse().join('.')}`, exportedAt && `выгружена ${fmtStamp(exportedAt)}`].filter(Boolean).join(', ')
+/** Цвет точки связи; подпись, заголовок и пояснение — в словаре (conn.<состояние>.label/title/text) */
+const CONN_DOT: Record<Conn, string> = { api: 'green', snapshot: 'yellow', loading: 'gray', down: 'red' }
+/** «данные на 19.10.2026, выгружена 19.10.2026 03:35» — откуда копия */
+const snapshotLine = (t: I18n['t'], asOf: string | null, exportedAt: string | null) =>
+  [asOf && t('conn.dataAsOf', { date: asOf.split('-').reverse().join('.') }), exportedAt && t('conn.exportedAt', { date: fmtStamp(exportedAt) })].filter(Boolean).join(', ')
 const apiUrl = () => new URL(API, window.location.href).href
 
 /** Шапка по образцу realty.yandex.ru: логотип · город · быстрый поиск · действия, ниже вкладки с чёрным подчёркиванием */
@@ -24,6 +21,8 @@ export default function Shell() {
   const { ads, toast, signals, user, logout, mode, snapshot, apiError, offline, clearError, reconnect, lastSync, stats } = useStore()
   const loc = useLocation()
   const nav = useNavigate()
+  const i = useT()
+  const { t } = i
   const [open, setOpen] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
   useEffect(() => { setOpen(null) }, [loc.pathname])
@@ -35,6 +34,8 @@ export default function Shell() {
   }, [loc.pathname, loc.hash])
   // связь — по итогу последнего запроса, а не по баннеру: «Скрыть» не делает её зелёной, успешный запрос — снимает красный
   const conn: Conn = mode === 'api' && offline ? 'down' : mode
+  const C = { dot: CONN_DOT[conn], label: t(`conn.${conn}.label`), title: t(`conn.${conn}.title`), text: t(`conn.${conn}.text`) }
+  const me = user ? roleIn(i, user) : null
   const check = () => { setChecking(true); reconnect().finally(() => setChecking(false)) }
   const here = encodeURIComponent(loc.pathname + loc.search)
   const queue = ads.filter((a) => a.status === 'new' || a.status === 'needs_check').length
@@ -84,49 +85,50 @@ export default function Shell() {
       <header className="yhead">
         <div className="bar">
           <Link to="/" className="logo"><img src="/logo.svg" alt="" className="mark" />SAQ Qurylys</Link>
-          <span className="city">Усть-Каменогорск</span>
+          <span className="city">{t('common.city')}</span>
           <QuickSearch />
           <div className="head-right">
+            <LangSwitch />
             <div className="nav-item">
-              <button className={`conn ${conn}`} onClick={() => setOpen(open === 'conn' ? null : 'conn')} aria-expanded={open === 'conn'} title={CONN[conn].title}>
-                <span className={`cdot ${CONN[conn].dot}`} />{CONN[conn].label}
+              <button className={`conn ${conn}`} onClick={() => setOpen(open === 'conn' ? null : 'conn')} aria-expanded={open === 'conn'} title={C.title}>
+                <span className={`cdot ${C.dot}`} />{C.label}
               </button>
               {open === 'conn' && (
                 <>
                   <div className="menu-scrim" onClick={() => setOpen(null)} />
                   <div className="pop conn-pop fade">
-                    <h5 className="row" style={{ gap: 8 }}><span className={`cdot ${CONN[conn].dot}`} />{CONN[conn].title}</h5>
-                    <p className="t-sm" style={{ lineHeight: '19px' }}>{CONN[conn].text}</p>
+                    <h5 className="row" style={{ gap: 8 }}><span className={`cdot ${C.dot}`} />{C.title}</h5>
+                    <p className="t-sm" style={{ lineHeight: '19px' }}>{C.text}</p>
                     <div className="kv t-sm">
-                      <span>Адрес API</span><span className="num" style={{ overflowWrap: 'anywhere' }}>{apiUrl()}</span>
-                      <span>Синхронизация</span><span>{lastSync ? fmtStamp(lastSync) : 'ещё не было'}</span>
-                      {conn === 'snapshot' && snapshot && <><span>Офлайн-копия</span><span>{snapshotLine(snapshot.asOf, snapshot.exportedAt) || 'стартовый набор'} · {snapshot.counts.complexes} ЖК, {snapshot.counts.ads} публ.</span></>}
-                      {apiError && <><span>Ошибка</span><span>{apiError.message}{apiError.detail && <span className="c2"> · {apiError.detail}</span>}<span className="c3"> · {fmtStamp(apiError.at)}</span></span></>}
+                      <span>{t('conn.apiUrl')}</span><span className="num" style={{ overflowWrap: 'anywhere' }}>{apiUrl()}</span>
+                      <span>{t('conn.sync')}</span><span>{lastSync ? fmtStamp(lastSync) : t('conn.never')}</span>
+                      {conn === 'snapshot' && snapshot && <><span>{t('conn.snapshot.label')}</span><span>{snapshotLine(t, snapshot.asOf, snapshot.exportedAt) || t('conn.starter')} · {t('conn.snapCounts', { c: snapshot.counts.complexes, a: snapshot.counts.ads })}</span></>}
+                      {apiError && <><span>{t('conn.error')}</span><span>{apiError.message}{apiError.detail && <span className="c2"> · {apiError.detail}</span>}<span className="c3"> · {fmtStamp(apiError.at)}</span></span></>}
                     </div>
-                    <button className="btn y m full" disabled={checking || mode === 'loading'} onClick={check}><IcRefresh size={18} />{checking ? 'Проверяем…' : 'Проверить связь'}</button>
+                    <button className="btn y m full" disabled={checking || mode === 'loading'} onClick={check}><IcRefresh size={18} />{checking ? t('conn.checking') : t('conn.check')}</button>
                   </div>
                 </>
               )}
             </div>
-            <button className="icon-btn" aria-label="Уведомления" onClick={() => nav('/queue')}><IcBell />{queue > 0 && <span className="dot">{queue}</span>}</button>
-            <Link to="/ads/new" className="btn g m">Добавить публикацию</Link>
-            <Link to="/queue?who=me" className="btn g m">Моя очередь</Link>
+            <button className="icon-btn" aria-label={t('shell.notifications')} onClick={() => nav('/queue')}><IcBell />{queue > 0 && <span className="dot">{queue}</span>}</button>
+            <Link to="/ads/new" className="btn g m">{t('shell.addAd')}</Link>
+            <Link to="/queue?who=me" className="btn g m">{t('shell.myQueue')}</Link>
             <div className="nav-item">
-              <button className="user-btn" onClick={() => setOpen(open === 'me' ? null : 'me')} aria-label="Профиль"><span className="ava">{user ? roleOf(user).short : '?'}</span><IcChevronDown size={16} /></button>
+              <button className="user-btn" onClick={() => setOpen(open === 'me' ? null : 'me')} aria-label={t('shell.profile')}><span className="ava">{me ? me.short : '?'}</span><IcChevronDown size={16} /></button>
               {open === 'me' && (
                 <>
                   <div className="menu-scrim" onClick={() => setOpen(null)} />
                   <div className="menu fade" style={{ left: 'auto', right: 0, minWidth: 280 }}>
                     <div style={{ padding: '8px 16px 12px', borderBottom: '1px solid var(--line)', marginBottom: 6 }}>
-                      <div className="bold">{user && roleOf(user).title}</div>
-                      <div className="t-sm c2">{user && roleOf(user).dept}</div>
-                      <div className="t-xs c3" style={{ marginTop: 4 }}>Вход пилота без пароля: действия пишутся в журнал от этой учётной записи</div>
+                      <div className="bold">{me?.title}</div>
+                      <div className="t-sm c2">{me?.dept}</div>
+                      <div className="t-xs c3" style={{ marginTop: 4 }}>{t('shell.pilotNote')}</div>
                     </div>
-                    <Link to="/queue?who=me"><span className="ic"><IcCheck size={16} /></span><span className="lbl">Мои проверки</span><IcChevronRight size={16} /></Link>
-                    <Link to="/signals?status=new"><span className="ic"><IcFlag size={16} /></span><span className="lbl">Сигналы ждут решения</span><IcChevronRight size={16} /></Link>
-                    <Link to={`/login?next=${here}`}><span className="ic"><IcUsers size={16} /></span><span className="lbl">Сменить роль</span><IcChevronRight size={16} /></Link>
+                    <Link to="/queue?who=me"><span className="ic"><IcCheck size={16} /></span><span className="lbl">{t('shell.myChecks')}</span><IcChevronRight size={16} /></Link>
+                    <Link to="/signals?status=new"><span className="ic"><IcFlag size={16} /></span><span className="lbl">{t('shell.signalsWaiting')}</span><IcChevronRight size={16} /></Link>
+                    <Link to={`/login?next=${here}`}><span className="ic"><IcUsers size={16} /></span><span className="lbl">{t('shell.switchRole')}</span><IcChevronRight size={16} /></Link>
                     {/* без ?next: следующий сотрудник на этом месте не должен попасть на страницу предыдущего */}
-                    <button onClick={() => { logout(); nav('/login', { replace: true }) }}><span className="ic"><IcLogout size={16} /></span><span className="lbl">Выйти</span><IcChevronRight size={16} /></button>
+                    <button onClick={() => { logout(); nav('/login', { replace: true }) }}><span className="ic"><IcLogout size={16} /></span><span className="lbl">{t('shell.logout')}</span><IcChevronRight size={16} /></button>
                   </div>
                 </>
               )}
@@ -135,27 +137,27 @@ export default function Shell() {
         </div>
         <nav className="ytabs">
           <div ref={tabsRef} className={`ytabs-scroll${edges.l ? ' fade-l' : ''}${edges.r ? ' fade-r' : ''}`}>
-            {tab('/', 'Карта')}
-            {tab('/complexes', 'Новостройки', loc.pathname.startsWith('/complexes') || loc.pathname.startsWith('/registry/'))}
-            {tab('/ads', <>Реклама<span className="badge gray">{ads.length}</span></>, adsActive)}
-            {tab('/queue', <>Очередь проверки{queue > 0 && <span className="badge">{queue}</span>}</>)}
-            {tab('/signals', <>Сигналы{sigNew > 0 && <span className="badge">{sigNew}</span>}</>)}
-            {tab('/discovered', <span title="Объекты из рекламы: ЖК, которых нет в реестре и справочнике">Из рекламы{discNew > 0 && <span className="badge" style={{ marginLeft: 6 }}>{discNew}</span>}</span>)}
-            {tab('/developers', 'Застройщики')}
-            {tab('/sites', 'Фото-мониторинг')}
-            {tab('/ops', 'Сводка')}
-            {tab('/reports', 'Отчёты')}
-            {tab('/method', 'Методика')}
+            {tab('/', t('nav.map'))}
+            {tab('/complexes', t('nav.complexes'), loc.pathname.startsWith('/complexes') || loc.pathname.startsWith('/registry/'))}
+            {tab('/ads', <>{t('nav.ads')}<span className="badge gray">{ads.length}</span></>, adsActive)}
+            {tab('/queue', <>{t('nav.queue')}{queue > 0 && <span className="badge">{queue}</span>}</>)}
+            {tab('/signals', <>{t('nav.signals')}{sigNew > 0 && <span className="badge">{sigNew}</span>}</>)}
+            {tab('/discovered', <span title={t('nav.discoveredHint')}>{t('nav.discovered')}{discNew > 0 && <span className="badge" style={{ marginLeft: 6 }}>{discNew}</span>}</span>)}
+            {tab('/developers', t('nav.developers'))}
+            {tab('/sites', t('nav.sites'))}
+            {tab('/ops', t('nav.ops'))}
+            {tab('/reports', t('nav.reports'))}
+            {tab('/method', t('nav.method'))}
           </div>
           <div className="nav-item ytabs-more">
-            <button className={`ytab ${['/sources', '/residents'].includes(loc.pathname) ? 'active' : ''}`} onClick={() => setOpen(open === 'more' ? null : 'more')}>ещё<IcChevronDown size={16} /></button>
+            <button className={`ytab ${['/sources', '/residents'].includes(loc.pathname) ? 'active' : ''}`} onClick={() => setOpen(open === 'more' ? null : 'more')}>{t('nav.more')}<IcChevronDown size={16} /></button>
             {open === 'more' && (
               <>
                 <div className="menu-scrim" onClick={() => setOpen(null)} />
                 <div className="menu fade" style={{ top: '100%', left: 'auto', right: 0 }}>
-                  <Link to="/sources"><span className="ic"><IcDatabase size={16} /></span><span className="lbl">Источники данных<small>Откуда берём данные</small></span><IcChevronRight size={16} /></Link>
-                  <Link to="/residents"><span className="ic"><IcPhone size={16} /></span><span className="lbl">Жителям<small>Идея: push-уведомления</small></span><IcChevronRight size={16} /></Link>
-                  <Link to="/ads/new"><span className="ic"><IcQueue size={16} /></span><span className="lbl">Ручной ввод публикации<small>Текст, ссылка, скриншот</small></span><IcChevronRight size={16} /></Link>
+                  <Link to="/sources"><span className="ic"><IcDatabase size={16} /></span><span className="lbl">{t('nav.sources')}<small>{t('nav.sourcesSub')}</small></span><IcChevronRight size={16} /></Link>
+                  <Link to="/residents"><span className="ic"><IcPhone size={16} /></span><span className="lbl">{t('nav.residents')}<small>{t('nav.residentsSub')}</small></span><IcChevronRight size={16} /></Link>
+                  <Link to="/ads/new"><span className="ic"><IcQueue size={16} /></span><span className="lbl">{t('nav.adNew')}<small>{t('nav.adNewSub')}</small></span><IcChevronRight size={16} /></Link>
                 </div>
               </>
             )}
@@ -167,8 +169,8 @@ export default function Shell() {
             <div className="wrap row">
               <IcWarning size={20} />
               <span className="txt"><b>{apiError.message}</b>{apiError.detail && <> · {apiError.detail}</>}<span className="c2"> · {fmtStamp(apiError.at)}</span></span>
-              <button className="btn s w" disabled={checking} onClick={check}><IcRefresh size={14} />{checking ? 'Проверяем…' : 'Повторить'}</button>
-              <button className="btn s g" onClick={clearError} aria-label="Скрыть сообщение"><IcClose size={14} />Скрыть</button>
+              <button className="btn s w" disabled={checking} onClick={check}><IcRefresh size={14} />{checking ? t('conn.checking') : t('common.retry')}</button>
+              <button className="btn s g" onClick={clearError} aria-label={t('conn.hideMsg')}><IcClose size={14} />{t('conn.hide')}</button>
             </div>
           </div>
         )}
@@ -177,11 +179,11 @@ export default function Shell() {
         <>
           <main className="screen"><div className="wrap"><Outlet /></div></main>
           <footer className="foot"><div className="wrap">
-            <div><h6>Объекты</h6><Link to="/complexes">Новостройки</Link><Link to="/discovered">Объекты из рекламы</Link><Link to="/developers">Застройщики</Link><Link to="/sites">Фото-мониторинг</Link><Link to="/" className="blue">На карте</Link></div>
-            <div><h6>Реклама</h6><Link to="/ads">Лента публикаций</Link><Link to="/queue">Очередь проверки</Link><Link to="/signals">Сигнальные карточки</Link><Link to="/ads/new">Добавить вручную</Link></div>
-            <div><h6>Аналитика</h6><Link to="/ops">Оперативная сводка</Link><Link to="/reports">Отчёты</Link><Link to="/method">Методика скоринга</Link><Link to="/sources">Источники данных</Link></div>
-            <div><h6>О сервисе</h6><Link to="/residents">Жителям</Link><Link to="/complexes?layer=open">Открытые данные</Link><Link to="/method#cases">Сценарии A, B, C</Link></div>
-            <div className="copy"><span>© 2026 SAQ Qurylys — цифровой помощник ДЭР ВКО</span><span>Данные реальные: открытые реестры и публичная реклама застройщиков и агентств (стартовый набор собран 18–19.10.2026), у каждой записи — источник и время сбора. «Проверка по рекламе» — предварительная автоматическая оценка, не вывод о нарушении; решение принимает сотрудник.</span></div>
+            <div><h6>{t('foot.objects')}</h6><Link to="/complexes">{t('nav.complexes')}</Link><Link to="/discovered">{t('foot.discovered')}</Link><Link to="/developers">{t('nav.developers')}</Link><Link to="/sites">{t('nav.sites')}</Link><Link to="/" className="blue">{t('common.onMap')}</Link></div>
+            <div><h6>{t('foot.ads')}</h6><Link to="/ads">{t('foot.feed')}</Link><Link to="/queue">{t('nav.queue')}</Link><Link to="/signals">{t('foot.signalCards')}</Link><Link to="/ads/new">{t('foot.addManual')}</Link></div>
+            <div><h6>{t('foot.analytics')}</h6><Link to="/ops">{t('foot.ops')}</Link><Link to="/reports">{t('nav.reports')}</Link><Link to="/method">{t('foot.method')}</Link><Link to="/sources">{t('nav.sources')}</Link></div>
+            <div><h6>{t('foot.about')}</h6><Link to="/residents">{t('nav.residents')}</Link><Link to="/complexes?layer=open">{t('foot.openData')}</Link><Link to="/method#cases">{t('foot.cases')}</Link></div>
+            <div className="copy"><span>{t('foot.copy')}</span><span>{t('foot.note')}</span></div>
           </div></footer>
         </>
       )}

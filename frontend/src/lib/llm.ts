@@ -2,9 +2,10 @@
 // Всё, что вернула модель, — гипотезы: привязку, статус и вывод о нарушении принимает аналитик.
 // Не выполненный анализ (отказ модели, сбой, пропуск) — «анализ ИИ не выполнен», а не «риска нет».
 // «Проанализировать ещё раз» — маршрут администратора: повторный запрос к Claude расходует дневной бюджет.
-import type { Ad, LlmAmount, LlmAnalysis, LlmCandidate, LlmSignalType, Processing } from '../data/types'
+import type { Ad, LlmAmount, LlmAnalysis, LlmCandidate, LlmLegalRef, LlmSignalType, Processing } from '../data/types'
 import { adminCall } from './admin'
 import { ApiError, apiPost, isRouteMissing } from './api'
+import { law, lawArticle } from './law'
 
 export const SIGNAL_LABEL: Record<LlmSignalType, string> = {
   sale: 'продажа',
@@ -28,6 +29,7 @@ export const DROP_LABEL: Record<string, string> = {
   complex: 'ЖК не из справочника',
   amount: 'сумма — не число',
   limit: 'сверх предела',
+  article: 'статья не из правового контекста',
 }
 
 export const signalLabel = (t: string) => (Object.hasOwn(SIGNAL_LABEL, t) ? SIGNAL_LABEL[t as LlmSignalType] : t)
@@ -74,6 +76,17 @@ export const costText = (usd: number) => `≈ $${(Number.isFinite(usd) ? usd : 0
 /** «claude-opus-5-5» или «claude-opus-5-5 → ответила claude-opus-4-8» (резервная модель после отказа) */
 export function modelText(x: Pick<LlmAnalysis, 'model' | 'servedModel' | 'fallback'>): string {
   return x.fallback && x.servedModel && x.servedModel !== x.model ? `${x.model} → ответила ${x.servedModel}` : x.model
+}
+
+/** Ссылка модели на норму — гипотеза, не вердикт: «Может относиться к ст. 7 п. 2 Закона РК «О долевом участии…»» */
+export function legalRefText(r: Pick<LlmLegalRef, 'article' | 'part'>): string {
+  return `Может относиться к ст. ${r.article}${r.part ? ` п. ${r.part}` : ''} ${law.act.short}`
+}
+
+/** Статья ссылки: заголовок и адрес в ИПС «Әділет» (shared/law.json); статьи нет в базе — null */
+export function legalRefArticle(r: Pick<LlmLegalRef, 'article'>): { title: string; url: string } | null {
+  const a = lawArticle(r.article)
+  return a ? { title: a.title, url: a.url } : null
 }
 
 // ---------- «Проанализировать ещё раз» ----------
