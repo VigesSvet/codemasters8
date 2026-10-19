@@ -1,7 +1,8 @@
 // «Проверь ЖК перед покупкой» (/check) — публичная страница для жителей, без входа, RU/KZ.
 // Только факты открытого реестра об основании принимать деньги дольщиков (гарантия ЕО, разрешение ЖАО, участие банка, записи
 // Казреестра) с источником, датой записи и ссылкой; пояснения со ссылками на ст. 7, 8, 18, 23 Закона (shared/law.json),
-// чек-лист и оговорка. Ни балла риска, ни «Проверки по рекламе», ни решений аналитика здесь нет. Стили — styles/check.css
+// чек-лист и оговорка. Ни балла риска, ни «Проверки по рекламе», ни решений аналитика здесь нет. Оформление — как у лендинга
+// (landing.css, .lp-apple): крупный заголовок, чёрный блок «три законных способа», бенто чек-листа, финал. Стили — styles/check.css
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import LangSwitch from '../components/LangSwitch'
@@ -76,9 +77,9 @@ export default function Check() {
         <Link to="/login" className="lp-pill">{t('chk.navStaff')}</Link>
       </div></header>
 
-      <section className="ck-hero">
-        <h1>{t('chk.h1a')}<br /><span>{t('chk.h1b')}</span></h1>
-        <p className="ck-lead">{t('chk.lead')}</p>
+      <section className="lp-hero ck-hero">
+        <h1>{t('chk.h1a')}<br />{t('chk.h1b')}</h1>
+        <p>{t('chk.lead')}</p>
         <div className="ck-search" role="search">
           <IcSearch size={22} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('chk.placeholder')} aria-label={t('chk.searchAria')} autoComplete="off" enterKeyHint="search"
@@ -109,7 +110,7 @@ export default function Check() {
       </section>
 
       {sel && (
-        <section className="ck-res"><div className="ck-w">
+        <section className="lp-bento-wrap ck-res"><div className="ck-w">
           <button type="button" className="ck-back" onClick={unpick}><IcChevronLeft size={16} />{t('chk.back')}</button>
           <article className="ck-card">
             <header>
@@ -171,9 +172,10 @@ export default function Check() {
         </div></section>
       )}
 
-      <section className="ck-what"><div className="ck-w">
-        <h2>{t('chk.whatH')}</h2>
-        <div className="ck-grid">
+      <section className="lp-black ck-ways">
+        <h2>{t('chk.waysH')}<span>{t('chk.waysSpan')}</span></h2>
+        <p>{t('chk.waysP')}</p>
+        <div className="ck-ways-g">
           {WHAT.map(({ k: w, refs, main }) => {
             const a = lawArticle(main)
             const ex = refs.flatMap((r) => excerptsFor(r).map((e) => ({ num: r.article, ...e })))
@@ -194,18 +196,27 @@ export default function Check() {
           })}
         </div>
         <p className="ck-act">{t('chk.lawAct')} · <a href={adiletUrl(law.act.url, lang)} target="_blank" rel="noopener noreferrer">adilet.zan.kz</a></p>
+      </section>
+
+      <section className="lp-bento-wrap ck-list"><div className="lp-w">
+        <h2>{t('chk.listH')}.</h2>
+        <div className="lp-bento ck-bento">
+          {LIST.map((key, n) => (
+            <div key={key} className={`t ck-step${n === 0 ? ' dark' : ''}`}>
+              <span>{t('chk.listN', { n: n + 1 })}</span>
+              <b>{n + 1}</b>
+              <h3>{t(key)}</h3>
+            </div>
+          ))}
+        </div>
       </div></section>
 
-      <section className="ck-list"><div className="ck-w">
-        <h2>{t('chk.listH')}</h2>
-        <ol>{LIST.map((key) => <li key={key}><span className="ck-tick"><IcCheck size={16} strokeWidth={2.6} /></span>{t(key)}</li>)}</ol>
-      </div></section>
-
-      <section className="ck-disc"><div className="ck-w">
-        <h2>{t('chk.discH')}</h2>
-        <p className="big">{t('chk.disc', { d: d(asOf) })}</p>
-        <p>{t('chk.srcs', { d: d(asOfAll), p: d(provider) })}</p>
-      </div></section>
+      <section className="lp-close ck-close">
+        <h2>{t('chk.closeA')}<br />{t('chk.closeB')}</h2>
+        <p>{t('chk.disc', { d: d(asOf) })}</p>
+        <p className="ck-srcs">{t('chk.srcs', { d: d(asOfAll), p: d(provider) })}</p>
+        <Link to="/about" className="lp-btn blue">SAQ Qurylys ›</Link>
+      </section>
 
       <footer className="lp-foot"><div className="lp-w"><span>{t('chk.foot')}</span><span>{t('common.city')}</span></div></footer>
     </div>
