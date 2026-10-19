@@ -4,6 +4,7 @@ import { StoreProvider, useStore } from './lib/store'
 import AdDetail from './pages/AdDetail'
 import AdNew from './pages/AdNew'
 import Ads from './pages/Ads'
+import Changes from './pages/Changes'
 import ComplexCard from './pages/ComplexCard'
 import Complexes from './pages/Complexes'
 import Dashboard from './pages/Dashboard'
@@ -62,6 +63,7 @@ export default function App() {
               <Route path="sources" element={<Sources />} />
               <Route path="residents" element={<Residents />} />
               <Route path="reports" element={<Reports />} />
+              <Route path="changes" element={<Changes />} />
             </Route>
           </Route>
         </Routes>
