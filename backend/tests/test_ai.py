@@ -14,7 +14,7 @@ import pytest
 import app as app_pkg
 from PIL import Image, ImageDraw, ImageFont
 
-from app.ai import ENGINE, analyze, seed_catalog
+from app.ai import ENGINE, analyze, case_catalog
 from app.ai import ocr as ocr_engine
 from app.ai.evaluate import load_cases, run
 from app.ai.matching import W, account_keys, build_catalog
@@ -24,7 +24,7 @@ from app.risk_model import MARKERS, SHARED, T
 from app.schemas import AD_TEXT_MAX
 
 AUTHOR = "Исаев Т."
-SEED = json.loads((SHARED / "seed_data.json").read_text(encoding="utf-8"))
+SEED = json.loads((SHARED / "testdata" / "demo_seed.json").read_text(encoding="utf-8"))  # только для тестов
 
 
 def _one(terms, kind):
@@ -34,7 +34,7 @@ def _one(terms, kind):
 
 
 def _top(text, ocr=None, account=None, url=None):
-    hyps = analyze(seed_catalog(), text, ocr, account, url=url)["hypotheses"]
+    hyps = analyze(case_catalog(), text, ocr, account, url=url)["hypotheses"]
     return hyps[0] if hyps else None
 
 
@@ -202,7 +202,7 @@ def test_long_texts_are_bounded():
     assert len(t["quote"].split()) == T["quoteMaxWords"] and t["quote"].split()[T["quoteWordsBefore"]] == "первый"
     noisy = " ".join(f"Бронь {i} 000 ₸ · рассрочка {i % 90 + 1} мес" for i in range(1, 700))[:20000]
     started = time.perf_counter()
-    an = analyze(seed_catalog(), noisy, noisy.upper(), "@x")
+    an = analyze(case_catalog(), noisy, noisy.upper(), "@x")
     assert time.perf_counter() - started < 5  # раньше — десятки секунд
     assert an["terms"] and all(x["quote"] in (noisy if x["from"] == "text" else noisy.upper()) for x in an["terms"])
     first = [x for x in an["terms"] if x["kind"] == "booking"][0]
@@ -237,7 +237,7 @@ def test_match_features():
     # название ЖК в имени аккаунта
     assert _top("Старт продаж", account="@belukha.park.sale")["complexId"] == "c10"
     # телефон застройщика с двумя строящимися ЖК — признак делится между ними
-    hyps = analyze(seed_catalog(), "Звоните +7 7232 00-00-02", None, "@x")["hypotheses"]
+    hyps = analyze(case_catalog(), "Звоните +7 7232 00-00-02", None, "@x")["hypotheses"]
     assert {h["complexId"] for h in hyps} == {"c2", "c8"} and all(h["low"] and _features(h) == {"phone"} for h in hyps)
     # история: у аккаунта есть подтверждённая аналитиком публикация по ЖК
     h = _top("Успей купить", account="@dostyk.plaza.uka")
@@ -256,7 +256,7 @@ def test_match_features():
 def test_number_after_street_is_not_always_a_house(text):
     """Число после улицы с единицей («этаж», «м²», «лет») или через знак конца фразы — не номер дома: признака «улица
     и дом» нет, уверенной гипотезы нет (упоминание улицы — слабый признак)."""
-    an = analyze(seed_catalog(), text, None, "@x")
+    an = analyze(case_catalog(), text, None, "@x")
     reasons = [r for h in an["hypotheses"] for r in h["reasons"]]
     assert all(h["low"] for h in an["hypotheses"]) and not [r for r in reasons if "улица и дом" in r["detail"]]
     assert not any(ch.isdigit() for a in an["addresses"] for ch in a), an["addresses"]
@@ -290,28 +290,28 @@ def test_name_declension_and_lost_kazakh_letters():
 
 def test_note_when_all_found_complexes_are_rejected():
     text = "Береке Сити: бронь 100 000 ₸, успейте!"
-    assert _top(text)["complexId"] == "c7" and analyze(seed_catalog(), text)["note"] is None
-    an = analyze(seed_catalog(), text, rejected=["c7"])
+    assert _top(text)["complexId"] == "c7" and analyze(case_catalog(), text)["note"] is None
+    an = analyze(case_catalog(), text, rejected=["c7"])
     assert an["hypotheses"] == [] and "Признаков конкретного ЖК не найдено" not in an["note"]
     assert an["note"] == ("Других гипотез нет: отклонённые аналитиком ЖК (1) не предлагаются — привязку делает аналитик "
                           "вручную")
 
 
 def test_compilation_and_counterexamples():
-    an = analyze(seed_catalog(), "Подборка: Береке Сити, Самал Сити и Ертіс Парк — рассрочка, бронь", None, "@x")
+    an = analyze(case_catalog(), "Подборка: Береке Сити, Самал Сити и Ертіс Парк — рассрочка, бронь", None, "@x")
     assert len(an["hypotheses"]) == T["hypothesesTop"] and all(h["low"] for h in an["hypotheses"])
     assert "подборку" in an["note"]
     for text in ("Продаю гараж в кооперативе", "Ремонт квартир под ключ, +7 7232 00-00-99", ""):
-        an = analyze(seed_catalog(), text, None, "@x")
+        an = analyze(case_catalog(), text, None, "@x")
         assert an["hypotheses"] == [] and "не найдено" in an["note"]
 
 
 def test_analysis_is_deterministic():
     case = ("Altai Residence — бронь 200 000 тг, взнос 30%, рассрочка 18 мес. +7 7232 00-00-02", "ДДУ · ПЕРВЫЙ ВЗНОС 30%",
             "@altai.kvartiry", None, "https://instagram.com/altai.kvartiry/")
-    first = json.dumps(analyze(seed_catalog(), *case), ensure_ascii=False, sort_keys=True)
+    first = json.dumps(analyze(case_catalog(), *case), ensure_ascii=False, sort_keys=True)
     for _ in range(3):
-        assert json.dumps(analyze(seed_catalog(), *case), ensure_ascii=False, sort_keys=True) == first
+        assert json.dumps(analyze(case_catalog(), *case), ensure_ascii=False, sort_keys=True) == first
     # порядок ЖК в справочнике не влияет на результат
     shuffled = build_catalog(list(reversed(SEED["complexes"])), list(reversed(SEED["developers"])), SEED["ads"])
     assert json.dumps(analyze(shuffled, *case), ensure_ascii=False, sort_keys=True) == first

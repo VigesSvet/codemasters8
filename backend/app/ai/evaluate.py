@@ -1,4 +1,5 @@
-"""Проверка ИИ на новых данных (T-25): тексты shared/ai_cases.json, которых нет в сиде, → ожидаемые условия оплаты и ЖК.
+"""Проверка ИИ на новых данных (T-25): тексты shared/ai_cases.json → ожидаемые условия оплаты и ЖК (справочник кейсов —
+catalog того же файла: вымышленные ЖК, только для этой проверки).
 
 Метрики: termsFound / termsExpected — сколько ожидаемых условий найдено; termsPrecision — доля найденных условий, которые
 ожидались; linkTop1 — доля кейсов с ожидаемым ЖК, где он первая гипотеза; falsePositives — кейсы, где движок уверенно
@@ -8,7 +9,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from ..risk_model import SHARED
-from . import ENGINE, analyze, seed_catalog
+from . import ENGINE, analyze, case_catalog
 from .matching import Catalog
 from .terms import LABELS
 
@@ -84,7 +85,7 @@ def run_case(case: Obj, cat: Catalog) -> Obj:
 
 
 def run(cat: Optional[Catalog] = None) -> Obj:
-    cat = cat or seed_catalog()
+    cat = cat or case_catalog()
     rows = [run_case(c, cat) for c in load_cases()]
     counts = [r.pop("_counts") for r in rows]
     s = lambda key: sum(int(c[key]) for c in counts)  # noqa: E731

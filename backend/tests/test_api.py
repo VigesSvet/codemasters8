@@ -3,7 +3,7 @@ import json
 from app.risk import score_complex
 from app.risk_model import SHARED, VERSION, T
 
-AS_OF = "2026-10-15"  # дата контрольных значений (как в shared/risk_golden.json)
+AS_OF = "2026-10-15"  # дата контрольных значений (как в shared/testdata/risk_golden.json)
 
 
 def _risk(c, cid):
@@ -63,7 +63,7 @@ def test_risk_endpoints_agree_with_engine(client):
         assert {k: v for k, v in row.items() if k != "complexId"} == one
 
     # API (ORM → camelCase) считает так же, как движок на исходном сиде
-    seed = json.loads((SHARED / "seed_data.json").read_text(encoding="utf-8"))
+    seed = json.loads((SHARED / "testdata" / "demo_seed.json").read_text(encoding="utf-8"))
     devs = {d["id"]: d for d in seed["developers"]}
     by_id = {r["complexId"]: r for r in rows}
     for c in seed["complexes"]:

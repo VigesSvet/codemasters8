@@ -1,5 +1,5 @@
 // «Подключения» на странице «Источники» (integration-spec §13.2): фактическое состояние сборщиков публикаций, приёма заявок,
-// геосервиса и анализатора — с сервера (GET /api/sources/connectors). В демо-режиме поддельных статусов нет.
+// геосервиса и анализатора — с сервера (GET /api/sources/connectors). В офлайн-копии поддельных статусов нет.
 // Настройка и ручной запуск — только в режиме администратора: токен SAQ_ADMIN_TOKEN вводит человек, проверяет сервер,
 // хранится он только в этой вкладке (lib/admin.ts) и уходит заголовком лишь в маршруты администратора.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
@@ -172,7 +172,7 @@ export function ConnectorsProvider({ children }: { children: ReactNode }) {
 /** Кнопка «Обновить всё» в шапке: сбор всех включённых и проверенных сборщиков (администратор) */
 export function CollectAllButton() {
   const x = useConn()
-  const reason = !x.live ? COPY.demo
+  const reason = !x.live ? COPY.offline
     : !x.load?.data ? 'Состояние подключений не загрузилось'
       : !x.adminConfigured ? COPY.adminNotConfigured
         : !x.admin ? COPY.needAdmin
@@ -210,7 +210,7 @@ export default function Connectors() {
         «работает» появляется только после успешного сбора; «ключ создан» и «заявка отправлена» так не называются.
       </p>
       {mode === 'loading' ? <div className="ai-note">Подключаемся к серверу…</div>
-        : mode === 'demo' ? <div className="ai-note">{COPY.demo}</div>
+        : mode === 'snapshot' ? <div className="ai-note">{COPY.offline}</div>
           : !x.load ? <div className="ai-note">Загружаем состояние подключений…</div>
             : !data ? (
               <div className={`ai-note ${x.load.err ? 'err' : ''}`}>

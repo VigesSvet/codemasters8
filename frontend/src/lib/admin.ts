@@ -1,7 +1,7 @@
 // Режим администратора подключений (integration-spec §5.1, §13.2): токен SAQ_ADMIN_TOKEN вводит человек, сервер его проверяет.
 // Токен живёт только в sessionStorage этой вкладки (до её закрытия) — не в localStorage, не в коде и не в VITE_*-переменных;
 // уходит заголовком X-Admin-Token только в маршруты администратора (adminCall) и нигде не логируется.
-// Демо-вход аналитика (lib/session.ts) прав администратора не даёт.
+// Вход аналитика без пароля (lib/session.ts) прав администратора не даёт.
 import { ApiError, apiGet, isRouteMissing, type ExtraHeaders } from './api'
 
 export const ADMIN_KEY = 'saq.admin'

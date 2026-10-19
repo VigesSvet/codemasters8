@@ -48,7 +48,7 @@ export const STATUS_LOG: Record<AdStatus, string> = {
   new: 'Новая', needs_check: 'Нужна проверка', in_review: 'На проверке', confirmed: 'Нарушение подтверждено', dismissed: 'Отклонено',
 }
 
-/** Строка смены статуса — тот же формат, что у сервера (для журнала демо-сессии); без «..» после «Омарова Ж.».
+/** Строка смены статуса — тот же формат, что у сервера; без «..» после «Омарова Ж.».
  *  Тот же статус — «без изменений»: повторное решение с основанием или смена ответственного не выглядят сменой статуса */
 export function statusLine(from: AdStatus, to: AdStatus, assignee?: string, comment?: string) {
   const st = from === to ? `Статус: «${STATUS_LOG[from]}» без изменений` : `Статус: «${STATUS_LOG[from]}» → «${STATUS_LOG[to]}»`

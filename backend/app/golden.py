@@ -1,8 +1,9 @@
 """Эталонные результаты модели риска: по ним проверяется, что Python и TypeScript считают одинаково.
 
-    cd backend && .venv/bin/python -m app.golden     # перезаписать shared/risk_golden.json
+    cd backend && .venv/bin/python -m app.golden     # перезаписать shared/testdata/risk_golden.json
 
-Входы: shared/seed_data.json (весь сид) и shared/risk_fixtures.json (синтетические случаи):
+Только для тестов (backend/tests/test_risk.py, frontend/src/lib/risk.test.ts). Входы — shared/testdata/: demo_seed.json
+(прежний демо-набор, весь) и risk_fixtures.json (синтетические случаи):
     {"complex": [{"name", "asOf"?, "complex", "developer", "ads", "appeals"}],
      "ad":      [{"name", "ad", "complex"}]}
 """
@@ -13,12 +14,13 @@ from .risk import score_ad, score_complex
 from .risk_model import SHARED, VERSION
 
 AS_OF = "2026-10-15"
-GOLDEN = SHARED / "risk_golden.json"
+TESTDATA = SHARED / "testdata"
+GOLDEN = TESTDATA / "risk_golden.json"
 
 
 def build() -> Dict[str, Any]:
-    seed = json.loads((SHARED / "seed_data.json").read_text(encoding="utf-8"))
-    fx_path = SHARED / "risk_fixtures.json"
+    seed = json.loads((TESTDATA / "demo_seed.json").read_text(encoding="utf-8"))
+    fx_path = TESTDATA / "risk_fixtures.json"
     fx = json.loads(fx_path.read_text(encoding="utf-8")) if fx_path.exists() else {"complex": [], "ad": []}
     devs = {d["id"]: d for d in seed["developers"]}
     cxs = {c["id"]: c for c in seed["complexes"]}

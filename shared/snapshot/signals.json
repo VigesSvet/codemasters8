@@ -1,0 +1,459 @@
+[
+ {
+  "complex_id": "r-park-line",
+  "complex_name": "PARK LINE",
+  "created_at": "2026-10-18T19:37:53.729264+00:00",
+  "created_by": "Нестерова А.",
+  "decided_at": null,
+  "decided_by": null,
+  "decision_comment": null,
+  "evidence": {
+   "ads": [
+    {
+     "account": "krisha.kz / специалист",
+     "date": "2026-10-18T23:12",
+     "id": "d4589e6430e04ecaacc7b0a8e1949bec",
+     "image": "/api/media/7877f43014f04225ac57a9e1e65fd351",
+     "linkConfirmedAt": "2026-10-18T19:37:21+00:00",
+     "linkConfirmedBy": "Нестерова А.",
+     "matchConfidence": 0.8,
+     "ocr": null,
+     "platform": "krisha",
+     "price": "17 057 250 ₸",
+     "signals": {
+      "funds": [],
+      "safe": [],
+      "sale": [
+       "квартир"
+      ]
+     },
+     "status": "new",
+     "termsReview": null,
+     "text": "1-комнатная квартира · 37.8 м² · 9/10 этаж\nКаныша Сатпаева 82/9 — Спортшкола\nжил. комплекс Park Line, монолитный дом, 2027 г.п., состояние: свободная планировка, потолки 3м., Бизнес-класс ЖК Park Line от ElitStroy Group. Отличный вариант для тех, кто хочет современную квартиру в доме бизнес-класса! Свободная планировка позволяет грамотно использовать каждый метр и созда…",
+     "url": "https://krisha.kz/a/show/1016329501"
+    }
+   ],
+   "appeals": [],
+   "complex": {
+    "address": "пр. И. Есенберлина, д. 56",
+    "basis": {
+     "bvu": "unknown",
+     "guarantee": "unknown",
+     "mio": "unknown",
+     "mioRef": "По данным открытого реестра (Homeportal — карточки ЖК): разрешение МИО № KZ25PDD00004205 от 07.10.2026. Аналитиком не проверено"
+    },
+    "cover": "",
+    "developerId": "rd-220740026935",
+    "district": "",
+    "flats": 0,
+    "floors": 0,
+    "id": "r-park-line",
+    "idleDays": 0,
+    "inPublishedList": "unknown",
+    "lat": 49.917561,
+    "lng": 82.619097,
+    "name": "PARK LINE",
+    "origin": "registry",
+    "photos": [],
+    "plannedEnd": "2027-11-18",
+    "progress": 0,
+    "readiness": {
+     "confirmed": null,
+     "declared": null
+    },
+    "stage": "",
+    "start": "2026-09-18"
+   },
+   "developer": {
+    "bin": "220740026935",
+    "director": "",
+    "id": "rd-220740026935",
+    "instagram": null,
+    "name": "ТОО \"Mercury Construction\"",
+    "objects": 0,
+    "origin": "registry",
+    "phones": [],
+    "registered": "",
+    "site": null,
+    "unfinished": 0
+   },
+   "documents": [
+    {
+     "kind": "document",
+     "label": "Гарантия ЕО (КЖК)",
+     "ref": "guarantee",
+     "value": "unknown"
+    },
+    {
+     "kind": "document",
+     "label": "Разрешение МИО",
+     "quote": "По данным открытого реестра (Homeportal — карточки ЖК): разрешение МИО № KZ25PDD00004205 от 07.10.2026. Аналитиком не проверено",
+     "ref": "mio",
+     "value": "unknown"
+    },
+    {
+     "kind": "document",
+     "label": "Банк второго уровня",
+     "ref": "bvu",
+     "value": "unknown"
+    }
+   ],
+   "photos": []
+  },
+  "exported_at": null,
+  "factors": [
+   {
+    "code": "R1",
+    "evidence": "Сведения об основании не получены — это не считается отсутствием основания",
+    "items": [
+     {
+      "kind": "document",
+      "label": "Гарантия ЕО (КЖК)",
+      "ref": "guarantee",
+      "value": "unknown"
+     },
+     {
+      "kind": "document",
+      "label": "Разрешение МИО",
+      "quote": "По данным открытого реестра (Homeportal — карточки ЖК): разрешение МИО № KZ25PDD00004205 от 07.10.2026. Аналитиком не проверено",
+      "ref": "mio",
+      "value": "unknown"
+     },
+     {
+      "kind": "document",
+      "label": "Банк второго уровня",
+      "ref": "bvu",
+      "value": "unknown"
+     }
+    ],
+    "points": 35,
+    "reason": "unknown",
+    "state": "unknown",
+    "title": "Установлено отсутствие применимого правового основания"
+   },
+   {
+    "code": "R2",
+    "evidence": "Предложений внести деньги не найдено",
+    "items": [],
+    "points": 25,
+    "reason": "none",
+    "state": "clear",
+    "title": "Прямое предложение внести деньги"
+   },
+   {
+    "code": "R3",
+    "evidence": "Реклама продажи до ввода объекта: публикаций 1",
+    "items": [
+     {
+      "date": "2026-10-18T23:12",
+      "kind": "ad",
+      "label": "krisha.kz / специалист",
+      "marker": "квартир",
+      "quote": "1-комнатная квартира · 37.8 м² · 9/10 этаж",
+      "quoteFrom": "text",
+      "ref": "d4589e6430e04ecaacc7b0a8e1949bec",
+      "source": "krisha",
+      "url": "https://krisha.kz/a/show/1016329501"
+     }
+    ],
+    "points": 10,
+    "reason": "ads",
+    "state": "hit",
+    "title": "Активная реклама строящегося жилья"
+   },
+   {
+    "code": "R4",
+    "evidence": "Подтверждённых коллективных обращений нет",
+    "items": [],
+    "points": 15,
+    "reason": "none",
+    "state": "clear",
+    "title": "Подтверждённое коллективное обращение"
+   },
+   {
+    "code": "R5",
+    "evidence": "Нет пары значений готовности с источниками и датами — сравнить нельзя, нужна проверка",
+    "items": [],
+    "points": 10,
+    "reason": "incomplete",
+    "state": "unknown",
+    "title": "Несовпадение заявленной и подтверждённой готовности"
+   },
+   {
+    "code": "R6",
+    "evidence": "Снимков площадки нет — простой не проверен",
+    "items": [],
+    "points": 5,
+    "reason": "no_photos",
+    "state": "unknown",
+    "title": "Подтверждённый простой / значимая просрочка"
+   }
+  ],
+  "file_name": "signal-S-0001.pdf",
+  "hits": [
+   "R3"
+  ],
+  "id": 1,
+  "model_version": "tz5-2026.10",
+  "needs_check": true,
+  "observations": [
+   {
+    "code": "O1",
+    "state": "unknown",
+    "text": "Перечень ГАСК не сверен",
+    "title": "Опубликованный перечень ГАСК"
+   },
+   {
+    "code": "O2",
+    "state": "unknown",
+    "text": "Сведения о застройщике не получены",
+    "title": "Профиль застройщика"
+   },
+   {
+    "code": "O3",
+    "state": "ok",
+    "text": "Простоя 30–89 дн. нет; длительный простой оценивается в R6",
+    "title": "Снижение активности на площадке"
+   }
+  ],
+  "score": 10,
+  "status": "new",
+  "summary": "Балл 10: плановый мониторинг. Нужна проверка: R1, R5, R6.",
+  "zone": "green"
+ },
+ {
+  "complex_id": "a-mustau",
+  "complex_name": "Muztau",
+  "created_at": "2026-10-18T21:08:57.469812+00:00",
+  "created_by": "Нестерова А.",
+  "decided_at": null,
+  "decided_by": null,
+  "decision_comment": null,
+  "evidence": {
+   "ads": [
+    {
+     "account": "@premiumstroy.uka",
+     "date": "2026-08-15T19:30",
+     "id": "9caac216b9384aa58b1ff124434d2852",
+     "image": "/api/media/a76d0dec230d4eaf8165ee05aac3c4ac",
+     "linkConfirmedAt": "2026-10-18T21:08:34+00:00",
+     "linkConfirmedBy": "Нестерова А.",
+     "matchConfidence": 1.0,
+     "ocr": null,
+     "platform": "instagram",
+     "price": null,
+     "signals": {
+      "funds": [
+       "долевом участии"
+      ],
+      "safe": [],
+      "sale": [
+       "продаж",
+       "квартир"
+      ]
+     },
+     "status": "in_review",
+     "termsReview": "accepted",
+     "text": "У нас все одинаково работают, а у вас ? \n\n📍 ул Казыбек би 1/3\n📞 8 777 783 55 37\n\n⸻\n\nБұл жарнама Қазақстан Республикасының Азаматтық кодексінің 395-бабына сәйкес жария оферта болып саналмайды.\nЖиынтық тұрғын үй құрылысына қатысу немесе сатып алу–сату шарттары Тұрғын үй құрылысын кепілдендірудің бірыңғай операторымен кепілдік беру шарты жасалғаннан кейін немесе жергілікті атқарушы органнан тұрғындардың қаражатын тартуға рұқсат алынғаннан кейін немесе объектіні пайдалануға беру актісі алынғаннан кейін жасалады.\n\nНастоящая реклама, в соответствии со ст. 395 ГК РК, не является публичной офертой.\nДоговоры о долевом участии в жилищном строительстве или купли-продажи будут заключаться только после заключения договора о предоставлении гарантии с Единым оператором жилищного строительства или выдачи разрешения на привлечение денег дольщиков местным исполнительным органом или получени#квартирыотзастройщика #недвижимость #квартирыука #недвижимостьука",
+     "url": "https://www.instagram.com/reel/DcEG2AzupvF/"
+    }
+   ],
+   "appeals": [],
+   "complex": {
+    "address": "г. Усть-Каменогорск, проспект Казыбек би, 1/3",
+    "basis": {
+     "bvu": "unknown",
+     "guarantee": "unknown",
+     "mio": "unknown"
+    },
+    "cover": "",
+    "developerId": "ad-533d17addd8a",
+    "district": "",
+    "flats": 0,
+    "floors": 0,
+    "id": "a-mustau",
+    "idleDays": 0,
+    "inPublishedList": "unknown",
+    "lat": 49.893336,
+    "lng": 82.618958,
+    "name": "Muztau",
+    "origin": "advertised",
+    "photos": [],
+    "plannedEnd": "",
+    "progress": 0,
+    "readiness": {
+     "confirmed": null,
+     "declared": null
+    },
+    "stage": "",
+    "start": ""
+   },
+   "developer": {
+    "bin": "",
+    "director": "",
+    "id": "ad-533d17addd8a",
+    "instagram": null,
+    "name": "ТОО «Премиум Строй НС»",
+    "objects": 0,
+    "origin": "advertised",
+    "phones": [],
+    "registered": "",
+    "site": null,
+    "unfinished": 0
+   },
+   "documents": [
+    {
+     "kind": "document",
+     "label": "Гарантия ЕО (КЖК)",
+     "ref": "guarantee",
+     "value": "unknown"
+    },
+    {
+     "kind": "document",
+     "label": "Разрешение МИО",
+     "ref": "mio",
+     "value": "unknown"
+    },
+    {
+     "kind": "document",
+     "label": "Банк второго уровня",
+     "ref": "bvu",
+     "value": "unknown"
+    }
+   ],
+   "photos": []
+  },
+  "exported_at": null,
+  "factors": [
+   {
+    "code": "R1",
+    "evidence": "Сведения об основании не получены — это не считается отсутствием основания",
+    "items": [
+     {
+      "kind": "document",
+      "label": "Гарантия ЕО (КЖК)",
+      "ref": "guarantee",
+      "value": "unknown"
+     },
+     {
+      "kind": "document",
+      "label": "Разрешение МИО",
+      "ref": "mio",
+      "value": "unknown"
+     },
+     {
+      "kind": "document",
+      "label": "Банк второго уровня",
+      "ref": "bvu",
+      "value": "unknown"
+     }
+    ],
+    "points": 35,
+    "reason": "unknown",
+    "state": "unknown",
+    "title": "Установлено отсутствие применимого правового основания"
+   },
+   {
+    "code": "R2",
+    "evidence": "Предложение внести деньги в публикациях: 1",
+    "items": [
+     {
+      "date": "2026-08-15T19:30",
+      "kind": "ad",
+      "label": "@premiumstroy.uka",
+      "marker": "долевом участии",
+      "quote": "Договоры о долевом участии в жилищном строительстве или купли-продажи будут заключаться только после заключения …",
+      "quoteFrom": "text",
+      "ref": "9caac216b9384aa58b1ff124434d2852",
+      "source": "instagram",
+      "url": "https://www.instagram.com/reel/DcEG2AzupvF/"
+     }
+    ],
+    "points": 25,
+    "reason": "offer",
+    "state": "hit",
+    "title": "Прямое предложение внести деньги"
+   },
+   {
+    "code": "R3",
+    "evidence": "Реклама продажи до ввода объекта: публикаций 1",
+    "items": [
+     {
+      "date": "2026-08-15T19:30",
+      "kind": "ad",
+      "label": "@premiumstroy.uka",
+      "marker": "продаж",
+      "quote": "… о долевом участии в жилищном строительстве или купли-продажи будут заключаться только после заключения договора о предоставлении гарантии с Единым оператором …",
+      "quoteFrom": "text",
+      "ref": "9caac216b9384aa58b1ff124434d2852",
+      "source": "instagram",
+      "url": "https://www.instagram.com/reel/DcEG2AzupvF/"
+     }
+    ],
+    "points": 10,
+    "reason": "ads",
+    "state": "hit",
+    "title": "Активная реклама строящегося жилья"
+   },
+   {
+    "code": "R4",
+    "evidence": "Подтверждённых коллективных обращений нет",
+    "items": [],
+    "points": 15,
+    "reason": "none",
+    "state": "clear",
+    "title": "Подтверждённое коллективное обращение"
+   },
+   {
+    "code": "R5",
+    "evidence": "Нет пары значений готовности с источниками и датами — сравнить нельзя, нужна проверка",
+    "items": [],
+    "points": 10,
+    "reason": "incomplete",
+    "state": "unknown",
+    "title": "Несовпадение заявленной и подтверждённой готовности"
+   },
+   {
+    "code": "R6",
+    "evidence": "Снимков площадки нет — простой не проверен",
+    "items": [],
+    "points": 5,
+    "reason": "no_photos",
+    "state": "unknown",
+    "title": "Подтверждённый простой / значимая просрочка"
+   }
+  ],
+  "file_name": "signal-S-0002.pdf",
+  "hits": [
+   "R2",
+   "R3"
+  ],
+  "id": 2,
+  "model_version": "tz5-2026.10",
+  "needs_check": true,
+  "observations": [
+   {
+    "code": "O1",
+    "state": "unknown",
+    "text": "Перечень ГАСК не сверен",
+    "title": "Опубликованный перечень ГАСК"
+   },
+   {
+    "code": "O2",
+    "state": "unknown",
+    "text": "Сведения о застройщике не получены",
+    "title": "Профиль застройщика"
+   },
+   {
+    "code": "O3",
+    "state": "ok",
+    "text": "Простоя 30–89 дн. нет; длительный простой оценивается в R6",
+    "title": "Снижение активности на площадке"
+   }
+  ],
+  "score": 35,
+  "status": "new",
+  "summary": "Балл 35: углублённая ручная проверка документов и публикаций. Нужна проверка: R1, R5, R6.",
+  "zone": "yellow"
+ }
+]

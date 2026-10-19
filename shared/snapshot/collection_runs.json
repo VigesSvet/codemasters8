@@ -1,0 +1,330 @@
+[
+ {
+  "collector": "instagram",
+  "cost_usd": null,
+  "created_at": "2026-10-18T18:02:14.880957+00:00",
+  "error": null,
+  "error_code": null,
+  "external_run_id": null,
+  "finished_at": "2026-10-18T18:02:16.181640+00:00",
+  "id": 1,
+  "items_failed": 0,
+  "items_new": 0,
+  "items_seen": 0,
+  "items_unchanged": 0,
+  "items_updated": 0,
+  "media_failed": 0,
+  "media_saved": 0,
+  "notes": [],
+  "requested_by": "Администратор",
+  "started_at": "2026-10-18T18:02:15.000092+00:00",
+  "status": "succeeded",
+  "trigger": "test"
+ },
+ {
+  "collector": "tiktok",
+  "cost_usd": null,
+  "created_at": "2026-10-18T18:02:14.968368+00:00",
+  "error": null,
+  "error_code": null,
+  "external_run_id": null,
+  "finished_at": "2026-10-18T18:02:17.358776+00:00",
+  "id": 2,
+  "items_failed": 0,
+  "items_new": 0,
+  "items_seen": 0,
+  "items_unchanged": 0,
+  "items_updated": 0,
+  "media_failed": 0,
+  "media_saved": 0,
+  "notes": [],
+  "requested_by": "Администратор",
+  "started_at": "2026-10-18T18:02:16.220304+00:00",
+  "status": "succeeded",
+  "trigger": "test"
+ },
+ {
+  "collector": "krisha",
+  "cost_usd": null,
+  "created_at": "2026-10-18T18:02:14.980196+00:00",
+  "error": null,
+  "error_code": null,
+  "external_run_id": null,
+  "finished_at": "2026-10-18T18:02:31.024591+00:00",
+  "id": 3,
+  "items_failed": 0,
+  "items_new": 0,
+  "items_seen": 0,
+  "items_unchanged": 0,
+  "items_updated": 0,
+  "media_failed": 0,
+  "media_saved": 0,
+  "notes": [],
+  "requested_by": "Администратор",
+  "started_at": "2026-10-18T18:02:17.435737+00:00",
+  "status": "succeeded",
+  "trigger": "test"
+ },
+ {
+  "collector": "anthropic",
+  "cost_usd": null,
+  "created_at": "2026-10-18T18:02:25.927757+00:00",
+  "error": null,
+  "error_code": null,
+  "external_run_id": null,
+  "finished_at": "2026-10-18T18:02:31.693380+00:00",
+  "id": 4,
+  "items_failed": 0,
+  "items_new": 0,
+  "items_seen": 0,
+  "items_unchanged": 0,
+  "items_updated": 0,
+  "media_failed": 0,
+  "media_saved": 0,
+  "notes": [],
+  "requested_by": "Администратор",
+  "started_at": "2026-10-18T18:02:31.074183+00:00",
+  "status": "succeeded",
+  "trigger": "test"
+ },
+ {
+  "collector": "instagram",
+  "cost_usd": null,
+  "created_at": "2026-10-18T18:02:31.717538+00:00",
+  "error": null,
+  "error_code": null,
+  "external_run_id": null,
+  "finished_at": "2026-10-18T18:12:15.840330+00:00",
+  "id": 5,
+  "items_failed": 0,
+  "items_new": 168,
+  "items_seen": 168,
+  "items_unchanged": 0,
+  "items_updated": 0,
+  "media_failed": 32,
+  "media_saved": 396,
+  "notes": [
+   {
+    "at": "2026-10-18T18:03:12+00:00",
+    "level": "warn",
+    "text": "@an.groups: новых публикаций больше 12 — старые могли быть пропущены"
+   },
+   {
+    "at": "2026-10-18T18:03:59+00:00",
+    "level": "warn",
+    "text": "@tumar.oskemen: новых публикаций больше 12 — старые могли быть пропущены"
+   },
+   {
+    "at": "2026-10-18T18:04:54+00:00",
+    "level": "warn",
+    "text": "@ceogroup.ukg: новых публикаций больше 12 — старые могли быть пропущены"
+   },
+   {
+    "at": "2026-10-18T18:05:20+00:00",
+    "level": "warn",
+    "text": "@elitstroy.uka: новых публикаций больше 12 — старые могли быть пропущены"
+   },
+   {
+    "at": "2026-10-18T18:06:00+00:00",
+    "level": "warn",
+    "text": "@satti_uka: новых публикаций больше 12 — старые могли быть пропущены"
+   },
+   {
+    "at": "2026-10-18T18:06:42+00:00",
+    "level": "warn",
+    "text": "@bts.architects: новых публикаций больше 12 — старые могли быть пропущены"
+   },
+   {
+    "at": "2026-10-18T18:07:19+00:00",
+    "level": "warn",
+    "text": "@biryuza.uka: новых публикаций больше 12 — старые могли быть пропущены"
+   },
+   {
+    "at": "2026-10-18T18:08:36+00:00",
+    "level": "warn",
+    "text": "@zolotoi_kvadrat.kz: новых публикаций больше 12 — старые могли быть пропущены"
+   },
+   {
+    "at": "2026-10-18T18:09:39+00:00",
+    "level": "warn",
+    "text": "@ab_residence.kz: новых публикаций больше 12 — старые могли быть пропущены"
+   },
+   {
+    "at": "2026-10-18T18:10:16+00:00",
+    "level": "warn",
+    "text": "@oks.group_oskemen: новых публикаций больше 12 — старые могли быть пропущены"
+   },
+   {
+    "at": "2026-10-18T18:11:04+00:00",
+    "level": "warn",
+    "text": "@bs_holding.oskemen: новых публикаций больше 12 — старые могли быть пропущены"
+   },
+   {
+    "at": "2026-10-18T18:11:42+00:00",
+    "level": "warn",
+    "text": "@premiumstroy.uka: новых публикаций больше 12 — старые могли быть пропущены"
+   },
+   {
+    "at": "2026-10-18T18:12:05+00:00",
+    "level": "warn",
+    "text": "@riverside.uka: новых публикаций больше 12 — старые могли быть пропущены"
+   },
+   {
+    "at": "2026-10-18T18:12:15+00:00",
+    "level": "warn",
+    "text": "@zhbk_zhilstroi: новых публикаций больше 12 — старые могли быть пропущены"
+   }
+  ],
+  "requested_by": "Система",
+  "started_at": "2026-10-18T18:02:31.747975+00:00",
+  "status": "partial",
+  "trigger": "schedule"
+ },
+ {
+  "collector": "tiktok",
+  "cost_usd": 0.051,
+  "created_at": "2026-10-18T18:02:31.717538+00:00",
+  "error": null,
+  "error_code": null,
+  "external_run_id": "1bcEj1sFcByOywuyj",
+  "finished_at": "2026-10-18T18:14:06.235348+00:00",
+  "id": 6,
+  "items_failed": 0,
+  "items_new": 10,
+  "items_seen": 10,
+  "items_unchanged": 0,
+  "items_updated": 0,
+  "media_failed": 0,
+  "media_saved": 20,
+  "notes": [
+   {
+    "at": "2026-10-18T18:12:17+00:00",
+    "level": "info",
+    "text": "Запуск Apify 1bcEj1sFcByOywuyj начат: профилей 2, до 10 публикаций, лимит расходов $0.5"
+   },
+   {
+    "at": "2026-10-18T18:12:17+00:00",
+    "level": "info",
+    "text": "Ожидание источника — продолжение после 23:12 (этап: poll)"
+   },
+   {
+    "at": "2026-10-18T18:13:45+00:00",
+    "level": "info",
+    "text": "Ожидание источника — продолжение после 23:13 (этап: cost)"
+   },
+   {
+    "at": "2026-10-18T18:14:05+00:00",
+    "level": "info",
+    "text": "@elitstroy.uka: первый сбор профиля — получены последние публикации (5), более ранние не собирались"
+   },
+   {
+    "at": "2026-10-18T18:14:05+00:00",
+    "level": "info",
+    "text": "@zolotoi_kvadrat.kz: первый сбор профиля — получены последние публикации (5), более ранние не собирались"
+   },
+   {
+    "at": "2026-10-18T18:14:06+00:00",
+    "level": "info",
+    "text": "Запуск Apify 1bcEj1sFcByOywuyj: записей 10, стоимость ≈ $0.051"
+   }
+  ],
+  "requested_by": "Система",
+  "started_at": "2026-10-18T18:12:15.852060+00:00",
+  "status": "succeeded",
+  "trigger": "schedule"
+ },
+ {
+  "collector": "krisha",
+  "cost_usd": null,
+  "created_at": "2026-10-18T18:02:31.717538+00:00",
+  "error": null,
+  "error_code": null,
+  "external_run_id": null,
+  "finished_at": "2026-10-18T18:12:54.708326+00:00",
+  "id": 7,
+  "items_failed": 0,
+  "items_new": 52,
+  "items_seen": 52,
+  "items_unchanged": 0,
+  "items_updated": 0,
+  "media_failed": 0,
+  "media_saved": 52,
+  "notes": [
+   {
+    "at": "2026-10-18T18:12:44+00:00",
+    "level": "warn",
+    "text": "Карточки закрыты проверкой доступа (HTTP 468, SafeLine) — сохранены данные из выдачи"
+   }
+  ],
+  "requested_by": "Система",
+  "started_at": "2026-10-18T18:12:17.229299+00:00",
+  "status": "partial",
+  "trigger": "schedule"
+ },
+ {
+  "collector": "instagram",
+  "cost_usd": null,
+  "created_at": "2026-10-18T19:12:16.759652+00:00",
+  "error": null,
+  "error_code": null,
+  "external_run_id": null,
+  "finished_at": "2026-10-18T19:12:38.008059+00:00",
+  "id": 8,
+  "items_failed": 0,
+  "items_new": 0,
+  "items_seen": 168,
+  "items_unchanged": 168,
+  "items_updated": 0,
+  "media_failed": 0,
+  "media_saved": 0,
+  "notes": [],
+  "requested_by": "Система",
+  "started_at": "2026-10-18T19:12:16.775755+00:00",
+  "status": "succeeded",
+  "trigger": "schedule"
+ },
+ {
+  "collector": "instagram",
+  "cost_usd": null,
+  "created_at": "2026-10-18T20:12:39.786481+00:00",
+  "error": null,
+  "error_code": null,
+  "external_run_id": null,
+  "finished_at": "2026-10-18T20:12:58.278252+00:00",
+  "id": 9,
+  "items_failed": 0,
+  "items_new": 0,
+  "items_seen": 168,
+  "items_unchanged": 168,
+  "items_updated": 0,
+  "media_failed": 0,
+  "media_saved": 0,
+  "notes": [],
+  "requested_by": "Система",
+  "started_at": "2026-10-18T20:12:39.802626+00:00",
+  "status": "succeeded",
+  "trigger": "schedule"
+ },
+ {
+  "collector": "instagram",
+  "cost_usd": null,
+  "created_at": "2026-10-18T21:13:01.276569+00:00",
+  "error": null,
+  "error_code": null,
+  "external_run_id": null,
+  "finished_at": "2026-10-18T21:13:23.014646+00:00",
+  "id": 10,
+  "items_failed": 0,
+  "items_new": 0,
+  "items_seen": 168,
+  "items_unchanged": 168,
+  "items_updated": 0,
+  "media_failed": 0,
+  "media_saved": 0,
+  "notes": [],
+  "requested_by": "Система",
+  "started_at": "2026-10-18T21:13:01.292959+00:00",
+  "status": "succeeded",
+  "trigger": "schedule"
+ }
+]

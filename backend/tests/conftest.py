@@ -31,8 +31,21 @@ _logs.install(handler=False)  # фабрика записей с маскиро�
 
 import pytest  # noqa: E402
 
+import demo_seed as _demo_seed  # noqa: E402 — демо-набор только для тестов (shared/testdata)
+from app import seed as _seed  # noqa: E402
+
 TMP = _TMP
 FAKE_ADMIN_TOKEN = "t-admin-0123456789abcdef0123"
+# Пустая БД тестов получает демо-набор, а не стартовый набор приложения (shared/snapshot — его проверяет test_snapshot.py)
+_seed.START = _demo_seed.start
+
+
+@pytest.fixture(autouse=True)
+def _demo_start():
+    """Старт пустой БД — демо-набор; тест может переключить его (demo_seed.live(), monkeypatch) — после теста прежний."""
+    _seed.START = _demo_seed.start
+    yield
+    _seed.START = _demo_seed.start
 
 
 @pytest.fixture

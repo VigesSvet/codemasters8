@@ -1,6 +1,6 @@
 // Файлы публикаций (integration-spec §6.1, §11.1, §13.1; T-43): адреса для <img>/<video> и загрузка скриншота на сервер.
-// Серверные файлы — /api/media/{id}: в разметке только через mediaSrc (учитывает VITE_API_URL). Демо-пути /img/… не меняются,
-// blob: — локальный предпросмотр этой вкладки (на сервер его адрес не уходит).
+// Серверные файлы — /api/media/{id}: в разметке только через mediaSrc (учитывает VITE_API_URL). Пути сайта (/img/…, файлы
+// офлайн-копии /snapshot-media/…) не меняются, blob: — локальный предпросмотр этой вкладки (на сервер его адрес не уходит).
 import type { Ad, MediaRef, MediaUpload } from '../data/types'
 import { ApiError, apiUpload, errorText, isRouteMissing, mediaSrc } from './api'
 

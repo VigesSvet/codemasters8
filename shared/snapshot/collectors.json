@@ -1,0 +1,125 @@
+[
+ {
+  "checked_at": null,
+  "code": "anthropic",
+  "config": {},
+  "enabled": false,
+  "facts": {},
+  "failures": 0,
+  "interval_min": null,
+  "last_error": null,
+  "last_error_at": null,
+  "last_run_id": null,
+  "last_success_at": null,
+  "next_run_at": null,
+  "state": {},
+  "status": "unchecked",
+  "status_detail": null,
+  "updated_at": null,
+  "updated_by": null
+ },
+ {
+  "checked_at": null,
+  "code": "instagram",
+  "config": {
+   "accounts": [
+    "@an.groups",
+    "@tumar.oskemen",
+    "@ceogroup.ukg",
+    "@elitstroy.uka",
+    "@satti_uka",
+    "@bts.architects",
+    "@biryuza.uka",
+    "@zolotoi_kvadrat.kz",
+    "@ab_residence.kz",
+    "@oks.group_oskemen",
+    "@bs_holding.oskemen",
+    "@premiumstroy.uka",
+    "@riverside.uka",
+    "@zhbk_zhilstroi"
+   ]
+  },
+  "enabled": true,
+  "facts": {},
+  "failures": 0,
+  "interval_min": 60,
+  "last_error": null,
+  "last_error_at": null,
+  "last_run_id": null,
+  "last_success_at": null,
+  "next_run_at": null,
+  "state": {},
+  "status": "unchecked",
+  "status_detail": null,
+  "updated_at": "2026-10-18T18:02:14.880957+00:00",
+  "updated_by": "Администратор"
+ },
+ {
+  "checked_at": null,
+  "code": "krisha",
+  "config": {
+   "searchUrls": [
+    "https://krisha.kz/prodazha/kvartiry/ust-kamenogorsk/?das[novostroiki]=1",
+    "https://krisha.kz/prodazha/kvartiry/ust-kamenogorsk/?das[house.year][from]=2026"
+   ]
+  },
+  "enabled": true,
+  "facts": {},
+  "failures": 0,
+  "interval_min": 360,
+  "last_error": null,
+  "last_error_at": null,
+  "last_run_id": null,
+  "last_success_at": null,
+  "next_run_at": null,
+  "state": {},
+  "status": "unchecked",
+  "status_detail": null,
+  "updated_at": "2026-10-18T18:02:14.980196+00:00",
+  "updated_by": "Администратор"
+ },
+ {
+  "checked_at": null,
+  "code": "telegram",
+  "config": {},
+  "enabled": false,
+  "facts": {},
+  "failures": 0,
+  "interval_min": null,
+  "last_error": null,
+  "last_error_at": null,
+  "last_run_id": null,
+  "last_success_at": null,
+  "next_run_at": null,
+  "state": {},
+  "status": "unchecked",
+  "status_detail": null,
+  "updated_at": null,
+  "updated_by": null
+ },
+ {
+  "checked_at": null,
+  "code": "tiktok",
+  "config": {
+   "downloadVideos": true,
+   "profiles": [
+    "zolotoi_kvadrat.kz",
+    "elitstroy.uka"
+   ]
+  },
+  "enabled": true,
+  "facts": {},
+  "failures": 0,
+  "interval_min": 1440,
+  "last_error": null,
+  "last_error_at": null,
+  "last_run_id": null,
+  "last_success_at": null,
+  "next_run_at": null,
+  "state": {},
+  "status": "unchecked",
+  "status_detail": null,
+  "updated_at": "2026-10-18T18:02:14.968368+00:00",
+  "updated_by": "Администратор"
+ }
+]

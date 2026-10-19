@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Origin } from '../components/Provenance'
-import { FilterPop, Highlight, PageTitle, PlatformIcon, Score, StatusTag, adKey, fmtDT, platformMeta, plural, statusMeta } from '../components/ui'
+import { FilterPop, Highlight, PageTitle, PlatformIcon, SafeImg, Score, StatusTag, adKey, fmtDT, platformMeta, plural, statusMeta } from '../components/ui'
 import type { Ad, AdStatus, Platform, Zone } from '../data/types'
 import { useSearchText } from '../lib/find'
 import { adImage } from '../lib/media'
@@ -17,7 +17,7 @@ const ORDER: AdStatus[] = ['new', 'needs_check', 'in_review', 'confirmed', 'dism
 const ZONES: Zone[] = ['red', 'yellow', 'green']
 type Sort = 'risk' | 'date' | 'reach'
 
-/** Собрана подключённым источником или прислана жителем через бота (не демо и не ручной ввод) */
+/** Собрана подключённым источником или прислана жителем через бота (не ручной ввод) */
 const collected = (a: Ad) => a.origin === 'collected'
 /** Метка происхождения на фото: собрано сборщиком, прислано через бота, добавлено аналитиком */
 const originLabel = (a: Ad) => (collected(a) ? (a.source === 'bot' ? 'прислано через бота' : 'собрано автоматически') : 'добавлено аналитиком')
@@ -66,6 +66,8 @@ export default function Ads() {
   // «Анализ не выполнен» — только когда такие есть (или фильтр уже выбран в адресе)
   const shownChips = chips.filter(([k, , fn]) => k !== 'noai' || chip === k || all.some(fn))
   const anyCollected = ads.some(collected)
+  // публикации прежнего демо-набора — только в старых БД (до python -m app.demo purge)
+  const anyDemo = ads.some(isDemoAd)
   const match = (x: R, f: { plat?: Platform[]; status?: AdStatus[]; zone?: Zone[] } = {}) => {
     const p = f.plat ?? plat, st = f.status ?? status, z = f.zone ?? zone
     return (!q || matches(q, adKey(x.a.id), x.a.account, x.c?.name) || norm(x.a.text).includes(norm(q)))
@@ -97,8 +99,8 @@ export default function Ads() {
       <PageTitle title="Реклама новостроек в Усть-Каменогорске"
         sub={<>Подсветка: <mark>продажа</mark>, <mark className="fund">предложение денег (R2)</mark>, <mark className="safe">признаки законности</mark></>}
         actions={<Link to="/ads/new" className="btn y m"><IcPlus />Добавить вручную</Link>} />
-      <p className="t-sm c2 row wrap-f" style={{ gap: 8, marginTop: -12, marginBottom: 16 }}><Origin kind="demo" label="демо" />
-        <span>Публикации демо-набора вымышлены. {anyCollected ? 'Собранные автоматически публикации помечены «собрано»; привязку к ЖК для них предлагает ИИ, решает аналитик.'
+      <p className="t-sm c2 row wrap-f" style={{ gap: 8, marginTop: -12, marginBottom: 16 }}>{anyDemo && <Origin kind="demo" label="демо" />}
+        <span>{anyDemo && 'Публикации прежнего демо-набора вымышлены. '}{anyCollected ? 'Публичная реклама, собранная подключёнными источниками, помечена «собрано автоматически»: привязку к ЖК предлагает ИИ, решает аналитик. Оценка — предварительная, не вывод о нарушении.'
           : <>Автоматический сбор пока не дал публикаций — подключения и их состояние на странице <Link className="link" to="/sources">«Источники»</Link>.</>}</span></p>
       <div className="chips" style={{ marginTop: -8, marginBottom: 24 }}>
         {shownChips.map(([k, l, fn]) => <button key={k} className={`chip ${chip === k ? 'on' : ''}`} onClick={() => setChip(chip === k ? '' : k)}>{l}<span className="n">{all.filter(fn).length}</span></button>)}
@@ -118,7 +120,7 @@ export default function Ads() {
           return (
             <Link key={a.id} to={`/ads/${a.id}`} state={back} className="offer">
               <div className="ph">
-                {img ? <img src={img} alt="" /> : <div className="noimg"><PlatformIcon p={a.platform} size={48} /></div>}
+                <SafeImg src={img} alt="" fallback={<div className="noimg"><PlatformIcon p={a.platform} size={48} /></div>} />
                 <div className="tl"><span className="tag white">{platformName(a.platform)}</span>{isDemoAd(a) ? <Origin kind="demo" label="демо" onPhoto title="Демонстрационная публикация: текст и аккаунт вымышлены" />
                   : <span className="tag white" title={collected(a) && a.collectedAt ? `Получено сервером ${fmtDT(a.collectedAt)}` : undefined}>{originLabel(a)}</span>}</div>
               </div>

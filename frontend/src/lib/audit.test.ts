@@ -3,7 +3,7 @@ import { HUMAN_KINDS, auditPath, linkLine, statusLine } from './audit'
 
 const query = (path: string) => Object.fromEntries(new URLSearchParams(path.split('?')[1] ?? ''))
 
-describe('statusLine — журнал демо-сессии в формате сервера', () => {
+describe('statusLine — смена статуса в формате сервера', () => {
   it('смена статуса', () => {
     expect(statusLine('needs_check', 'in_review')).toBe('Статус: «Нужна проверка» → «На проверке»')
     expect(statusLine('in_review', 'confirmed', 'Омарова Ж.', 'сверено с ГАСК'))

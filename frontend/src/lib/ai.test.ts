@@ -83,7 +83,7 @@ const hyp = (complexId: string, confidence: number, low = confidence < 0.5): Lin
   ({ complexId, complexName: complexId, confidence, low, reasons: [] })
 
 describe('уверенность в текущей привязке-гипотезе', () => {
-  // как a9 сида: при сборе 54%, движок сейчас — подборка, у каждого ЖК 34% и низкая уверенность
+  // как a9 тестового сида: при сборе 54%, движок сейчас — подборка, у каждого ЖК 34% и низкая уверенность
   const a9 = { complexId: 'c12', matchConfidence: 0.54, source: 'parser' as const, status: 'new' as const, linkConfirmedBy: null, linkConfirmedAt: null }
   const data = { hypotheses: [hyp('c3', 0.34), hyp('c10', 0.34), hyp('c12', 0.34)] }
 
@@ -95,7 +95,7 @@ describe('уверенность в текущей привязке-гипоте
     expect(linkText(a9, lc)).toBe('гипотеза ИИ 34%, низкая уверенность (при сборе — 54%) · аналитик не принял')
   })
 
-  it('без анализа (демо, загрузка, ЖК нет в выдаче) — сохранённая, с пометкой когда получена', () => {
+  it('без анализа (офлайн-копия, загрузка, ЖК нет в выдаче) — сохранённая, с пометкой когда получена', () => {
     expect(linkText(a9, linkConf(a9))).toBe('гипотеза ИИ при сборе 54% · аналитик не принял')
     expect(linkText(a9, linkConf(a9, { hypotheses: [hyp('c3', 0.8)] }), true)).toBe('гипотеза ИИ при сборе 54%')
     const manual = { ...a9, source: 'manual' as const }

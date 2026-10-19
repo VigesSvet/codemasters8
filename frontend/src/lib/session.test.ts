@@ -23,7 +23,7 @@ const broken = () => ({
 
 afterEach(() => vi.unstubAllGlobals())
 
-describe('сессия демо-входа', () => {
+describe('сессия входа без пароля', () => {
   it('сохраняет и читает пользователя под ключом saq.analyst', () => {
     const box = memory()
     expect(writeSession(U, box)).toBe(true)

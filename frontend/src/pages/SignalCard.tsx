@@ -5,14 +5,14 @@ import { EvidenceView, FactorList, ObservationList } from '../components/Factors
 import { MediaViewer } from '../components/MediaViewer'
 import { Origin } from '../components/Provenance'
 import { SignalGate, SignalStatusTag, SignalTime } from '../components/SignalPanel'
-import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, Score, StatusTag, ZoneTag, adKey, fmtDT, fmtDate, zoneName } from '../components/ui'
+import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, RiskScore, RiskZone, SafeImg, Score, StatusTag, ZoneTag, adKey, fmtDT, fmtDate, zoneName } from '../components/ui'
 import type { Appeal, EvidenceItem, ReadinessValue, Signal, SignalAd } from '../data/types'
 import { ApiError } from '../lib/api'
 import { mediaSrc } from '../lib/media'
 import { from, useFrom, type From } from '../lib/nav'
 import { externalUrl } from '../lib/platform'
 import { DEMO_ORG, isDemo } from '../lib/provenance'
-import { linkConfirmed } from '../lib/risk'
+import { isAssessed, linkConfirmed } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { adGallery } from '../lib/viewer'
 import { IcBuilding, IcCheck, IcDoc, IcDownload, IcExternal, IcShield, IcZoomIn } from '../ui/icons'
@@ -45,7 +45,7 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
   const ev = sig.evidence, c = ev.complex, dev = ev.developer, rd = c.readiness
   const live = complexes.find((x) => x.id === sig.complexId)
   const now = live ? riskOf(live) : null
-  const drift = now && (now.score !== sig.score || now.zone !== sig.zone)
+  const drift = now && (!isAssessed(now) || now.score !== sig.score || now.zone !== sig.zone)
   // публикации-доказательства открываются с «← Сигнал S-…»: разбор ведёт обратно сюда
   const back: From = { label: `Сигнал ${sig.code}`, to: `/signals/${sig.id}` }
 
@@ -90,7 +90,7 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
                 <span>ЖК</span><span><Link className="link" to={`/complexes/${c.id}`} state={from(back.label, back.to)}>ЖК «{c.name}»</Link></span>
                 <span>Адрес</span><span>{c.address}{c.district && <span className="c2"> · {c.district}</span>}</span>
                 <span>Застройщик</span><span>{dev ? <>{dev.name}<span className="c2 num"> · БИН {dev.bin}</span>{isDemo(dev) && <span className="c2"> · {DEMO_ORG}</span>}</> : <span className="c2">нет данных</span>}</span>
-                <span>Стадия</span><span>{c.stage}, {rd?.confirmed
+                <span>Стадия</span><span>{c.stage || 'не известна'}, {rd?.confirmed
                   ? <>подтверждённая готовность {rd.confirmed.value}%<span className="c2"> · {origin(rd.confirmed)}</span></>
                   : <>готовность по карточке объекта {c.progress}%<span className="c2"> · без источника</span></>}
                   {rd?.declared && <span className="c2"> · заявлено {rd.declared.value}%</span>}</span>
@@ -111,7 +111,7 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
             {sig.needsCheck && <div style={{ marginTop: 10 }}><NeedsCheck /></div>}
             {drift && now && (
               <div className="sig-drift">
-                Сейчас у объекта:<Score value={now.score} zone={now.zone} /><ZoneTag zone={now.zone} />
+                Сейчас у объекта:<RiskScore r={now} /><RiskZone r={now} />
                 <Link to={`/complexes/${c.id}?tab=risk`} state={from(back.label, back.to)} className="link" style={{ marginLeft: 'auto' }}>Открыть карточку ЖК</Link>
               </div>
             )}
@@ -129,7 +129,7 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
               <div className="sig-photos">
                 {ev.photos.map((p, i) => (
                   <figure key={i}>
-                    <div className="ph"><img src={p.src} alt="" /></div>
+                    <div className="ph"><img src={mediaSrc(p.src) ?? p.src} alt="" /></div>
                     <figcaption><b>{fmtDate(p.date)}</b><span>{p.source} · активность: {p.activity}</span>{p.note && <span>{p.note}</span>}</figcaption>
                   </figure>
                 ))}
@@ -150,7 +150,7 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
             <AuditList events={sig.journal} links={['ad']} from={back} />
           </section>
 
-          <p className="row t-sm c2" style={{ gap: 8, alignItems: 'flex-start' }}><IcShield size={16} />Сигнал — рекомендация для проверки, не юридическое заключение. Автоматической отправки в госорганы нет. Данные демонстрационные.</p>
+          <p className="row t-sm c2" style={{ gap: 8, alignItems: 'flex-start' }}><IcShield size={16} />Сигнал — рекомендация для проверки, не юридическое заключение. Автоматической отправки в госорганы нет.{isDemo(c) && ' Данные демонстрационные.'}</p>
         </div>
 
         <aside className="stack sticky">
@@ -223,7 +223,7 @@ function SigAd({ a, back }: { a: SignalAd; back: From }) {
     <div className="sig-ad">
       {img ? (
         <button type="button" className="ph mv-open" onClick={() => setOpen(true)} aria-label={`Открыть изображение публикации ${adKey(a.id)} в просмотре`} title="Открыть в просмотре: масштаб, текст OCR">
-          <img src={img} alt="" /><span className="mv-hint sm"><IcZoomIn />Открыть</span>
+          <SafeImg src={img} alt="" fallback={<span className="noimg"><PlatformIcon p={a.platform} size={36} /></span>} /><span className="mv-hint sm"><IcZoomIn />Открыть</span>
         </button>
       ) : <div className="ph"><span className="noimg"><PlatformIcon p={a.platform} size={36} /></span></div>}
       {open && items.length > 0 && (

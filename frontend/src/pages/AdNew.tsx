@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { AiBadge, HypothesisItem, TermList } from '../components/Hypothesis'
 import { MediaViewer } from '../components/MediaViewer'
 import { Cell, Highlight, Modal, PageTitle, PlatformIcon, Score, ZoneTag, adKey, platformMeta } from '../components/ui'
+import { READ_ONLY } from '../data/snapshot'
 import type { Ad, Analysis, AnalyzeInput, LinkHypothesis, OcrResult, OcrStatus, Platform } from '../data/types'
 import { OCR_EMPTY, OCR_KEPT, ocrNotice, ocrOnEdit, ocrOnNewShot, ocrOnResult, pct, type OcrField } from '../lib/ai'
 import { errorText } from '../lib/api'
@@ -65,7 +66,8 @@ export default function AdNew() {
   // скриншот на весь экран — сверить с ним распознанный текст
   const [viewShot, setViewShot] = useState(false)
   const live = mode === 'api'
-  const demo = mode === 'demo'
+  // офлайн-копия — только просмотр: публикацию сохраняет сервер; форма проверяет текст моделью локально, без сохранения
+  const ro = mode === 'snapshot'
 
   // OCR на сервере: доступен ли Tesseract и с какими языками — до загрузки скриншота
   useEffect(() => {
@@ -122,12 +124,12 @@ export default function AdNew() {
   // Пока распознаётся скриншот, не сохраняем: его текст (часто единственное место с условиями оплаты) пропал бы молча.
   // С сервером скриншот сначала загружается (POST /api/media), и в публикацию уходит его адрес /api/media/{id};
   // не загрузился — публикацию не сохраняем молча: предупреждение, а без скриншота — только по явному выбору
-  // (тогда blob: остаётся локальным предпросмотром этой вкладки). В демо-режиме — как раньше, локально
+  // (тогда blob: остаётся локальным предпросмотром этой вкладки). В офлайн-копии сохранения нет
   const save = async (withoutShot = false) => {
-    if (!text || saving || ocrBusy) return
+    if (!text || saving || ocrBusy || ro) return
     setSaving(true)
     let image = img
-    if (!demo && shot && !withoutShot) {
+    if (shot && !withoutShot) {
       if (uploaded?.file === shot) image = uploaded.url
       else {
         setUploading(true)
@@ -151,7 +153,7 @@ export default function AdNew() {
     const ok = await addAd(ad)
     setSaving(false)
     if (!ok) return
-    notify(`Публикация ${adKey(ad.id)} добавлена в ленту${!demo && shot && withoutShot ? ' — без скриншота на сервере' : ''}`)
+    notify(`Публикация ${adKey(ad.id)} добавлена в ленту${shot && withoutShot ? ' — без скриншота на сервере' : ''}`)
     nav(`/ads/${ad.id}`)
   }
 
@@ -203,6 +205,7 @@ export default function AdNew() {
     <>
       <PageTitle crumbs={[['Карта', '/'], ['Лента публикаций', '/ads'], ['Новая публикация']]} title="Новая публикация"
         sub="Обязательный источник по ТЗ: аналитик добавляет найденную рекламу вручную. ИИ распознаёт скриншот, находит условия оплаты и предлагает ЖК — решение за аналитиком." />
+      {ro && <div className="box warn t-sm" style={{ marginBottom: 24, lineHeight: '20px' }}>{READ_ONLY}. Форма проверяет текст моделью риска локально — публикация не сохранится.</div>}
 
       <div className="cols-r" style={{ gridTemplateColumns: 'minmax(0, 1fr) 420px', gap: 48 }}>
         <div>
@@ -229,12 +232,12 @@ export default function AdNew() {
             <div>
               <div className={`drop ${over ? 'over' : ''}`} onClick={() => file.current?.click()} onDragOver={(e) => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); onFile(e.dataTransfer.files[0]) }}>
                 {img ? <img src={img} alt="" style={{ maxHeight: 220, borderRadius: 12 }} /> : (
-                  <div><IcUpload /><div className="bold" style={{ marginTop: 8 }}>Перетащите файл или нажмите</div><div className="t-sm c2" style={{ marginTop: 4 }}>PNG, JPG до 10 МБ · текст на изображении распознаётся на сервере{demo ? '' : ', скриншот сохраняется вместе с публикацией'}</div></div>
+                  <div><IcUpload /><div className="bold" style={{ marginTop: 8 }}>Перетащите файл или нажмите</div><div className="t-sm c2" style={{ marginTop: 4 }}>PNG, JPG до 10 МБ · текст на изображении распознаётся на сервере{ro ? '' : ', скриншот сохраняется вместе с публикацией'}</div></div>
                 )}
               </div>
               <input ref={file} type="file" accept="image/*" hidden onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = '' }} />
               <div className="ocr-meta">
-                {demo ? <span>Демо-режим без бэкенда: OCR выполняется на сервере — перепечатайте текст со скриншота вручную</span>
+                {ro ? <span>Офлайн-копия: OCR выполняется на сервере — перепечатайте текст со скриншота вручную</span>
                   : !live ? <span>Подключаемся к серверу…</span>
                     : !ocrInfo ? <span>Проверяем OCR на сервере…</span>
                       : ocrInfo.available ? <span>OCR: Tesseract{ocrInfo.version ? ` ${ocrInfo.version}` : ''} · языки {ocrInfo.languages.join(', ') || '—'} · офлайн, без внешних сервисов{ocrInfo.detail ? ` · ${ocrInfo.detail}` : ''}</span>
@@ -276,8 +279,8 @@ export default function AdNew() {
           </div>
 
           <div className="fsection row" style={{ gap: 10 }}>Анализ ИИ <AiBadge label="гипотезы ИИ" /></div>
-          {demo ? (
-            <div className="ai-note">Анализ ИИ выполняется на сервере: офлайн-движок без внешних API находит условия оплаты с цитатами и предлагает ЖК. В демо-режиме без бэкенда его нет — выберите ЖК вручную; оценка справа считается локально той же моделью риска.</div>
+          {ro ? (
+            <div className="ai-note">Анализ ИИ выполняется на сервере: находит условия оплаты с цитатами и предлагает ЖК. В офлайн-копии его нет — оценка справа считается локально той же моделью риска, без сохранения.</div>
           ) : !live ? <div className="ai-note">Подключаемся к серверу…</div>
             : !has ? <div className="ai-note">Введите текст объявления или загрузите скриншот — ИИ найдёт условия оплаты и предложит ЖК. Это гипотезы: решение принимает аналитик.</div>
               : (
@@ -352,8 +355,8 @@ export default function AdNew() {
                 <button className="link" onClick={() => void save()}>Повторить загрузку</button>
               </div>
             )}
-            <button className="btn y full" style={{ marginTop: 16 }} disabled={!text || saving || ocrBusy} onClick={() => void save(!!shotFail)}>
-              {uploading ? 'Загружаем скриншот…' : saving ? 'Сохраняем…' : ocrBusy ? 'Распознаём скриншот…' : !text ? 'Введите текст объявления'
+            <button className="btn y full" style={{ marginTop: 16 }} disabled={!text || saving || ocrBusy || ro} title={ro ? READ_ONLY : undefined} onClick={() => void save(!!shotFail)}>
+              {ro ? 'Сохранение — с сервером' : uploading ? 'Загружаем скриншот…' : saving ? 'Сохраняем…' : ocrBusy ? 'Распознаём скриншот…' : !text ? 'Введите текст объявления'
                 : shotFail ? 'Сохранить без скриншота' : 'Сохранить и оценить'}
             </button>
           </div>
@@ -370,7 +373,7 @@ export default function AdNew() {
           <Cell title={live ? 'По гипотезе ИИ' : 'Без привязки'} sub={live ? 'ЖК выберет ИИ при сохранении — как гипотезу' : 'Публикацию можно привязать позже в разборе'}
             end={!manual ? <IcCheck size={22} strokeWidth={2.5} style={{ color: 'var(--text)' }} /> : undefined} onClick={() => { setPick({ by: 'auto' }); setModal(false) }} />
           {complexes.filter(finder(cq, complexes, (q, x) => rankComplex(q, x, developers.find((d) => d.id === x.developerId)))).map((x) => (
-            <Cell key={x.id} inset icon={<img className="th" src={x.cover} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name} sub={x.address}
+            <Cell key={x.id} inset icon={<img className="th" src={x.cover || undefined} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name} sub={x.address}
               end={manual && pick.complexId === x.id ? <IcCheck size={22} strokeWidth={2.5} style={{ color: 'var(--text)' }} /> : undefined}
               onClick={() => { setPick({ by: 'manual', complexId: x.id }); setModal(false) }} />
           ))}

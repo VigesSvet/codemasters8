@@ -1,0 +1,37 @@
+[
+ {
+  "code": "S-0002",
+  "complexId": "a-mustau",
+  "complexName": "Muztau",
+  "createdAt": "2026-10-18T21:08:57+00:00",
+  "createdBy": "Нестерова А.",
+  "decidedAt": null,
+  "decidedBy": null,
+  "hits": [
+   "R2",
+   "R3"
+  ],
+  "id": 2,
+  "needsCheck": true,
+  "score": 35,
+  "status": "new",
+  "zone": "yellow"
+ },
+ {
+  "code": "S-0001",
+  "complexId": "r-park-line",
+  "complexName": "PARK LINE",
+  "createdAt": "2026-10-18T19:37:53+00:00",
+  "createdBy": "Нестерова А.",
+  "decidedAt": null,
+  "decidedBy": null,
+  "hits": [
+   "R3"
+  ],
+  "id": 1,
+  "needsCheck": true,
+  "score": 10,
+  "status": "new",
+  "zone": "green"
+ }
+]

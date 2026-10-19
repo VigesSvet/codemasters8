@@ -22,7 +22,7 @@
 .api-banner .txt b { font-weight: 600; }
 .api-banner .c2 { color: rgba(194, 45, 27, 0.7); }
 
-/* Вход: карточки демо-сотрудников */
+/* Вход: карточки сотрудников */
 .who-list { display: flex; flex-direction: column; gap: 8px; }
 .cell.who { border-radius: var(--r-l); box-shadow: inset 0 0 0 1px var(--line-2); padding: 10px 16px; min-height: 64px; }
 .cell.who + .cell.who::before { display: none; }

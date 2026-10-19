@@ -1,0 +1,41 @@
+{
+ "ads": 230,
+ "notAssessed": 16,
+ "queue": 225,
+ "screening": {
+  "complexes": {
+   "check": 8,
+   "ok": 13,
+   "suspect": 2,
+   "unknown": 0
+  },
+  "decisions": {
+   "analyst": 0,
+   "commissioned": 0,
+   "reopened": 0
+  },
+  "developers": {
+   "check": 8,
+   "ok": 11,
+   "suspect": 2,
+   "unknown": 0
+  },
+  "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+  "discovered": {
+   "dismissed": 0,
+   "linked": 8,
+   "new": 7
+  },
+  "windowDays": 120
+ },
+ "signals": {
+  "confirmed": 0,
+  "new": 2,
+  "returned": 0
+ },
+ "zones": {
+  "green": 2,
+  "red": 0,
+  "yellow": 5
+ }
+}

@@ -1,0 +1,1931 @@
+[
+ {
+  "address": "ул. Кокжал Барака, д. 19а",
+  "advert": null,
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown",
+   "mioRef": "По данным открытого реестра (Homeportal — карточки ЖК): разрешение МИО № 1383/МҚЗТ-С-331 от 13.10.2025. Аналитиком не проверено"
+  },
+  "basisSuggest": {
+   "mio": {
+    "records": 1,
+    "ref": "№ 1383/МҚЗТ-С-331 от 13.10.2025",
+    "source": "Homeportal",
+    "sourceName": "Homeportal — карточки ЖК",
+    "url": "https://homeportal.kz/ru/projects/1329"
+   }
+  },
+  "cover": "",
+  "decision": null,
+  "developerId": "rd-040140006326",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-orda",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.890363,
+  "lng": 82.618099,
+  "name": "Orda",
+  "origin": "registry",
+  "permit": {
+   "registryKey": "orda",
+   "registryStage": "under_construction",
+   "source": "homeportal",
+   "status": "permitted",
+   "text": "В открытых данных есть основание: Homeportal — разрешение МИО № 1383/МҚЗТ-С-331 от 13.10.2025 (сведения источника, применимость к очереди аналитиком не проверена)",
+   "url": "https://homeportal.kz/ru/projects/1329",
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "2027-02-28",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 7,
+    "concerning": 0,
+    "lastAdAt": "2026-10-07T15:55",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": true,
+   "label": "В реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "В открытых данных есть основание: Homeportal — разрешение МИО № 1383/МҚЗТ-С-331 от 13.10.2025 (сведения источника, применимость к очереди аналитиком не проверена)"
+    }
+   ],
+   "status": "ok",
+   "variant": null
+  },
+  "stage": "",
+  "start": "2024-10-17"
+ },
+ {
+  "address": "г. Усть-Каменогорск, проспект Илияса Есенберлина, 38/3",
+  "advert": {
+   "accounts": [
+    "@bs_holding.oskemen",
+    "instagram:@bs_holding.oskemen"
+   ],
+   "ads": 9,
+   "aliases": [
+    "Easton",
+    "BS Holding Easton",
+    "Истон"
+   ],
+   "discoveredIds": [
+    1
+   ],
+   "sourceUrls": [
+    "https://2gis.kz/ust-kamenogorsk/firm/70000001109656807"
+   ]
+  },
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "basisSuggest": null,
+  "cover": "",
+  "decision": null,
+  "developerId": "ad-4ba107a640be",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-iston",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.924823,
+  "lng": 82.619366,
+  "name": "Easton",
+  "origin": "advertised",
+  "permit": {
+   "registryKey": null,
+   "registryStage": null,
+   "source": null,
+   "status": "unknown",
+   "text": "Нет в открытом реестре: ЖК известен только по рекламе",
+   "url": null,
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 9,
+    "concerning": 1,
+    "lastAdAt": "2026-10-17T17:38",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Подозрение: продажа без разрешения",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытом реестре: ЖК известен только по рекламе"
+    },
+    {
+     "adId": "9107be312ace4f3a9a9d4aeb58e8ee1c",
+     "kind": null,
+     "quote": "забронировать квартиру своей мечты на выгодных условиях",
+     "signal": "booking",
+     "text": "Реклама 07.10.2026 (Instagram, @bs_holding.oskemen): бронь — «забронировать квартиру своей мечты на выгодных условиях»; привязка к ЖК подтверждена аналитиком"
+    },
+    {
+     "adId": "9107be312ace4f3a9a9d4aeb58e8ee1c",
+     "kind": null,
+     "quote": "открыто показываем все испытания на стройке",
+     "signal": null,
+     "text": "Стадия по рекламе: строится — «открыто показываем все испытания на стройке»"
+    }
+   ],
+   "status": "suspect",
+   "variant": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "г. Усть-Каменогорск, проспект Каныша Сатпаева, 13в",
+  "advert": {
+   "accounts": [
+    "@ceogroup.ukg",
+    "instagram:@ceogroup.ukg"
+   ],
+   "ads": 1,
+   "aliases": [
+    "Nomad",
+    "Номад"
+   ],
+   "discoveredIds": [
+    8
+   ],
+   "sourceUrls": [
+    "https://2gis.kz/ust-kamenogorsk/firm/70000001094684176"
+   ]
+  },
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "basisSuggest": null,
+  "cover": "",
+  "decision": null,
+  "developerId": "ad-a46154cec975",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-nomad",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.899572,
+  "lng": 82.62842,
+  "name": "Nomad",
+  "origin": "advertised",
+  "permit": {
+   "registryKey": null,
+   "registryStage": null,
+   "source": null,
+   "status": "unknown",
+   "text": "Нет в открытом реестре: ЖК известен только по рекламе",
+   "url": null,
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 1,
+    "concerning": 0,
+    "lastAdAt": "2026-10-03T16:35",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытом реестре: ЖК известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (1), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "648cbbc019cb4f0484cb4a173ee8e9f5",
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама 03.10.2026 (Instagram, @ceogroup.ukg); название из рекламы привязано к ЖК аналитиком, публикация — гипотеза"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "г. Усть-Каменогорск, проспект Илияса Есенберлина, 14",
+  "advert": {
+   "accounts": [
+    "@zhbk_zhilstroi",
+    "instagram:@zhbk_zhilstroi"
+   ],
+   "ads": 10,
+   "aliases": [
+    "Көктем",
+    "Коктем",
+    "KÖKTEM",
+    "Koktem"
+   ],
+   "discoveredIds": [
+    7
+   ],
+   "sourceUrls": [
+    "https://www.instagram.com/zhbk_zhilstroi/"
+   ]
+  },
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "basisSuggest": null,
+  "cover": "",
+  "decision": null,
+  "developerId": "ad-7faa5a56f416",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-koktem",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.902318,
+  "lng": 82.60521,
+  "name": "Көктем",
+  "origin": "advertised",
+  "permit": {
+   "registryKey": null,
+   "registryStage": null,
+   "source": null,
+   "status": "unknown",
+   "text": "Нет в открытом реестре: ЖК известен только по рекламе",
+   "url": null,
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 9,
+    "concerning": 0,
+    "lastAdAt": "2026-10-12T14:15",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытом реестре: ЖК известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (9), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "3365217b8bd143859cc193e566dea584",
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама 12.10.2026 (Instagram, @zhbk_zhilstroi); название из рекламы привязано к ЖК аналитиком, публикация — гипотеза"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "г. Усть-Каменогорск, проспект Казыбек би, 1/3",
+  "advert": {
+   "accounts": [
+    "@premiumstroy.uka",
+    "instagram:@premiumstroy.uka"
+   ],
+   "ads": 5,
+   "aliases": [
+    "Muztau",
+    "Музтау",
+    "Мұзтау"
+   ],
+   "discoveredIds": [
+    2
+   ],
+   "sourceUrls": [
+    "https://2gis.kz/ust-kamenogorsk/firm/70000001090417611"
+   ]
+  },
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "basisSuggest": null,
+  "cover": "",
+  "decision": null,
+  "developerId": "ad-533d17addd8a",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-mustau",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.893336,
+  "lng": 82.618958,
+  "name": "Muztau",
+  "origin": "advertised",
+  "permit": {
+   "registryKey": null,
+   "registryStage": null,
+   "source": null,
+   "status": "unknown",
+   "text": "Нет в открытом реестре: ЖК известен только по рекламе",
+   "url": null,
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 8,
+    "concerning": 1,
+    "lastAdAt": "2026-10-02T12:15",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Подозрение: продажа без разрешения",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытом реестре: ЖК известен только по рекламе"
+    },
+    {
+     "adId": "9caac216b9384aa58b1ff124434d2852",
+     "kind": null,
+     "quote": "Договоры о долевом участии в жилищном строительстве или купли-продажи будут заключаться только после заключения договора о предоставлении гарантии с Единым опе…",
+     "signal": "ddu",
+     "text": "Реклама 15.08.2026 (Instagram, @premiumstroy.uka): ДДУ — «Договоры о долевом участии в жилищном строительстве или купли-продажи будут заключаться только после заключения договора о предоставлении гарантии с Единым опе…»; привязка к ЖК подтверждена аналитиком"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Стадия в рекламе не указана — сдача дома не подтверждена"
+    }
+   ],
+   "status": "suspect",
+   "variant": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "ул. Кокжал Барака, д. 18б",
+  "advert": null,
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "guaranteeRef": "По данным открытого реестра (Homeportal — карточки ЖК): гарантия ЕО (КЖК) № ДПГ-25-16-082/200 от 31.10.2025. Аналитиком не проверено",
+   "mio": "unknown"
+  },
+  "basisSuggest": {
+   "guarantee": {
+    "records": 1,
+    "ref": "№ ДПГ-25-16-082/200 от 31.10.2025",
+    "source": "Homeportal",
+    "sourceName": "Homeportal — карточки ЖК",
+    "url": "https://homeportal.kz/ru/projects/1218"
+   }
+  },
+  "cover": "",
+  "decision": null,
+  "developerId": "rd-201040022748",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-asylym",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.890356,
+  "lng": 82.608519,
+  "name": "ASYLYM",
+  "origin": "registry",
+  "permit": {
+   "registryKey": "asylym",
+   "registryStage": "completed",
+   "source": "homeportal",
+   "status": "permitted",
+   "text": "В открытых данных есть основание: Homeportal — гарантия ЕО (КЖК) № ДПГ-25-16-082/200 от 31.10.2025 (сведения источника, применимость к очереди аналитиком не проверена)",
+   "url": "https://homeportal.kz/ru/projects/1218",
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 4,
+    "concerning": 3,
+    "lastAdAt": "2026-10-12T13:20",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": true,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "В открытых данных есть основание: Homeportal — гарантия ЕО (КЖК) № ДПГ-25-16-082/200 от 31.10.2025 (сведения источника, применимость к очереди аналитиком не проверена)"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Источник считает объект завершённым («Завершён»), а свежая реклама предлагает строящийся объект или старт продаж — основание может не распространяться на новую очередь"
+    },
+    {
+     "adId": "71fecada42f34585b0a56d9807c437f3",
+     "kind": null,
+     "quote": "Дом уже готовится к сдаче — завершаются последние работы!",
+     "signal": null,
+     "text": "Стадия по рекламе: строится — «Дом уже готовится к сдаче — завершаются последние работы!»"
+    },
+    {
+     "adId": "71fecada42f34585b0a56d9807c437f3",
+     "kind": null,
+     "quote": "с первоначальным взносом от 20%",
+     "signal": "down_payment",
+     "text": "Реклама 12.10.2026 (Instagram, @an.groups): первоначальный взнос — «с первоначальным взносом от 20%»; привязка к ЖК подтверждена аналитиком"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "stage": "",
+  "start": "2025-08-15"
+ },
+ {
+  "address": "пр. И. Есенберлина, д. 92",
+  "advert": null,
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "guaranteeRef": "По данным открытого реестра (Homeportal — карточки ЖК): гарантия ЕО (КЖК) № ДПГ-23-16-068/155 от 11.10.2023; ДС № 2 к ДПГ-23-16-068/155 от 12.08.2024; ДС№4 к ДПГ-23-16-068/155 от 11.10.2023. Аналитиком не проверено",
+   "mio": "unknown"
+  },
+  "basisSuggest": {
+   "guarantee": {
+    "records": 3,
+    "ref": "№ ДПГ-23-16-068/155 от 11.10.2023; ДС № 2 к ДПГ-23-16-068/155 от 12.08.2024; ДС№4 к ДПГ-23-16-068/155 от 11.10.2023",
+    "source": "Homeportal",
+    "sourceName": "Homeportal — карточки ЖК",
+    "url": "https://homeportal.kz/ru/projects/1027"
+   }
+  },
+  "cover": "",
+  "decision": null,
+  "developerId": "rd-171240023488",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-zhanym",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.921112,
+  "lng": 82.617788,
+  "name": "Жаным",
+  "origin": "registry",
+  "permit": {
+   "registryKey": "zhanym",
+   "registryStage": "completed",
+   "source": "homeportal",
+   "status": "permitted",
+   "text": "В открытых данных есть основание: Homeportal — гарантия ЕО (КЖК) № ДПГ-23-16-068/155 от 11.10.2023 (сведения источника, применимость к очереди аналитиком не проверена)",
+   "url": "https://homeportal.kz/ru/projects/1027",
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 9,
+    "concerning": 0,
+    "lastAdAt": "2026-06-25T09:40",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": true,
+   "label": "В реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "В открытых данных есть основание: Homeportal — гарантия ЕО (КЖК) № ДПГ-23-16-068/155 от 11.10.2023 (сведения источника, применимость к очереди аналитиком не проверена)"
+    }
+   ],
+   "status": "ok",
+   "variant": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "ул. Кокжал Барака, уч. 1",
+  "advert": null,
+  "appealsCheck": null,
+  "basis": {
+   "bank": "По данным открытого реестра (Homeportal — карточки ЖК): участие БВУ, документ № KZ53VWE00002680 от 17.02.2026; № KZ26VWE00002681 от 17.02.2026, банк источником не указан. Аналитиком не проверено",
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "basisSuggest": {
+   "bvu": {
+    "records": 2,
+    "ref": "№ KZ53VWE00002680 от 17.02.2026; № KZ26VWE00002681 от 17.02.2026 (банк источником не указан)",
+    "source": "Homeportal",
+    "sourceName": "Homeportal — карточки ЖК",
+    "url": "https://homeportal.kz/ru/projects/1331"
+   }
+  },
+  "cover": "",
+  "decision": null,
+  "developerId": "rd-201040022748",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-asyltas",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.887791,
+  "lng": 82.610139,
+  "name": "ASYLTAS",
+  "origin": "registry",
+  "permit": {
+   "registryKey": "asyltas",
+   "registryStage": "under_construction",
+   "source": "homeportal",
+   "status": "permitted",
+   "text": "В открытых данных есть основание: Homeportal — участие БВУ № KZ53VWE00002680 от 17.02.2026 (сведения источника, применимость к очереди аналитиком не проверена)",
+   "url": "https://homeportal.kz/ru/projects/1331",
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "2026-12-31",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 11,
+    "concerning": 1,
+    "lastAdAt": "2026-10-18T23:12",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": true,
+   "label": "В реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "В открытых данных есть основание: Homeportal — участие БВУ № KZ53VWE00002680 от 17.02.2026 (сведения источника, применимость к очереди аналитиком не проверена)"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Свежая реклама с признаками приёма денег есть (1), основание по открытым данным у объекта есть"
+    }
+   ],
+   "status": "ok",
+   "variant": null
+  },
+  "stage": "",
+  "start": "2025-12-23"
+ },
+ {
+  "address": "19 жилой район на пересечении улиц Ю.Увалиева и Кокжал Барака",
+  "advert": null,
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "basisSuggest": null,
+  "cover": "",
+  "decision": null,
+  "developerId": "rd-695b8dea154e",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-diamond",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": null,
+  "lng": null,
+  "name": "Diamond",
+  "origin": "registry",
+  "permit": {
+   "registryKey": "diamond",
+   "registryStage": null,
+   "source": "ashyq",
+   "status": "permitted",
+   "text": "В открытых данных есть основание: Казреестр (Ashyq Data) — запись о разрешении на привлечение денег дольщиков (записей: 1; сведения источника, применимость к очереди аналитиком не проверена)",
+   "url": "https://ashyq.data.gov.kz/dataset/magda-ds-b80110e9-218a-42ba-b8c8-01fa5e4c82c8",
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 0,
+    "concerning": 0,
+    "lastAdAt": null,
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": true,
+   "label": "В реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "В открытых данных есть основание: Казреестр (Ashyq Data) — запись о разрешении на привлечение денег дольщиков (записей: 1; сведения источника, применимость к очереди аналитиком не проверена)"
+    }
+   ],
+   "status": "ok",
+   "variant": null
+  },
+  "stage": "",
+  "start": "2022-05-10"
+ },
+ {
+  "address": "г. Усть-Каменогорск, проспект Илияса Есенберлина, 43 Блок 2",
+  "advert": {
+   "accounts": [],
+   "ads": 0,
+   "aliases": [
+    "Gran Via",
+    "Гран Виа"
+   ],
+   "discoveredIds": [
+    3
+   ],
+   "sourceUrls": [
+    "https://2gis.kz/ust-kamenogorsk/firm/70000001110142373"
+   ]
+  },
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "basisSuggest": null,
+  "cover": "",
+  "decision": null,
+  "developerId": "ad-b8a69627376f",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-gran-via",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.917758,
+  "lng": 82.610959,
+  "name": "Gran Via",
+  "origin": "advertised",
+  "permit": {
+   "registryKey": null,
+   "registryStage": null,
+   "source": null,
+   "status": "unknown",
+   "text": "Нет в открытом реестре: ЖК известен только по рекламе",
+   "url": null,
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 0,
+    "concerning": 0,
+    "lastAdAt": null,
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытом реестре: ЖК известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Карточка создана по рекламе; публикации к ЖК пока не отнесены"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "г. Усть-Каменогорск, улица Пермитина, 11/2",
+  "advert": {
+   "accounts": [
+    "@riverside.uka",
+    "instagram:@riverside.uka"
+   ],
+   "ads": 11,
+   "aliases": [
+    "Riverside",
+    "Риверсайд"
+   ],
+   "discoveredIds": [
+    5
+   ],
+   "sourceUrls": [
+    "https://www.kn.kz/zhilye-kompleksy/ust-kamenogorsk/riverside"
+   ]
+  },
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "basisSuggest": null,
+  "cover": "",
+  "decision": null,
+  "developerId": "ad-93452bc4e1a2",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-riversid",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.942294,
+  "lng": 82.628779,
+  "name": "Riverside",
+  "origin": "advertised",
+  "permit": {
+   "registryKey": null,
+   "registryStage": null,
+   "source": null,
+   "status": "unknown",
+   "text": "Нет в открытом реестре: ЖК известен только по рекламе",
+   "url": null,
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 11,
+    "concerning": 0,
+    "lastAdAt": "2026-10-07T14:26",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытом реестре: ЖК известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (11), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "550c4c63252d497f8ff939d1bd67629f",
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама 07.10.2026 (Instagram, @riverside.uka); название из рекламы привязано к ЖК аналитиком, публикация — гипотеза"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "ул. Сатпаева, д. 32",
+  "advert": null,
+  "appealsCheck": null,
+  "basis": {
+   "bank": "По данным открытого реестра (Homeportal — карточки ЖК): участие БВУ, документ № KZ62VWE00002712 от 10.04.2026, банк источником не указан. Аналитиком не проверено",
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "basisSuggest": {
+   "bvu": {
+    "records": 1,
+    "ref": "№ KZ62VWE00002712 от 10.04.2026 (банк источником не указан)",
+    "source": "Homeportal",
+    "sourceName": "Homeportal — карточки ЖК",
+    "url": "https://homeportal.kz/ru/projects/1375"
+   }
+  },
+  "cover": "",
+  "decision": null,
+  "developerId": "rd-190940009528",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-asyl-tau",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.904538,
+  "lng": 82.620846,
+  "name": "Asyl Tau",
+  "origin": "registry",
+  "permit": {
+   "registryKey": "asyl-tau",
+   "registryStage": "under_construction",
+   "source": "homeportal",
+   "status": "permitted",
+   "text": "В открытых данных есть основание: Homeportal — участие БВУ № KZ62VWE00002712 от 10.04.2026 (сведения источника, применимость к очереди аналитиком не проверена)",
+   "url": "https://homeportal.kz/ru/projects/1375",
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "2027-07-31",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 10,
+    "concerning": 2,
+    "lastAdAt": "2026-10-15T15:32",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": true,
+   "label": "В реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "В открытых данных есть основание: Homeportal — участие БВУ № KZ62VWE00002712 от 10.04.2026 (сведения источника, применимость к очереди аналитиком не проверена)"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Свежая реклама с признаками приёма денег есть (2), основание по открытым данным у объекта есть"
+    }
+   ],
+   "status": "ok",
+   "variant": null
+  },
+  "stage": "",
+  "start": "2026-03-31"
+ },
+ {
+  "address": "пр. а И. Есенберлина, д. 20/1",
+  "advert": null,
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown",
+   "mioRef": "По данным открытого реестра (Homeportal — карточки ЖК): разрешение МИО № 639 от 19.05.2026. Аналитиком не проверено"
+  },
+  "basisSuggest": {
+   "mio": {
+    "records": 1,
+    "ref": "№ 639 от 19.05.2026",
+    "source": "Homeportal",
+    "sourceName": "Homeportal — карточки ЖК",
+    "url": "https://homeportal.kz/ru/projects/1428"
+   }
+  },
+  "cover": "",
+  "decision": null,
+  "developerId": "rd-220740026935",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-renesans",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.905433,
+  "lng": 82.607001,
+  "name": "Renesans",
+  "origin": "registry",
+  "permit": {
+   "registryKey": "renesans",
+   "registryStage": "under_construction",
+   "source": "homeportal",
+   "status": "permitted",
+   "text": "В открытых данных есть основание: Homeportal — разрешение МИО № 639 от 19.05.2026 (сведения источника, применимость к очереди аналитиком не проверена)",
+   "url": "https://homeportal.kz/ru/projects/1428",
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "2027-12-02",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 6,
+    "concerning": 0,
+    "lastAdAt": "2026-10-18T23:12",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": true,
+   "label": "В реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "В открытых данных есть основание: Homeportal — разрешение МИО № 639 от 19.05.2026 (сведения источника, применимость к очереди аналитиком не проверена)"
+    }
+   ],
+   "status": "ok",
+   "variant": null
+  },
+  "stage": "",
+  "start": "2026-06-02"
+ },
+ {
+  "address": "г. Усть-Каменогорск, проспект Каныша Сатпаева, 53/3",
+  "advert": {
+   "accounts": [
+    "krisha.kz / «Eco Polis»"
+   ],
+   "ads": 7,
+   "aliases": [
+    "Eco Polis",
+    "Эко Полис",
+    "EcoPolis"
+   ],
+   "discoveredIds": [
+    6
+   ],
+   "sourceUrls": [
+    "https://2gis.kz/ust-kamenogorsk/firm/70000001105687815"
+   ]
+  },
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "basisSuggest": null,
+  "cover": "",
+  "decision": null,
+  "developerId": "ad-9b7daeb89c69",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-eko-polis",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.923404,
+  "lng": 82.631597,
+  "name": "Eco Polis",
+  "origin": "advertised",
+  "permit": {
+   "registryKey": null,
+   "registryStage": null,
+   "source": null,
+   "status": "unknown",
+   "text": "Нет в открытом реестре: ЖК известен только по рекламе",
+   "url": null,
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 7,
+    "concerning": 0,
+    "lastAdAt": "2026-10-18T23:12",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытом реестре: ЖК известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (7), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "bee67f0ac83f42fcaa85254789aabbc7",
+     "kind": null,
+     "quote": "3-комнатная квартира · 86.4 м²",
+     "signal": "sale",
+     "text": "Реклама 18.10.2026 (Krisha.kz, krisha.kz / «Eco Polis»): продажа — «3-комнатная квартира · 86.4 м²»; название из рекламы привязано к ЖК аналитиком, публикация — гипотеза"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "г. Усть-Каменогорск, проспект Илияса Есенберлина, 28/1",
+  "advert": {
+   "accounts": [],
+   "ads": 0,
+   "aliases": [
+    "Prime Home",
+    "Прайм Хоум"
+   ],
+   "discoveredIds": [
+    4
+   ],
+   "sourceUrls": [
+    "https://2gis.kz/ust-kamenogorsk/firm/70000001098299101"
+   ]
+  },
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "basisSuggest": null,
+  "cover": "",
+  "decision": null,
+  "developerId": "ad-f35499a5f7da",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-prim-home",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.909233,
+  "lng": 82.609989,
+  "name": "Prime Home",
+  "origin": "advertised",
+  "permit": {
+   "registryKey": null,
+   "registryStage": null,
+   "source": null,
+   "status": "unknown",
+   "text": "Нет в открытом реестре: ЖК известен только по рекламе",
+   "url": null,
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 0,
+    "concerning": 0,
+    "lastAdAt": null,
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытом реестре: ЖК известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Карточка создана по рекламе; публикации к ЖК пока не отнесены"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "пр. И. Есенберлина, уч. 2",
+  "advert": null,
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown",
+   "mioRef": "По данным открытого реестра (Homeportal — карточки ЖК): разрешение МИО № KZ40VWE00002526 от 15.07.2025. Аналитиком не проверено"
+  },
+  "basisSuggest": {
+   "mio": {
+    "records": 1,
+    "ref": "№ KZ40VWE00002526 от 15.07.2025",
+    "source": "Homeportal",
+    "sourceName": "Homeportal — карточки ЖК",
+    "url": "https://homeportal.kz/ru/projects/1241"
+   }
+  },
+  "cover": "",
+  "decision": null,
+  "developerId": "rd-231140022638",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-ainalaiyn",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.893724,
+  "lng": 82.589908,
+  "name": "AINALAIYN",
+  "origin": "registry",
+  "permit": {
+   "registryKey": "ainalaiyn",
+   "registryStage": "completed",
+   "source": "homeportal",
+   "status": "permitted",
+   "text": "В открытых данных есть основание: Homeportal — разрешение МИО № KZ40VWE00002526 от 15.07.2025 (сведения источника, применимость к очереди аналитиком не проверена)",
+   "url": "https://homeportal.kz/ru/projects/1241",
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 10,
+    "concerning": 2,
+    "lastAdAt": "2026-10-18T23:12",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": true,
+   "label": "В реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "В открытых данных есть основание: Homeportal — разрешение МИО № KZ40VWE00002526 от 15.07.2025 (сведения источника, применимость к очереди аналитиком не проверена)"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Свежая реклама с признаками приёма денег есть (2), основание по открытым данным у объекта есть"
+    }
+   ],
+   "status": "ok",
+   "variant": null
+  },
+  "stage": "",
+  "start": "2024-10-24"
+ },
+ {
+  "address": "пр. И. Есенберлина, д. 56",
+  "advert": null,
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown",
+   "mioRef": "По данным открытого реестра (Homeportal — карточки ЖК): разрешение МИО № KZ25PDD00004205 от 07.10.2026. Аналитиком не проверено"
+  },
+  "basisSuggest": {
+   "mio": {
+    "records": 1,
+    "ref": "№ KZ25PDD00004205 от 07.10.2026",
+    "source": "Homeportal",
+    "sourceName": "Homeportal — карточки ЖК",
+    "url": "https://homeportal.kz/ru/projects/1505"
+   }
+  },
+  "cover": "",
+  "decision": null,
+  "developerId": "rd-220740026935",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-park-line",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.917561,
+  "lng": 82.619097,
+  "name": "PARK LINE",
+  "origin": "registry",
+  "permit": {
+   "registryKey": "park-line",
+   "registryStage": "under_construction",
+   "source": "homeportal",
+   "status": "permitted",
+   "text": "В открытых данных есть основание: Homeportal — разрешение МИО № KZ25PDD00004205 от 07.10.2026 (сведения источника, применимость к очереди аналитиком не проверена)",
+   "url": "https://homeportal.kz/ru/projects/1505",
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "2027-11-18",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 5,
+    "concerning": 0,
+    "lastAdAt": "2026-10-18T23:12",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": true,
+   "label": "В реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "В открытых данных есть основание: Homeportal — разрешение МИО № KZ25PDD00004205 от 07.10.2026 (сведения источника, применимость к очереди аналитиком не проверена)"
+    }
+   ],
+   "status": "ok",
+   "variant": null
+  },
+  "stage": "",
+  "start": "2026-09-18"
+ },
+ {
+  "address": "пр. И. Есенберлина, д. 88/1",
+  "advert": null,
+  "appealsCheck": null,
+  "basis": {
+   "bank": "По данным открытого реестра (Homeportal — карточки ЖК): участие БВУ, документ № 597/МҚЗТ-К-83у от 08.05.2026, банк источником не указан. Аналитиком не проверено",
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "basisSuggest": {
+   "bvu": {
+    "records": 1,
+    "ref": "№ 597/МҚЗТ-К-83у от 08.05.2026 (банк источником не указан)",
+    "source": "Homeportal",
+    "sourceName": "Homeportal — карточки ЖК",
+    "url": "https://homeportal.kz/ru/projects/1398"
+   }
+  },
+  "cover": "",
+  "decision": null,
+  "developerId": "rd-021040009554",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-viva-life",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.920359,
+  "lng": 82.618754,
+  "name": "Viva Life",
+  "origin": "registry",
+  "permit": {
+   "registryKey": "viva-life",
+   "registryStage": "under_construction",
+   "source": "homeportal",
+   "status": "permitted",
+   "text": "В открытых данных есть основание: Homeportal — участие БВУ № 597/МҚЗТ-К-83у от 08.05.2026 (сведения источника, применимость к очереди аналитиком не проверена)",
+   "url": "https://homeportal.kz/ru/projects/1398",
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "2027-08-28",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 13,
+    "concerning": 1,
+    "lastAdAt": "2026-10-18T23:12",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": true,
+   "label": "В реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "В открытых данных есть основание: Homeportal — участие БВУ № 597/МҚЗТ-К-83у от 08.05.2026 (сведения источника, применимость к очереди аналитиком не проверена)"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Свежая реклама с признаками приёма денег есть (1), основание по открытым данным у объекта есть"
+    }
+   ],
+   "status": "ok",
+   "variant": null
+  },
+  "stage": "",
+  "start": "2026-04-28"
+ },
+ {
+  "address": "ул. Есенберлина, д. 84",
+  "advert": null,
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown",
+   "mioRef": "По данным открытого реестра (Homeportal — карточки ЖК): разрешение МИО № KZ05PDD00004080 от 17.08.2026. Аналитиком не проверено"
+  },
+  "basisSuggest": {
+   "mio": {
+    "records": 1,
+    "ref": "№ KZ05PDD00004080 от 17.08.2026",
+    "source": "Homeportal",
+    "sourceName": "Homeportal — карточки ЖК",
+    "url": "https://homeportal.kz/ru/projects/1452"
+   }
+  },
+  "cover": "",
+  "decision": null,
+  "developerId": "rd-211040009188",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-satti-city",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.919223,
+  "lng": 82.616442,
+  "name": "Satti City",
+  "origin": "registry",
+  "permit": {
+   "registryKey": "satti-city",
+   "registryStage": "under_construction",
+   "source": "homeportal",
+   "status": "permitted",
+   "text": "В открытых данных есть основание: Homeportal — разрешение МИО № KZ05PDD00004080 от 17.08.2026 (сведения источника, применимость к очереди аналитиком не проверена)",
+   "url": "https://homeportal.kz/ru/projects/1452",
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "2027-01-30",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 5,
+    "concerning": 0,
+    "lastAdAt": "2026-10-18T23:12",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": true,
+   "label": "В реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "В открытых данных есть основание: Homeportal — разрешение МИО № KZ05PDD00004080 от 17.08.2026 (сведения источника, применимость к очереди аналитиком не проверена)"
+    }
+   ],
+   "status": "ok",
+   "variant": null
+  },
+  "stage": "",
+  "start": "2025-12-03"
+ },
+ {
+  "address": "пр. И. Есенберлина",
+  "advert": null,
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "basisSuggest": null,
+  "cover": "",
+  "decision": null,
+  "developerId": "rd-191040019288",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-ab-residence-2",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.920243,
+  "lng": 82.618245,
+  "name": "AB-Residence 2",
+  "origin": "registry",
+  "permit": {
+   "registryKey": "ab-residence-2",
+   "registryStage": null,
+   "source": "homeportal_section",
+   "status": "not_permitted",
+   "text": "В открытых данных объект — в разделе Homeportal «Без разрешения на дольщиков» (сведения источника, не юридический вывод)",
+   "url": "https://homeportal.kz/ru/Illegal-projects/1813",
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 2,
+    "concerning": 0,
+    "lastAdAt": "2026-09-04T19:17",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "В открытых данных объект — в разделе Homeportal «Без разрешения на дольщиков» (сведения источника, не юридический вывод)"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Свежей рекламы с признаками приёма денег нет (окно 120 дней)"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "ул. Кайсенова, уч. 55/1",
+  "advert": null,
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "guaranteeRef": "По данным открытого реестра (Homeportal — карточки ЖК): гарантия ЕО (КЖК) № ДПГ-25-16-078/194 от 18.08.2025. Аналитиком не проверено",
+   "mio": "unknown"
+  },
+  "basisSuggest": {
+   "guarantee": {
+    "records": 1,
+    "ref": "№ ДПГ-25-16-078/194 от 18.08.2025",
+    "source": "Homeportal",
+    "sourceName": "Homeportal — карточки ЖК",
+    "url": "https://homeportal.kz/ru/projects/1141"
+   }
+  },
+  "cover": "",
+  "decision": null,
+  "developerId": "rd-970640000190",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-zolotoi-kvadrat",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.945497,
+  "lng": 82.622997,
+  "name": "Золотой квадрат",
+  "origin": "registry",
+  "permit": {
+   "registryKey": "zolotoi-kvadrat",
+   "registryStage": "under_construction",
+   "source": "homeportal",
+   "status": "permitted",
+   "text": "В открытых данных есть основание: Homeportal — гарантия ЕО (КЖК) № ДПГ-25-16-078/194 от 18.08.2025 (сведения источника, применимость к очереди аналитиком не проверена)",
+   "url": "https://homeportal.kz/ru/projects/1141",
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 29,
+    "concerning": 1,
+    "lastAdAt": "2026-10-18T23:12",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": true,
+   "label": "В реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "В открытых данных есть основание: Homeportal — гарантия ЕО (КЖК) № ДПГ-25-16-078/194 от 18.08.2025 (сведения источника, применимость к очереди аналитиком не проверена)"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Свежая реклама с признаками приёма денег есть (1), основание по открытым данным у объекта есть"
+    }
+   ],
+   "status": "ok",
+   "variant": null
+  },
+  "stage": "",
+  "start": "2025-06-01"
+ },
+ {
+  "address": "пр. Победы, д. 2",
+  "advert": null,
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown",
+   "mioRef": "По данным открытого реестра (Homeportal — карточки ЖК): разрешение МИО № KZ26VWE00002487 от 17.04.2025. Аналитиком не проверено"
+  },
+  "basisSuggest": {
+   "mio": {
+    "records": 1,
+    "ref": "№ KZ26VWE00002487 от 17.04.2025",
+    "source": "Homeportal",
+    "sourceName": "Homeportal — карточки ЖК",
+    "url": "https://homeportal.kz/ru/projects/1077"
+   }
+  },
+  "cover": "",
+  "decision": null,
+  "developerId": "rd-040540018865",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-tumar-towers-oskemen",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.943912,
+  "lng": 82.62274,
+  "name": "Tumar Towers Oskemen",
+  "origin": "registry",
+  "permit": {
+   "registryKey": "tumar-towers-oskemen",
+   "registryStage": "completed",
+   "source": "homeportal",
+   "status": "permitted",
+   "text": "В открытых данных есть основание: Homeportal — разрешение МИО № KZ26VWE00002487 от 17.04.2025 (сведения источника, применимость к очереди аналитиком не проверена)",
+   "url": "https://homeportal.kz/ru/projects/1077",
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 1,
+    "concerning": 1,
+    "lastAdAt": "2026-10-13T11:40",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": true,
+   "label": "В реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "В открытых данных есть основание: Homeportal — разрешение МИО № KZ26VWE00002487 от 17.04.2025 (сведения источника, применимость к очереди аналитиком не проверена)"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Свежая реклама с признаками приёма денег есть (1), основание по открытым данным у объекта есть"
+    }
+   ],
+   "status": "ok",
+   "variant": null
+  },
+  "stage": "",
+  "start": "2025-02-04"
+ },
+ {
+  "address": "в 19-ом жилом районе, прсч. ул. Ю. Увалиева и Кокжал Барака",
+  "advert": null,
+  "appealsCheck": null,
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "guaranteeRef": "По данным открытого реестра (Homeportal — карточки ЖК): гарантия ЕО (КЖК) ДС №1 к ДПГ-22-16-055/120 от 10.05.2024. Аналитиком не проверено",
+   "mio": "unknown"
+  },
+  "basisSuggest": {
+   "guarantee": {
+    "records": 1,
+    "ref": "ДС №1 к ДПГ-22-16-055/120 от 10.05.2024",
+    "source": "Homeportal",
+    "sourceName": "Homeportal — карточки ЖК",
+    "url": "https://homeportal.kz/ru/projects/1487"
+   }
+  },
+  "cover": "",
+  "decision": null,
+  "developerId": "rd-050640012251",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-prestizh-sparkle-diamond",
+  "idleDays": 0,
+  "inPublishedList": "unknown",
+  "lat": 49.889851,
+  "lng": 82.61502,
+  "name": "Престиж (Sparkle Diamond) (ГС: Инвестор)",
+  "origin": "registry",
+  "permit": {
+   "registryKey": "prestizh-sparkle-diamond",
+   "registryStage": "under_construction",
+   "source": "homeportal",
+   "status": "permitted",
+   "text": "В открытых данных есть основание: Homeportal — гарантия ЕО (КЖК) ДС №1 к ДПГ-22-16-055/120 от 10.05.2024 (сведения источника, применимость к очереди аналитиком не проверена)",
+   "url": "https://homeportal.kz/ru/projects/1487",
+   "verified": false
+  },
+  "photos": [],
+  "plannedEnd": "2026-11-30",
+  "progress": 0,
+  "publishedListCheck": null,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 5,
+    "concerning": 0,
+    "lastAdAt": "2026-10-18T23:12",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": true,
+   "label": "В реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "В открытых данных есть основание: Homeportal — гарантия ЕО (КЖК) ДС №1 к ДПГ-22-16-055/120 от 10.05.2024 (сведения источника, применимость к очереди аналитиком не проверена)"
+    }
+   ],
+   "status": "ok",
+   "variant": null
+  },
+  "stage": "",
+  "start": "2026-02-27"
+ }
+]

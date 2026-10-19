@@ -48,7 +48,7 @@ describe('adGallery — файлы публикации для просмотр�
     expect(adGallery({ image: 'javascript:alert(1)' })).toEqual([])
   })
 
-  it('снимок публикации в сигнале и демо: одна картинка, null и пусто — без файлов', () => {
+  it('снимок публикации в сигнале и путь сайта: одна картинка, null и пусто — без файлов', () => {
     expect(adGallery({ image: '/img/site-b.jpg' })).toEqual([{ src: '/img/site-b.jpg', kind: 'image', role: 'cover', label: 'обложка', mime: undefined }])
     expect(adGallery({ image: 'blob:http://localhost:5180/6f1c' })[0].src).toBe('blob:http://localhost:5180/6f1c')
     expect(adGallery({ image: null })).toEqual([])

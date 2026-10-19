@@ -1,5 +1,43 @@
 {
-  "_note": "Проверка ИИ на новых данных (T-25). Тексты, аккаунты и телефоны вымышлены, в демо-наборе (seed_data.json) их нет; номера вида +7 7232 00-00-0X — демонстрационные. ЖК — из демо-справочника. Для каждого кейса: ожидаемые условия оплаты (вид и указанные значения; список полный — лишнее условие считается ошибкой) и ожидаемый ЖК первой гипотезы (null — уверенной привязки быть не должно; noHypotheses — гипотез нет вовсе; low — ожидаемая пометка низкой уверенности). Прогон: GET /api/ai/eval, тест backend/tests/test_ai.py.",
+  "_note": "Проверка ИИ на новых данных (T-25). Тексты, аккаунты и телефоны вымышлены, в прежнем демо-наборе их нет; номера вида +7 7232 00-00-0X — демонстрационные. ЖК — из справочника catalog (вымышленные ЖК прежнего демо-набора, только для этой проверки). Для каждого кейса: ожидаемые условия оплаты (вид и указанные значения; список полный — лишнее условие считается ошибкой) и ожидаемый ЖК первой гипотезы (null — уверенной привязки быть не должно; noHypotheses — гипотез нет вовсе; low — ожидаемая пометка низкой уверенности). Прогон: GET /api/ai/eval, тест backend/tests/test_ai.py.",
+  "catalog": {
+    "_note": "Справочник для кейсов: вымышленные ЖК и застройщики прежнего демо-набора (shared/testdata/demo_seed.json) и подтверждённые привязки аккаунтов к ЖК (история аккаунтов). Это только фикстура проверки движка правил — в данных приложения этих ЖК нет.",
+    "complexes": [
+      {"id": "c1", "name": "Ертіс Парк", "address": "пр. Абая, 172", "district": "Ульбинский", "developerId": "d1", "stage": "каркас"},
+      {"id": "c2", "name": "Алтай Резиденс", "address": "ул. Казахстан, 66", "district": "Центр", "developerId": "d2", "stage": "фундамент"},
+      {"id": "c3", "name": "Ульба Ривер", "address": "ул. Протозанова, 81", "district": "Центр", "developerId": "d3", "stage": "отделка"},
+      {"id": "c4", "name": "Шығыс Тауэр", "address": "пр. Сатпаева, 14/2", "district": "Левобережье", "developerId": "d4", "stage": "каркас"},
+      {"id": "c5", "name": "Квартал 21", "address": "ул. Бажова, 333", "district": "Согра", "developerId": "d5", "stage": "введён"},
+      {"id": "c6", "name": "Nord Hills", "address": "ул. Жибек Жолы, 5", "district": "Левобережье", "developerId": "d6", "stage": "котлован"},
+      {"id": "c7", "name": "Береке Сити", "address": "ул. Кабанбай батыра, 120", "district": "Центр", "developerId": "d7", "stage": "кровля"},
+      {"id": "c8", "name": "Тихий берег", "address": "пр. Сатпаева, 52", "district": "Левобережье", "developerId": "d2", "stage": "каркас"},
+      {"id": "c9", "name": "Самал Сити", "address": "пр. Независимости, 31", "district": "Центр", "developerId": "d5", "stage": "отделка"},
+      {"id": "c10", "name": "Белуха Парк", "address": "ул. Гоголя, 210", "district": "Северо-запад", "developerId": "d3", "stage": "каркас"},
+      {"id": "c11", "name": "Достык Плаза", "address": "ул. Утепова, 18", "district": "Левобережье", "developerId": "d6", "stage": "фундамент"},
+      {"id": "c12", "name": "Green Line", "address": "ул. Кирова, 59", "district": "Центр", "developerId": "d7", "stage": "каркас"},
+      {"id": "c13", "name": "Нұр Әлем", "address": "ул. Шакарима, 88", "district": "Центр", "developerId": "d1", "stage": "введён"},
+      {"id": "c14", "name": "Солнечный квартал", "address": "пр. Абая, 9", "district": "Ульбинский", "developerId": "d4", "stage": "котлован"}
+    ],
+    "developers": [
+      {"id": "d1", "name": "ТОО «Ертіс Строй Инвест»", "instagram": "@ertis.invest", "site": "ertis-invest.kz", "phones": []},
+      {"id": "d2", "name": "ТОО «Altai Build Group»", "instagram": "@altai.build", "site": null, "phones": ["+7 7232 00-00-02"]},
+      {"id": "d3", "name": "ТОО «Ульба Девелопмент»", "instagram": "@ulba.dev", "site": "ulba-dev.kz", "phones": []},
+      {"id": "d4", "name": "ТОО «Шығыс Құрылыс 2030»", "instagram": "@shygys.kurylys", "site": null, "phones": ["+7 7232 00-00-04"]},
+      {"id": "d5", "name": "ТОО «Квартал-Восток»", "instagram": "@kvartal.vostok", "site": "kvartal-vostok.kz", "phones": []},
+      {"id": "d6", "name": "ТОО «Nord Capital Construction»", "instagram": "@nord.capital.uka", "site": null, "phones": ["+7 7232 00-00-06"]},
+      {"id": "d7", "name": "ТОО «Береке Девелопмент»", "instagram": "@bereke.dev", "site": "bereke-dev.kz", "phones": []}
+    ],
+    "history": [
+      {"id": "a1", "account": "@altai.rezidens.sale", "complexId": "c2", "linkConfirmedBy": "Нестерова А.", "status": "new", "source": "parser"},
+      {"id": "a2", "account": "@shygys_tower", "complexId": "c4", "linkConfirmedBy": "Исаев Т.", "status": "needs_check", "source": "parser"},
+      {"id": "a5", "account": "t.me/nord_hills_uka", "complexId": "c6", "linkConfirmedBy": "Нестерова А.", "status": "new", "source": "parser"},
+      {"id": "a6", "account": "@dostyk.plaza.uka", "complexId": "c11", "linkConfirmedBy": "Нестерова А.", "status": "confirmed", "source": "parser"},
+      {"id": "a7", "account": "olx.kz / Агентство «Дом»", "complexId": "c5", "linkConfirmedBy": "Омарова Ж.", "status": "new", "source": "manual"},
+      {"id": "a8", "account": "Тихий берег УКА", "complexId": "c8", "linkConfirmedBy": "Омарова Ж.", "status": "needs_check", "source": "parser"},
+      {"id": "a10", "account": "2ГИС · отдел продаж", "complexId": "c14", "linkConfirmedBy": "Исаев Т.", "status": "new", "source": "demo"},
+      {"id": "a11", "account": "@belukha.park", "complexId": "c10", "linkConfirmedBy": "Омарова Ж.", "status": "new", "source": "parser"}
+    ]
+  },
   "cases": [
     {
       "id": "k1",

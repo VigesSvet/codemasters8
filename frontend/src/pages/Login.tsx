@@ -1,19 +1,22 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { isDemo } from '../lib/provenance'
 import { model } from '../lib/risk'
 import { safeNext } from '../lib/session'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcCheck, IcKey } from '../ui/icons'
 
 /** Вход — как страницы входа сервисов Яндекса: фото слева, справа короткая форма с жёлтой кнопкой.
- *  Демо: выбор сотрудника без пароля; его имя становится автором всех действий в журнале */
+ *  Пилот: выбор сотрудника без пароля; его имя становится автором всех действий в журнале */
 export default function Login() {
-  const { analysts, user, login, mode } = useStore()
+  const { analysts, user, login, mode, complexes } = useStore()
   const nav = useNavigate()
   const [sp] = useSearchParams()
   const next = safeNext(sp.get('next'))
   const [pick, setPick] = useState<string | null>(user?.id ?? null)
   const chosen = analysts.find((a) => a.id === pick)
+  // контрольные сценарии ТЗ §5 — только если их ЖК есть в данных (тестовый набор, старые БД); в стартовом наборе их нет
+  const cases = model.cases.flatMap((k) => { const c = complexes.find((x) => x.id === k.complexId); return c ? [{ k, c }] : [] })
 
   const enter = (who = chosen, to = next) => {
     if (!who) return
@@ -49,16 +52,19 @@ export default function Login() {
           </div>
           <button type="submit" className="btn y full" style={{ marginTop: 6 }} disabled={!chosen}>{chosen ? `Войти как ${chosen.name}` : 'Выберите сотрудника'}</button>
           <button type="button" className="btn g full" disabled title="Подключим после пилота"><IcKey />Войти по ЭЦП (NCALayer) · после пилота</button>
-          <div className="row wrap-f t-sm" style={{ gap: 6, marginTop: 2 }}>
-            <span className="c2">Войти и открыть демо-сценарий ТЗ §5:</span>
-            {model.cases.map((k) => (
-              <button key={k.id} type="button" className="chip" style={{ height: 30, padding: '0 12px' }} disabled={!chosen}
-                title={chosen ? `${k.title} — вымышленный ЖК` : 'Сначала выберите сотрудника'} onClick={() => enter(chosen, `/complexes/${k.complexId}?tab=risk`)}>{k.id}</button>
-            ))}
-          </div>
-          <p className="t-xs c2" style={{ lineHeight: '17px', marginTop: 4 }}>Демо-вход без пароля. В рабочей версии — ЭЦП (NCALayer) или SSO; автор каждого действия попадает в журнал.</p>
+          {cases.length > 0 && (
+            <div className="row wrap-f t-sm" style={{ gap: 6, marginTop: 2 }}>
+              <span className="c2">Войти и открыть сценарий ТЗ §5:</span>
+              {cases.map(({ k, c }) => (
+                <button key={k.id} type="button" className="chip" style={{ height: 30, padding: '0 12px' }} disabled={!chosen}
+                  title={chosen ? `${k.title}${isDemo(c) ? ' — вымышленный ЖК' : ''}` : 'Сначала выберите сотрудника'} onClick={() => enter(chosen, `/complexes/${c.id}?tab=risk`)}>{k.id}</button>
+              ))}
+            </div>
+          )}
+          <p className="t-xs c2" style={{ lineHeight: '17px', marginTop: 4 }}>Вход пилота без пароля. В рабочей версии — ЭЦП (NCALayer) или SSO; автор каждого действия попадает в журнал.</p>
+          {mode === 'snapshot' && <p className="t-xs c2" style={{ lineHeight: '17px' }}>Сервер недоступен: откроется офлайн-копия стартового набора — только для просмотра.</p>}
         </form>
-        <div className="t-xs c3">© 2026 SAQ Qurylys · данные демонстрационные</div>
+        <div className="t-xs c3">© 2026 SAQ Qurylys · реальные открытые данные и публичная реклама, оценка — предварительная</div>
       </div>
     </div>
   )

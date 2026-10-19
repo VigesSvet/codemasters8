@@ -1,5 +1,5 @@
 // ОТКРЫТЫЕ ДАННЫЕ БЕЗ БЭКЕНДА: копия shared/registry_ust_kamenogorsk.json (его пишет python -m app.importer) — те же объекты
-// и записи, что GET /api/registry после сида. Грузится отдельным чанком и только в демо-режиме. Риска, зон и сигналов нет (T-31).
+// и записи, что GET /api/registry после загрузки. Грузится отдельным чанком и только в офлайн-копии. Риска, зон и сигналов нет (T-31).
 import { finder, rankObject } from '../lib/find'
 import type { RegistryCard, RegistryList, RegistryObject, SourceInfo, SourceRecord } from './types'
 

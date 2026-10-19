@@ -1,0 +1,917 @@
+[
+ {
+  "bin": "",
+  "director": "",
+  "id": "ad-4ba107a640be",
+  "instagram": null,
+  "name": "ТОО «BS Construction» (BS Holding)",
+  "objects": 0,
+  "origin": "advertised",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 0,
+    "complexes": 1,
+    "ok": 0,
+    "suspect": 1,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Подозрение: есть ЖК с продажей без разрешения",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "ЖК с подозрением на продажу без разрешения (1): «Easton»"
+    }
+   ],
+   "status": "suspect",
+   "worst": [
+    {
+     "complexId": "a-iston",
+     "label": "Подозрение: продажа без разрешения",
+     "name": "Easton",
+     "status": "suspect"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "",
+  "director": "",
+  "id": "ad-533d17addd8a",
+  "instagram": null,
+  "name": "ТОО «Премиум Строй НС»",
+  "objects": 0,
+  "origin": "advertised",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 0,
+    "complexes": 1,
+    "ok": 0,
+    "suspect": 1,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Подозрение: есть ЖК с продажей без разрешения",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "ЖК с подозрением на продажу без разрешения (1): «Muztau»"
+    }
+   ],
+   "status": "suspect",
+   "worst": [
+    {
+     "complexId": "a-mustau",
+     "label": "Подозрение: продажа без разрешения",
+     "name": "Muztau",
+     "status": "suspect"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "",
+  "director": "",
+  "id": "ad-7faa5a56f416",
+  "instagram": null,
+  "name": "ТОО ЖБК «Жилстрой»",
+  "objects": 0,
+  "origin": "advertised",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "check": 1,
+    "complexes": 1,
+    "ok": 0,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Требуют проверки (1): «Көктем»"
+    }
+   ],
+   "status": "check",
+   "worst": [
+    {
+     "complexId": "a-koktem",
+     "label": "Требует проверки",
+     "name": "Көктем",
+     "status": "check"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "",
+  "director": "",
+  "id": "ad-93452bc4e1a2",
+  "instagram": null,
+  "name": "Capital Invest Construction (по kn.kz)",
+  "objects": 0,
+  "origin": "advertised",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "check": 1,
+    "complexes": 1,
+    "ok": 0,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Требуют проверки (1): «Riverside»"
+    }
+   ],
+   "status": "check",
+   "worst": [
+    {
+     "complexId": "a-riversid",
+     "label": "Требует проверки",
+     "name": "Riverside",
+     "status": "check"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "",
+  "director": "",
+  "id": "ad-9b7daeb89c69",
+  "instagram": null,
+  "name": "ТОО «VK development group»",
+  "objects": 0,
+  "origin": "advertised",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "check": 1,
+    "complexes": 1,
+    "ok": 0,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Требуют проверки (1): «Eco Polis»"
+    }
+   ],
+   "status": "check",
+   "worst": [
+    {
+     "complexId": "a-eko-polis",
+     "label": "Требует проверки",
+     "name": "Eco Polis",
+     "status": "check"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "",
+  "director": "",
+  "id": "ad-a46154cec975",
+  "instagram": null,
+  "name": "CEO Group",
+  "objects": 0,
+  "origin": "advertised",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "check": 1,
+    "complexes": 1,
+    "ok": 0,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Требуют проверки (1): «Nomad»"
+    }
+   ],
+   "status": "check",
+   "worst": [
+    {
+     "complexId": "a-nomad",
+     "label": "Требует проверки",
+     "name": "Nomad",
+     "status": "check"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "",
+  "director": "",
+  "id": "ad-b8a69627376f",
+  "instagram": null,
+  "name": "ТОО «TAZH Group Construction»",
+  "objects": 0,
+  "origin": "advertised",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 1,
+    "complexes": 1,
+    "ok": 0,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Требуют проверки (1): «Gran Via»"
+    }
+   ],
+   "status": "check",
+   "worst": [
+    {
+     "complexId": "a-gran-via",
+     "label": "Требует проверки",
+     "name": "Gran Via",
+     "status": "check"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "",
+  "director": "",
+  "id": "ad-f35499a5f7da",
+  "instagram": null,
+  "name": "ТОО «Финтэк Астана»",
+  "objects": 0,
+  "origin": "advertised",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 1,
+    "complexes": 1,
+    "ok": 0,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Требуют проверки (1): «Prime Home»"
+    }
+   ],
+   "status": "check",
+   "worst": [
+    {
+     "complexId": "a-prim-home",
+     "label": "Требует проверки",
+     "name": "Prime Home",
+     "status": "check"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "021040009554",
+  "director": "",
+  "id": "rd-021040009554",
+  "instagram": null,
+  "name": "ТОО \"K-Story LTD\"",
+  "objects": 0,
+  "origin": "registry",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 0,
+    "complexes": 1,
+    "ok": 1,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Все ЖК в реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Все ЖК застройщика (1) — с основанием по открытым данным, замечаний по рекламе нет"
+    }
+   ],
+   "status": "ok",
+   "worst": [
+    {
+     "complexId": "r-viva-life",
+     "label": "В реестре — замечаний нет",
+     "name": "Viva Life",
+     "status": "ok"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "040140006326",
+  "director": "",
+  "id": "rd-040140006326",
+  "instagram": null,
+  "name": "ТОО «СЕО GROUP»",
+  "objects": 0,
+  "origin": "registry",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 0,
+    "complexes": 1,
+    "ok": 1,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Все ЖК в реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Все ЖК застройщика (1) — с основанием по открытым данным, замечаний по рекламе нет"
+    }
+   ],
+   "status": "ok",
+   "worst": [
+    {
+     "complexId": "r-orda",
+     "label": "В реестре — замечаний нет",
+     "name": "Orda",
+     "status": "ok"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "040540018865",
+  "director": "",
+  "id": "rd-040540018865",
+  "instagram": null,
+  "name": "ТОО «TUMAR Group»",
+  "objects": 0,
+  "origin": "registry",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 0,
+    "complexes": 1,
+    "ok": 1,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Все ЖК в реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Все ЖК застройщика (1) — с основанием по открытым данным, замечаний по рекламе нет"
+    }
+   ],
+   "status": "ok",
+   "worst": [
+    {
+     "complexId": "r-tumar-towers-oskemen",
+     "label": "В реестре — замечаний нет",
+     "name": "Tumar Towers Oskemen",
+     "status": "ok"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "050640012251",
+  "director": "",
+  "id": "rd-050640012251",
+  "instagram": null,
+  "name": "ТОО \"Композит-7\"",
+  "objects": 0,
+  "origin": "registry",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 0,
+    "complexes": 1,
+    "ok": 1,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Все ЖК в реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Все ЖК застройщика (1) — с основанием по открытым данным, замечаний по рекламе нет"
+    }
+   ],
+   "status": "ok",
+   "worst": [
+    {
+     "complexId": "r-prestizh-sparkle-diamond",
+     "label": "В реестре — замечаний нет",
+     "name": "Престиж (Sparkle Diamond) (ГС: Инвестор)",
+     "status": "ok"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "171240023488",
+  "director": "",
+  "id": "rd-171240023488",
+  "instagram": null,
+  "name": "ТОО \"Biryuza Development\"",
+  "objects": 0,
+  "origin": "registry",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 0,
+    "complexes": 1,
+    "ok": 1,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Все ЖК в реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Все ЖК застройщика (1) — с основанием по открытым данным, замечаний по рекламе нет"
+    }
+   ],
+   "status": "ok",
+   "worst": [
+    {
+     "complexId": "r-zhanym",
+     "label": "В реестре — замечаний нет",
+     "name": "Жаным",
+     "status": "ok"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "190940009528",
+  "director": "",
+  "id": "rd-190940009528",
+  "instagram": null,
+  "name": "ТОО \"Comfort-Uly Dala\"",
+  "objects": 0,
+  "origin": "registry",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 0,
+    "complexes": 1,
+    "ok": 1,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Все ЖК в реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Все ЖК застройщика (1) — с основанием по открытым данным, замечаний по рекламе нет"
+    }
+   ],
+   "status": "ok",
+   "worst": [
+    {
+     "complexId": "r-asyl-tau",
+     "label": "В реестре — замечаний нет",
+     "name": "Asyl Tau",
+     "status": "ok"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "191040019288",
+  "director": "",
+  "id": "rd-191040019288",
+  "instagram": null,
+  "name": "ТОО \"Stroy invest capital\"",
+  "objects": 0,
+  "origin": "registry",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "check": 1,
+    "complexes": 1,
+    "ok": 0,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Требуют проверки (1): «AB-Residence 2»"
+    }
+   ],
+   "status": "check",
+   "worst": [
+    {
+     "complexId": "r-ab-residence-2",
+     "label": "Требует проверки",
+     "name": "AB-Residence 2",
+     "status": "check"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "201040022748",
+  "director": "",
+  "id": "rd-201040022748",
+  "instagram": null,
+  "name": "ТОО \"EKM COMPANY\"",
+  "objects": 0,
+  "origin": "registry",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 1,
+    "complexes": 2,
+    "ok": 1,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Требуют проверки (1): «ASYLYM»"
+    }
+   ],
+   "status": "check",
+   "worst": [
+    {
+     "complexId": "r-asylym",
+     "label": "Требует проверки",
+     "name": "ASYLYM",
+     "status": "check"
+    },
+    {
+     "complexId": "r-asyltas",
+     "label": "В реестре — замечаний нет",
+     "name": "ASYLTAS",
+     "status": "ok"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "211040009188",
+  "director": "",
+  "id": "rd-211040009188",
+  "instagram": null,
+  "name": "ТОО \"СТ-77\"",
+  "objects": 0,
+  "origin": "registry",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 0,
+    "complexes": 1,
+    "ok": 1,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Все ЖК в реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Все ЖК застройщика (1) — с основанием по открытым данным, замечаний по рекламе нет"
+    }
+   ],
+   "status": "ok",
+   "worst": [
+    {
+     "complexId": "r-satti-city",
+     "label": "В реестре — замечаний нет",
+     "name": "Satti City",
+     "status": "ok"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "220740026935",
+  "director": "",
+  "id": "rd-220740026935",
+  "instagram": null,
+  "name": "ТОО \"Mercury Construction\"",
+  "objects": 0,
+  "origin": "registry",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 0,
+    "complexes": 2,
+    "ok": 2,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Все ЖК в реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Все ЖК застройщика (2) — с основанием по открытым данным, замечаний по рекламе нет"
+    }
+   ],
+   "status": "ok",
+   "worst": [
+    {
+     "complexId": "r-park-line",
+     "label": "В реестре — замечаний нет",
+     "name": "PARK LINE",
+     "status": "ok"
+    },
+    {
+     "complexId": "r-renesans",
+     "label": "В реестре — замечаний нет",
+     "name": "Renesans",
+     "status": "ok"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "231140022638",
+  "director": "",
+  "id": "rd-231140022638",
+  "instagram": null,
+  "name": "ТОО \"АА2А\"",
+  "objects": 0,
+  "origin": "registry",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 0,
+    "complexes": 1,
+    "ok": 1,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Все ЖК в реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Все ЖК застройщика (1) — с основанием по открытым данным, замечаний по рекламе нет"
+    }
+   ],
+   "status": "ok",
+   "worst": [
+    {
+     "complexId": "r-ainalaiyn",
+     "label": "В реестре — замечаний нет",
+     "name": "AINALAIYN",
+     "status": "ok"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "",
+  "director": "",
+  "id": "rd-695b8dea154e",
+  "instagram": null,
+  "name": "ВВД-Құрылыс",
+  "objects": 0,
+  "origin": "registry",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 0,
+    "complexes": 1,
+    "ok": 1,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Все ЖК в реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Все ЖК застройщика (1) — с основанием по открытым данным, замечаний по рекламе нет"
+    }
+   ],
+   "status": "ok",
+   "worst": [
+    {
+     "complexId": "r-diamond",
+     "label": "В реестре — замечаний нет",
+     "name": "Diamond",
+     "status": "ok"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ },
+ {
+  "bin": "970640000190",
+  "director": "",
+  "id": "rd-970640000190",
+  "instagram": null,
+  "name": "ТОО \"НАУАН Корп\"",
+  "objects": 0,
+  "origin": "registry",
+  "phones": [],
+  "registered": "",
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "check": 0,
+    "complexes": 1,
+    "ok": 1,
+    "suspect": 0,
+    "unknown": 0
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "label": "Все ЖК в реестре — замечаний нет",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Все ЖК застройщика (1) — с основанием по открытым данным, замечаний по рекламе нет"
+    }
+   ],
+   "status": "ok",
+   "worst": [
+    {
+     "complexId": "r-zolotoi-kvadrat",
+     "label": "В реестре — замечаний нет",
+     "name": "Золотой квадрат",
+     "status": "ok"
+    }
+   ]
+  },
+  "site": null,
+  "unfinished": 0
+ }
+]

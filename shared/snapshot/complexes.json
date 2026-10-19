@@ -1,0 +1,682 @@
+[
+ {
+  "address": "г. Усть-Каменогорск, проспект Каныша Сатпаева, 53/3",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "ad-9b7daeb89c69",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-eko-polis",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.923404,
+  "lng": 82.631597,
+  "name": "Eco Polis",
+  "origin": "advertised",
+  "photos": [],
+  "planned_end": "",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "г. Усть-Каменогорск, проспект Илияса Есенберлина, 43 Блок 2",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "ad-b8a69627376f",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-gran-via",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.917758,
+  "lng": 82.610959,
+  "name": "Gran Via",
+  "origin": "advertised",
+  "photos": [],
+  "planned_end": "",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "г. Усть-Каменогорск, проспект Илияса Есенберлина, 38/3",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "ad-4ba107a640be",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-iston",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.924823,
+  "lng": 82.619366,
+  "name": "Easton",
+  "origin": "advertised",
+  "photos": [],
+  "planned_end": "",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "г. Усть-Каменогорск, проспект Илияса Есенберлина, 14",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "ad-7faa5a56f416",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-koktem",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.902318,
+  "lng": 82.60521,
+  "name": "Көктем",
+  "origin": "advertised",
+  "photos": [],
+  "planned_end": "",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "г. Усть-Каменогорск, проспект Казыбек би, 1/3",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "ad-533d17addd8a",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-mustau",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.893336,
+  "lng": 82.618958,
+  "name": "Muztau",
+  "origin": "advertised",
+  "photos": [],
+  "planned_end": "",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "г. Усть-Каменогорск, проспект Каныша Сатпаева, 13в",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "ad-a46154cec975",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-nomad",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.899572,
+  "lng": 82.62842,
+  "name": "Nomad",
+  "origin": "advertised",
+  "photos": [],
+  "planned_end": "",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "г. Усть-Каменогорск, проспект Илияса Есенберлина, 28/1",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "ad-f35499a5f7da",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-prim-home",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.909233,
+  "lng": 82.609989,
+  "name": "Prime Home",
+  "origin": "advertised",
+  "photos": [],
+  "planned_end": "",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "г. Усть-Каменогорск, улица Пермитина, 11/2",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "ad-93452bc4e1a2",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "a-riversid",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.942294,
+  "lng": 82.628779,
+  "name": "Riverside",
+  "origin": "advertised",
+  "photos": [],
+  "planned_end": "",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "пр. И. Есенберлина",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "rd-191040019288",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-ab-residence-2",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.920243,
+  "lng": 82.618245,
+  "name": "AB-Residence 2",
+  "origin": "registry",
+  "photos": [],
+  "planned_end": "",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "пр. И. Есенберлина, уч. 2",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown",
+   "mioRef": "По данным открытого реестра (Homeportal — карточки ЖК): разрешение МИО № KZ40VWE00002526 от 15.07.2025. Аналитиком не проверено"
+  },
+  "cover": "",
+  "developer_id": "rd-231140022638",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-ainalaiyn",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.893724,
+  "lng": 82.589908,
+  "name": "AINALAIYN",
+  "origin": "registry",
+  "photos": [],
+  "planned_end": "",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": "2024-10-24"
+ },
+ {
+  "address": "ул. Сатпаева, д. 32",
+  "basis": {
+   "bank": "По данным открытого реестра (Homeportal — карточки ЖК): участие БВУ, документ № KZ62VWE00002712 от 10.04.2026, банк источником не указан. Аналитиком не проверено",
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "rd-190940009528",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-asyl-tau",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.904538,
+  "lng": 82.620846,
+  "name": "Asyl Tau",
+  "origin": "registry",
+  "photos": [],
+  "planned_end": "2027-07-31",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": "2026-03-31"
+ },
+ {
+  "address": "ул. Кокжал Барака, уч. 1",
+  "basis": {
+   "bank": "По данным открытого реестра (Homeportal — карточки ЖК): участие БВУ, документ № KZ53VWE00002680 от 17.02.2026; № KZ26VWE00002681 от 17.02.2026, банк источником не указан. Аналитиком не проверено",
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "rd-201040022748",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-asyltas",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.887791,
+  "lng": 82.610139,
+  "name": "ASYLTAS",
+  "origin": "registry",
+  "photos": [],
+  "planned_end": "2026-12-31",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": "2025-12-23"
+ },
+ {
+  "address": "ул. Кокжал Барака, д. 18б",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "guaranteeRef": "По данным открытого реестра (Homeportal — карточки ЖК): гарантия ЕО (КЖК) № ДПГ-25-16-082/200 от 31.10.2025. Аналитиком не проверено",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "rd-201040022748",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-asylym",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.890356,
+  "lng": 82.608519,
+  "name": "ASYLYM",
+  "origin": "registry",
+  "photos": [],
+  "planned_end": "",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": "2025-08-15"
+ },
+ {
+  "address": "19 жилой район на пересечении улиц Ю.Увалиева и Кокжал Барака",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "rd-695b8dea154e",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-diamond",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": null,
+  "lng": null,
+  "name": "Diamond",
+  "origin": "registry",
+  "photos": [],
+  "planned_end": "",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": "2022-05-10"
+ },
+ {
+  "address": "ул. Кокжал Барака, д. 19а",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown",
+   "mioRef": "По данным открытого реестра (Homeportal — карточки ЖК): разрешение МИО № 1383/МҚЗТ-С-331 от 13.10.2025. Аналитиком не проверено"
+  },
+  "cover": "",
+  "developer_id": "rd-040140006326",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-orda",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.890363,
+  "lng": 82.618099,
+  "name": "Orda",
+  "origin": "registry",
+  "photos": [],
+  "planned_end": "2027-02-28",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": "2024-10-17"
+ },
+ {
+  "address": "пр. И. Есенберлина, д. 56",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown",
+   "mioRef": "По данным открытого реестра (Homeportal — карточки ЖК): разрешение МИО № KZ25PDD00004205 от 07.10.2026. Аналитиком не проверено"
+  },
+  "cover": "",
+  "developer_id": "rd-220740026935",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-park-line",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.917561,
+  "lng": 82.619097,
+  "name": "PARK LINE",
+  "origin": "registry",
+  "photos": [],
+  "planned_end": "2027-11-18",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": "2026-09-18"
+ },
+ {
+  "address": "в 19-ом жилом районе, прсч. ул. Ю. Увалиева и Кокжал Барака",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "guaranteeRef": "По данным открытого реестра (Homeportal — карточки ЖК): гарантия ЕО (КЖК) ДС №1 к ДПГ-22-16-055/120 от 10.05.2024. Аналитиком не проверено",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "rd-050640012251",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-prestizh-sparkle-diamond",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.889851,
+  "lng": 82.61502,
+  "name": "Престиж (Sparkle Diamond) (ГС: Инвестор)",
+  "origin": "registry",
+  "photos": [],
+  "planned_end": "2026-11-30",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": "2026-02-27"
+ },
+ {
+  "address": "пр. а И. Есенберлина, д. 20/1",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown",
+   "mioRef": "По данным открытого реестра (Homeportal — карточки ЖК): разрешение МИО № 639 от 19.05.2026. Аналитиком не проверено"
+  },
+  "cover": "",
+  "developer_id": "rd-220740026935",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-renesans",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.905433,
+  "lng": 82.607001,
+  "name": "Renesans",
+  "origin": "registry",
+  "photos": [],
+  "planned_end": "2027-12-02",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": "2026-06-02"
+ },
+ {
+  "address": "ул. Есенберлина, д. 84",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown",
+   "mioRef": "По данным открытого реестра (Homeportal — карточки ЖК): разрешение МИО № KZ05PDD00004080 от 17.08.2026. Аналитиком не проверено"
+  },
+  "cover": "",
+  "developer_id": "rd-211040009188",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-satti-city",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.919223,
+  "lng": 82.616442,
+  "name": "Satti City",
+  "origin": "registry",
+  "photos": [],
+  "planned_end": "2027-01-30",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": "2025-12-03"
+ },
+ {
+  "address": "пр. Победы, д. 2",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown",
+   "mioRef": "По данным открытого реестра (Homeportal — карточки ЖК): разрешение МИО № KZ26VWE00002487 от 17.04.2025. Аналитиком не проверено"
+  },
+  "cover": "",
+  "developer_id": "rd-040540018865",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-tumar-towers-oskemen",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.943912,
+  "lng": 82.62274,
+  "name": "Tumar Towers Oskemen",
+  "origin": "registry",
+  "photos": [],
+  "planned_end": "",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": "2025-02-04"
+ },
+ {
+  "address": "пр. И. Есенберлина, д. 88/1",
+  "basis": {
+   "bank": "По данным открытого реестра (Homeportal — карточки ЖК): участие БВУ, документ № 597/МҚЗТ-К-83у от 08.05.2026, банк источником не указан. Аналитиком не проверено",
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "rd-021040009554",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-viva-life",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.920359,
+  "lng": 82.618754,
+  "name": "Viva Life",
+  "origin": "registry",
+  "photos": [],
+  "planned_end": "2027-08-28",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": "2026-04-28"
+ },
+ {
+  "address": "пр. И. Есенберлина, д. 92",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "guaranteeRef": "По данным открытого реестра (Homeportal — карточки ЖК): гарантия ЕО (КЖК) № ДПГ-23-16-068/155 от 11.10.2023; ДС № 2 к ДПГ-23-16-068/155 от 12.08.2024; ДС№4 к ДПГ-23-16-068/155 от 11.10.2023. Аналитиком не проверено",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "rd-171240023488",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-zhanym",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.921112,
+  "lng": 82.617788,
+  "name": "Жаным",
+  "origin": "registry",
+  "photos": [],
+  "planned_end": "",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": ""
+ },
+ {
+  "address": "ул. Кайсенова, уч. 55/1",
+  "basis": {
+   "bvu": "unknown",
+   "guarantee": "unknown",
+   "guaranteeRef": "По данным открытого реестра (Homeportal — карточки ЖК): гарантия ЕО (КЖК) № ДПГ-25-16-078/194 от 18.08.2025. Аналитиком не проверено",
+   "mio": "unknown"
+  },
+  "cover": "",
+  "developer_id": "rd-970640000190",
+  "district": "",
+  "flats": 0,
+  "floors": 0,
+  "id": "r-zolotoi-kvadrat",
+  "idle_days": 0,
+  "in_published_list": "unknown",
+  "lat": 49.945497,
+  "lng": 82.622997,
+  "name": "Золотой квадрат",
+  "origin": "registry",
+  "photos": [],
+  "planned_end": "",
+  "progress": 0,
+  "readiness": {
+   "confirmed": null,
+   "declared": null
+  },
+  "stage": "",
+  "start": "2025-06-01"
+ }
+]

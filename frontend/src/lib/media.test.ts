@@ -66,7 +66,7 @@ describe('uploadScreenshot — скриншот на сервер до POST /api
 })
 
 describe('mediaSrc — адрес файла для <img>/<video>', () => {
-  it('серверные /api/media/… — через базу API; демо /img/… и http(s) — как есть', () => {
+  it('серверные /api/media/… — через базу API; пути сайта /img/… и http(s) — как есть', () => {
     expect(mediaSrc(`/api/media/${ID}`)).toBe(`/api/media/${ID}`)
     expect(mediaUrl(`/api/media/${ID}`, 'https://saq.example/api')).toBe(`https://saq.example/api/media/${ID}`)
     expect(mediaUrl(`/api/media/${ID}`, '')).toBe(`/media/${ID}`)
@@ -111,7 +111,7 @@ describe('adImage — картинка публикации для <img src>', (
   const img = (id: string, role = 'slide') => ({ id, kind: 'image' as const, url: `/api/media/${id}`, role })
   const video = (id: string) => ({ id, kind: 'video' as const, url: `/api/media/${id}` })
 
-  it('обложка — через mediaSrc: демо /img/… как есть, серверная /api/media/… — от базы API', () => {
+  it('обложка — через mediaSrc: путь сайта /img/… как есть, серверная /api/media/… — от базы API', () => {
     expect(adImage({ image: '/img/site-a-2026-08.jpg' })).toBe('/img/site-a-2026-08.jpg')
     expect(adImage({ image: `/api/media/${ID}`, media: [img(ID2)] })).toBe(`/api/media/${ID}`)
   })

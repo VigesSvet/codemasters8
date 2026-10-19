@@ -54,7 +54,8 @@ def all_hypotheses(cat: Catalog, ad: Obj) -> list:
 
 
 @lru_cache(maxsize=1)
-def seed_catalog() -> Catalog:
-    """Справочник из shared/seed_data.json — для воспроизводимой проверки на кейсах (не зависит от решений в БД)."""
-    seed = json.loads((SHARED / "seed_data.json").read_text(encoding="utf-8"))
-    return build_catalog(seed["complexes"], seed["developers"], seed["ads"])
+def case_catalog() -> Catalog:
+    """Справочник кейсов проверки ИИ — catalog в shared/ai_cases.json (вымышленные ЖК, только для этой проверки):
+    воспроизводимо и не зависит от данных и решений в БД."""
+    cat = json.loads((SHARED / "ai_cases.json").read_text(encoding="utf-8"))["catalog"]
+    return build_catalog(cat["complexes"], cat["developers"], cat.get("history", []))

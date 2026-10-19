@@ -1,0 +1,1562 @@
+[
+ {
+  "accounts": [
+   "@oks.group_oskemen"
+  ],
+  "addressHint": null,
+  "adsCount": 7,
+  "aliases": [],
+  "complexId": null,
+  "complexName": null,
+  "decidedAt": null,
+  "decidedBy": null,
+  "firstSeen": "2026-10-18T20:33:23+00:00",
+  "geo": [],
+  "id": 13,
+  "lastSeen": "2026-10-18T20:40:16+00:00",
+  "name": "Prestige",
+  "normKey": "prestig",
+  "note": null,
+  "origin": "ads",
+  "quotes": [
+   {
+    "account": "@oks.group_oskemen",
+    "adId": "170da1a716d64b0a9449bba10a39e7cd",
+    "address": null,
+    "date": "2026-10-11T11:26",
+    "name": "Prestige",
+    "platform": "instagram",
+    "quote": "Prestige поможет сделать первый шаг к вашей мечте",
+    "source": "parser"
+   },
+   {
+    "account": "@oks.group_oskemen",
+    "adId": "ebeb369c14504174a4f7aa8ed23889d1",
+    "address": null,
+    "date": "2026-10-09T12:08",
+    "name": "PRESTIGE",
+    "platform": "instagram",
+    "quote": "жк PRESTIGE",
+    "source": "parser"
+   },
+   {
+    "account": "@oks.group_oskemen",
+    "adId": "40fac8f86ff3477896f9f06123e99c51",
+    "address": null,
+    "date": "2026-10-01T12:55",
+    "name": "Prestige",
+    "platform": "instagram",
+    "quote": "ЖК Prestige",
+    "source": "parser"
+   }
+  ],
+  "saleSignals": {
+   "ads": 7,
+   "concerning": 0,
+   "lastAdAt": "2026-10-11T11:26",
+   "recentConcerning": 0,
+   "types": {
+    "price": 1,
+    "sale": 2
+   }
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 7,
+    "concerning": 0,
+    "lastAdAt": "2026-10-11T11:26",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытых данных: объект известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (7), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "170da1a716d64b0a9449bba10a39e7cd",
+     "kind": null,
+     "quote": "Стоимость — от 22 554 000 ₸",
+     "signal": "price",
+     "text": "Реклама 11.10.2026 (Instagram, @oks.group_oskemen): цена — «Стоимость — от 22 554 000 ₸»; объект назван в рекламе (ответ Claude)"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "sourceUrls": [],
+  "sources": {
+   "parser": 7
+  },
+  "stageHints": {
+   "completed": 0,
+   "quotes": [
+    {
+     "adId": "ebeb369c14504174a4f7aa8ed23889d1",
+     "quote": "ХОД СТРОИТЕЛЬСТВА",
+     "value": "under_construction"
+    },
+    {
+     "adId": "40fac8f86ff3477896f9f06123e99c51",
+     "quote": "активно ведутся работы по возведению этажей",
+     "value": "under_construction"
+    },
+    {
+     "adId": "6a46a6a82d8149a18f08491769a03945",
+     "quote": "Строительство продолжается согласно графику.",
+     "value": "under_construction"
+    }
+   ],
+   "underConstruction": 3,
+   "unknown": 4
+  },
+  "status": "new"
+ },
+ {
+  "accounts": [
+   "@bts.architects",
+   "krisha.kz / хозяин"
+  ],
+  "addressHint": "Есенберлина 94",
+  "adsCount": 3,
+  "aliases": [],
+  "complexId": null,
+  "complexName": null,
+  "decidedAt": null,
+  "decidedBy": null,
+  "firstSeen": "2026-10-18T20:27:23+00:00",
+  "geo": [],
+  "id": 9,
+  "lastSeen": "2026-10-18T20:49:35+00:00",
+  "name": "Viva Park",
+  "normKey": "viva park",
+  "note": null,
+  "origin": "ads",
+  "quotes": [
+   {
+    "account": "krisha.kz / хозяин",
+    "adId": "9fae8583097c4cea84173bcce1868cd0",
+    "address": "Есенберлина 94",
+    "date": "2026-10-18T23:12",
+    "name": "Viva Park",
+    "platform": "krisha",
+    "quote": "жил. комплекс Viva Park",
+    "source": "parser"
+   },
+   {
+    "account": "@bts.architects",
+    "adId": "01be3c1975644750805bac911f3520bb",
+    "address": "пр. Победы, 6",
+    "date": "2026-06-17T20:35",
+    "name": "Viva Park",
+    "platform": "instagram",
+    "quote": "Двухкомнатная квартира-распашонка в Viva Park",
+    "source": "parser"
+   },
+   {
+    "account": "@bts.architects",
+    "adId": "5cc9169f3b864cd2aaa5effcbe7d04db",
+    "address": "пр. Победы, 6",
+    "date": "2026-06-12T19:00",
+    "name": "Viva Park",
+    "platform": "instagram",
+    "quote": "Viva Park — место, где начинается счастливая история семьи.",
+    "source": "parser"
+   }
+  ],
+  "saleSignals": {
+   "ads": 3,
+   "concerning": 0,
+   "lastAdAt": "2026-10-18T23:12",
+   "recentConcerning": 0,
+   "types": {
+    "sale": 1
+   }
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 3,
+    "concerning": 0,
+    "lastAdAt": "2026-10-18T23:12",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытых данных: объект известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (3), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "9fae8583097c4cea84173bcce1868cd0",
+     "kind": null,
+     "quote": "ПРОДАЕТСЯ полноценная 2 комн. КВАРТИРА В ЖК VIVA PARK",
+     "signal": "sale",
+     "text": "Реклама 18.10.2026 (Krisha.kz, krisha.kz / хозяин): продажа — «ПРОДАЕТСЯ полноценная 2 комн. КВАРТИРА В ЖК VIVA PARK»; объект назван в рекламе (ответ Claude)"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "sourceUrls": [],
+  "sources": {
+   "parser": 3
+  },
+  "stageHints": {
+   "completed": 0,
+   "quotes": [],
+   "underConstruction": 0,
+   "unknown": 3
+  },
+  "status": "new"
+ },
+ {
+  "accounts": [
+   "krisha.kz / хозяин",
+   "krisha.kz / специалист"
+  ],
+  "addressHint": "Проспект Каныша Сатпаева 15 Е",
+  "adsCount": 3,
+  "aliases": [
+   "Altyn Uia-2"
+  ],
+  "complexId": null,
+  "complexName": null,
+  "decidedAt": null,
+  "decidedBy": null,
+  "firstSeen": "2026-10-18T20:27:28+00:00",
+  "geo": [],
+  "id": 10,
+  "lastSeen": "2026-10-18T20:27:36+00:00",
+  "name": "Altyn Uia 2",
+  "normKey": "altin uia 2",
+  "note": null,
+  "origin": "ads",
+  "quotes": [
+   {
+    "account": "krisha.kz / хозяин",
+    "adId": "d0855b07ecdf4e409e7c5e4cbb4e417a",
+    "address": "Проспект Каныша Сатпаева 15е",
+    "date": "2026-10-18T23:12",
+    "name": "Altyn Uia 2",
+    "platform": "krisha",
+    "quote": "жил. комплекс Altyn Uia 2",
+    "source": "parser"
+   },
+   {
+    "account": "krisha.kz / специалист",
+    "adId": "00f1dbb881db4b39ada5641fc2a9c884",
+    "address": "ул. Сатпаева, 15Е",
+    "date": "2026-10-18T23:12",
+    "name": "Altyn Uia-2",
+    "platform": "krisha",
+    "quote": "ЖК Altyn Uia-2",
+    "source": "parser"
+   },
+   {
+    "account": "krisha.kz / хозяин",
+    "adId": "ad535c62cbf3405390622fddad3423f8",
+    "address": "Проспект Каныша Сатпаева 15 Е",
+    "date": "2026-10-18T23:12",
+    "name": "Altyn Uia 2",
+    "platform": "krisha",
+    "quote": "жил. комплекс Altyn Uia 2",
+    "source": "parser"
+   }
+  ],
+  "saleSignals": {
+   "ads": 3,
+   "concerning": 0,
+   "lastAdAt": "2026-10-18T23:12",
+   "recentConcerning": 0,
+   "types": {
+    "price": 1,
+    "sale": 3
+   }
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 3,
+    "concerning": 0,
+    "lastAdAt": "2026-10-18T23:12",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытых данных: объект известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (3), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "d0855b07ecdf4e409e7c5e4cbb4e417a",
+     "kind": null,
+     "quote": "Продается новая 3 х комнатная квартира!",
+     "signal": "sale",
+     "text": "Реклама 18.10.2026 (Krisha.kz, krisha.kz / хозяин): продажа — «Продается новая 3 х комнатная квартира!»; объект назван в рекламе (ответ Claude)"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "sourceUrls": [],
+  "sources": {
+   "parser": 3
+  },
+  "stageHints": {
+   "completed": 0,
+   "quotes": [],
+   "underConstruction": 0,
+   "unknown": 3
+  },
+  "status": "new"
+ },
+ {
+  "accounts": [
+   "@satti_uka"
+  ],
+  "addressHint": null,
+  "adsCount": 1,
+  "aliases": [],
+  "complexId": null,
+  "complexName": null,
+  "decidedAt": null,
+  "decidedBy": null,
+  "firstSeen": "2026-10-18T20:50:01+00:00",
+  "geo": [],
+  "id": 15,
+  "lastSeen": "2026-10-18T20:50:01+00:00",
+  "name": "SATTI",
+  "normKey": "sati",
+  "note": null,
+  "origin": "ads",
+  "quotes": [
+   {
+    "account": "@satti_uka",
+    "adId": "e089268fd1fd4c05b4cac98add46ebaa",
+    "address": null,
+    "date": "2026-05-29T15:08",
+    "name": "SATTI",
+    "platform": "instagram",
+    "quote": "SATTI — это не только комфортное пространство для жизни",
+    "source": "parser"
+   }
+  ],
+  "saleSignals": {
+   "ads": 1,
+   "concerning": 0,
+   "lastAdAt": "2026-05-29T15:08",
+   "recentConcerning": 0,
+   "types": {}
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 1,
+    "concerning": 0,
+    "lastAdAt": "2026-05-29T15:08",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытых данных: объект известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (1), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "e089268fd1fd4c05b4cac98add46ebaa",
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама 29.05.2026 (Instagram, @satti_uka); объект назван в рекламе (ответ Claude)"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "sourceUrls": [],
+  "sources": {
+   "parser": 1
+  },
+  "stageHints": {
+   "completed": 0,
+   "quotes": [],
+   "underConstruction": 0,
+   "unknown": 1
+  },
+  "status": "new"
+ },
+ {
+  "accounts": [
+   "@satti_uka"
+  ],
+  "addressHint": null,
+  "adsCount": 1,
+  "aliases": [],
+  "complexId": null,
+  "complexName": null,
+  "decidedAt": null,
+  "decidedBy": null,
+  "firstSeen": "2026-10-18T20:39:29+00:00",
+  "geo": [],
+  "id": 14,
+  "lastSeen": "2026-10-18T20:39:29+00:00",
+  "name": "METROPOLIS",
+  "normKey": "metropolis",
+  "note": null,
+  "origin": "ads",
+  "quotes": [
+   {
+    "account": "@satti_uka",
+    "adId": "a495dcc3b38e4f67ac4c4fd9c4ac6f54",
+    "address": null,
+    "date": "2026-09-22T11:49",
+    "name": "METROPOLIS",
+    "platform": "instagram",
+    "quote": "METROPOLIS",
+    "source": "parser"
+   }
+  ],
+  "saleSignals": {
+   "ads": 1,
+   "concerning": 0,
+   "lastAdAt": "2026-09-22T11:49",
+   "recentConcerning": 0,
+   "types": {}
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 1,
+    "concerning": 0,
+    "lastAdAt": "2026-09-22T11:49",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытых данных: объект известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (1), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "a495dcc3b38e4f67ac4c4fd9c4ac6f54",
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама 22.09.2026 (Instagram, @satti_uka); объект назван в рекламе (ответ Claude)"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "sourceUrls": [],
+  "sources": {
+   "parser": 1
+  },
+  "stageHints": {
+   "completed": 0,
+   "quotes": [],
+   "underConstruction": 0,
+   "unknown": 1
+  },
+  "status": "new"
+ },
+ {
+  "accounts": [
+   "@elitstroy.uka"
+  ],
+  "addressHint": null,
+  "adsCount": 1,
+  "aliases": [],
+  "complexId": null,
+  "complexName": null,
+  "decidedAt": null,
+  "decidedBy": null,
+  "firstSeen": "2026-10-18T20:32:24+00:00",
+  "geo": [],
+  "id": 12,
+  "lastSeen": "2026-10-18T20:32:24+00:00",
+  "name": "PARK LIN 4",
+  "normKey": "park lin 4",
+  "note": null,
+  "origin": "ads",
+  "quotes": [
+   {
+    "account": "@elitstroy.uka",
+    "adId": "77b2e36e217746c2913a74f9a2e4ab1e",
+    "address": null,
+    "date": "2026-10-13T18:05",
+    "name": "PARK LIN 4",
+    "platform": "instagram",
+    "quote": "PARK LIN 4",
+    "source": "parser"
+   }
+  ],
+  "saleSignals": {
+   "ads": 1,
+   "concerning": 0,
+   "lastAdAt": "2026-10-13T18:05",
+   "recentConcerning": 0,
+   "types": {
+    "discount": 1,
+    "sale": 1
+   }
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 1,
+    "concerning": 0,
+    "lastAdAt": "2026-10-13T18:05",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытых данных: объект известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (1), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "77b2e36e217746c2913a74f9a2e4ab1e",
+     "kind": null,
+     "quote": "Купи квартиру — выиграй BYD YUAN UP!",
+     "signal": "sale",
+     "text": "Реклама 13.10.2026 (Instagram, @elitstroy.uka): продажа — «Купи квартиру — выиграй BYD YUAN UP!»; объект назван в рекламе (ответ Claude)"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "sourceUrls": [],
+  "sources": {
+   "parser": 1
+  },
+  "stageHints": {
+   "completed": 0,
+   "quotes": [],
+   "underConstruction": 0,
+   "unknown": 1
+  },
+  "status": "new"
+ },
+ {
+  "accounts": [
+   "@elitstroy.uka"
+  ],
+  "addressHint": "пр. Ильяса Есенберлина, 20/1",
+  "adsCount": 1,
+  "aliases": [],
+  "complexId": null,
+  "complexName": null,
+  "decidedAt": null,
+  "decidedBy": null,
+  "firstSeen": "2026-10-18T20:30:42+00:00",
+  "geo": [],
+  "id": 11,
+  "lastSeen": "2026-10-18T20:30:42+00:00",
+  "name": "Elit Stroy Group",
+  "normKey": "elit stroi graup",
+  "note": null,
+  "origin": "ads",
+  "quotes": [
+   {
+    "account": "@elitstroy.uka",
+    "adId": "685a1709a19a4d76baf1418f5305243c",
+    "address": "пр. Ильяса Есенберлина, 20/1",
+    "date": "2026-10-18T12:00",
+    "name": "Elit Stroy Group",
+    "platform": "instagram",
+    "quote": "Приобретайте квартиру в Elit Stroy Group",
+    "source": "parser"
+   }
+  ],
+  "saleSignals": {
+   "ads": 1,
+   "concerning": 0,
+   "lastAdAt": "2026-10-18T12:00",
+   "recentConcerning": 0,
+   "types": {
+    "discount": 1,
+    "sale": 1
+   }
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 1,
+    "concerning": 0,
+    "lastAdAt": "2026-10-18T12:00",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытых данных: объект известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (1), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "685a1709a19a4d76baf1418f5305243c",
+     "kind": null,
+     "quote": "Купи квартиру — выиграй BYD YUAN UP!",
+     "signal": "sale",
+     "text": "Реклама 18.10.2026 (Instagram, @elitstroy.uka): продажа — «Купи квартиру — выиграй BYD YUAN UP!»; объект назван в рекламе (ответ Claude)"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "sourceUrls": [],
+  "sources": {
+   "parser": 1
+  },
+  "stageHints": {
+   "completed": 0,
+   "quotes": [],
+   "underConstruction": 0,
+   "unknown": 1
+  },
+  "status": "new"
+ },
+ {
+  "accounts": [
+   "@riverside.uka",
+   "instagram:@riverside.uka"
+  ],
+  "addressHint": "г. Усть-Каменогорск, улица Пермитина, 11/2",
+  "adsCount": 11,
+  "aliases": [
+   "Риверсайд"
+  ],
+  "complexId": "a-riversid",
+  "complexName": "Riverside",
+  "decidedAt": "2026-10-18T20:26:10+00:00",
+  "decidedBy": "Администратор",
+  "firstSeen": "2026-10-18T20:26:10+00:00",
+  "geo": [],
+  "id": 5,
+  "lastSeen": "2026-10-18T20:47:32+00:00",
+  "name": "Riverside",
+  "normKey": "riversid",
+  "note": "Найден при подборе источников 19.10.2026: рекламируется, нет в открытом реестре разрешений. 2ГИС: строящийся жилой комплекс; по другим источникам почти сдан. Координаты — 2ГИС.",
+  "origin": "import",
+  "quotes": [
+   {
+    "account": "@riverside.uka",
+    "adId": "550c4c63252d497f8ff939d1bd67629f",
+    "address": null,
+    "date": "2026-10-07T14:26",
+    "name": "Riverside",
+    "platform": "instagram",
+    "quote": "В Riverside мы строим именно такое место.",
+    "source": "parser"
+   },
+   {
+    "account": "@riverside.uka",
+    "adId": "371031871be64048aa1aabd26441625c",
+    "address": null,
+    "date": "2026-09-29T14:29",
+    "name": "Riverside",
+    "platform": "instagram",
+    "quote": "Riverside на финишной прямой",
+    "source": "parser"
+   },
+   {
+    "account": "@riverside.uka",
+    "adId": "856e6baefe194316861fff897d854b8a",
+    "address": null,
+    "date": "2026-09-24T14:49",
+    "name": "Riverside",
+    "platform": "instagram",
+    "quote": "в ЖК Riverside",
+    "source": "parser"
+   }
+  ],
+  "saleSignals": {
+   "ads": 11,
+   "concerning": 0,
+   "lastAdAt": "2026-10-07T14:26",
+   "recentConcerning": 0,
+   "types": {}
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 11,
+    "concerning": 0,
+    "lastAdAt": "2026-10-07T14:26",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытых данных: объект известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (11), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "550c4c63252d497f8ff939d1bd67629f",
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама 07.10.2026 (Instagram, @riverside.uka); объект назван в рекламе (ответ Claude)"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "sourceUrls": [
+   "https://www.kn.kz/zhilye-kompleksy/ust-kamenogorsk/riverside"
+  ],
+  "sources": {
+   "parser": 11
+  },
+  "stageHints": {
+   "completed": 0,
+   "quotes": [
+    {
+     "adId": "550c4c63252d497f8ff939d1bd67629f",
+     "quote": "В Riverside мы строим именно такое место.",
+     "value": "under_construction"
+    },
+    {
+     "adId": "371031871be64048aa1aabd26441625c",
+     "quote": "Riverside на финишной прямой. Процесс и результат в одном видео.",
+     "value": "under_construction"
+    }
+   ],
+   "underConstruction": 2,
+   "unknown": 9
+  },
+  "status": "linked"
+ },
+ {
+  "accounts": [
+   "@zhbk_zhilstroi",
+   "instagram:@zhbk_zhilstroi"
+  ],
+  "addressHint": "г. Усть-Каменогорск, проспект Илияса Есенберлина, 14",
+  "adsCount": 10,
+  "aliases": [
+   "Коктем",
+   "KÖKTEM",
+   "Koktem"
+  ],
+  "complexId": "a-koktem",
+  "complexName": "Көктем",
+  "decidedAt": "2026-10-18T20:26:10+00:00",
+  "decidedBy": "Администратор",
+  "firstSeen": "2026-10-18T20:26:10+00:00",
+  "geo": [],
+  "id": 7,
+  "lastSeen": "2026-10-18T20:38:14+00:00",
+  "name": "Көктем",
+  "normKey": "koktem",
+  "note": "Найден при подборе источников 19.10.2026: рекламируется, нет в открытом реестре разрешений. 2ГИС: жилой дом (по kn.kz — сдан). Координаты — 2ГИС.",
+  "origin": "import",
+  "quotes": [
+   {
+    "account": "@zhbk_zhilstroi",
+    "adId": "613b4250420e4aa188c42c8c4fa6aaac",
+    "address": null,
+    "date": "2026-10-15T13:40",
+    "name": "КӨКТЕМ",
+    "platform": "instagram",
+    "quote": "В ЖК КӨКТЕМ действует пакетное предложение",
+    "source": "parser"
+   },
+   {
+    "account": "@zhbk_zhilstroi",
+    "adId": "3365217b8bd143859cc193e566dea584",
+    "address": null,
+    "date": "2026-10-12T14:15",
+    "name": "КӨКТЕМ",
+    "platform": "instagram",
+    "quote": "В ЖК КӨКТЕМ доступны парковочные места в тёплом паркинге.",
+    "source": "parser"
+   },
+   {
+    "account": "@zhbk_zhilstroi",
+    "adId": "8c1df58b0ac94248b23a968cc9e17171",
+    "address": null,
+    "date": "2026-10-09T13:30",
+    "name": "КӨКТЕМ",
+    "platform": "instagram",
+    "quote": "В ЖК КӨКТЕМ доступны кладовые помещения",
+    "source": "parser"
+   }
+  ],
+  "saleSignals": {
+   "ads": 9,
+   "concerning": 0,
+   "lastAdAt": "2026-10-12T14:15",
+   "recentConcerning": 0,
+   "types": {
+    "price": 1,
+    "sale": 5
+   }
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 9,
+    "concerning": 0,
+    "lastAdAt": "2026-10-12T14:15",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытых данных: объект известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (9), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "3365217b8bd143859cc193e566dea584",
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама 12.10.2026 (Instagram, @zhbk_zhilstroi); объект назван в рекламе (ответ Claude)"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "sourceUrls": [
+   "https://www.instagram.com/zhbk_zhilstroi/"
+  ],
+  "sources": {
+   "parser": 10
+  },
+  "stageHints": {
+   "completed": 1,
+   "quotes": [
+    {
+     "adId": "6ce8957c7941437a9cfc2cb6879515e8",
+     "quote": "В готовых квартирах ЖК КӨКТЕМ",
+     "value": "completed"
+    }
+   ],
+   "underConstruction": 0,
+   "unknown": 9
+  },
+  "status": "linked"
+ },
+ {
+  "accounts": [
+   "@bs_holding.oskemen",
+   "instagram:@bs_holding.oskemen"
+  ],
+  "addressHint": "г. Усть-Каменогорск, проспект Илияса Есенберлина, 38/3",
+  "adsCount": 9,
+  "aliases": [
+   "BS Holding Easton",
+   "Истон"
+  ],
+  "complexId": "a-iston",
+  "complexName": "Easton",
+  "decidedAt": "2026-10-18T20:26:10+00:00",
+  "decidedBy": "Администратор",
+  "firstSeen": "2026-10-18T20:26:10+00:00",
+  "geo": [],
+  "id": 1,
+  "lastSeen": "2026-10-18T20:37:37+00:00",
+  "name": "Easton",
+  "normKey": "iston",
+  "note": "Найден при подборе источников 19.10.2026: рекламируется, нет в открытом реестре разрешений. 2ГИС: строящийся жилой комплекс. Координаты — 2ГИС.",
+  "origin": "import",
+  "quotes": [
+   {
+    "account": "@bs_holding.oskemen",
+    "adId": "b0aae48ad1464f2cbc25493cfe2b727d",
+    "address": "ул. Крылова, 66",
+    "date": "2026-10-17T17:38",
+    "name": "EASTON",
+    "platform": "instagram",
+    "quote": "Ваша квартира в EASTON ждёт вас.",
+    "source": "parser"
+   },
+   {
+    "account": "@bs_holding.oskemen",
+    "adId": "c75cb1c9eed34558908dff30bb975539",
+    "address": "ул. Крылова, 66",
+    "date": "2026-10-13T11:45",
+    "name": "EASTON",
+    "platform": "instagram",
+    "quote": "Почему именно EASTON?",
+    "source": "parser"
+   },
+   {
+    "account": "@bs_holding.oskemen",
+    "adId": "2c678e52f2ce46c9892218853675d62f",
+    "address": "ул. Крылова, 66",
+    "date": "2026-10-12T16:03",
+    "name": "EASTON",
+    "platform": "instagram",
+    "quote": "жилом комплексе EASTON",
+    "source": "parser"
+   }
+  ],
+  "saleSignals": {
+   "ads": 9,
+   "concerning": 1,
+   "lastAdAt": "2026-10-17T17:38",
+   "recentConcerning": 1,
+   "types": {
+    "booking": 1,
+    "discount": 4,
+    "price": 1,
+    "sale": 7
+   }
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 9,
+    "concerning": 1,
+    "lastAdAt": "2026-10-17T17:38",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Подозрение: продажа без разрешения",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытых данных: объект известен только по рекламе"
+    },
+    {
+     "adId": "9107be312ace4f3a9a9d4aeb58e8ee1c",
+     "kind": null,
+     "quote": "забронировать квартиру своей мечты на выгодных условиях",
+     "signal": "booking",
+     "text": "Реклама 07.10.2026 (Instagram, @bs_holding.oskemen): бронь — «забронировать квартиру своей мечты на выгодных условиях»; объект назван в рекламе (ответ Claude)"
+    },
+    {
+     "adId": "9107be312ace4f3a9a9d4aeb58e8ee1c",
+     "kind": null,
+     "quote": "открыто показываем все испытания на стройке",
+     "signal": null,
+     "text": "Стадия по рекламе: строится — «открыто показываем все испытания на стройке»"
+    }
+   ],
+   "status": "suspect",
+   "variant": null
+  },
+  "sourceUrls": [
+   "https://2gis.kz/ust-kamenogorsk/firm/70000001109656807"
+  ],
+  "sources": {
+   "parser": 9
+  },
+  "stageHints": {
+   "completed": 0,
+   "quotes": [
+    {
+     "adId": "9107be312ace4f3a9a9d4aeb58e8ee1c",
+     "quote": "открыто показываем все испытания на стройке",
+     "value": "under_construction"
+    },
+    {
+     "adId": "d2bba2cc003d47a8bbb69645e9f633e8",
+     "quote": "EASTON заметно меняется с каждым этапом строительства",
+     "value": "under_construction"
+    },
+    {
+     "adId": "a37a9d816ca94ce3a9cb5e9bb11b32e8",
+     "quote": "как строится ваш будущий дом",
+     "value": "under_construction"
+    }
+   ],
+   "underConstruction": 3,
+   "unknown": 6
+  },
+  "status": "linked"
+ },
+ {
+  "accounts": [
+   "krisha.kz / «Eco Polis»"
+  ],
+  "addressHint": "г. Усть-Каменогорск, проспект Каныша Сатпаева, 53/3",
+  "adsCount": 7,
+  "aliases": [
+   "Эко Полис",
+   "EcoPolis"
+  ],
+  "complexId": "a-eko-polis",
+  "complexName": "Eco Polis",
+  "decidedAt": "2026-10-18T20:26:10+00:00",
+  "decidedBy": "Администратор",
+  "firstSeen": "2026-10-18T20:26:10+00:00",
+  "geo": [],
+  "id": 6,
+  "lastSeen": "2026-10-18T20:30:14+00:00",
+  "name": "Eco Polis",
+  "normKey": "eko polis",
+  "note": "Найден при подборе источников 19.10.2026: рекламируется, нет в открытом реестре разрешений. 2ГИС: строящийся; на Krisha — сдан, есть объявления от застройщика. Координаты — 2ГИС.",
+  "origin": "import",
+  "quotes": [
+   {
+    "account": "krisha.kz / «Eco Polis»",
+    "adId": "bee67f0ac83f42fcaa85254789aabbc7",
+    "address": "Каныша Сатпаева 53/3",
+    "date": "2026-10-18T23:12",
+    "name": "Eco Polis",
+    "platform": "krisha",
+    "quote": "жил. комплекс Eco Polis, 16 этажей, 2025 г.п.",
+    "source": "parser"
+   },
+   {
+    "account": "krisha.kz / «Eco Polis»",
+    "adId": "2ffccfd9f3414dd5a6c35c13b610f5f7",
+    "address": "Каныша Сатпаева — 53/3",
+    "date": "2026-10-18T23:12",
+    "name": "Eco Polis",
+    "platform": "krisha",
+    "quote": "жил. комплекс Eco Polis, 16 этажей, 2025 г.п.",
+    "source": "parser"
+   },
+   {
+    "account": "krisha.kz / «Eco Polis»",
+    "adId": "af6166dd44f94e80ac226042840af225",
+    "address": "Каныша Сатпаева 53/3",
+    "date": "2026-10-18T23:12",
+    "name": "Eco Polis",
+    "platform": "krisha",
+    "quote": "жил. комплекс Eco Polis, 16 этажей, 2025 г.п.",
+    "source": "parser"
+   }
+  ],
+  "saleSignals": {
+   "ads": 7,
+   "concerning": 0,
+   "lastAdAt": "2026-10-18T23:12",
+   "recentConcerning": 0,
+   "types": {
+    "price": 2,
+    "sale": 7
+   }
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 7,
+    "concerning": 0,
+    "lastAdAt": "2026-10-18T23:12",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытых данных: объект известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (7), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "bee67f0ac83f42fcaa85254789aabbc7",
+     "kind": null,
+     "quote": "3-комнатная квартира · 86.4 м²",
+     "signal": "sale",
+     "text": "Реклама 18.10.2026 (Krisha.kz, krisha.kz / «Eco Polis»): продажа — «3-комнатная квартира · 86.4 м²»; объект назван в рекламе (ответ Claude)"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "sourceUrls": [
+   "https://2gis.kz/ust-kamenogorsk/firm/70000001105687815"
+  ],
+  "sources": {
+   "parser": 7
+  },
+  "stageHints": {
+   "completed": 0,
+   "quotes": [],
+   "underConstruction": 0,
+   "unknown": 7
+  },
+  "status": "linked"
+ },
+ {
+  "accounts": [
+   "@premiumstroy.uka",
+   "instagram:@premiumstroy.uka"
+  ],
+  "addressHint": "г. Усть-Каменогорск, проспект Казыбек би, 1/3",
+  "adsCount": 5,
+  "aliases": [
+   "Музтау",
+   "Мұзтау"
+  ],
+  "complexId": "a-mustau",
+  "complexName": "Muztau",
+  "decidedAt": "2026-10-18T20:26:10+00:00",
+  "decidedBy": "Администратор",
+  "firstSeen": "2026-10-18T20:26:10+00:00",
+  "geo": [],
+  "id": 2,
+  "lastSeen": "2026-10-18T20:44:10+00:00",
+  "name": "Muztau",
+  "normKey": "mustau",
+  "note": "Найден при подборе источников 19.10.2026: рекламируется, нет в открытом реестре разрешений. 2ГИС: строящийся жилой дом. Координаты — 2ГИС.",
+  "origin": "import",
+  "quotes": [
+   {
+    "account": "@premiumstroy.uka",
+    "adId": "a2ceae792b884fe1a074d2e69261f955",
+    "address": null,
+    "date": "2026-10-02T12:15",
+    "name": "Muztau",
+    "platform": "instagram",
+    "quote": "В ЖК Muztau на проспекте Сатпаева",
+    "source": "parser"
+   },
+   {
+    "account": "@premiumstroy.uka",
+    "adId": "1656ca5d547e45a8a7f75ba1643c2709",
+    "address": "ул Казыбек би 1/3",
+    "date": "2026-09-25T19:59",
+    "name": "Muztau",
+    "platform": "instagram",
+    "quote": "ЖК Muztau — ваш новый статус и комфорт на первой линии проспекта Сатпаева!",
+    "source": "parser"
+   },
+   {
+    "account": "@premiumstroy.uka",
+    "adId": "0187cf0ea52b4879ae9e98674d847f0a",
+    "address": "ул Казыбек би 1/3",
+    "date": "2026-09-22T15:27",
+    "name": "Muztau",
+    "platform": "instagram",
+    "quote": "ЖК Muztau",
+    "source": "parser"
+   }
+  ],
+  "saleSignals": {
+   "ads": 5,
+   "concerning": 0,
+   "lastAdAt": "2026-10-02T12:15",
+   "recentConcerning": 0,
+   "types": {
+    "price": 1,
+    "sale": 3
+   }
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 5,
+    "concerning": 0,
+    "lastAdAt": "2026-10-02T12:15",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытых данных: объект известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (5), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "a2ceae792b884fe1a074d2e69261f955",
+     "kind": null,
+     "quote": "В ЖК Muztau на проспекте Сатпаева места хватит для любых масштабов",
+     "signal": "sale",
+     "text": "Реклама 02.10.2026 (Instagram, @premiumstroy.uka): продажа — «В ЖК Muztau на проспекте Сатпаева места хватит для любых масштабов»; объект назван в рекламе (ответ Claude)"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "sourceUrls": [
+   "https://2gis.kz/ust-kamenogorsk/firm/70000001090417611"
+  ],
+  "sources": {
+   "parser": 5
+  },
+  "stageHints": {
+   "completed": 0,
+   "quotes": [
+    {
+     "adId": "a2ceae792b884fe1a074d2e69261f955",
+     "quote": "пока вы выбираете между 50 и 100 кв.м, работа на объекте кипит!",
+     "value": "under_construction"
+    },
+    {
+     "adId": "1656ca5d547e45a8a7f75ba1643c2709",
+     "quote": "Наша стройка не останавливается ни на минуту, и мы уже вышли на финишную прямую внутренних работ!",
+     "value": "under_construction"
+    },
+    {
+     "adId": "0187cf0ea52b4879ae9e98674d847f0a",
+     "quote": "в 1-м и 3-м блоках уже вовсю заливают идеальную стяжку пола",
+     "value": "under_construction"
+    }
+   ],
+   "underConstruction": 4,
+   "unknown": 1
+  },
+  "status": "linked"
+ },
+ {
+  "accounts": [
+   "@ceogroup.ukg",
+   "instagram:@ceogroup.ukg"
+  ],
+  "addressHint": "г. Усть-Каменогорск, проспект Каныша Сатпаева, 13в",
+  "adsCount": 1,
+  "aliases": [
+   "Номад"
+  ],
+  "complexId": "a-nomad",
+  "complexName": "Nomad",
+  "decidedAt": "2026-10-18T20:26:10+00:00",
+  "decidedBy": "Администратор",
+  "firstSeen": "2026-10-18T20:26:10+00:00",
+  "geo": [],
+  "id": 8,
+  "lastSeen": "2026-10-18T20:35:14+00:00",
+  "name": "Nomad",
+  "normKey": "nomad",
+  "note": "Найден при подборе источников 19.10.2026: рекламируется, нет в открытом реестре разрешений. Сдан; продажи ведёт CEO Group. Координаты — 2ГИС.",
+  "origin": "import",
+  "quotes": [
+   {
+    "account": "@ceogroup.ukg",
+    "adId": "648cbbc019cb4f0484cb4a173ee8e9f5",
+    "address": null,
+    "date": "2026-10-03T16:35",
+    "name": "Nomad",
+    "platform": "instagram",
+    "quote": "Обзор квартиры в ЖК «Nomad»",
+    "source": "parser"
+   }
+  ],
+  "saleSignals": {
+   "ads": 1,
+   "concerning": 0,
+   "lastAdAt": "2026-10-03T16:35",
+   "recentConcerning": 0,
+   "types": {}
+  },
+  "screening": {
+   "basis": "hypothesis",
+   "counts": {
+    "ads": 1,
+    "concerning": 0,
+    "lastAdAt": "2026-10-03T16:35",
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытых данных: объект известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама есть (1), но без признаков приёма денег за последние 120 дней"
+    },
+    {
+     "adId": "648cbbc019cb4f0484cb4a173ee8e9f5",
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Реклама 03.10.2026 (Instagram, @ceogroup.ukg); объект назван в рекламе (ответ Claude)"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "sourceUrls": [
+   "https://2gis.kz/ust-kamenogorsk/firm/70000001094684176"
+  ],
+  "sources": {
+   "parser": 1
+  },
+  "stageHints": {
+   "completed": 0,
+   "quotes": [],
+   "underConstruction": 0,
+   "unknown": 1
+  },
+  "status": "linked"
+ },
+ {
+  "accounts": [],
+  "addressHint": "г. Усть-Каменогорск, проспект Илияса Есенберлина, 43 Блок 2",
+  "adsCount": 0,
+  "aliases": [
+   "Гран Виа"
+  ],
+  "complexId": "a-gran-via",
+  "complexName": "Gran Via",
+  "decidedAt": "2026-10-18T20:26:10+00:00",
+  "decidedBy": "Администратор",
+  "firstSeen": "2026-10-18T20:26:10+00:00",
+  "geo": [],
+  "id": 3,
+  "lastSeen": "2026-10-18T20:26:10+00:00",
+  "name": "Gran Via",
+  "normKey": "gran via",
+  "note": "Найден при подборе источников 19.10.2026: рекламируется, нет в открытом реестре разрешений. 2ГИС: строящийся жилой комплекс (блок 2). Координаты — 2ГИС.",
+  "origin": "import",
+  "quotes": [],
+  "saleSignals": {
+   "ads": 0,
+   "concerning": 0,
+   "lastAdAt": null,
+   "recentConcerning": 0,
+   "types": {}
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 0,
+    "concerning": 0,
+    "lastAdAt": null,
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытых данных: объект известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Карточка создана по рекламе; публикации к ЖК пока не отнесены"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "sourceUrls": [
+   "https://2gis.kz/ust-kamenogorsk/firm/70000001110142373"
+  ],
+  "sources": {},
+  "stageHints": {
+   "completed": 0,
+   "quotes": [],
+   "underConstruction": 0,
+   "unknown": 0
+  },
+  "status": "linked"
+ },
+ {
+  "accounts": [],
+  "addressHint": "г. Усть-Каменогорск, проспект Илияса Есенберлина, 28/1",
+  "adsCount": 0,
+  "aliases": [
+   "Прайм Хоум"
+  ],
+  "complexId": "a-prim-home",
+  "complexName": "Prime Home",
+  "decidedAt": "2026-10-18T20:26:10+00:00",
+  "decidedBy": "Администратор",
+  "firstSeen": "2026-10-18T20:26:10+00:00",
+  "geo": [],
+  "id": 4,
+  "lastSeen": "2026-10-18T20:26:10+00:00",
+  "name": "Prime Home",
+  "normKey": "prim home",
+  "note": "Найден при подборе источников 19.10.2026: рекламируется, нет в открытом реестре разрешений. 2ГИС: строящийся жилой комплекс. Координаты — 2ГИС.",
+  "origin": "import",
+  "quotes": [],
+  "saleSignals": {
+   "ads": 0,
+   "concerning": 0,
+   "lastAdAt": null,
+   "recentConcerning": 0,
+   "types": {}
+  },
+  "screening": {
+   "basis": "confirmed",
+   "counts": {
+    "ads": 0,
+    "concerning": 0,
+    "lastAdAt": null,
+    "windowDays": 120
+   },
+   "disclaimer": "Предварительная автоматическая оценка по рекламе и открытым данным — не вывод о нарушении",
+   "inRegistry": false,
+   "label": "Требует проверки",
+   "reasons": [
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Нет в открытых данных: объект известен только по рекламе"
+    },
+    {
+     "adId": null,
+     "kind": null,
+     "quote": null,
+     "signal": null,
+     "text": "Карточка создана по рекламе; публикации к ЖК пока не отнесены"
+    }
+   ],
+   "status": "check",
+   "variant": null
+  },
+  "sourceUrls": [
+   "https://2gis.kz/ust-kamenogorsk/firm/70000001098299101"
+  ],
+  "sources": {},
+  "stageHints": {
+   "completed": 0,
+   "quotes": [],
+   "underConstruction": 0,
+   "unknown": 0
+  },
+  "status": "linked"
+ }
+]

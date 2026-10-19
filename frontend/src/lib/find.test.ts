@@ -8,9 +8,10 @@ const c = { name: 'Нұр Әлем', address: 'ул. Шакарима, 88', dist
 const dev = { name: 'ТОО «Ертіс Строй Инвест»', bin: '180840012345' } as Developer
 const o = { name: 'МЖК "Renesans"', address: 'г. Усть-Каменогорск, пр. И. Есенберлина, д. 20/1', developer: 'ТОО "Mercury Construction"', developerBin: '220740026935' } as RegistryObject
 
-// выдача по демо-набору и открытым данным — как в шапке: точные совпадения, а по скелету — только когда точных нет
+// выдача по тестовому сиду (shared/testdata/demo_seed.json) и открытым данным — как в шапке: точные совпадения, а по скелету —
+// только когда точных нет
 const read = <T>(name: string): T => JSON.parse(readFileSync(fileURLToPath(new URL(`../../../shared/${name}`, import.meta.url)), 'utf-8')) as T
-const seed = read<{ complexes: Complex[]; developers: Developer[] }>('seed_data.json')
+const seed = read<{ complexes: Complex[]; developers: Developer[] }>('testdata/demo_seed.json')
 const reg = read<{ objects: RegistryObject[]; withoutCoords: RegistryObject[] }>('registry_ust_kamenogorsk.json')
 const rows = seed.complexes.map((x) => ({ c: x, dev: seed.developers.find((d) => d.id === x.developerId) }))
 const objects = [...reg.objects, ...reg.withoutCoords]
@@ -51,7 +52,7 @@ describe('поиск ЖК и открытых данных', () => {
 })
 
 describe('номера публикаций и сигналов', () => {
-  it('демо — по числу, добавленные вручную — весь id: с демо не пересекаются', () => {
+  it('короткие (тестовый сид) — по числу, добавленные вручную — весь id: с короткими не пересекаются', () => {
     expect(adKey('a7')).toBe('AD-007')
     expect(adKey('a12')).toBe('AD-012')
     expect(adKey('m1a2b3c4')).toBe('AD-M1A2B3C4')
@@ -70,7 +71,7 @@ describe('номера публикаций и сигналов', () => {
     expect(codeQuery('Сатпаева 14')).toBeNull()
     expect(codeQuery('230240077003')).toBeNull()
   })
-  it('публикация под номер: демо — целиком, ручная — и по началу', () => {
+  it('публикация под номер: короткий — целиком, ручной — и по началу', () => {
     const hit = (q: string, id: string) => { const k = codeQuery(q); return k?.kind === 'ad' && adHit(k.key, id) }
     expect(hit('AD-7', 'a7')).toBe(true)
     expect(hit('AD-1', 'a12')).toBe(false)

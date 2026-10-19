@@ -8,7 +8,7 @@ import { rankIn } from './search'
 /** «ЖК»/«МЖК» в запросе не мешают: в названиях источников этого слова может не быть */
 const bare = (q: string) => q.replace(/(^|[\s«"])(м?жк|m?zhk)(?=[\s«»"]|$)/giu, '$1')
 
-/** ЖК демо-набора: как есть — название, адрес, застройщик, БИН застройщика, район; по скелету — только название и застройщик
+/** ЖК на контроле: как есть — название, адрес, застройщик, БИН застройщика, район; по скелету — только название и застройщик
  *  (по адресу скелет ловит случайное: «Ертис» ≈ «Протозанова») */
 export const rankComplex = (q: string, c: Complex, dev?: Developer) =>
   rankIn(bare(q), [c.name, c.address, dev?.name, dev?.bin, c.district], [c.name, dev?.name])
@@ -27,7 +27,8 @@ export function finder<T>(q: string, xs: readonly T[], rankOf: (q: string, x: T)
   return (x) => top > 0 && (r.get(x) ?? rankOf(q, x)) === top
 }
 
-/** Номер публикации: демо a7 → AD-007; добавленные вручную (m1a2b3c4) — весь id: AD-M1A2B3C4, с демо не пересекается */
+/** Номер публикации: короткий id тестового набора a7 → AD-007; добавленные вручную (m1a2b3c4) — весь id: AD-M1A2B3C4, с коротким
+ *  не пересекается. Номер собранной публикации (AD- и 8 символов) — components/ui adKey */
 export function adKey(id: string) {
   const n = /^a(\d+)$/i.exec(id)
   return n ? `AD-${n[1].padStart(3, '0')}` : `AD-${id.toUpperCase()}`
@@ -48,7 +49,7 @@ export function codeQuery(q: string): Code | null {
   return sig ? { kind: 'signal', n: Number(sig[1]) } : null
 }
 
-/** Публикация под номер из codeQuery: демо-номер — целиком, номер ручной — и по началу (AD-M1A → AD-M1A2B3C4) */
+/** Публикация под номер из codeQuery: короткий номер — целиком, номер ручной — и по началу (AD-M1A → AD-M1A2B3C4) */
 export function adHit(key: string, id: string) {
   const k = adKey(id)
   return k === key || (/^AD-[A-Z]/.test(key) && k.startsWith(key))

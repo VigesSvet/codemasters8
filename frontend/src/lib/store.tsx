@@ -1,27 +1,29 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { adKey } from '../components/ui'
-import * as demo from '../data/demo'
 import { offlineObject, offlineRegistry, offlineSources } from '../data/openData'
+import { READ_ONLY, loadSnapshot, snapshotSource, type RiskRow, type SnapshotMeta } from '../data/snapshot'
 import type {
   Ad, AdAnalysis, AdScore, AdStatus, AiEval, Analysis, AnalyzeInput, Analyst, Appeal, AuditEvent, Complex, Developer, ImportReport, OcrResult,
-  OcrStatus, RegistryCard, RegistryList, RiskResult, Signal, SignalSummary, SourceInfo, TermsReview,
+  OcrStatus, RegistryCard, RegistryList, RiskResult, Signal, SignalSummary, SourceInfo, Stats, TermsReview,
 } from '../data/types'
 import { decisionPatch } from './ai'
-import { API, ApiError, apiGet, apiPatch, apiPost, apiUpload, onReach } from './api'
-import { auditPath, linkLine, statusLine, type AuditScope, type RequestTopic } from './audit'
+import { API, ApiError, apiDelete, apiGet, apiPatch, apiPost, apiUpload, onReach } from './api'
+import { auditPath, type AuditScope, type RequestTopic } from './audit'
 import { keepLocalPreviews } from './media'
 import { scoreAd, scoreComplex } from './risk'
 import { onSessionChange, readSession, writeSession, type User } from './session'
 
-export type Mode = 'loading' | 'api' | 'demo'
+export type Mode = 'loading' | 'api' | 'snapshot'
 export type { AuditScope, User }
 
 /** Последняя неуспешная операция: что не получилось (message), почему (detail), status 0 — нет связи */
 export interface ApiErrorInfo { message: string; at: string; detail?: string; status?: number }
 
 interface Store {
-  /** api — данные с бэкенда; demo — встроенный набор из shared/seed_data.json */
+  /** api — данные с бэкенда; snapshot — сервер недоступен: офлайн-копия стартового набора (shared/snapshot), только просмотр */
   mode: Mode
+  /** Офлайн-копия: дата данных и число записей; null — копия не открыта */
+  snapshot: SnapshotMeta | null
   /** Ошибка последней операции — баннер под шапкой; «Скрыть» убирает только его */
   apiError: ApiErrorInfo | null
   clearError: () => void
@@ -38,36 +40,42 @@ interface Store {
   complexes: Complex[]
   developers: Developer[]
   appeals: Appeal[]
-  /** Вошедший сотрудник (демо-вход); автор всех действий */
+  /** Вошедший сотрудник (вход пилота без пароля); автор всех действий */
   user: User | null
   /** Сотрудник сам вышел (здесь или в соседней вкладке): вход — без возврата на его страницу */
   signedOut: boolean
-  /** Кого можно выбрать при входе: /api/analysts, в demo — seed.analysts */
+  /** Кого можно выбрать при входе: /api/analysts, в офлайн-копии — её список */
   analysts: Analyst[]
   login: (u: User) => void
   logout: () => void
-  /** Риск ЖК: с бэкенда (/api/risk), а без него — локально той же моделью */
+  /** Сводка сервера (/api/stats): «Проверка по рекламе» по ЖК и застройщикам, объекты из рекламы; в офлайн-копии — из неё.
+   *  null — нет ответа */
+  stats: Stats | null
+  /** Перечитать ЖК, застройщиков и сводку — «Проверку по рекламе» после решений по объектам из рекламы и новой рекламы.
+   *  Офлайн-копия — ничего не делает; ошибка — без баннера, остаются прежние данные */
+  refreshScreening: () => Promise<void>
+  /** Риск ЖК: с бэкенда (/api/risk) или из офлайн-копии (тот же ответ сервера), а без них — локально той же моделью */
   riskOf: (c: Complex) => RiskResult
   /** Оценка публикации локально; связанный ЖК берётся из complexes */
   adScoreOf: (a: Ad) => AdScore
   /** Перечитать риск; при ошибке — локальный расчёт и баннер (не отклоняется) */
   refreshRisk: () => Promise<void>
   /** Перечитать ленту публикаций с сервера (сборщик или бот добавили, изменили публикации, закончился их анализ), затем риск;
-   *  страницы перечитают свои загрузки (revision). Демо-режим — ничего не делает. Не отклоняется: ошибка — в баннер.
+   *  страницы перечитают свои загрузки (revision). Офлайн-копия — ничего не делает. Не отклоняется: ошибка — в баннер.
    *  quiet — для опроса: ошибка без баннера, лента не изменилась — ни риск, ни revision не трогаются.
-   *  true — лента прочитана с сервера; false — демо-режим или сервер не ответил */
+   *  true — лента прочитана с сервера; false — офлайн-копия или сервер не ответил */
   refreshAds: (opts?: { quiet?: boolean }) => Promise<boolean>
-  /** ЖК изменился на сервере (координаты перенесены из 2ГИС): patch — сразу в список ЖК (карта, карточка, список), затем ЖК
-   *  перечитывается с сервера. Не отклоняется: без ответа остаётся patch */
+  /** ЖК изменился на сервере (координаты перенесены из 2ГИС) или создан (по объекту из рекламы): patch — сразу в список ЖК
+   *  (карта, карточка, список), затем ЖК перечитывается с сервера; нового в списке — добавляет. Не отклоняется: без ответа остаётся patch */
   refreshComplex: (id: string, patch?: Partial<Pick<Complex, 'lat' | 'lng'>>) => Promise<void>
-  /** Смена статуса от имени user.name. false — не сохранено: изменение откатано, ошибка в apiError */
+  /** Смена статуса от имени user.name. false — не сохранено: изменение откатано, ошибка в apiError (офлайн-копия — тост) */
   setAdStatus: (id: string, s: AdStatus, opts?: { assignee?: string; comment?: string }) => Promise<boolean>
-  /** Новая публикация. false — не сохранена: убрана из ленты, ошибка в apiError */
+  /** Новая публикация. false — не сохранена: убрана из ленты, ошибка в apiError (офлайн-копия — тост) */
   addAd: (a: Ad) => Promise<boolean>
   /** Привязка публикации к ЖК аналитиком (null — снять): привязка становится фактом от имени user.name, событие в журнале.
-   *  false — не сохранено: привязка откатана, ошибка в apiError */
+   *  false — не сохранено: привязка откатана, ошибка в apiError (офлайн-копия — тост) */
   linkAd: (id: string, complexId: string | null) => Promise<boolean>
-  // ИИ-анализ (ТЗ §6) — выполняется на сервере; в demo методы отклоняются с ApiError(0, …) без баннера
+  // ИИ-анализ (ТЗ §6) — выполняется на сервере; в офлайн-копии методы отклоняются с ApiError(0, …) без баннера
   /** Анализ черновика без записи: условия оплаты, гипотезы ЖК */
   analyze: (input: AnalyzeInput) => Promise<Analysis>
   /** Анализ сохранённой публикации: без отклонённых гипотез, с решениями аналитика */
@@ -83,15 +91,39 @@ interface Store {
   ocrStatus: () => Promise<OcrStatus>
   /** Прогон ИИ на новых текстах (shared/ai_cases.json) */
   aiEval: () => Promise<AiEval>
-  /** Журнал с сервера (по возрастанию времени); в demo — ApiError(0, …) */
+  /** Журнал с сервера (по возрастанию времени); в офлайн-копии — ApiError(0, …) */
   getAudit: (scope: AuditScope) => Promise<AuditEvent[]>
-  /** Комментарий к публикации; в demo — только в журнал этой сессии */
+  /** Комментарий к публикации; в офлайн-копии — ApiError(0, READ_ONLY) */
   addComment: (adId: string, text: string) => Promise<AuditEvent>
   /** Внутренний запрос сведений по ЖК — запись в журнале объекта, во внешние органы не уходит; только с бэкендом */
   requestInfo: (complexId: string, topics: RequestTopic[], comment?: string) => Promise<AuditEvent>
-  /** demo: действия этой сессии — на сервере не сохраняются */
-  sessionLog: AuditEvent[]
-  // модуль 05 — только с бэкендом; в demo методы отклоняются с ApiError(0, …)
+  // Сверка сведений аналитиком по ЖК (сервер: app.verification) — только с бэкендом; в офлайн-копии — ApiError(0, «доступно с
+  // сервером»). author — user.name. Ответ ЖК сразу попадает в список, затем риск и «Проверка по рекламе» перечитываются
+  // (revision растёт — журнал объекта тоже). Ошибки формы (422, файл 413/415/429/507, 409) показывает окно, не баннер
+  /** Документ основания: «есть» / «нет» с источником или «нет сведений» (снять сверку) */
+  verifyBasis: (complexId: string, body: Record<string, unknown>) => Promise<Complex>
+  /** Опубликованный перечень ГАСК (O1) */
+  checkPublishedList: (complexId: string, body: Record<string, unknown>) => Promise<Complex>
+  /** Заявленная или подтверждённая готовность (R5) */
+  setReadiness: (complexId: string, body: Record<string, unknown>) => Promise<Complex>
+  /** «Обращений нет — сверено» (R4) */
+  checkAppeals: (complexId: string, body: Record<string, unknown>) => Promise<Complex>
+  /** Обращение граждан — ждёт проверки */
+  addAppeal: (complexId: string, body: Record<string, unknown>) => Promise<Appeal>
+  /** Решение по обращению: подтвердить или отклонить */
+  decideAppeal: (appealId: string, action: 'verify' | 'reject', comment?: string) => Promise<Appeal>
+  /** Снимок площадки: файл и поля формы (дата, источник, активность, примечание) */
+  addSitePhoto: (complexId: string, file: File, fields: Record<string, string>) => Promise<Complex>
+  // Решение аналитика по «Проверке по рекламе» (сервер: app.decisions) — как сверка: только с бэкендом, ЖК из ответа — сразу
+  // в список, затем застройщики, сводка и журнал
+  /** «Объект сдан»: акт №, дата акта, источник, ссылка, комментарий */
+  markCommissioned: (complexId: string, body: Record<string, unknown>) => Promise<Complex>
+  /** «Проверено — замечаний нет»: что проверено, источник, ссылка, комментарий */
+  decideScreening: (complexId: string, body: Record<string, unknown>) => Promise<Complex>
+  /** Отменить действующее или снятое рекламой решение: оценка снова автоматическая */
+  cancelDecision: (complexId: string, body: Record<string, unknown>) => Promise<Complex>
+  // модуль 05: реестр сигналов в офлайн-копии — из неё (только просмотр); сигнал, решение и PDF — только с бэкендом,
+  // в офлайн-копии методы отклоняются с ApiError(0, …)
   signals: SignalSummary[]
   /** Перечитать реестр сигналов; ошибка — в apiError (не отклоняется) */
   refreshSignals: () => Promise<void>
@@ -101,8 +133,9 @@ interface Store {
   decideSignal: (id: number, action: 'confirm' | 'return', comment: string) => Promise<Signal>
   signalPdfUrl: (id: number) => string
   // открытые данные (ТЗ §4) — записи источников на сервере; риск, зоны и сигналы для них не считаются.
-  // В demo — встроенная копия shared/registry_ust_kamenogorsk.json (те же объекты, что API после сида); импорт — только с бэкендом
-  /** Источники: что, сколько записей, когда собрано; последним — демо-набор */
+  // В офлайн-копии — встроенная копия shared/registry_ust_kamenogorsk.json (те же объекты, что API после загрузки); импорт — только
+  // с бэкендом
+  /** Источники: что, сколько записей, когда собрано; в офлайн-копии последней строкой — сама копия */
   sources: () => Promise<SourceInfo[]>
   /** Объекты открытых данных: с координатами и без; q — поиск по названию, адресу, застройщику, БИН */
   registry: (q?: string) => Promise<RegistryList>
@@ -117,20 +150,16 @@ interface Store {
 
 const Ctx = createContext<Store | null>(null)
 
-const NO_SIGNALS = 'Сигналы сохраняются на сервере — запустите бэкенд (./dev.sh)'
-const NO_AUDIT = 'Журнал хранится на сервере — в демо-режиме без бэкенда он недоступен (запустите ./dev.sh)'
+const NO_SIGNALS = 'Сигналы формируются и открываются на сервере — в офлайн-копии доступен только их список (запустите ./dev.sh)'
+const NO_AUDIT = 'Журнал хранится на сервере — в офлайн-копии его нет (запустите ./dev.sh)'
 const NO_USER = 'Войдите, чтобы действовать от своего имени'
-const NO_AI = 'Анализ ИИ и OCR выполняются на сервере — в демо-режиме без бэкенда они недоступны (запустите ./dev.sh)'
-/** Демо-набор как источник — для страницы источников без бэкенда */
-const DEMO_SOURCE: SourceInfo = {
-  code: 'demo', name: 'Демонстрационный набор (вымышленные ЖК)', records: demo.complexes.length, objects: demo.complexes.length,
-  note: 'ЖК, застройщики, публикации и обращения вымышлены',
-  counts: { complexes: demo.complexes.length, developers: demo.developers.length, ads: demo.ads.length, appeals: demo.appeals.length },
-}
+const NO_AI = 'Анализ ИИ и OCR выполняются на сервере — в офлайн-копии доступны только сохранённые результаты (запустите ./dev.sh)'
 /** Ошибки файла скриншота: формат, размер, битое изображение — их показывает форма */
 const FILE_ERRORS = new Set([413, 415, 422])
+const NO_VERIFY = 'Сверка сведений сохраняется на сервере — в офлайн-копии только просмотр (запустите ./dev.sh)'
+/** Ошибки окна сверки: проверка полей, файл снимка, лимит загрузок, решение другого аналитика — их показывает окно */
+const FORM_ERRORS = new Set([409, 413, 415, 422, 429, 507])
 
-type RiskRow = RiskResult & { complexId: string }
 const riskMap = (rows: RiskRow[]) => new Map<string, RiskResult>(rows.map(({ complexId, ...r }) => [complexId, r]))
 const summaryOf = ({ id, code, complexId, complexName, status, score, zone, needsCheck, hits, createdAt, createdBy, decidedAt, decidedBy }: Signal): SignalSummary =>
   ({ id, code, complexId, complexName, status, score, zone, needsCheck, hits, createdAt, createdBy, decidedAt, decidedBy })
@@ -138,11 +167,14 @@ const stamp = () => new Date().toISOString()
 const asApiError = (e: unknown) => (e instanceof ApiError ? e : new ApiError(-1, e instanceof Error ? e.message : String(e)))
 const enc = encodeURIComponent
 
-/** Все данные с бэкенда одним заходом; ЖК — обязательная часть, остальное может не загрузиться */
+/** Все данные с бэкенда одним заходом; ЖК — обязательная часть, остальное может не загрузиться.
+ *  /stats — необязательная сводка: сервер старой версии её не знает, баннера об этом нет */
 const fetchAll = () => Promise.allSettled([
   apiGet<Complex[]>('/complexes'), apiGet<Ad[]>('/ads'), apiGet<Developer[]>('/developers'),
   apiGet<Appeal[]>('/appeals'), apiGet<RiskRow[]>('/risk'), apiGet<SignalSummary[]>('/signals'), apiGet<Analyst[]>('/analysts'),
+  apiGet<Stats>('/stats'),
 ] as const)
+const isStats = (x: unknown): x is Stats => !!x && typeof x === 'object' && !Array.isArray(x)
 type Fetched = Awaited<ReturnType<typeof fetchAll>>
 
 /** Оценка публикаций с кэшем по объекту (объявления в сторе неизменяемы) — на один набор ЖК */
@@ -157,26 +189,29 @@ function adScorer(complexById: Map<string, Complex>) {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<Mode>('loading')
-  const [ads, setAds] = useState<Ad[]>(demo.ads)
-  const [complexes, setComplexes] = useState<Complex[]>(demo.complexes)
-  const [developers, setDevelopers] = useState<Developer[]>(demo.developers)
-  const [appeals, setAppeals] = useState<Appeal[]>(demo.appeals)
-  const [analysts, setAnalysts] = useState<Analyst[]>(demo.analysts)
+  // до ответа сервера — пусто: данные приходят с сервера или из офлайн-копии
+  const [ads, setAds] = useState<Ad[]>([])
+  const [complexes, setComplexes] = useState<Complex[]>([])
+  const [developers, setDevelopers] = useState<Developer[]>([])
+  const [appeals, setAppeals] = useState<Appeal[]>([])
+  const [analysts, setAnalysts] = useState<Analyst[]>([])
+  const [snapshot, setSnapshot] = useState<SnapshotMeta | null>(null)
   const [user, setUser] = useState<User | null>(() => readSession())
   const [signedOut, setSignedOut] = useState(false)
   const [apiRisk, setApiRisk] = useState<Map<string, RiskResult>>(() => new Map())
   const [signals, setSignals] = useState<SignalSummary[]>([])
+  const [stats, setStats] = useState<Stats | null>(null)
   const [apiError, setApiError] = useState<ApiErrorInfo | null>(null)
   const [lastSync, setLastSync] = useState<string | null>(null)
   const [offline, setOffline] = useState(false)
   const [revision, setRevision] = useState(0)
-  const [sessionLog, setSessionLog] = useState<AuditEvent[]>([])
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   // Мутации, начатые до конца начальной загрузки: её ответ затрёт их результат — после неё перечитываем /ads и /risk
   const booted = useRef(false)
   const early = useRef<Promise<unknown>[]>([])
-  const localId = useRef(0)
+  // поколение данных: связь восстановлена — копия, догружающаяся после этого, сервер не затирает
+  const gen = useRef(0)
 
   /** Ошибка операции — в баннер; status 0 — нет связи с сервером */
   const fail = (message: string, e: unknown) => {
@@ -185,7 +220,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   /** Применить загруженное. true — API отвечает (частичные потери — в apiError); иначе ошибка загрузки ЖК */
-  const apply = ([c, a, d, ap, r, s, an]: Fetched): true | ApiError => {
+  const apply = ([c, a, d, ap, r, s, an, st]: Fetched): true | ApiError => {
     if (c.status === 'rejected') return asApiError(c.reason)
     setComplexes(c.value)
     if (a.status === 'fulfilled') setAds(a.value)
@@ -195,6 +230,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setApiRisk(r.status === 'fulfilled' ? riskMap(r.value) : new Map())
     if (s.status === 'fulfilled') setSignals(s.value)
     if (an.status === 'fulfilled' && an.value.length) setAnalysts(an.value)
+    setStats(st.status === 'fulfilled' && isStats(st.value) ? st.value : null)
     const lost = ([['публикации', a], ['застройщики', d], ['обращения', ap], ['риск', r], ['сигналы', s], ['аналитики', an]] as const)
       .filter(([, x]) => x.status === 'rejected')
     if (lost.length) {
@@ -205,7 +241,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return true
   }
 
-  // Если бэкенд FastAPI запущен — берём данные и риск оттуда, иначе работаем на демо-наборе.
+  /** Открыть офлайн-копию стартового набора: данные, риск и «Проверка по рекламе» — как их вернул сервер при выгрузке.
+   *  Режим 'snapshot' — когда копия загружена (или не загрузилась): до этого страницы показывают загрузку, а не «не найдено» */
+  const openSnapshot = (alive: () => boolean) => {
+    const g = gen.current
+    const fresh = () => alive() && gen.current === g
+    loadSnapshot().then((s) => {
+      if (!fresh()) return
+      setMode('snapshot')
+      setComplexes(s.complexes)
+      setAds(s.ads)
+      setDevelopers(s.developers)
+      setAppeals(s.appeals)
+      setAnalysts(s.analysts)
+      setSignals(s.signals)
+      setStats(s.stats)
+      setApiRisk(riskMap(s.risk))
+      setSnapshot(s.meta)
+    }, (e: unknown) => {
+      if (!fresh()) return
+      setMode('snapshot')
+      fail('Офлайн-копия стартового набора не загрузилась — проверьте shared/snapshot или запустите сервер (./dev.sh)', e)
+    })
+  }
+
+  // Если бэкенд FastAPI запущен — берём данные и риск оттуда, иначе открываем офлайн-копию стартового набора (только просмотр).
   useEffect(() => {
     let alive = true
     fetchAll().then(async (got) => {
@@ -215,9 +275,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const pending = early.current
       early.current = []
       if (res !== true) {
-        setMode('demo')
-        // сервер есть, но отвечает ошибкой — это не «демо без бэкенда», говорим прямо
-        if (res.status !== 0) fail('Сервер ответил ошибкой — открыт демо-набор без бэкенда', res)
+        // сервер есть, но отвечает ошибкой — это не «сервер недоступен», говорим прямо
+        if (res.status !== 0) fail('Сервер ответил ошибкой — открыта офлайн-копия стартового набора, только просмотр', res)
+        openSnapshot(() => alive)
         return
       }
       setMode('api')
@@ -250,7 +310,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const adScoreOf = useMemo(() => adScorer(complexById), [complexById])
 
   const value = useMemo<Store>(() => {
-    const live = mode !== 'demo'
+    // до ответа сервера изменения уходят на сервер (track); в офлайн-копии — только просмотр
+    const live = mode !== 'snapshot'
     const notify = (title: string) => {
       setToast(title)
       clearTimeout(toastTimer.current)
@@ -260,8 +321,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!user) throw new ApiError(0, NO_USER)
       return user.name
     }
+    /** «Проверка по рекламе» меняется вместе с рекламой и привязками: ЖК, застройщики и сводка — заново; ошибка — без баннера */
+    const refreshScreening = async () => {
+      if (!live) return
+      const [c, d, st] = await Promise.allSettled([apiGet<Complex[]>('/complexes'), apiGet<Developer[]>('/developers'), apiGet<Stats>('/stats')])
+      if (c.status === 'fulfilled' && Array.isArray(c.value)) setComplexes(c.value)
+      if (d.status === 'fulfilled' && Array.isArray(d.value)) setDevelopers(d.value)
+      if (st.status === 'fulfilled' && isStats(st.value)) setStats(st.value)
+    }
     const refreshRisk = async () => {
       if (!live) return
+      const screening = refreshScreening()
       try {
         setApiRisk(riskMap(await apiGet<RiskRow[]>('/risk')))
         setLastSync(stamp())
@@ -270,6 +340,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setApiRisk(new Map())
         fail('Не удалось обновить риск с сервера — показан локальный расчёт той же моделью', e)
       }
+      await screening
     }
     const needApi = () => { if (!live) throw new ApiError(0, NO_SIGNALS) }
     const needAi = () => { if (!live) throw new ApiError(0, NO_AI) }
@@ -283,12 +354,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setSignals((xs) => (xs.some((x) => x.id === row.id) ? xs.map((x) => (x.id === row.id ? row : x)) : [row, ...xs]))
       return sig
     }
-    /** Событие журнала демо-сессии (на сервере не сохраняется) */
-    const logLocal = (e: Pick<AuditEvent, 'kind' | 'what'> & Partial<AuditEvent>): AuditEvent => {
-      const ev: AuditEvent = { id: -++localId.current, at: stamp(), who: user?.name ?? '—', adId: null, complexId: null, signalId: null, ...e }
-      setSessionLog((xs) => [...xs, ev])
-      return ev
-    }
+    /** Изменение в офлайн-копии: не выполняется — тост «только для просмотра» */
+    const readOnly = () => { notify(READ_ONLY); return false }
     /** Запрос с отчётом об ошибке в баннер; expected — ошибки, которые страница разбирает сама */
     const guarded = async <T,>(what: string, p: () => Promise<T>, expected?: (e: ApiError) => boolean): Promise<T> => {
       try {
@@ -297,6 +364,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!(e instanceof ApiError && expected?.(e))) fail(what, e)
         throw e
       }
+    }
+    const needVerify = () => { if (!live) throw new ApiError(0, NO_VERIFY) }
+    /** Сверка по ЖК сохранена: ЖК из ответа — сразу в список, затем журнал (revision), риск и «Проверка по рекламе» */
+    const verified = async (what: string, p: () => Promise<Complex>) => {
+      const got = await track(guarded(what, p, (e) => FORM_ERRORS.has(e.status)))
+      if (got?.id) setComplexes((xs) => xs.map((x) => (x.id === got.id ? got : x)))
+      changed()
+      await refreshRisk()
+      return got
+    }
+    const appealSaved = async (what: string, p: () => Promise<Appeal>) => {
+      const got = await track(guarded(what, p, (e) => FORM_ERRORS.has(e.status)))
+      if (got?.id) setAppeals((xs) => (xs.some((x) => x.id === got.id) ? xs.map((x) => (x.id === got.id ? got : x)) : [got, ...xs]))
+      changed()
+      await refreshRisk()
+      return got
     }
     /** Решение аналитика по выводу ИИ: из ответа сервера берём только поля привязки и решения по условиям (как linkAd) —
      *  параллельная смена статуса и скриншот этой вкладки остаются; затем журнал (revision) и риск ЖК */
@@ -309,20 +392,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
 
     return {
-      mode, apiError, offline, lastSync, revision, ads, complexes, developers, appeals, analysts, user, signedOut, signals, sessionLog, toast, notify,
+      mode, snapshot, apiError, offline, lastSync, revision, ads, complexes, developers, appeals, analysts, user, signedOut, signals, toast, notify,
+      stats, refreshScreening,
       clearError: () => setApiError(null),
       reconnect: async () => {
         try {
           await apiGet('/health')
         } catch (e) {
           if (mode === 'api') fail('Нет связи с сервером', e)
-          else notify('Бэкенд по-прежнему недоступен — работаем на демо-наборе')
+          // офлайн-копия не загрузилась — пробуем её ещё раз
+          else if (mode === 'snapshot' && !snapshot) { setApiError(null); openSnapshot(() => true) }
+          else notify('Сервер по-прежнему недоступен — открыта офлайн-копия, только просмотр')
           return
         }
         setApiError(null)
         const res = apply(await fetchAll())
         if (res !== true) { fail('Сервер отвечает, но данные не загрузились', res); return }
+        // копия, которая ещё догружается, данные сервера не затрёт
+        gen.current += 1
         booted.current = true
+        setSnapshot(null)
         setMode('api')
         changed()
         notify('Связь с сервером есть, данные обновлены')
@@ -362,12 +451,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return true
       },
       refreshComplex: async (id, patch) => {
+        // офлайн-копия не меняется: изменения ЖК делает только сервер
+        if (!live) return
         if (patch) setComplexes((xs) => xs.map((x) => (x.id === id ? { ...x, ...patch } : x)))
         if (mode !== 'api') return
         try {
           const got = await apiGet<Complex>(`/complexes/${enc(id)}`)
-          if (got?.id === id && Number.isFinite(got.lat) && Number.isFinite(got.lng)) {
-            setComplexes((xs) => xs.map((x) => (x.id === id ? got : x)))
+          // координаты — парой: обе есть или обеих нет (ЖК по рекламе до сверки в 2ГИС)
+          const pair = (Number.isFinite(got?.lat) && Number.isFinite(got?.lng)) || (got?.lat == null && got?.lng == null)
+          if (got?.id === id && pair) {
+            // новая карточка (создана по объекту из рекламы) — в конец списка
+            setComplexes((xs) => (xs.some((x) => x.id === id) ? xs.map((x) => (x.id === id ? got : x)) : [...xs, got]))
             setLastSync(stamp())
           }
         } catch {
@@ -375,16 +469,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
       setAdStatus: async (id, status, opts = {}) => {
+        if (!live) return readOnly()
         const prev = ads.find((a) => a.id === id)
         if (!user || !prev) { notify(user ? 'Публикация не найдена' : NO_USER); return false }
         const assignee = opts.assignee?.trim() || undefined
         const comment = opts.comment?.trim() || undefined
         patchAd(id, { status, assignee: assignee ?? prev.assignee })
-        if (!live) {
-          if (status !== prev.status || (assignee && assignee !== prev.assignee) || comment)
-            logLocal({ kind: 'status', adId: id, complexId: prev.complexId ?? null, what: statusLine(prev.status, status, assignee !== prev.assignee ? assignee : undefined, comment) })
-          return true
-        }
         try {
           const got = await track(apiPatch<Ad>(`/ads/${enc(id)}/status`, { status, author: user.name, assignee, comment }))
           patchAd(id, { status: got.status, assignee: got.assignee })
@@ -404,12 +494,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return true
       },
       addAd: async (a) => {
+        if (!live) return readOnly()
         if (!user) { notify(NO_USER); return false }
         setAds((xs) => [a, ...xs.filter((x) => x.id !== a.id)])
-        if (!live) {
-          logLocal({ kind: 'system', adId: a.id, complexId: a.complexId ?? null, what: 'Публикация добавлена вручную' })
-          return true
-        }
         // linkConfirmed — ЖК выбран аналитиком вручную: привязка сразу факт; иначе гипотеза ИИ.
         // Скриншот сначала загружает форма (POST /api/media) — в image приходит /api/media/{id}, его и сохраняем.
         // Локальный скриншот (blob:) живёт только в этой вкладке — на сервер его адрес не отправляем, в сессии показываем
@@ -432,16 +519,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return true
       },
       linkAd: async (id, complexId) => {
+        if (!live) return readOnly()
         const prev = ads.find((a) => a.id === id)
         if (!user || !prev) { notify(user ? 'Публикация не найдена' : NO_USER); return false }
         const confirmed = complexId ? { linkConfirmedBy: user.name, linkConfirmedAt: stamp() } : { linkConfirmedBy: null, linkConfirmedAt: null }
         patchAd(id, { complexId: complexId ?? undefined, matchConfidence: complexId ? 1 : 0, ...confirmed })
-        if (!live) {
-          const from = prev.complexId ? complexById.get(prev.complexId) : undefined
-          const to = complexId ? complexById.get(complexId) : undefined
-          logLocal({ kind: 'link', adId: id, complexId: complexId ?? prev.complexId ?? null, what: linkLine(from, to) })
-          return true
-        }
         let got: Ad
         try {
           got = await track(apiPatch<Ad>(`/ads/${enc(id)}/complex`, { complexId, author: user.name }))
@@ -500,16 +582,72 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return guarded('Журнал не загрузился', () => apiGet<AuditEvent[]>(auditPath(scope)))
       },
       addComment: async (adId, text) => {
+        if (!live) throw new ApiError(0, READ_ONLY)
         const who = author()
         const body = text.trim()
-        if (!live) return logLocal({ kind: 'comment', adId, complexId: ads.find((a) => a.id === adId)?.complexId ?? null, what: body })
         return saved(guarded('Комментарий не сохранён', () => apiPost<AuditEvent>(`/ads/${enc(adId)}/comments`, { author: who, text: body })))
       },
       requestInfo: async (complexId, topics, comment) => {
-        if (!live) throw new ApiError(0, 'Запрос сведений записывается в журнал на сервере — запустите бэкенд (./dev.sh)')
+        if (!live) throw new ApiError(0, 'Запрос сведений записывается в журнал на сервере — в офлайн-копии недоступен (запустите ./dev.sh)')
         const who = author()
         return saved(guarded('Запрос сведений не записан', () =>
           apiPost<AuditEvent>(`/complexes/${enc(complexId)}/requests`, { author: who, topics, comment: comment?.trim() || undefined })))
+      },
+      verifyBasis: async (complexId, body) => {
+        needVerify()
+        const who = author()
+        return verified('Сверка основания не сохранена', () => apiPost<Complex>(`/complexes/${enc(complexId)}/basis`, { ...body, author: who }))
+      },
+      checkPublishedList: async (complexId, body) => {
+        needVerify()
+        const who = author()
+        return verified('Сверка с перечнем ГАСК не сохранена', () =>
+          apiPost<Complex>(`/complexes/${enc(complexId)}/published-list`, { ...body, author: who }))
+      },
+      setReadiness: async (complexId, body) => {
+        needVerify()
+        const who = author()
+        return verified('Готовность не сохранена', () => apiPost<Complex>(`/complexes/${enc(complexId)}/readiness`, { ...body, author: who }))
+      },
+      checkAppeals: async (complexId, body) => {
+        needVerify()
+        const who = author()
+        return verified('Сверка обращений не сохранена', () => apiPost<Complex>(`/complexes/${enc(complexId)}/appeals-check`, { ...body, author: who }))
+      },
+      addAppeal: async (complexId, body) => {
+        needVerify()
+        const who = author()
+        return appealSaved('Обращение не сохранено', () => apiPost<Appeal>(`/complexes/${enc(complexId)}/appeals`, { ...body, author: who }))
+      },
+      decideAppeal: async (appealId, action, comment) => {
+        needVerify()
+        const who = author()
+        return appealSaved('Решение по обращению не сохранено', () =>
+          apiPost<Appeal>(`/appeals/${enc(appealId)}/${action}`, { author: who, comment: comment?.trim() || undefined }))
+      },
+      addSitePhoto: async (complexId, file, fields) => {
+        needVerify()
+        const who = author()
+        const form = new FormData()
+        form.append('file', file, file.name || 'site.jpg')
+        for (const [k, v] of Object.entries({ ...fields, author: who })) form.append(k, v)
+        return verified('Снимок площадки не сохранён', () => apiUpload<Complex>(`/complexes/${enc(complexId)}/photos`, form))
+      },
+      markCommissioned: async (complexId, body) => {
+        needVerify()
+        const who = author()
+        return verified('Отметка «Объект сдан» не сохранена', () => apiPost<Complex>(`/complexes/${enc(complexId)}/commissioned`, { ...body, author: who }))
+      },
+      decideScreening: async (complexId, body) => {
+        needVerify()
+        const who = author()
+        return verified('Решение «Проверено — замечаний нет» не сохранено', () =>
+          apiPost<Complex>(`/complexes/${enc(complexId)}/screening-decision`, { ...body, author: who }))
+      },
+      cancelDecision: async (complexId, body) => {
+        needVerify()
+        const who = author()
+        return verified('Решение не отменено', () => apiDelete<Complex>(`/complexes/${enc(complexId)}/screening-decision`, { ...body, author: who }))
       },
       refreshSignals: async () => {
         if (!live) return
@@ -539,7 +677,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // автор выгрузки попадает в журнал сигнала
       signalPdfUrl: (id) => `${API}/signals/${id}/pdf?author=${enc(user?.name ?? '')}`,
       sources: async () => guarded('Список источников не загрузился', async () =>
-        (live ? apiGet<SourceInfo[]>('/sources') : offlineSources().then((xs) => [...xs, DEMO_SOURCE]))),
+        (live ? apiGet<SourceInfo[]>('/sources') : offlineSources().then((xs) => (snapshot ? [...xs, snapshotSource(snapshot)] : xs)))),
       registry: async (q) => {
         const query = q?.trim()
         return guarded('Открытые данные не загрузились', () =>
@@ -552,7 +690,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return got
       }, (e) => e.status === 404),
       importSource: async (file) => {
-        if (!live) throw new ApiError(0, 'Импорт выполняется на сервере — в демо-режиме без бэкенда он недоступен (запустите ./dev.sh)')
+        if (!live) throw new ApiError(0, 'Импорт выполняется на сервере — в офлайн-копии недоступен (запустите ./dev.sh)')
         const form = new FormData()
         form.append('file', file)
         form.append('author', author())
@@ -560,7 +698,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return saved(guarded('Файл не импортирован', () => apiUpload<ImportReport>('/sources/import', form), (e) => FILE_ERRORS.has(e.status)))
       },
     }
-  }, [mode, apiError, offline, lastSync, revision, ads, complexes, complexById, developers, appeals, analysts, user, signedOut, signals, sessionLog, toast, riskOf, adScoreOf]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, snapshot, apiError, offline, lastSync, revision, ads, complexes, developers, appeals, analysts, user, signedOut, signals, toast, riskOf, adScoreOf, stats]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

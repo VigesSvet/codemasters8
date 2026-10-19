@@ -1,0 +1,423 @@
+{
+ "_note": "Стартовый набор SAQ Qurylys: реальные данные мониторинга (ЖК открытого реестра и известные по рекламе, застройщики, публичная реклама с OCR и анализом ИИ, объекты из рекламы, журнал). Загружается в пустую БД при старте API; формат и обновление — backend/app/snapshot.py, README.",
+ "alsoExcluded": {
+  "collectorsRuntime": "статус, факты, курсоры и расписание подключений — новое развёртывание проверит их заново",
+  "frames": "кадры видео — строки и файлы не выгружаются, распознанный текст уже в ads.ocr",
+  "geoCandidates": "кэш кандидатов 2ГИС — остаются только решения аналитика",
+  "video": "видеофайлы — строки остаются «недоступно» со ссылкой на оригинал"
+ },
+ "api": {
+  "asOf": "2026-10-19",
+  "dir": "api",
+  "files": [
+   "ads.json",
+   "analysts.json",
+   "appeals.json",
+   "complexes.json",
+   "developers.json",
+   "discovered.json",
+   "media.json",
+   "risk.json",
+   "signals.json",
+   "stats.json"
+  ]
+ },
+ "excluded": {
+  "bot_submissions": "заявки жителей — персональные данные заявителей",
+  "integration_tokens": "токены доступа подключений — секреты",
+  "jobs": "задания воркера — состояние работы, а не данные",
+  "meta": "версию схемы и флаги задаёт загрузка",
+  "oauth_states": "одноразовые состояния OAuth",
+  "quota_counters": "счётчики расхода квот и дневного бюджета",
+  "source_records": "записи открытого реестра — загрузка пересоздаёт их из shared/registry_ust_kamenogorsk.json",
+  "worker_leases": "аренды и пульс воркеров"
+ },
+ "exportedAt": "2026-10-18T22:43:11+00:00",
+ "format": "saq-snapshot-1",
+ "media": {
+  "bytes": 28412946,
+  "dir": "media",
+  "files": 347,
+  "maxPx": 1024,
+  "quality": 75,
+  "sourceBytes": 76433366
+ },
+ "prepared": {
+  "geo_checks: без решения — не выгружены": 1,
+  "media_assets: видео — без файла (недоступно)": 118,
+  "media_assets: изображения": 350,
+  "media_assets: кадры видео — не выгружены": 923
+ },
+ "registry": {
+  "consistent": true,
+  "differ": [],
+  "file": "registry_ust_kamenogorsk.json",
+  "inDb": 103,
+  "inFile": 103,
+  "onlyInDb": [],
+  "onlyInFile": []
+ },
+ "schemaVersion": "2026.10-discovery-1",
+ "tables": {
+  "ads": {
+   "columns": [
+    "id",
+    "platform",
+    "account",
+    "url",
+    "date",
+    "text",
+    "ocr",
+    "image",
+    "complex_id",
+    "match_confidence",
+    "link_confirmed_by",
+    "link_confirmed_at",
+    "rejected_links",
+    "terms_review",
+    "terms_review_by",
+    "terms_review_at",
+    "decision_rev",
+    "price",
+    "source",
+    "status",
+    "assignee",
+    "reach",
+    "origin",
+    "collected_at"
+   ],
+   "file": "ads.json",
+   "rows": 230
+  },
+  "analysts": {
+   "columns": [
+    "id",
+    "name",
+    "full_name",
+    "short",
+    "role"
+   ],
+   "file": "analysts.json",
+   "rows": 3
+  },
+  "appeals": {
+   "columns": [
+    "id",
+    "complex_id",
+    "date",
+    "collective",
+    "applicants",
+    "status",
+    "verified_at",
+    "subject",
+    "source",
+    "origin"
+   ],
+   "file": "appeals.json",
+   "rows": 0
+  },
+  "audit_events": {
+   "columns": [
+    "id",
+    "ad_id",
+    "complex_id",
+    "signal_id",
+    "kind",
+    "who",
+    "what",
+    "at"
+   ],
+   "file": "audit_events.json",
+   "rows": 1212
+  },
+  "collection_runs": {
+   "columns": [
+    "id",
+    "collector",
+    "trigger",
+    "status",
+    "requested_by",
+    "created_at",
+    "started_at",
+    "finished_at",
+    "items_seen",
+    "items_new",
+    "items_updated",
+    "items_unchanged",
+    "items_failed",
+    "media_saved",
+    "media_failed",
+    "external_run_id",
+    "cost_usd",
+    "error_code",
+    "error",
+    "notes"
+   ],
+   "file": "collection_runs.json",
+   "rows": 10
+  },
+  "collectors": {
+   "columns": [
+    "code",
+    "enabled",
+    "config",
+    "interval_min",
+    "status",
+    "status_detail",
+    "facts",
+    "state",
+    "failures",
+    "next_run_at",
+    "last_success_at",
+    "last_error_at",
+    "checked_at",
+    "last_run_id",
+    "last_error",
+    "updated_by",
+    "updated_at"
+   ],
+   "file": "collectors.json",
+   "rows": 5
+  },
+  "complexes": {
+   "columns": [
+    "id",
+    "name",
+    "developer_id",
+    "address",
+    "district",
+    "lng",
+    "lat",
+    "stage",
+    "progress",
+    "floors",
+    "flats",
+    "start",
+    "planned_end",
+    "basis",
+    "readiness",
+    "in_published_list",
+    "cover",
+    "photos",
+    "idle_days",
+    "origin"
+   ],
+   "file": "complexes.json",
+   "rows": 23
+  },
+  "developers": {
+   "columns": [
+    "id",
+    "name",
+    "bin",
+    "director",
+    "registered",
+    "objects",
+    "unfinished",
+    "site",
+    "instagram",
+    "phones",
+    "origin"
+   ],
+   "file": "developers.json",
+   "rows": 21
+  },
+  "discovered_mentions": {
+   "columns": [
+    "id",
+    "object_id",
+    "ad_id",
+    "name",
+    "quote",
+    "address",
+    "source",
+    "stage",
+    "stage_quote",
+    "created_at",
+    "updated_at"
+   ],
+   "file": "discovered_mentions.json",
+   "rows": 60
+  },
+  "discovered_objects": {
+   "columns": [
+    "id",
+    "norm_key",
+    "name",
+    "aliases",
+    "address_hint",
+    "status",
+    "complex_id",
+    "origin",
+    "first_seen",
+    "last_seen",
+    "ads_count",
+    "accounts",
+    "source_urls",
+    "note",
+    "decided_by",
+    "decided_at",
+    "created_at"
+   ],
+   "file": "discovered_objects.json",
+   "rows": 15
+  },
+  "geo_checks": {
+   "columns": [
+    "id",
+    "target_kind",
+    "target_id",
+    "provider",
+    "query",
+    "query_norm",
+    "candidates",
+    "status",
+    "chosen_id",
+    "chosen",
+    "applied",
+    "prev_point",
+    "requested_by",
+    "fetched_at",
+    "purged_at",
+    "decided_by",
+    "decided_at",
+    "comment"
+   ],
+   "file": "geo_checks.json",
+   "rows": 3
+  },
+  "ingest_items": {
+   "columns": [
+    "id",
+    "platform",
+    "external_id",
+    "collector",
+    "ad_id",
+    "account",
+    "url",
+    "published_at",
+    "first_collected_at",
+    "collected_at",
+    "content_hash",
+    "version",
+    "raw",
+    "external_run_id",
+    "last_run_id",
+    "analyzed_version",
+    "analyzed_engine",
+    "analyzed_at",
+    "analysis_status",
+    "analysis_stage",
+    "analysis_error"
+   ],
+   "file": "ingest_items.json",
+   "rows": 230
+  },
+  "ingest_versions": {
+   "columns": [
+    "id",
+    "item_id",
+    "version",
+    "content_hash",
+    "text",
+    "account",
+    "url",
+    "price",
+    "extra",
+    "media_keys",
+    "raw",
+    "collected_at",
+    "run_id"
+   ],
+   "file": "ingest_versions.json",
+   "rows": 230
+  },
+  "llm_analyses": {
+   "columns": [
+    "id",
+    "ad_id",
+    "item_id",
+    "content_version",
+    "content_hash",
+    "model",
+    "served_model",
+    "prompt_version",
+    "status",
+    "result",
+    "dropped",
+    "attempts",
+    "retry_at",
+    "input_tokens",
+    "output_tokens",
+    "cache_read_tokens",
+    "cache_creation_tokens",
+    "cost_usd",
+    "error",
+    "request_id",
+    "meta",
+    "created_at",
+    "updated_at"
+   ],
+   "file": "llm_analyses.json",
+   "rows": 459
+  },
+  "media_assets": {
+   "columns": [
+    "id",
+    "ad_id",
+    "item_id",
+    "parent_id",
+    "position",
+    "kind",
+    "role",
+    "source_key",
+    "current",
+    "origin_url",
+    "origin_ref",
+    "status",
+    "error",
+    "attempts",
+    "mime",
+    "size",
+    "sha256",
+    "storage_key",
+    "frame_ms",
+    "meta",
+    "ocr_status",
+    "ocr_text",
+    "ocr_engine",
+    "ocr_detail",
+    "created_at",
+    "downloaded_at"
+   ],
+   "file": "media_assets.json",
+   "rows": 500
+  },
+  "signals": {
+   "columns": [
+    "id",
+    "complex_id",
+    "complex_name",
+    "status",
+    "score",
+    "zone",
+    "needs_check",
+    "hits",
+    "summary",
+    "factors",
+    "observations",
+    "evidence",
+    "model_version",
+    "created_at",
+    "created_by",
+    "decided_at",
+    "decided_by",
+    "decision_comment",
+    "file_name",
+    "exported_at"
+   ],
+   "file": "signals.json",
+   "rows": 2
+  }
+ }
+}

@@ -380,6 +380,8 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 /* ───── Контент ───── */
 .ph { position: relative; overflow: hidden; background: var(--fill); }
 .ph img { width: 100%; height: 100%; object-fit: cover; }
+/* Картинки нет или она не загрузилась — значок площадки по центру рамки */
+.ph > .noimg { width: 100%; height: 100%; display: grid; place-items: center; }
 .ph .tl { position: absolute; left: 12px; top: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
 .ph .tr { position: absolute; right: 12px; top: 12px; }
 

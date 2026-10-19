@@ -17,7 +17,9 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    # секреты подключений — из .env в корне (его нет в Git); без файла API стартует, подключения «не настроены»
+    # секреты подключений — из .env в корне (его нет в Git); без файла API стартует, подключения «не настроены».
+    # Пустая БД (новый том pgdata) при первом старте получает стартовый набор shared/snapshot из образа — README,
+    # «Развёртывание со стартовым набором данных»
     env_file:
       - path: .env
         required: false
@@ -74,7 +76,8 @@ services:
     command: sh -c "npm ci && npx vite --host 0.0.0.0 --port 5180"
     environment:
       API_PROXY: http://api:8000
-    # ../shared из /app → /shared: фронтенд импортирует общую модель риска и сид
+    # ../shared из /app → /shared: фронтенд импортирует общую модель риска, офлайн-копию стартового набора (shared/snapshot/api,
+    # картинки — /snapshot-media/… из vite.config.ts) и тестовые данные для vitest (shared/testdata)
     volumes: [./frontend:/app:z, /app/node_modules, "./shared:/shared:ro,z"]
     ports: ["5180:5180"]
     depends_on: [api]
