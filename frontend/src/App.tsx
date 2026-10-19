@@ -5,11 +5,13 @@ import AdDetail from './pages/AdDetail'
 import AdNew from './pages/AdNew'
 import Ads from './pages/Ads'
 import ComplexCard from './pages/ComplexCard'
+import Check from './pages/Check'
 import Complexes from './pages/Complexes'
 import Dashboard from './pages/Dashboard'
 import Landing from './pages/Landing'
 import Developers from './pages/Developers'
 import Discovered from './pages/Discovered'
+import Field from './pages/Field'
 import Ops from './pages/Ops'
 import Login from './pages/Login'
 import Method from './pages/Method'
@@ -23,8 +25,9 @@ import SignalPrint from './pages/SignalPrint'
 import Signals from './pages/Signals'
 import Sites from './pages/Sites'
 import Sources from './pages/Sources'
+import Tv from './pages/Tv'
 
-/** Всё, кроме /login и лендинга (/about, а для гостя — и /), — только после входа; иначе на вход с возвратом на текущий адрес.
+/** Всё, кроме /login, лендинга (/about, а для гостя — и /) и публичной проверки ЖК (/check), — только после входа; иначе на вход с возвратом на текущий адрес.
  *  После выхода (здесь или в соседней вкладке) — на вход без возврата: страница была чужой сессии */
 function RequireUser() {
   const { user, signedOut } = useStore()
@@ -42,8 +45,11 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/about" element={<Landing />} />
+          <Route path="/check" element={<Check />} />
           <Route element={<RequireUser />}>
             <Route path="/signals/:id/print" element={<SignalPrint />} />
+            <Route path="/tv" element={<Tv />} />
+            <Route path="/field" element={<Field />} />
             <Route element={<Shell />}>
               <Route index element={<Dashboard />} />
               <Route path="ops" element={<Ops />} />

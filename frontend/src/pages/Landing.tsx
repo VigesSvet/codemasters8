@@ -24,7 +24,7 @@ export default function Landing() {
       <section className="lp-hero" id="see">
         <h1>{t('lp.heroL1')}<br />{t('lp.heroL2')}</h1>
         <p>{t('lp.heroText')}</p>
-        <div className="lp-links"><Link to="/login">{t('lp.openSystem')} ›</Link><Link to="/method">{t('lp.howRisk')} ›</Link></div>
+        <div className="lp-links"><Link to="/login">{t('lp.openSystem')} ›</Link><Link to="/method">{t('lp.howRisk')} ›</Link><Link to="/check">{t('chk.cta')} ›</Link></div>
         <img className="lp-hero-img" src={IMG('map-3d')} alt={t('lp.heroAlt')} />
       </section>
       <section className="lp-black" id="sat">

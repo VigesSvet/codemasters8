@@ -2,6 +2,8 @@
 // {имя} — подстановка; «форма1|форма2|форма3» — формы по числу (1 объект, 2 объекта, 5 объектов), {n} — само число.
 // Ключ — «экран.что»: общие подписи — common.*, статусы и зоны — status.*, zone.*, scr.*, show.*
 
+import { ruPub } from './public'
+
 export const ru = {
   // ---------- общее ----------
   'common.city': 'Усть-Каменогорск',
@@ -461,6 +463,8 @@ export const ru = {
   'route.overdue': 'Просрочено',
   'route.overdueTag': 'просрочен',
   'route.closed': 'рассмотрен',
+  // новые экраны: /check, /tv, /field, горячие точки — lib/i18n/public.ts
+  ...ruPub,
 } as const
 
 export type Key = keyof typeof ru

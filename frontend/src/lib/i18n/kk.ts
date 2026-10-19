@@ -4,6 +4,7 @@
 // Сан есімнен кейін зат есім жекеше тұрады («5 нысан») — форма біреу. Жоқ кілт — орысша мәтін (lib/i18n.ts).
 // Меншікті атаулар (ТҮК атаулары, платформалар, SAQ Qurylys) аударылмайды.
 import type { Key } from './ru'
+import { kkPub } from './public'
 
 export const kk: Partial<Record<Key, string>> = {
   // ---------- жалпы ----------
@@ -464,6 +465,7 @@ export const kk: Partial<Record<Key, string>> = {
   'route.overdue': 'Мерзімі өткен',
   'route.overdueTag': 'мерзімі өтті',
   'route.closed': 'қаралды',
+  ...kkPub,
 }
 
 /** Деректер мен ортақ кестелердегі орысша жазулар → қазақша (tr()): рөлдер, ведомстволар, сатылар, аймақтар, бағалау

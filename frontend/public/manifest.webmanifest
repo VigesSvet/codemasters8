@@ -1,0 +1,15 @@
+{
+  "name": "SAQ Qurylys — выезд на объект",
+  "short_name": "SAQ Выезд",
+  "description": "Мобильный режим выезда: ближайшие ЖК по геолокации и снимок площадки с геометкой в Фото-мониторинг",
+  "lang": "ru",
+  "start_url": "/field",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2f2f4",
+  "theme_color": "#fed42b",
+  "icons": [
+    { "src": "/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

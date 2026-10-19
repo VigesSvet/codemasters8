@@ -1,0 +1,20 @@
+/* ───── Горячие точки рекламы components/Hotspots.tsx: плавающая панель над главной картой, как легенда (screening.css) ───── */
+.hot { position: absolute; z-index: 11; bottom: 32px; width: 340px; max-height: calc(100% - 140px); overflow: auto; background: #fff; border-radius: var(--r-l, 16px);
+  box-shadow: var(--shadow-float); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; transition: left .2s; }
+.hot-h { display: flex; align-items: flex-start; gap: 8px; }
+.hot-h h4 { flex: 1; margin: 0; font-family: var(--font-display); font-size: 16px; line-height: 20px; }
+.hot-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.hot-list li { display: flex; gap: 10px; }
+.hot-n { flex: none; width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--fill); }
+.hot-list li:first-child .hot-n { background: var(--red, #e4402d); color: #fff; }
+.hot-b { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.hot-b b { font-size: 14px; line-height: 18px; }
+.hot-b small { font-size: 12px; line-height: 16px; color: var(--text-2); }
+.hot-names { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3) !important; }
+.hot-bar { display: flex; height: 6px; border-radius: 3px; background: var(--fill); overflow: hidden; }
+.hot-bar i { display: block; height: 100%; } .hot-bar i.nb { background: var(--red, #e4402d); } .hot-bar i.ok { background: var(--amber, #f59d00); }
+.hot-empty { margin: 0; font-size: 13px; color: var(--text-2); }
+.hot-note { margin: 0; font-size: 11px; line-height: 15px; color: var(--text-3); }
+.hot-part { font-weight: 400; color: var(--text-2); }
+.hot-nums { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.hot-nums b { color: var(--text); } .hot-nums .nb b { color: var(--red-ink, #c2261b); }

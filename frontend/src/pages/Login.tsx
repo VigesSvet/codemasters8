@@ -65,6 +65,7 @@ export default function Login() {
               ))}
             </div>
           )}
+          <Link to="/check" className="link t-sm" style={{ marginTop: 2 }}>{t('chk.ctaLogin')} ›</Link>
           <p className="t-xs c2" style={{ lineHeight: '17px', marginTop: 4 }}>{t('login.pilot')}</p>
           {mode === 'snapshot' && <p className="t-xs c2" style={{ lineHeight: '17px' }}>{t('login.snapshot')}</p>}
         </form>
