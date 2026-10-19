@@ -67,7 +67,7 @@ def _intake_1(conn: Connection) -> None:
 
 
 def _llm_1(conn: Connection) -> None:
-    """2026.10-llm-1: результаты анализа ИИ (Claude) — таблица llm_analyses. Строка прежнего анализатора (только
+    """2026.10-llm-1: результаты анализа ИИ — таблица llm_analyses. Строка прежнего анализатора (только
     статус) в collectors не удаляется (шаги только добавляют): её кода в реестре нет, её никто не читает."""
     for name in LLM_TABLES:
         Base.metadata.tables[name].create(conn, checkfirst=True)

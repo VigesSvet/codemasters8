@@ -257,7 +257,7 @@ export function testOkLine(c: Pick<Connector, 'kind' | 'enabled'>): string {
   if (c.kind === 'collector') return c.enabled ? 'Подключение проверено — сбор по расписанию включён.' : 'Подключение проверено — можно включать сбор.'
   if (c.kind === 'geo') return 'Ключ 2ГИС работает — сверка адреса доступна в карточке ЖК.'
   if (c.kind === 'oauth') return 'Аккаунт OLX доступен — только ресурсы своего аккаунта.'
-  if (c.kind === 'analyzer') return 'Ключ Anthropic принят, модель доступна — новые публикации анализирует Claude (гипотезы для аналитика).'
+  if (c.kind === 'analyzer') return 'Ключ Anthropic принят, модель доступна — новые публикации анализирует ИИ (гипотезы для аналитика).'
   return 'Подключение проверено.'
 }
 
@@ -496,7 +496,7 @@ export const STAGE_LABEL: Record<string, string> = {
   frames: 'кадры видео',
   ocr: 'распознавание текста',
   rules: 'правила ИИ',
-  llm: 'анализ ИИ (Claude)',
+  llm: 'анализ ИИ',
   events: 'запись в журнал',
 }
 export const stageLabel = (s?: string | null) => (s ? (Object.hasOwn(STAGE_LABEL, s) ? STAGE_LABEL[s] : s) : null)

@@ -17,7 +17,8 @@ import { useStore } from '../lib/store'
 import {
   IcCheck, IcGear, IcInfo, IcLock, IcPlay, IcPlugConnection, IcRefresh, IcShield, IcSparkles, IcTriangleExclamation,
 } from '../ui/icons'
-import { HeroTile, Modal, PlatformIcon } from './ui'
+import { Modal, PlatformIcon } from './ui'
+import { Chain } from './StatBoard'
 
 /** Пока идут проверки или сбор — перечитываем подключения */
 const POLL_MS = 5000
@@ -32,7 +33,7 @@ const GROUP_NOTE: Record<ConnectorGroup, string> = {
   collectors: 'Читают публичные аккаунты, каналы и выдачу площадок из списка, который задаёт администратор. Таргетированную рекламу так не увидеть.',
   intake: 'Сюда присылают: Telegram-бот — заявки жителей, внешние сборщики — готовые публикации. Доступ — по серверному токену.',
   geo: 'Не сбор рекламы: кандидаты адреса для карточки ЖК. Сверку запускает аналитик в карточке ЖК, решение принимает он же.',
-  analyzer: 'После правил saq-ai-1 новые публикации разбирает Claude (Anthropic): признаки продажи, суммы и кандидаты ЖК с дословными цитатами — только гипотезы. Без ключа на сервере работают одни правила.',
+  analyzer: 'После правил saq-ai-1 новые публикации разбирает языковая модель (Anthropic): признаки продажи, суммы и кандидаты ЖК с дословными цитатами — только гипотезы. Без ключа на сервере работают одни правила.',
   limited: 'Доступ только к ресурсам своего авторизованного аккаунта — это не сборщик чужих объявлений.',
 }
 
@@ -187,12 +188,16 @@ export function CollectAllButton() {
   return reason ? <span className="lnk-dis" title={reason}>{btn}</span> : btn
 }
 
-/** Плитка «Сборщики в работе»: включены и готовы, работают или собирают */
-export function CollectorsTile() {
+/** Звено «Сборщики» цепочки источников (панель статистики): в работе из включённых сборщиков */
+export function CollectorsChain() {
   const x = useConn()
+  const ok = Boolean(x.load?.data)
+  const collectors = x.list.filter((c) => c.kind === 'collector')
+  const working = workingCollectors(x.list).length
   return (
-    <HeroTile icon={<IcPlugConnection size={32} />} label="Сборщики в работе" value={x.load?.data ? workingCollectors(x.list).length : '—'}
-      onClick={() => document.getElementById('connectors')?.scrollIntoView({ behavior: 'smooth' })} />
+    <Chain n="2 · Сборщики" em="plug" tone={ok && working ? 'green' : undefined} value={ok ? working : '—'} label="сборщиков в работе" next
+      onClick={() => document.getElementById('connectors')?.scrollIntoView({ behavior: 'smooth' })}
+      facts={ok ? [{ text: `подключений сбора — ${collectors.length}` }, { text: `выключено — ${collectors.filter((c) => !c.enabled).length}` }] : []} />
   )
 }
 
@@ -499,7 +504,7 @@ function ConnectorCard({ c }: { c: Connector }) {
       )}
 
       {c.kind === 'geo' && <div className="lnk-lim"><IcInfo size={16} />Сверка адреса — в карточке ЖК: «Сверить адрес» запускает аналитик, кандидата принимает тоже он.</div>}
-      {c.kind === 'analyzer' && <div className="lnk-lim"><IcInfo size={16} />Результат — в карточке публикации, блок «Анализ ИИ (Claude)»: гипотезы с цитатами; привязку и решение по публикации принимает аналитик.</div>}
+      {c.kind === 'analyzer' && <div className="lnk-lim"><IcInfo size={16} />Результат — в карточке публикации, блок «Анализ ИИ»: гипотезы с цитатами; привязку и решение по публикации принимает аналитик.</div>}
       {limitation && (
         <div className={`lnk-lim ${c.group === 'limited' ? 'strong' : ''}`}>
           {c.group === 'limited' ? <IcTriangleExclamation size={16} /> : <IcInfo size={16} />}{limitation}

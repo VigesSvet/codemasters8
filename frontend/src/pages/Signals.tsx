@@ -1,11 +1,12 @@
 import { useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { SignalStatusTag } from '../components/SignalPanel'
-import { Faq, Hero, HeroTile, Score, ZoneTag, fmtDT } from '../components/ui'
+import { Faq, Hero, Score, ZoneTag, fmtDT } from '../components/ui'
 import type { SignalStatus } from '../data/types'
 import { from } from '../lib/nav'
 import { useStore } from '../lib/store'
-import { IcCheck, IcClose, IcFlag, IcHelp, IcInbox, IcRefresh } from '../ui/icons'
+import { IcClose, IcHelp } from '../ui/icons'
+import { Board, Cap, Kpi, Shares } from '../components/StatBoard'
 
 const STATUSES: SignalStatus[] = ['new', 'confirmed', 'returned']
 const TITLE: Record<SignalStatus, string> = { new: 'Ждут решения', confirmed: 'Подтверждённые', returned: 'Возвращённые на доработку' }
@@ -41,12 +42,18 @@ export default function Signals() {
       <Hero crumb="Сигналы" title="Сигнальные карточки"
         info="Сигнал фиксирует риск и доказательства по ЖК на момент создания. Подтверждает или возвращает его аналитик"
         actions={<Link to="/complexes?zone=red" className="btn o m">Объекты красной зоны</Link>}
-        tiles={<>
-          <HeroTile icon={<IcInbox size={32} />} label="Ждут решения" value={n('new')} tone="yellow" to={href('new')} active={status === 'new'} />
-          <HeroTile icon={<IcCheck size={32} />} label="Подтверждены" value={n('confirmed')} tone="red" to={href('confirmed')} active={status === 'confirmed'} />
-          <HeroTile icon={<IcRefresh size={32} />} label="Возвращены" value={n('returned')} to={href('returned')} active={status === 'returned'} />
-          <HeroTile icon={<IcFlag size={32} />} label="Всего" value={base.length} to={href()} active={!status} />
-        </>} />
+        board={<Board kind="signals">
+          <Kpi big em="flag" tone="red" value={base.length} label={cx ? `сигналов по ЖК «${cx.name}»` : 'сигналов всего'} to={href()} active={!status} />
+          <div className="sb-sep" />
+          <div className="sb-col">
+            <Cap aside="подтверждает или возвращает аналитик">Решения по сигналам</Cap>
+            <Shares parts={[
+              { key: 'new', label: 'Ждут решения', value: n('new'), tone: 'yellow', to: href('new'), active: status === 'new' },
+              { key: 'confirmed', label: 'Подтверждены', value: n('confirmed'), tone: 'red', to: href('confirmed'), active: status === 'confirmed' },
+              { key: 'returned', label: 'Возвращены', value: n('returned'), tone: 'gray', to: href('returned'), active: status === 'returned' },
+            ]} />
+          </div>
+        </Board>} />
 
       <div className="row between" style={{ marginBottom: 4, flexWrap: 'wrap' }}>
         <div className="row" style={{ gap: 12 }}>

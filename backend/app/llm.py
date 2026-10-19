@@ -61,7 +61,7 @@ log = logging.getLogger("saq.llm")
 
 PROMPT_VERSION = "saq-llm-2"
 CODE = claude.CODE
-LABEL = "ИИ (Claude)"
+LABEL = "Анализ ИИ"
 ATTEMPTS = 3  # попыток при сетевых ошибках, 429 и 5xx
 RETRY_MAX_S = 6 * 3600
 CATALOG_MAX = 30
@@ -574,7 +574,7 @@ def _key_blocked(db: Session) -> Optional[str]:
     if conn is not None and service.keys_changed(conn, r):
         return None
     what = "истёк доступ" if r.status == "expired" else "нет доступа"
-    return (f"подключение Claude в статусе «{what}» — замените {claude.KEY_ENV} или права ключа и нажмите "
+    return (f"подключение анализатора ИИ в статусе «{what}» — замените {claude.KEY_ENV} или права ключа и нажмите "
             "«Проверить подключение»")
 
 
@@ -635,9 +635,9 @@ def event_for(status: str, result: Optional[dict], dropped: Optional[dict], erro
     if status == "skipped":
         if meta.get("skipCode") == "empty":
             return None
-        return "system", f"Анализ ИИ (Claude) пропущен: {error or 'причина не указана'} — проверьте вручную"
+        return "system", f"Анализ ИИ пропущен: {error or 'причина не указана'} — проверьте вручную"
     if status == "failed":
-        return "system", f"Анализ ИИ (Claude) не выполнен: {error or 'причина не указана'} — проверьте вручную"
+        return "system", f"Анализ ИИ не выполнен: {error or 'причина не указана'} — проверьте вручную"
     return None
 
 
@@ -714,12 +714,12 @@ def unavailable(db: Session, s: Settings) -> Optional[tuple[int, str]]:
     """Почему запрос к Claude сейчас не отправить: (HTTP-код для API, пояснение по-русски); None — можно. 503 — не
     настроено на сервере (нет ключа или пакета SDK), 409 — ключ отклонён или бюджет 0."""
     if s.missing(claude.KEY_ENV):
-        return 503, f"Анализ ИИ (Claude) не настроен: задайте {claude.KEY_ENV} на сервере"
+        return 503, f"Анализ ИИ не настроен: задайте {claude.KEY_ENV} на сервере"
     if claude.anthropic is None:
         return 503, claude.SDK_MISSING
     blocked = _key_blocked(db)
     if blocked:
-        return 409, "Анализ ИИ (Claude) недоступен: " + blocked
+        return 409, "Анализ ИИ недоступен: " + blocked
     if float(s.anthropic_daily_budget_usd) <= 0:
         return 409, "Анализ ИИ выключен: ANTHROPIC_DAILY_BUDGET_USD = 0"
     return None
@@ -790,9 +790,9 @@ def run_stage(ad_id: str, item_id: Optional[int], version: Optional[int], hypoth
     try:
         return _run(s, ad_id, item_id, version, hypotheses or [], now, force)
     except Exception:  # noqa: BLE001 — сбой этапа ИИ не роняет анализ публикации
-        log.exception("Анализ ИИ (Claude) публикации %s: внутренняя ошибка этапа", ad_id)
+        log.exception("Анализ ИИ публикации %s: внутренняя ошибка этапа", ad_id)
         return Outcome("failed", fresh=True, model=s.anthropic_model,
-                       event=("system", "Анализ ИИ (Claude) не выполнен: внутренняя ошибка этапа — подробности в "
+                       event=("system", "Анализ ИИ не выполнен: внутренняя ошибка этапа — подробности в "
                                         "журнале воркера; проверьте вручную"))
 
 
@@ -888,7 +888,7 @@ def _failed(e: "claude.CallError", s: Settings, ad_id: str, key: str, model: str
                                         "retry_at": retry_at}, now, archive)
         if e.kind == "rate":
             _connector_note(e.detail, now)
-        log.warning("Анализ ИИ (Claude) публикации %s: %s — повтор после %s", ad_id, e.detail, models.iso(retry_at))
+        log.warning("Анализ ИИ публикации %s: %s — повтор после %s", ad_id, e.detail, models.iso(retry_at))
         return Outcome("failed", row_id=rid, model=model, retry_at=retry_at)
     detail = e.detail + (f" (попыток: {attempts})" if e.retryable else "")
     rid = _save(ad_id, key, model, {**vals, "error": detail, "retry_at": None}, now, archive)
@@ -898,7 +898,7 @@ def _failed(e: "claude.CallError", s: Settings, ad_id: str, key: str, model: str
         _connector("denied", e.detail, now, audit=True, error=e.detail, key_fp=True)
     else:
         _connector("error", detail, now, audit=True, error=detail)
-    log.warning("Анализ ИИ (Claude) публикации %s не выполнен: %s", ad_id, detail)
+    log.warning("Анализ ИИ публикации %s не выполнен: %s", ad_id, detail)
     return Outcome("failed", fresh=True, row_id=rid, model=model,
                    event=event_for("failed", None, None, detail, meta, mat.bot))
 

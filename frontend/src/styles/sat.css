@@ -1,0 +1,53 @@
+/* ───── «Спутник»: архив снимков в карточке ЖК (components/SatHistory.tsx) и режимы главной карты ───── */
+.sat { display: flex; flex-direction: column; gap: 14px; }
+.sat-wait { display: flex; align-items: center; gap: 12px; padding: 48px 0; justify-content: center; color: var(--text-2); }
+.sat-wait .spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--text); animation: sat-spin 0.8s linear infinite; }
+@keyframes sat-spin { to { transform: rotate(360deg); } }
+
+.sat-view { position: relative; height: 480px; border-radius: var(--r-l); overflow: hidden; background: #2a2a2a; user-select: none; }
+.sat-map { position: absolute; inset: 0; }
+.sat-ring { width: 64px; height: 64px; border-radius: 50%; box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0, 0, 0, 0.35), inset 0 0 0 2px rgba(0, 0, 0, 0.25); pointer-events: none; }
+.sat-tag { position: absolute; top: 14px; z-index: 3; height: 30px; padding: 0 12px; border-radius: 15px; display: inline-flex; align-items: center; font-size: 13px; font-weight: 600; color: #fff; background: rgba(0, 0, 0, 0.62); backdrop-filter: blur(6px); pointer-events: none; }
+.sat-tag.l { left: 14px; } .sat-tag.r { right: 14px; }
+.sat-tag.l::before, .sat-tag.r::before { content: ''; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
+.sat-tag.l::before { background: #9ec5ff; } .sat-tag.r::before { background: #ffd23f; }
+.sat-cut { position: absolute; top: 0; bottom: 0; z-index: 4; width: 0; cursor: ew-resize; touch-action: none; }
+.sat-cut::before { content: ''; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); }
+.sat-cut::after { content: ''; position: absolute; top: 0; bottom: 0; left: -16px; width: 32px; }
+.sat-cut .knob { position: absolute; top: 50%; left: 0; transform: translate(-50%, -50%); width: 40px; height: 40px; border-radius: 50%; background: #fff; display: grid; place-items: center; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); z-index: 1; }
+.sat-cut .knob svg { fill: none; stroke: #111; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.sat-zoom { position: absolute; right: 14px; bottom: 34px; z-index: 3; display: flex; flex-direction: column; background: #fff; border-radius: var(--r-m); overflow: hidden; box-shadow: var(--shadow-float); }
+.sat-zoom button { width: 36px; height: 36px; display: grid; place-items: center; }
+.sat-zoom button:hover { background: var(--fill); }
+
+.sat-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sat-seg { display: inline-flex; background: var(--fill); border-radius: 10px; padding: 3px; gap: 2px; }
+.sat-seg button { height: 30px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; color: var(--text-2); }
+.sat-seg button.on { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.sat-k { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.sat-k.a { background: #3d8bff; } .sat-k.b { background: #f5b800; }
+.sat-k.build { border-radius: 3px; background: repeating-linear-gradient(-45deg, rgba(245, 157, 0, 0.35) 0 3px, rgba(245, 157, 0, 0.7) 3px 6px); }
+
+/* Лента времени */
+.sat-tl { padding: 8px 28px 0; }
+.sat-axis { position: relative; height: 56px; border-bottom: 2px solid var(--line); }
+.sat-build { position: absolute; bottom: 0; height: 28px; border-radius: 6px 6px 0 0; background: repeating-linear-gradient(-45deg, rgba(245, 157, 0, 0.18) 0 6px, rgba(245, 157, 0, 0.3) 6px 12px); box-shadow: inset 0 -3px 0 var(--amber); overflow: hidden; min-width: 6px; }
+.sat-now { position: absolute; bottom: -6px; top: 6px; width: 2px; background: var(--text-3); transform: translateX(-1px); }
+.sat-now::after { content: 'сегодня'; position: absolute; top: -4px; right: 6px; font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.sat-dot { position: absolute; bottom: -9px; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 2px #8a8784; cursor: pointer; z-index: 2; transition: transform 0.12s; }
+.sat-dot:hover { transform: scale(1.25); }
+.sat-dot span { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); font-size: 11px; white-space: nowrap; color: var(--text-3); opacity: 0; transition: opacity 0.12s; pointer-events: none; background: #fff; padding: 2px 6px; border-radius: 6px; box-shadow: var(--shadow-float); }
+.sat-dot:hover span, .sat-dot.a span, .sat-dot.b span { opacity: 1; color: var(--text); }
+.sat-dot.a { background: #3d8bff; box-shadow: 0 0 0 3px rgba(61, 139, 255, 0.25); }
+.sat-dot.b { background: #f5b800; box-shadow: 0 0 0 3px rgba(245, 184, 0, 0.3); }
+.sat-dot.a.b { background: linear-gradient(90deg, #3d8bff 50%, #f5b800 50%); }
+.sat-years { position: relative; height: 26px; }
+.sat-years span { position: absolute; top: 12px; font-size: 12px; color: var(--text-3); transform: translateX(-50%); font-variant-numeric: tabular-nums; }
+.sat-meta { display: flex; flex-direction: column; gap: 4px; font-size: 14px; line-height: 20px; }
+.sat-meta .sat-k { margin-right: 8px; vertical-align: 0; }
+
+/* Режимы главной карты: Схема · Спутник · 3D */
+.mctrl .modes { display: flex; flex-direction: column; background: #fff; border-radius: var(--r-m); box-shadow: var(--shadow-float); overflow: hidden; }
+.mctrl .modes button { height: 36px; padding: 0 12px; font-size: 13px; font-weight: 600; color: var(--text-2); text-align: left; }
+.mctrl .modes button:hover { background: var(--fill); }
+.mctrl .modes button.on { background: var(--dark, #1f1f1f); color: #fff; }

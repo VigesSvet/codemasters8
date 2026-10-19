@@ -108,9 +108,9 @@ RANK = {"suspect": 3, "check": 2, "unknown": 1, "ok": 0}
 STATUSES = ("ok", "check", "suspect", "unknown")
 BASIS_TEXT = {"confirmed": "привязка к ЖК подтверждена аналитиком",
               "discovered": "название из рекламы привязано к ЖК аналитиком, публикация — гипотеза",
-              "claude": "ЖК назван в ответе Claude — гипотеза",
+              "claude": "ЖК назван в ответе ИИ — гипотеза",
               "rules": "гипотеза правил сопоставления",
-              "mention": "объект назван в рекламе (ответ Claude)"}
+              "mention": "объект назван в рекламе (ответ ИИ)"}
 KIND_ORDER = ("confirmed", "discovered", "claude", "rules", "mention")
 REASON_ADS = 3
 DOC_LABELS = {"guarantee": "гарантия ЕО (КЖК)", "mio": "разрешение МИО", "bvu": "участие БВУ"}

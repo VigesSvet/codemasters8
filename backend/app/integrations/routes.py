@@ -252,7 +252,7 @@ def ad_versions(aid: str, db: Session = Depends(get_db)):
              "media_keys": list(v.media_keys or []), "current": v.version == item.version} for v in rows]
 
 
-# ---------- анализ ИИ (Claude): «Проанализировать ещё раз» ----------
+# ---------- анализ ИИ: «Проанализировать ещё раз» ----------
 
 def _active_analysis(db: Session, aid: str) -> Optional[models.Job]:
     """Задание анализа публикации, которое выполняется (у него dedupe_key уже обнулён), иначе — в очереди; None — нет."""
@@ -272,9 +272,9 @@ def _ad_response(ad: models.Ad, status: int) -> JSONResponse:
                         401: {"description": "Нет токена администратора"},
                         403: {"description": "Неверный токен администратора"},
                         404: {"description": AD_NOT_FOUND},
-                        409: {"description": "Публикация не собрана, нечего анализировать, ключ Claude отклонён, бюджет "
+                        409: {"description": "Публикация не собрана, нечего анализировать, ключ Anthropic отклонён, бюджет "
                                              "0 или дневной бюджет исчерпан — задание не ставится"},
-                        503: {"description": "Администрирование или анализ ИИ (Claude) не настроены на сервере"}})
+                        503: {"description": "Администрирование или анализ ИИ не настроены на сервере"}})
 def reanalyze(aid: str, body: schemas.AdminActionIn, admin: auth.Admin = Depends(auth.require_admin),
               db: Session = Depends(get_db)):
     """«Проанализировать ещё раз» (администратор: запрос к Claude расходует дневной бюджет анализа ИИ). Задание анализа
@@ -312,7 +312,7 @@ def reanalyze(aid: str, body: schemas.AdminActionIn, admin: auth.Admin = Depends
         if models.as_utc(job.run_after) > now:
             job.run_after = now
     item.analysis_status, item.analysis_stage, item.analysis_error = "queued", None, None
-    _event(db, "ai", body.author, f"Запрошен повторный анализ ИИ (Claude, модель {s.anthropic_model}): запрос "
+    _event(db, "ai", body.author, f"Запрошен повторный анализ ИИ (модель {s.anthropic_model}): запрос "
                                   "расходует дневной бюджет, прежний результат сохранится в истории", at=now, ad_id=aid)
     db.commit()
     db.refresh(ad)

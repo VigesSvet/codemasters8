@@ -530,7 +530,7 @@ function AiCard({ a, s, c, load, lc, retry, onLink }: { a: Ad; s: AdScore; c?: C
       <p className="t-sm c2" style={{ marginBottom: 8 }}>ИИ предлагает — решает аналитик. Гипотеза входит в балл только после того, как её примут; каждое решение пишется в журнал. Юридический вывод ИИ не делает.</p>
       {!live ? (
         <div className="ai-note">{mode === 'loading' ? 'Подключаемся к серверу…'
-          : `Офлайн-копия: разбор условий оплаты и гипотез ЖК выполняется на сервере, решения по ним — тоже.${a.llm ? ' Сохранённый анализ Claude этой публикации — в блоке ниже.' : ''}`}</div>
+          : `Офлайн-копия: разбор условий оплаты и гипотез ЖК выполняется на сервере, решения по ним — тоже.${a.llm ? ' Сохранённый анализ ИИ этой публикации — в блоке ниже.' : ''}`}</div>
       ) : !data ? (
         load?.err ? <div className="ai-note err">Анализ не загрузился: {load.err} <button className="link" onClick={retry}>Повторить</button></div>
           : <div className="ai-note">Загружаем анализ…</div>
@@ -637,7 +637,7 @@ function AiCard({ a, s, c, load, lc, retry, onLink }: { a: Ad; s: AdScore; c?: C
 const PENDING_LLM = { tone: 'gray' as const, label: 'ещё не выполнен',
   note: 'Анализ ИИ ещё не выполнялся: публикация ждёт постепенной доработки в пределах дневного бюджета. Можно не ждать — «Проанализировать сейчас».' }
 
-/** «Анализ ИИ (Claude)»: гипотезы языковой модели по тексту и OCR — признаки продажи, суммы, кандидаты ЖК с дословными
+/** «Анализ ИИ»: гипотезы языковой модели по тексту и OCR — признаки продажи, суммы, кандидаты ЖК с дословными
  *  цитатами (сервер сверил их с текстом), неясности. В балл не входят; привязку и решение принимает аналитик.
  *  Отказ модели, сбой и пропуск — «анализ ИИ не выполнен», а не «риска нет».
  *  «Проанализировать ещё раз» — администратор (запрос расходует дневной бюджет); onQueued — перечитать ленту и опрашивать её,
@@ -670,8 +670,8 @@ function LlmCard({ a, x, onQueued }: { a: Ad; x: LlmAnalysis | null; onQueued: (
   }
   return (
     <div className="card">
-      <div className="card-head"><h3>Анализ ИИ (Claude)</h3><span className="row" style={{ gap: 6 }}><span className={`tag ${st.tone}`}>{st.label}</span><AiBadge label="гипотезы ИИ" /></span></div>
-      <p className="t-sm c2" style={{ marginBottom: 8 }}>Языковая модель Anthropic читает текст публикации и OCR. Всё ниже — гипотезы: в балл риска не входят, привязку к ЖК и решение по публикации принимает аналитик. Цитаты сервер сверил с текстом — остальное модель не подтверждает.</p>
+      <div className="card-head"><h3>Анализ ИИ</h3><span className="row" style={{ gap: 6 }}><span className={`tag ${st.tone}`}>{st.label}</span><AiBadge label="гипотезы ИИ" /></span></div>
+      <p className="t-sm c2" style={{ marginBottom: 8 }}>Языковая модель читает текст публикации и OCR. Всё ниже — гипотезы: в балл риска не входят, привязку к ЖК и решение по публикации принимает аналитик. Цитаты сервер сверил с текстом — остальное модель не подтверждает.</p>
       {st.note && <div className={`ai-note ${!x || (x.status === 'failed' && x.retryAt) ? '' : 'warn'}`}>{st.note}</div>}
       {x && done && (
         <>
@@ -754,7 +754,7 @@ function LlmCard({ a, x, onQueued }: { a: Ad; x: LlmAnalysis | null; onQueued: (
       )}
       {x && (
         <div className="t-xs c3" style={{ marginTop: 12 }}>
-          Claude · {modelText(x)}{x.updatedAt ? ` · ${fmtDT(x.updatedAt)}` : ''}{x.contentVersion && x.contentVersion > 1 ? ` · версия ${x.contentVersion}` : ''}
+          Модель {modelText(x)}{x.updatedAt ? ` · ${fmtDT(x.updatedAt)}` : ''}{x.contentVersion && x.contentVersion > 1 ? ` · версия ${x.contentVersion}` : ''}
           {(x.inputTokens > 0 || x.outputTokens > 0) && ` · ${x.inputTokens.toLocaleString('ru-RU')} + ${x.outputTokens.toLocaleString('ru-RU')} токенов, ${costText(x.costUsd)}`}
           {' '}· промпт {x.promptVersion} · текст и OCR отправлены в Anthropic
         </div>

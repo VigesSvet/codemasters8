@@ -219,8 +219,8 @@ export function FilterPop<T extends string>({ label, title, value, options, onCh
   )
 }
 
-/** Серая шапка раздела — как на realty.yandex.ru/ipoteka: крошки, заголовок, строка с «i», плитки и главный блок */
-export function Hero({ crumb, title, info, actions, tiles, children }: { crumb: string; title: ReactNode; info?: ReactNode; actions?: ReactNode; tiles?: ReactNode; children?: ReactNode }) {
+/** Серая шапка раздела — как на realty.yandex.ru/ipoteka: крошки, заголовок, строка с «i», панель статистики и главный блок */
+export function Hero({ crumb, title, info, actions, board, children }: { crumb: string; title: ReactNode; info?: ReactNode; actions?: ReactNode; board?: ReactNode; children?: ReactNode }) {
   return (
     <div className="band">
       <div className="page-title" style={{ paddingBottom: 16 }}>
@@ -231,19 +231,10 @@ export function Hero({ crumb, title, info, actions, tiles, children }: { crumb: 
         </div>
         {actions && <div className="row">{actions}</div>}
       </div>
-      {tiles && <div className="mtiles">{tiles}</div>}
+      {board}
       {children}
     </div>
   )
-}
-
-/** Плитка в шапке: иконка, подпись, крупное значение. Без to и onClick — статичная, не выглядит кнопкой */
-export function HeroTile({ icon, label, value, to, onClick, active, tone }: { icon: ReactNode; label: ReactNode; value?: ReactNode; to?: string; onClick?: () => void; active?: boolean; tone?: Zone | 'blue' }) {
-  const inner = (<>{icon}<span>{label}{value !== undefined && <b className={tone ? `tone-${tone}` : ''}>{value}</b>}</span></>)
-  const cls = `mtile ${active ? 'on' : ''}`
-  if (to) return <Link to={to} className={cls}>{inner}</Link>
-  if (onClick) return <button className={cls} onClick={onClick} style={{ textAlign: 'left' }}>{inner}</button>
-  return <div className={`${cls} static`}>{inner}</div>
 }
 
 /** Аккордеон «Вопросы, которые задавал себе каждый» */

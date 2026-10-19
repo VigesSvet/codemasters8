@@ -10,7 +10,7 @@ const base: LlmAnalysis = {
   inputTokens: 1000, outputTokens: 500, costUsd: 0.014,
 }
 
-describe('анализ ИИ (Claude)', () => {
+describe('анализ ИИ', () => {
   it('нет анализа — ничего не показываем', () => {
     expect(llmState(undefined)).toBeNull()
     expect(llmState(null)).toBeNull()

@@ -91,7 +91,7 @@
      "kind": null,
      "quote": "Стоимость — от 22 554 000 ₸",
      "signal": "price",
-     "text": "Реклама 11.10.2026 (Instagram, @oks.group_oskemen): цена — «Стоимость — от 22 554 000 ₸»; объект назван в рекламе (ответ Claude)"
+     "text": "Реклама 11.10.2026 (Instagram, @oks.group_oskemen): цена — «Стоимость — от 22 554 000 ₸»; объект назван в рекламе (ответ ИИ)"
     }
    ],
    "status": "check",
@@ -217,7 +217,7 @@
      "kind": null,
      "quote": "ПРОДАЕТСЯ полноценная 2 комн. КВАРТИРА В ЖК VIVA PARK",
      "signal": "sale",
-     "text": "Реклама 18.10.2026 (Krisha.kz, krisha.kz / хозяин): продажа — «ПРОДАЕТСЯ полноценная 2 комн. КВАРТИРА В ЖК VIVA PARK»; объект назван в рекламе (ответ Claude)"
+     "text": "Реклама 18.10.2026 (Krisha.kz, krisha.kz / хозяин): продажа — «ПРОДАЕТСЯ полноценная 2 комн. КВАРТИРА В ЖК VIVA PARK»; объект назван в рекламе (ответ ИИ)"
     }
    ],
    "status": "check",
@@ -330,7 +330,7 @@
      "kind": null,
      "quote": "Продается новая 3 х комнатная квартира!",
      "signal": "sale",
-     "text": "Реклама 18.10.2026 (Krisha.kz, krisha.kz / хозяин): продажа — «Продается новая 3 х комнатная квартира!»; объект назван в рекламе (ответ Claude)"
+     "text": "Реклама 18.10.2026 (Krisha.kz, krisha.kz / хозяин): продажа — «Продается новая 3 х комнатная квартира!»; объект назван в рекламе (ответ ИИ)"
     }
    ],
    "status": "check",
@@ -417,7 +417,7 @@
      "kind": null,
      "quote": null,
      "signal": null,
-     "text": "Реклама 29.05.2026 (Instagram, @satti_uka); объект назван в рекламе (ответ Claude)"
+     "text": "Реклама 29.05.2026 (Instagram, @satti_uka); объект назван в рекламе (ответ ИИ)"
     }
    ],
    "status": "check",
@@ -504,7 +504,7 @@
      "kind": null,
      "quote": null,
      "signal": null,
-     "text": "Реклама 22.09.2026 (Instagram, @satti_uka); объект назван в рекламе (ответ Claude)"
+     "text": "Реклама 22.09.2026 (Instagram, @satti_uka); объект назван в рекламе (ответ ИИ)"
     }
    ],
    "status": "check",
@@ -594,7 +594,7 @@
      "kind": null,
      "quote": "Купи квартиру — выиграй BYD YUAN UP!",
      "signal": "sale",
-     "text": "Реклама 13.10.2026 (Instagram, @elitstroy.uka): продажа — «Купи квартиру — выиграй BYD YUAN UP!»; объект назван в рекламе (ответ Claude)"
+     "text": "Реклама 13.10.2026 (Instagram, @elitstroy.uka): продажа — «Купи квартиру — выиграй BYD YUAN UP!»; объект назван в рекламе (ответ ИИ)"
     }
    ],
    "status": "check",
@@ -684,7 +684,7 @@
      "kind": null,
      "quote": "Купи квартиру — выиграй BYD YUAN UP!",
      "signal": "sale",
-     "text": "Реклама 18.10.2026 (Instagram, @elitstroy.uka): продажа — «Купи квартиру — выиграй BYD YUAN UP!»; объект назван в рекламе (ответ Claude)"
+     "text": "Реклама 18.10.2026 (Instagram, @elitstroy.uka): продажа — «Купи квартиру — выиграй BYD YUAN UP!»; объект назван в рекламе (ответ ИИ)"
     }
    ],
    "status": "check",
@@ -794,7 +794,7 @@
      "kind": null,
      "quote": null,
      "signal": null,
-     "text": "Реклама 07.10.2026 (Instagram, @riverside.uka); объект назван в рекламе (ответ Claude)"
+     "text": "Реклама 07.10.2026 (Instagram, @riverside.uka); объект назван в рекламе (ответ ИИ)"
     }
    ],
    "status": "check",
@@ -922,7 +922,7 @@
      "kind": null,
      "quote": null,
      "signal": null,
-     "text": "Реклама 12.10.2026 (Instagram, @zhbk_zhilstroi); объект назван в рекламе (ответ Claude)"
+     "text": "Реклама 12.10.2026 (Instagram, @zhbk_zhilstroi); объект назван в рекламе (ответ ИИ)"
     }
    ],
    "status": "check",
@@ -1039,7 +1039,7 @@
      "kind": null,
      "quote": "забронировать квартиру своей мечты на выгодных условиях",
      "signal": "booking",
-     "text": "Реклама 07.10.2026 (Instagram, @bs_holding.oskemen): бронь — «забронировать квартиру своей мечты на выгодных условиях»; объект назван в рекламе (ответ Claude)"
+     "text": "Реклама 07.10.2026 (Instagram, @bs_holding.oskemen): бронь — «забронировать квартиру своей мечты на выгодных условиях»; объект назван в рекламе (ответ ИИ)"
     },
     {
      "adId": "9107be312ace4f3a9a9d4aeb58e8ee1c",
@@ -1177,7 +1177,7 @@
      "kind": null,
      "quote": "3-комнатная квартира · 86.4 м²",
      "signal": "sale",
-     "text": "Реклама 18.10.2026 (Krisha.kz, krisha.kz / «Eco Polis»): продажа — «3-комнатная квартира · 86.4 м²»; объект назван в рекламе (ответ Claude)"
+     "text": "Реклама 18.10.2026 (Krisha.kz, krisha.kz / «Eco Polis»): продажа — «3-комнатная квартира · 86.4 м²»; объект назван в рекламе (ответ ИИ)"
     }
    ],
    "status": "check",
@@ -1293,7 +1293,7 @@
      "kind": null,
      "quote": "В ЖК Muztau на проспекте Сатпаева места хватит для любых масштабов",
      "signal": "sale",
-     "text": "Реклама 02.10.2026 (Instagram, @premiumstroy.uka): продажа — «В ЖК Muztau на проспекте Сатпаева места хватит для любых масштабов»; объект назван в рекламе (ответ Claude)"
+     "text": "Реклама 02.10.2026 (Instagram, @premiumstroy.uka): продажа — «В ЖК Muztau на проспекте Сатпаева места хватит для любых масштабов»; объект назван в рекламе (ответ ИИ)"
     }
    ],
    "status": "check",
@@ -1401,7 +1401,7 @@
      "kind": null,
      "quote": null,
      "signal": null,
-     "text": "Реклама 03.10.2026 (Instagram, @ceogroup.ukg); объект назван в рекламе (ответ Claude)"
+     "text": "Реклама 03.10.2026 (Instagram, @ceogroup.ukg); объект назван в рекламе (ответ ИИ)"
     }
    ],
    "status": "check",

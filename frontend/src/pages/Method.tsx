@@ -9,6 +9,7 @@ import { isDemo } from '../lib/provenance'
 import { factorDef, isAssessed, model, zoneFor, type ModelCase } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcBank, IcCheck, IcChevronDown, IcChevronUp, IcClock, IcClose, IcHelp, IcInfo, IcMegaphone, IcUsersFamily, IcWallet, IcWorker } from '../ui/icons'
+import { Board, Cap } from '../components/StatBoard'
 
 const T = model.thresholds
 const ICONS: Record<string, ComponentType<{ size?: number }>> = { R1: IcBank, R2: IcWallet, R3: IcMegaphone, R4: IcUsersFamily, R5: IcWorker, R6: IcClock }
@@ -132,17 +133,26 @@ export default function Method() {
             </div>
           </div>
         </div>
-        <div className="mtiles">
-          {model.factors.map((f) => {
-            const Icon = ICONS[f.code] ?? IcHelp
-            return (
-              <a key={f.code} href={`#${f.code}`} className="mtile" onClick={() => setOpen(f.code)}>
-                <Icon size={32} />
-                <span>{f.short}<b>+{f.weight}</b></span>
-              </a>
-            )
-          })}
-        </div>
+        <Board kind="method">
+          <Cap aside={`максимум ${model.maxScore} баллов · красная зона — от ${model.zones.redFrom} и только при R1 + R2`}>Из чего складывается балл</Cap>
+          <div className="sb-weights">
+            {model.factors.map((f) => {
+              const Icon = ICONS[f.code] ?? IcHelp
+              return (
+                <a key={f.code} href={`#${f.code}`} className="sb-w" style={{ flexGrow: f.weight }} onClick={() => setOpen(f.code)} title={`${f.code} · ${f.short}: +${f.weight}`}>
+                  <span className="sb-w-bar"><b>+{f.weight}</b></span>
+                  <span className="sb-w-l"><Icon size={20} /><span>{f.short}</span></span>
+                </a>
+              )
+            })}
+          </div>
+          <div className="sb-scale" aria-hidden>
+            <i className="green" style={{ width: `${model.zones.yellowFrom}%` }} />
+            <i className="yellow" style={{ width: `${model.zones.redFrom - model.zones.yellowFrom}%` }} />
+            <i className="red" style={{ flex: 1 }} />
+            {[0, model.zones.yellowFrom, model.zones.redFrom, model.maxScore].map((v) => <span key={v} style={{ left: `${(v / model.maxScore) * 100}%` }}>{v}</span>)}
+          </div>
+        </Board>
 
         <div className="calc" id="calc">
           <div className="calc-l">

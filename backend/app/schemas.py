@@ -256,7 +256,7 @@ class LlmStageOut(Camel):
 
 
 class LlmOut(Camel):
-    """Последний анализ ИИ (Claude) публикации. Всё — гипотезы для аналитика: статус, привязку и вердикт модель не
+    """Последний анализ ИИ публикации. Всё — гипотезы для аналитика: статус, привязку и вердикт модель не
     задаёт. failed / refused / skipped — «анализ ИИ не выполнен», а не «риск отсутствует»."""
 
     status: Literal["done", "refused", "failed", "skipped"]
@@ -315,7 +315,7 @@ class AdOut(Camel):
     collected_at: IsoTime = None  # время получения сборщиком/приёмом (UTC), не время публикации
     media: Annotated[List[MediaRefOut], BeforeValidator(lambda v: list(v or []))] = []
     processing: Optional[ProcessingOut] = None  # только у публикаций из приёма (Ad.ingest)
-    llm: Optional[LlmOut] = None  # последний анализ ИИ (Claude) — гипотезы; нет — анализа не было
+    llm: Optional[LlmOut] = None  # последний анализ ИИ — гипотезы; нет — анализа не было
 
     @model_serializer(mode="wrap")
     def _out(self, handler) -> Dict[str, Any]:

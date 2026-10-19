@@ -1,13 +1,14 @@
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Compare from '../components/Compare'
-import { Faq, Hero, HeroTile, SectionHead, Seg, fmtDate, fmtShort, plural } from '../components/ui'
+import { Faq, Hero, SectionHead, Seg, fmtDate, fmtShort, plural } from '../components/ui'
 import type { Tri } from '../data/types'
 import { mediaSrc } from '../lib/api'
 import { progressText } from '../lib/provenance'
 import { factorDef, model } from '../lib/risk'
 import { useStore } from '../lib/store'
-import { IcCalendar, IcCamera, IcCheck, IcClock, IcClose, IcCrane, IcDrone, IcHelp, IcUpload } from '../ui/icons'
+import { IcCamera, IcCheck, IcClose, IcDrone, IcHelp, IcUpload } from '../ui/icons'
+import { Board, Cap, Kpi, Row, Shares } from '../components/StatBoard'
 
 type F = 'all' | 'idle' | 'ok' | 'none'
 const T = model.thresholds
@@ -37,14 +38,23 @@ export default function Sites() {
       <Hero crumb="Фото-мониторинг" title="Фото-мониторинг площадок"
         info="Дополнительный модуль: снимки площадок сравниваются во времени. Снимок с датой и источником аналитик добавляет в карточке ЖК; заявки на облёт и пакетная загрузка — после пилота"
         actions={<><button className="btn g m" style={{ background: '#fff' }} disabled title={NOT_YET}><IcDrone />Заявка на облёт · после пилота</button><button className="btn g m" style={{ background: '#fff' }} disabled title={NOT_YET}><IcUpload />Загрузить снимки · после пилота</button></>}
-        tiles={<>
-          <HeroTile icon={<IcCrane size={32} />} label="Строящихся объектов" value={all.length} onClick={() => setF('all')} active={f === 'all'} />
-          <HeroTile icon={<IcClock size={32} />} label="Стройка стоит 30+ дн." value={all.filter(test.idle).length} tone="red" onClick={() => setF('idle')} active={f === 'idle'} />
-          <HeroTile icon={<IcCheck size={32} />} label="Работы идут" value={all.filter(test.ok).length} tone="green" onClick={() => setF('ok')} active={f === 'ok'} />
-          <HeroTile icon={<IcCamera size={32} />} label="Без снимков" value={all.filter(test.none).length} tone="yellow" onClick={() => setF('none')} active={f === 'none'} />
-          <HeroTile icon={<IcCamera size={32} />} label="Снимков всего" value={all.reduce((s, x) => s + x.photos.length, 0)} onClick={() => setF('all')} />
-          <HeroTile icon={<IcCalendar size={32} />} label="Последний снимок" value={latest ? fmtShort(latest.date) : '—'} tone="blue" onClick={() => latest && setSel(latest.x.id)} />
-        </>}>
+        board={<Board kind="sites">
+          <Kpi big em="crane" value={all.length} label="строящихся объектов" onClick={() => setF('all')} active={f === 'all'} />
+          <div className="sb-col">
+            <Cap aside="по датам снимков в карточках ЖК">Состояние площадок</Cap>
+            <Shares total={all.length} parts={[
+              { key: 'ok', label: 'Работы идут', value: all.filter(test.ok).length, tone: 'green', onClick: () => setF(f === 'ok' ? 'all' : 'ok'), active: f === 'ok' },
+              { key: 'idle', label: 'Стройка стоит 30+ дн.', value: all.filter(test.idle).length, tone: 'red', onClick: () => setF(f === 'idle' ? 'all' : 'idle'), active: f === 'idle' },
+              { key: 'none', label: 'Нет снимков', value: all.filter(test.none).length, tone: 'yellow', onClick: () => setF(f === 'none' ? 'all' : 'none'), active: f === 'none' },
+            ]} />
+          </div>
+          <div className="sb-sep" />
+          <div className="sb-col">
+            <Cap>Архив снимков</Cap>
+            <Row em="photos" label="Снимков всего" value={all.reduce((s, x) => s + x.photos.length, 0)} />
+            <Row em="calendar" tone="blue" label="Последний снимок" hint={latest?.x.name} value={latest ? fmtShort(latest.date) : '—'} onClick={latest ? () => setSel(latest.x.id) : undefined} />
+          </div>
+        </Board>}>
         <div className="panel fade" key={c.id} style={{ gridTemplateColumns: 'minmax(0, 1fr) 360px' }}>
           <div style={{ padding: 8 }}>
             {c.photos.length >= 2 ? <Compare before={c.photos[0]} after={last} /> : c.photos.length === 1 ? <div className="ph" style={{ aspectRatio: '16/9', borderRadius: 16 }}><img src={mediaSrc(c.photos[0].src) ?? c.photos[0].src} alt="" /></div> : <div className="drop" style={{ aspectRatio: '16/9' }}><div><IcCamera /><div className="bold" style={{ marginTop: 8 }}>Снимков ещё нет</div><div className="t-sm c2">Простой по снимкам не оценить. Загрузка снимков и заявки на облёт — после пилота</div></div></div>}

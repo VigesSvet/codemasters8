@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Origin } from '../components/Provenance'
-import { Disclaimer, ReasonText, ScreeningPic, ScreeningTag } from '../components/Screening'
+import { Disclaimer, ReasonText, ScreeningPic } from '../components/Screening'
 import { Cell, Modal, PageTitle, PlatformIcon, adKey, fmtShort, plural } from '../components/ui'
 import { loadSnapshot } from '../data/snapshot'
 import type { Complex, Discovered as Obj, DiscoveredStatus, Platform } from '../data/types'
@@ -171,7 +171,7 @@ export default function Discovered() {
   )
 }
 
-/** Карточка объекта: название, написания, цитаты со ссылками на публикации, стадия и признаки продажи, сверка 2ГИС, действия */
+/** Карточка объекта — три шага разбора на направляющей: что нашли (название, цитаты, стадия, признаки продажи) → сверка 2ГИС → решение */
 /** ro — офлайн-копия: решения и 2ГИС недоступны, кнопки с подсказкой «доступно с сервером» */
 function ObjectCard({ o, g, author, admin, ro, onGeo, onCreate, onLink, onDismiss }: {
   o: Obj; g?: GeoState; author: string; admin: boolean; ro?: boolean
@@ -187,113 +187,129 @@ function ObjectCard({ o, g, author, admin, ro, onGeo, onCreate, onLink, onDismis
   const can = !!author && !ro
   // недоступная кнопка объясняет почему
   const blocked = ro ? NO_DISCOVERED : !author ? 'Войдите как аналитик' : undefined
+  const st = s?.status ?? ''
+  // направляющая разбора: шаг выполнен — зелёная галочка; узел первого шага — статус «Проверки по рекламе»
+  const geoDone = !!lastCheck
+  const decided = o.status !== 'new'
   return (
-    <article className={`disc-card ${s?.status ?? ''}`} aria-label={`Объект из рекламы «${o.name}»`}>
-      <div className="dh">
-        <div style={{ minWidth: 0 }}>
-          <div className="nm">{o.name}</div>
-          <div className="row wrap-f" style={{ gap: 6, marginTop: 6 }}>
-            {s && <ScreeningTag s={s} />}
-            <span className="tag outline">{o.origin === 'import' ? 'импорт по рекламе' : 'найден в рекламе'}</span>
-            {o.status === 'linked' && o.complexId && <Link className="tag green" to={`/complexes/${encodeURIComponent(o.complexId)}`} state={BACK}><IcCheck size={12} strokeWidth={3} />ЖК «{o.complexName || o.complexId}»</Link>}
-            {o.status === 'dismissed' && <span className="tag gray">отклонён</span>}
-          </div>
-          {o.aliases.length > 0 && <div className="t-sm c2" style={{ marginTop: 6 }}>Другие написания: {o.aliases.join(', ')}</div>}
-        </div>
-        <div style={{ textAlign: 'right', flex: 'none' }}>
-          <div className="t-h2 num">{o.adsCount}</div>
-          <div className="t-xs c2">{plural(o.adsCount, ['упоминание', 'упоминания', 'упоминаний'])} в рекламе</div>
-        </div>
-      </div>
-
-      {decision && <div className={`ai-decision ${o.status === 'linked' ? 'ok' : 'no'}`} style={{ marginTop: 0 }}>{decision}{o.decidedAt && `, ${when(o.decidedAt)}`}</div>}
-
-      {s && (
-        <div className="scr-line row wrap-f" style={{ gap: '4px 12px' }}>
-          <span>{why ? <ReasonText r={why} /> : <b>{s.label}</b>}</span>
-          <Disclaimer text={s.disclaimer} />
-        </div>
-      )}
-
-      <div className="disc-grid">
-        <div>
-          <div className="ai-sub" style={{ marginTop: 0 }}>Цитаты из рекламы <span className="t-sm c2" style={{ fontWeight: 400 }}>{o.quotes.length}</span></div>
-          {o.quotes.length ? (
-            <div className="ev-list">
-              {o.quotes.map((x, i) => {
-                const p = platformOf(x.platform)
-                return (
-                  <Link key={`${x.adId}-${i}`} to={`/ads/${encodeURIComponent(x.adId)}`} state={BACK} className="ev" style={{ gridTemplateColumns: p ? '20px minmax(0, 1fr)' : 'minmax(0, 1fr)' }}>
-                    {p && <PlatformIcon p={p} size={20} />}
-                    <div>
-                      <div className="meta">{[x.account, x.source === 'bot' ? 'заявка жителя' : x.source === 'manual' ? 'ручной ввод' : null, x.date ? fmtShort(x.date) : null, adKey(x.adId)].filter(Boolean).join(' · ')}</div>
-                      <div className="q">«{x.quote}»</div>
-                      {(x.name && x.name !== o.name) || x.address ? <div className="meta" style={{ marginTop: 2 }}>{[x.name && x.name !== o.name ? `названо: «${x.name}»` : null, x.address ? `адрес: ${x.address}` : null].filter(Boolean).join(' · ')}</div> : null}
-                    </div>
-                  </Link>
-                )
-              })}
+    <article className={`disc-card ${st}`} aria-label={`Объект из рекламы «${o.name}»`}>
+      <div className={`dc-step ${st}`}>
+        <span className="dc-node">{s ? <ScreeningPic status={s.status} size={32} /> : <i>1</i>}</span>
+        <div className="dc-step-b">
+          <div className="dc-step-h">1 · Что нашли в рекламе{s && <span className={`dc-st ${st}`}>{s.label}</span>}</div>
+          <div className="dh">
+            <div style={{ minWidth: 0 }}>
+              <div className="nm">{o.name}</div>
+              <div className="row wrap-f" style={{ gap: 6, marginTop: 6 }}>
+                <span className="tag outline">{o.origin === 'import' ? 'импорт по рекламе' : 'найден в рекламе'}</span>
+                {o.status === 'linked' && o.complexId && <Link className="tag green" to={`/complexes/${encodeURIComponent(o.complexId)}`} state={BACK}><IcCheck size={12} strokeWidth={3} />ЖК «{o.complexName || o.complexId}»</Link>}
+                {o.status === 'dismissed' && <span className="tag gray">отклонён</span>}
+              </div>
+              {o.aliases.length > 0 && <div className="t-sm c2" style={{ marginTop: 6 }}>Другие написания: {o.aliases.join(', ')}</div>}
             </div>
-          ) : <div className="t-sm c2">Цитат нет{o.origin === 'import' ? ' — объект добавлен импортом' : ''}</div>}
-        </div>
-        <div className="kv" style={{ alignContent: 'start' }}>
-          <span>Адрес в рекламе</span><span>{o.addressHint || 'не назван'}</span>
-          <span>Упоминания</span><span>{o.firstSeen ? `с ${when(o.firstSeen)}` : '—'}{o.lastSeen && when(o.lastSeen) !== when(o.firstSeen) ? ` по ${when(o.lastSeen)}` : ''}</span>
-          <span>Аккаунты</span><span>{o.accounts.length ? o.accounts.join(', ') : '—'}</span>
-          {src && <><span>Откуда</span><span>{src}</span></>}
-          <span>Стадия по рекламе</span>
-          <span>{stageLine(o.stageHints)}
-            {o.stageHints.quotes.slice(0, 2).map((x, i) => <span key={i} className="t-xs c2" style={{ display: 'block', marginTop: 2 }}>{STAGE_LABEL[x.value]}: «{x.quote}»</span>)}</span>
-          <span>Признаки продажи</span>
-          <span>{saleLine(o.saleSignals, s?.counts.windowDays)}{types && <span className="t-xs c2" style={{ display: 'block', marginTop: 2 }}>{types}</span>}
-            {o.saleSignals.lastAdAt && <span className="t-xs c2" style={{ display: 'block' }}>последняя публикация {fmtShort(o.saleSignals.lastAdAt)}</span>}</span>
-          {o.sourceUrls.length > 0 && <><span>Ссылки</span><span style={{ overflowWrap: 'anywhere' }}>{o.sourceUrls.slice(0, 3).map((u) => <a key={u} className="link t-sm" href={u} target="_blank" rel="noreferrer" style={{ display: 'block' }}>{u}</a>)}</span></>}
+            <div style={{ textAlign: 'right', flex: 'none' }}>
+              <div className="t-h2 num">{o.adsCount}</div>
+              <div className="t-xs c2">{plural(o.adsCount, ['упоминание', 'упоминания', 'упоминаний'])} в рекламе</div>
+            </div>
+          </div>
+          {decision && <div className={`ai-decision ${o.status === 'linked' ? 'ok' : 'no'}`} style={{ marginTop: 0 }}>{decision}{o.decidedAt && `, ${when(o.decidedAt)}`}</div>}
+          {s && (
+            <div className="scr-line row wrap-f" style={{ gap: '4px 12px' }}>
+              <span>{why ? <ReasonText r={why} /> : <b>{s.label}</b>}</span>
+              <Disclaimer text={s.disclaimer} />
+            </div>
+          )}
+          <div className="disc-grid">
+            <div>
+              <div className="ai-sub" style={{ marginTop: 0 }}>Цитаты из рекламы <span className="t-sm c2" style={{ fontWeight: 400 }}>{o.quotes.length}</span></div>
+              {o.quotes.length ? (
+                <div className="ev-list">
+                  {o.quotes.map((x, i) => {
+                    const p = platformOf(x.platform)
+                    return (
+                      <Link key={`${x.adId}-${i}`} to={`/ads/${encodeURIComponent(x.adId)}`} state={BACK} className="ev" style={{ gridTemplateColumns: p ? '20px minmax(0, 1fr)' : 'minmax(0, 1fr)' }}>
+                        {p && <PlatformIcon p={p} size={20} />}
+                        <div>
+                          <div className="meta">{[x.account, x.source === 'bot' ? 'заявка жителя' : x.source === 'manual' ? 'ручной ввод' : null, x.date ? fmtShort(x.date) : null, adKey(x.adId)].filter(Boolean).join(' · ')}</div>
+                          <div className="q">«{x.quote}»</div>
+                          {(x.name && x.name !== o.name) || x.address ? <div className="meta" style={{ marginTop: 2 }}>{[x.name && x.name !== o.name ? `названо: «${x.name}»` : null, x.address ? `адрес: ${x.address}` : null].filter(Boolean).join(' · ')}</div> : null}
+                        </div>
+                      </Link>
+                    )
+                  })}
+                </div>
+              ) : <div className="t-sm c2">Цитат нет{o.origin === 'import' ? ' — объект добавлен импортом' : ''}</div>}
+            </div>
+            <div className="kv" style={{ alignContent: 'start' }}>
+              <span>Адрес в рекламе</span><span>{o.addressHint || 'не назван'}</span>
+              <span>Упоминания</span><span>{o.firstSeen ? `с ${when(o.firstSeen)}` : '—'}{o.lastSeen && when(o.lastSeen) !== when(o.firstSeen) ? ` по ${when(o.lastSeen)}` : ''}</span>
+              <span>Аккаунты</span><span>{o.accounts.length ? o.accounts.join(', ') : '—'}</span>
+              {src && <><span>Откуда</span><span>{src}</span></>}
+              <span>Стадия по рекламе</span>
+              <span>{stageLine(o.stageHints)}
+                {o.stageHints.quotes.slice(0, 2).map((x, i) => <span key={i} className="t-xs c2" style={{ display: 'block', marginTop: 2 }}>{STAGE_LABEL[x.value]}: «{x.quote}»</span>)}</span>
+              <span>Признаки продажи</span>
+              <span>{saleLine(o.saleSignals, s?.counts.windowDays)}{types && <span className="t-xs c2" style={{ display: 'block', marginTop: 2 }}>{types}</span>}
+                {o.saleSignals.lastAdAt && <span className="t-xs c2" style={{ display: 'block' }}>последняя публикация {fmtShort(o.saleSignals.lastAdAt)}</span>}</span>
+              {o.sourceUrls.length > 0 && <><span>Ссылки</span><span style={{ overflowWrap: 'anywhere' }}>{o.sourceUrls.slice(0, 3).map((u) => <a key={u} className="link t-sm" href={u} target="_blank" rel="noreferrer" style={{ display: 'block' }}>{u}</a>)}</span></>}
+            </div>
+          </div>
         </div>
       </div>
-
-      {(g?.err || (g?.partial?.length ?? 0) > 0 || lastCheck) && (
-        <div className="disc-geo">
-          <div className="row between wrap-f" style={{ gap: 8 }}>
-            <span className="bold row" style={{ gap: 8 }}><PlatformIcon p="2gis" size={20} />Кандидаты 2ГИС{picks.length > 0 && <span className="c2" style={{ fontWeight: 400 }}>· {picks.length}</span>}</span>
-            {lastCheck && <span className="t-xs c2">{cacheLine(lastCheck, fmtStamp)}{g?.cached ? ' · ответ из кэша' : ''}</span>}
-          </div>
-          {g?.err && <div className="ai-note err" style={{ marginTop: 8 }}>Поиск в 2ГИС не выполнен: {g.err}</div>}
-          {g?.partial?.map((x) => <div key={x.query} className="ai-note warn" style={{ marginTop: 8 }}>Запрос «{x.query}» не выполнен: {x.detail}</div>)}
-          {lastCheck && !picks.length && <div className="t-sm c2" style={{ marginTop: 6 }}>2ГИС не нашёл подходящих домов — создайте карточку без координат и сверьте адрес позже</div>}
-          {picks.length > 0 && (
-            <div className="ai-list">
-              {picks.slice(0, 5).map(({ cand }) => {
-                const d = candidateDistance(cand)
-                return (
-                  <div key={cand.id} className="ai-item">
-                    <div className="row between" style={{ gap: 8, alignItems: 'flex-start' }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div className="bold">{candidateTitle(cand)}</div>
-                        {[cand.fullName, cand.addressName].find((x) => x && x !== candidateTitle(cand)) && <div className="t-sm">{[cand.fullName, cand.addressName].find((x) => x && x !== candidateTitle(cand))}</div>}
-                        <div className="t-xs c2" style={{ marginTop: 2 }}>{[cand.purpose, fmtPoint(candidatePoint(cand)), d === null ? null : `в ${fmtDist(d)}`].filter(Boolean).join(' · ')}</div>
+      <div className={`dc-step ${geoDone ? 'done' : ''}`}>
+        <span className="dc-node"><i>{geoDone ? '✓' : '2'}</i></span>
+        <div className="dc-step-b">
+          <div className="dc-step-h">2 · Сверка адреса в 2ГИС{!geoDone && <span className="dc-hint">ещё не сверяли — «Найти в 2ГИС»</span>}</div>
+          {(g?.err || (g?.partial?.length ?? 0) > 0 || lastCheck) && (
+            <div className="disc-geo">
+              <div className="row between wrap-f" style={{ gap: 8 }}>
+                <span className="bold row" style={{ gap: 8 }}><PlatformIcon p="2gis" size={20} />Кандидаты 2ГИС{picks.length > 0 && <span className="c2" style={{ fontWeight: 400 }}>· {picks.length}</span>}</span>
+                {lastCheck && <span className="t-xs c2">{cacheLine(lastCheck, fmtStamp)}{g?.cached ? ' · ответ из кэша' : ''}</span>}
+              </div>
+              {g?.err && <div className="ai-note err" style={{ marginTop: 8 }}>Поиск в 2ГИС не выполнен: {g.err}</div>}
+              {g?.partial?.map((x) => <div key={x.query} className="ai-note warn" style={{ marginTop: 8 }}>Запрос «{x.query}» не выполнен: {x.detail}</div>)}
+              {lastCheck && !picks.length && <div className="t-sm c2" style={{ marginTop: 6 }}>2ГИС не нашёл подходящих домов — создайте карточку без координат и сверьте адрес позже</div>}
+              {picks.length > 0 && (
+                <div className="ai-list">
+                  {picks.slice(0, 5).map(({ cand }) => {
+                    const d = candidateDistance(cand)
+                    return (
+                      <div key={cand.id} className="ai-item">
+                        <div className="row between" style={{ gap: 8, alignItems: 'flex-start' }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div className="bold">{candidateTitle(cand)}</div>
+                            {[cand.fullName, cand.addressName].find((x) => x && x !== candidateTitle(cand)) && <div className="t-sm">{[cand.fullName, cand.addressName].find((x) => x && x !== candidateTitle(cand))}</div>}
+                            <div className="t-xs c2" style={{ marginTop: 2 }}>{[cand.purpose, fmtPoint(candidatePoint(cand)), d === null ? null : `в ${fmtDist(d)}`].filter(Boolean).join(' · ')}</div>
+                          </div>
+                          <div className="row wrap-f" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                            {cand.recommended && <span className="tag green" title="Единственный точный дом в Усть-Каменогорске — подсказка, а не выбор">{GEO_COPY.recommended}</span>}
+                            <span className={`tag ${isExact(cand) ? 'outline' : 'yellow'}`}>{isExact(cand) && <IcCheck size={12} strokeWidth={3} />}{isExact(cand) ? 'точный дом' : precisionLabel(cand.precision)}</span>
+                            {o.status !== 'linked' && <button className="btn o s" disabled={!can} title={blocked} onClick={() => onCreate(cand.id)}>Карточка с этой точкой</button>}
+                          </div>
+                        </div>
                       </div>
-                      <div className="row wrap-f" style={{ gap: 6, justifyContent: 'flex-end' }}>
-                        {cand.recommended && <span className="tag green" title="Единственный точный дом в Усть-Каменогорске — подсказка, а не выбор">{GEO_COPY.recommended}</span>}
-                        <span className={`tag ${isExact(cand) ? 'outline' : 'yellow'}`}>{isExact(cand) && <IcCheck size={12} strokeWidth={3} />}{isExact(cand) ? 'точный дом' : precisionLabel(cand.precision)}</span>
-                        {o.status !== 'linked' && <button className="btn o s" disabled={!can} title={blocked} onClick={() => onCreate(cand.id)}>Карточка с этой точкой</button>}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
-      )}
-
-      <div className="disc-acts">
-        {o.status === 'linked' && o.complexId && <Link className="btn d m" to={`/complexes/${encodeURIComponent(o.complexId)}`} state={BACK}><IcBuilding size={18} />Карточка ЖК</Link>}
-        {o.status !== 'linked' && <button className="btn g m" disabled={!can || g?.busy} title={blocked} onClick={() => onGeo(false)}><IcSearch size={18} />{g?.busy ? 'Ищем в 2ГИС…' : 'Найти в 2ГИС'}</button>}
-        {o.status !== 'linked' && admin && !ro && lastCheck && <button className="btn g m" disabled={!can || g?.busy} onClick={() => onGeo(true)} title="Запросить 2ГИС заново, мимо кэша: расходует квоту ключа. Только для администратора"><IcRefresh size={18} />{GEO_COPY.force}</button>}
-        {o.status !== 'linked' && <button className="btn y m" disabled={!can} title={blocked} onClick={() => onCreate()}><IcBuilding size={18} />Создать карточку ЖК</button>}
-        <button className="btn g m" disabled={!can} title={blocked} onClick={onLink}>{o.status === 'linked' ? 'Привязать к другому ЖК' : 'Это существующий ЖК'}</button>
-        {o.status !== 'dismissed' && <button className="btn g m" disabled={!can} title={blocked} onClick={onDismiss}><IcClose size={18} />Не ЖК — отклонить</button>}
-        {ro && <span className="t-xs c2" style={{ alignSelf: 'center' }}>доступно с сервером</span>}
+      </div>
+      <div className={`dc-step last ${decided ? 'done' : ''}`}>
+        <span className="dc-node"><i>{decided ? '✓' : '3'}</i></span>
+        <div className="dc-step-b">
+          <div className="dc-step-h">3 · Решение аналитика{!decided && <span className="dc-hint">создать карточку, привязать или отклонить</span>}</div>
+          <div className="disc-acts">
+            {o.status === 'linked' && o.complexId && <Link className="btn d m" to={`/complexes/${encodeURIComponent(o.complexId)}`} state={BACK}><IcBuilding size={18} />Карточка ЖК</Link>}
+            {o.status !== 'linked' && <button className="btn g m" disabled={!can || g?.busy} title={blocked} onClick={() => onGeo(false)}><IcSearch size={18} />{g?.busy ? 'Ищем в 2ГИС…' : 'Найти в 2ГИС'}</button>}
+            {o.status !== 'linked' && admin && !ro && lastCheck && <button className="btn g m" disabled={!can || g?.busy} onClick={() => onGeo(true)} title="Запросить 2ГИС заново, мимо кэша: расходует квоту ключа. Только для администратора"><IcRefresh size={18} />{GEO_COPY.force}</button>}
+            {o.status !== 'linked' && <button className="btn y m" disabled={!can} title={blocked} onClick={() => onCreate()}><IcBuilding size={18} />Создать карточку ЖК</button>}
+            <button className="btn g m" disabled={!can} title={blocked} onClick={onLink}>{o.status === 'linked' ? 'Привязать к другому ЖК' : 'Это существующий ЖК'}</button>
+            {o.status !== 'dismissed' && <button className="btn g m" disabled={!can} title={blocked} onClick={onDismiss}><IcClose size={18} />Не ЖК — отклонить</button>}
+            {ro && <span className="t-xs c2" style={{ alignSelf: 'center' }}>доступно с сервером</span>}
+          </div>
+        </div>
       </div>
     </article>
   )

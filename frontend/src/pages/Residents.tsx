@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Cell, Faq, Hero, HeroTile, Modal, RiskScore, Seg } from '../components/ui'
+import { Cell, Faq, Hero, Modal, RiskScore, Seg } from '../components/ui'
 import type { Complex, Zone } from '../data/types'
 import { isAssessed, model } from '../lib/risk'
 import { useStore } from '../lib/store'
-import { IcBuilding, IcCheck, IcChevronDown, IcClock, IcSend, IcShield, IcTraffic } from '../ui/icons'
+import { IcCheck, IcChevronDown, IcSend } from '../ui/icons'
+import { Board, Cap, Kpi, Row, Shares } from '../components/StatBoard'
 
 const T = model.thresholds
 type Tpl = 'basis' | 'idle' | 'ok'
@@ -35,7 +36,13 @@ const IDEA = 'Макет: сообщения не отправляются — �
 const NOW = new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })
 
 /** Жителям — шапка с главным блоком «конструктор уведомления + превью на телефоне», ниже аудитория и FAQ */
+// пока ЖК не загружены (прямой переход на /residents), выбирать объект не из чего — макет ждёт данных
 export default function Residents() {
+  const { complexes } = useStore()
+  return complexes.length ? <ResidentsMock /> : <div className="empty">Загружаем объекты…</div>
+}
+
+function ResidentsMock() {
   const { complexes, riskOf } = useStore()
   const scored = useMemo(() => complexes.map((c) => ({ c, r: riskOf(c) })).sort((a, b) => b.r.score - a.r.score), [complexes, riskOf])
   const [cid, setCid] = useState(scored[0].c.id)
@@ -61,14 +68,24 @@ export default function Residents() {
     <>
       <Hero crumb="Жителям" title="Предупредить жителей"
         info={<span><b className="bold">Идея для развития · макет, сообщения не отправляются.</b> Не входит в MVP: подписчиков, рассылок и согласования нет. В рабочей версии отправка — только после решения уполномоченного органа</span>}
-        tiles={<>
-          <HeroTile icon={<IcTraffic size={32} />} label="Красная зона" value={count('red')} tone="red" to="/complexes?zone=red" />
-          <HeroTile icon={<IcTraffic size={32} />} label="Жёлтая зона" value={count('yellow')} tone="yellow" to="/complexes?zone=yellow" />
-          <HeroTile icon={<IcBuilding size={32} />} label="Можно предупредить" value={count('red') + count('yellow')} onClick={() => { setCid(scored[0].c.id); setTpl(firstFit(scored[0].c, tpl)); setMsg('') }} />
-          <HeroTile icon={<IcShield size={32} />} label="Шаблон «Проверьте основание»" value={fitN('basis')} onClick={() => pickTpl('basis')} active={tpl === 'basis'} />
-          <HeroTile icon={<IcClock size={32} />} label="Шаблон «Стройка стоит»" value={fitN('idle')} onClick={() => pickTpl('idle')} active={tpl === 'idle'} />
-          <HeroTile icon={<IcCheck size={32} />} label="Шаблон «Есть в перечне»" value={fitN('ok')} onClick={() => pickTpl('ok')} active={tpl === 'ok'} />
-        </>}>
+        board={<Board kind="residents">
+          <Kpi big em="flag" tone="red" value={count('red') + count('yellow')} label="ЖК можно предупредить" hint="красная и жёлтая зоны"
+            onClick={() => { setCid(scored[0].c.id); setTpl(firstFit(scored[0].c, tpl)); setMsg('') }} />
+          <div className="sb-col">
+            <Cap aside="только оценённые ЖК">Кого касается</Cap>
+            <Shares parts={[
+              { key: 'red', label: 'Красная зона', value: count('red'), tone: 'red', to: '/complexes?zone=red' },
+              { key: 'yellow', label: 'Жёлтая зона', value: count('yellow'), tone: 'yellow', to: '/complexes?zone=yellow' },
+            ]} />
+          </div>
+          <div className="sb-sep" />
+          <div className="sb-col">
+            <Cap>Шаблоны · подходят к ЖК</Cap>
+            <Row em="docs" label="«Проверьте основание»" value={fitN('basis')} onClick={() => pickTpl('basis')} active={tpl === 'basis'} />
+            <Row em="hourglass" label="«Стройка стоит»" value={fitN('idle')} onClick={() => pickTpl('idle')} active={tpl === 'idle'} />
+            <Row em="city" label="«Есть в перечне»" value={fitN('ok')} onClick={() => pickTpl('ok')} active={tpl === 'ok'} />
+          </div>
+        </Board>}>
         <div className="panel" style={{ gridTemplateColumns: 'minmax(0, 1fr) 380px' }}>
           <div className="pl">
             <h2 className="t-h2" style={{ marginBottom: 12 }}>Уведомление</h2>

@@ -265,10 +265,10 @@ def backfill(db: Session, now: datetime) -> list[str]:
         db.commit()
     except Exception:  # noqa: BLE001
         db.rollback()
-        log.warning("Дозапрос анализа ИИ (Claude) не выполнен", exc_info=True)
+        log.warning("Дозапрос анализа ИИ не выполнен", exc_info=True)
         return []
     if ids:
-        log.info("Дозапрос анализа ИИ (Claude): поставлено заданий анализа %s", len(ids))
+        log.info("Дозапрос анализа ИИ: поставлено заданий анализа %s", len(ids))
     return ids
 
 

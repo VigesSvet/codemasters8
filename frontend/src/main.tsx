@@ -10,7 +10,10 @@ import './styles/sources.css'
 import './styles/viewer.css'
 import './styles/screening.css'
 import './styles/verification.css'
+import './styles/board.css'
+import './styles/sat.css'
 import App from './App.tsx'
+
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

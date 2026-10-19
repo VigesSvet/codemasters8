@@ -124,7 +124,8 @@ def ad_events(ad_id: str, kind=None) -> list[str]:
 
 
 def claude_events(ad_id: str) -> list[str]:
-    return [e for e in ad_events(ad_id) if "Claude" in e]
+    # события языковой модели: «Анализ ИИ: …», «Анализ ИИ не выполнен / пропущен …», «Запрошен повторный анализ ИИ …»
+    return [e for e in ad_events(ad_id) if "Анализ ИИ" in e or "анализ ИИ (модель" in e]
 
 
 def rows(ad_id: str) -> list[models.LlmAnalysis]:
@@ -241,7 +242,7 @@ def test_injection_is_data_and_cannot_set_decisions(client, run_worker, ocr_stub
     assert got["llm"]["complexCandidates"][0]["complexId"] == "c1"  # только гипотеза
     with SessionLocal() as db:  # событие ИИ не привязано к ЖК
         E = models.AuditEvent
-        e = db.scalars(select(E).where(E.ad_id == res.ad_id, E.what.like("ИИ (Claude)%"))).one()
+        e = db.scalars(select(E).where(E.ad_id == res.ad_id, E.what.like("Анализ ИИ:%"))).one()
         assert e.complex_id is None and e.who == "Система" and e.kind == "ai"
 
 
@@ -252,7 +253,7 @@ def test_extra_fields_in_answer_fail_schema(client, run_worker, ocr_stub, key, a
     (row,) = rows(res.ad_id)
     assert (row.status, row.result, row.retry_at) == ("failed", None, None)
     assert row.error == "ответ модели не соответствует схеме (2 ошибок)"
-    assert "Анализ ИИ (Claude) не выполнен: ответ модели не соответствует схеме (2 ошибок) — проверьте вручную" in \
+    assert "Анализ ИИ не выполнен: ответ модели не соответствует схеме (2 ошибок) — проверьте вручную" in \
         ad_events(res.ad_id, "system")
     with SessionLocal() as db:
         assert db.get(models.Ad, res.ad_id).status == "new"
@@ -336,7 +337,7 @@ def test_refusal_is_not_no_risk(client, run_worker, ocr_stub, key, api):
     (row,) = rows(res.ad_id)
     assert (row.status, row.result, row.retry_at, row.meta["refusalCategory"]) == ("refused", None, None, "cyber")
     ev = claude_events(res.ad_id)
-    assert ev == ["ИИ (Claude): модель отказалась анализировать публикацию (категория: cyber) — анализ ИИ не выполнен; "
+    assert ev == ["Анализ ИИ: модель отказалась анализировать публикацию (категория: cyber) — анализ ИИ не выполнен; "
                   "это не значит, что риска нет, проверьте вручную"]
     got = client.get(f"/api/ads/{res.ad_id}").json()["llm"]
     assert (got["status"], got["refusalCategory"], got["saleSignals"]) == ("refused", "cyber", [])
@@ -351,7 +352,7 @@ def test_max_tokens_is_incomplete_failure(client, run_worker, ocr_stub, key, api
     (row,) = rows(res.ad_id)
     assert (row.status, row.result, row.retry_at) == ("failed", None, None)
     assert "не уместился в ANTHROPIC_MAX_TOKENS (16000)" in row.error
-    assert claude_events(res.ad_id)[0].startswith("Анализ ИИ (Claude) не выполнен: ответ модели не уместился")
+    assert claude_events(res.ad_id)[0].startswith("Анализ ИИ не выполнен: ответ модели не уместился")
     assert not queued_analysis(res.ad_id)
 
 
@@ -372,7 +373,7 @@ def test_auth_401_marks_expired_and_blocks_until_key_changes(client, run_worker,
     assert len(api.messages) == 1
     (skipped,) = rows(other.ad_id)
     assert skipped.status == "skipped" and skipped.meta["skipCode"] == "key"
-    assert claude_events(other.ad_id)[0].startswith("Анализ ИИ (Claude) пропущен: подключение Claude в статусе «истёк")
+    assert claude_events(other.ad_id)[0].startswith("Анализ ИИ пропущен: подключение анализатора ИИ в статусе «истёк")
     # ключ заменили — запросы снова идут
     env(ANTHROPIC_API_KEY=KEY + "-new")
     api.add(message())
@@ -417,7 +418,7 @@ def test_429_retry_after_requeues_analysis(client, run_worker, ocr_stub, key, ap
     (row,) = rows(res.ad_id)
     assert (row.status, row.attempts, row.retry_at) == ("done", 2, None)
     assert len(api.messages) == 2
-    assert claude_events(res.ad_id)[0].startswith("ИИ (Claude): признаки продажи — бронь «Бронь квартиры за 100 000 ₸»")
+    assert claude_events(res.ad_id)[0].startswith("Анализ ИИ: признаки продажи — бронь «Бронь квартиры за 100 000 ₸»")
 
 
 def test_5xx_limited_retries_then_failed(client, run_worker, ocr_stub, key, api):
@@ -433,7 +434,7 @@ def test_5xx_limited_retries_then_failed(client, run_worker, ocr_stub, key, api)
             t = models.as_utc(row.retry_at) + timedelta(seconds=1)
     assert (row.status, row.retry_at) == ("failed", None)
     assert row.error == "Ошибка сервера Anthropic (HTTP 503) (попыток: 3)"
-    assert claude_events(res.ad_id) == ["Анализ ИИ (Claude) не выполнен: Ошибка сервера Anthropic (HTTP 503) "
+    assert claude_events(res.ad_id) == ["Анализ ИИ не выполнен: Ошибка сервера Anthropic (HTTP 503) "
                                         "(попыток: 3) — проверьте вручную"]
     assert not queued_analysis(res.ad_id) and len(api.messages) == 3
     c = connector(client)
@@ -516,7 +517,7 @@ def test_budget_reached_skips_without_call(client, run_worker, ocr_stub, env, ap
     assert api.calls == []
     (row,) = rows(res.ad_id)
     assert (row.status, row.meta["skipCode"]) == ("skipped", "budget")
-    assert claude_events(res.ad_id)[0].startswith("Анализ ИИ (Claude) пропущен: дневной бюджет $0.10 исчерпан")
+    assert claude_events(res.ad_id)[0].startswith("Анализ ИИ пропущен: дневной бюджет $0.10 исчерпан")
     assert not queued_analysis(res.ad_id)  # не цикл повторов
     c = connector(client)
     assert (c["status"], c["statusLabel"]) == ("rate_limited", "пауза: лимит")
@@ -552,7 +553,7 @@ def test_same_material_not_resent_new_text_is(client, run_worker, ocr_stub, key,
                                                                                        error="нет")]))
     run_worker()
     assert len(api.messages) == 1
-    assert [e for e in claude_events(res.ad_id) if e.startswith("ИИ (Claude)")][-1].endswith(" (версия 2)")
+    assert [e for e in claude_events(res.ad_id) if e.startswith("Анализ ИИ:")][-1].endswith(" (версия 2)")
     # новый текст — новый запрос и новая строка
     api.add(message({**OK, "saleSignals": [{"type": "discount", "quote": "Скидка 10%"}]}))
     take(pub(text=TEXT + ". Скидка 10% до конца месяца"))
@@ -596,11 +597,11 @@ def test_result_on_ad_out_and_audit_event(client, run_worker, ocr_stub, key, api
     assert next(a for a in client.get("/api/ads").json() if a["id"] == res.ad_id)["llm"]["status"] == "done"
     ai = ad_events(res.ad_id, "ai")
     assert ai[0].startswith("Гипотеза ИИ: ЖК «Ульба Ривер»")  # сначала правила saq-ai-1
-    assert ai[-1] == ("ИИ (Claude): признаки продажи — бронь «Бронь квартиры за 100 000 ₸», рассрочка «рассрочка до "
+    assert ai[-1] == ("Анализ ИИ: признаки продажи — бронь «Бронь квартиры за 100 000 ₸», рассрочка «рассрочка до "
                       "сдачи дома»; суммы — 100 000 KZT (бронь); кандидаты ЖК — «Ульба Ривер» (высокая) — гипотеза, "
                       "привязку делает аналитик; требует проверки аналитиком")
     audit = client.get("/api/audit", params={"adId": res.ad_id}).json()
-    assert any(e["what"].startswith("ИИ (Claude)") and e["who"] == "Система" and e["kind"] == "ai" for e in audit)
+    assert any(e["what"].startswith("Анализ ИИ:") and e["who"] == "Система" and e["kind"] == "ai" for e in audit)
     # демо-публикации — без поля llm
     assert "llm" not in next(a for a in client.get("/api/ads").json() if a["id"] == "a1")
 
@@ -631,7 +632,7 @@ def test_no_secrets_in_logs_audit_api(client, run_worker, ocr_stub, key, api, ca
 def test_connector_statuses_and_check(client, run_worker, ocr_stub, env, api, admin_headers):
     c = connector(client)
     assert (c["status"], c["statusDetail"], c["name"], c["kind"], c["group"]) == (
-        "not_configured", "Нет на сервере: ANTHROPIC_API_KEY", "Claude (Anthropic) — анализатор", "analyzer",
+        "not_configured", "Нет на сервере: ANTHROPIC_API_KEY", "Анализатор ИИ (Anthropic)", "analyzer",
         "analyzer")
     assert c["capabilities"]["test"] is True and c["capabilities"]["collect"] is False
     assert c["secretRefs"] == ["env:ANTHROPIC_API_KEY"] and "5.0 USD" in c["limitation"]
@@ -644,7 +645,7 @@ def test_connector_statuses_and_check(client, run_worker, ocr_stub, env, api, ad
     assert [x["path"] for x in api.calls] == ["/v1/models/claude-sonnet-5-5"]  # без генерации
     c = connector(client)
     assert (c["status"], c["statusLabel"]) == ("ready", "готов")
-    assert c["statusDetail"].startswith("Ключ принят, модель Claude Sonnet 5.5 (claude-sonnet-5-5) доступна")
+    assert c["statusDetail"].startswith("Ключ принят, модель claude-sonnet-5-5 доступна")
     assert c["facts"]["fallbacks"] == "default" and c["facts"]["contextWindow"] == 1000000
     assert c["facts"]["outputLimit"] == 128000 and c["facts"]["responseLimit"] == 16000
     # анализ прошёл — «анализирует публикации»
@@ -674,7 +675,7 @@ def test_smoke_line(client, env, api):
     api.add(model_info())
     out = smoke.check_one("anthropic")
     first = out.splitlines()[0]
-    assert first.startswith("anthropic: готов — Ключ принят, модель Claude Sonnet 5.5 (claude-sonnet-5-5) доступна")
+    assert first.startswith("anthropic: готов — Ключ принят, модель claude-sonnet-5-5 доступна")
     assert out.endswith("(только сведения о модели — без генерации и без оплаты)") and KEY not in out
     api.add(error(401, "authentication_error"))
     assert smoke.check_one("anthropic").startswith("anthropic: истёк доступ — Anthropic отклонил ключ")
@@ -710,7 +711,7 @@ def test_stage_internal_error_is_not_silent(client, run_worker, ocr_stub, key, a
     monkeypatch.setattr(llm, "build_material", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("сбой")))
     res = take(pub())
     run_worker()
-    assert "Анализ ИИ (Claude) не выполнен: внутренняя ошибка этапа — подробности в журнале воркера; проверьте вручную" \
+    assert "Анализ ИИ не выполнен: внутренняя ошибка этапа — подробности в журнале воркера; проверьте вручную" \
         in ad_events(res.ad_id, "system")
     with SessionLocal() as db:
         item = db.get(models.IngestItem, res.item_id)
@@ -777,7 +778,7 @@ def test_backfill_newest_first_batch_and_no_duplicate_events(client, run_worker,
     assert [j.ad_id for j in jobs_] == [new, mid] and all(j.payload["backfill"] for j in jobs_)
     for aid in (new, mid):  # правила и OCR перезапущены, но журнал не дублируется: только событие Claude
         added = ad_events(aid)[len(before[aid]):]
-        assert len(added) == 1 and added[0].startswith("ИИ (Claude): признаки продажи")
+        assert len(added) == 1 and added[0].startswith("Анализ ИИ: признаки продажи")
     assert run_worker() == 0 and len(api.messages) == 2  # пауза ANTHROPIC_BACKFILL_INTERVAL_MIN не прошла
     api.add(message())
     later = models.utcnow() + timedelta(minutes=11)
@@ -874,7 +875,7 @@ def test_backfill_tries_once_a_day_even_without_result(client, run_worker, ocr_s
         m.setattr(llm, "_find", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("сбой")))
         assert run_worker() == 1
     assert rows(aid) == [] and api.calls == []
-    assert "Анализ ИИ (Claude) не выполнен: внутренняя ошибка этапа — подробности в журнале воркера; проверьте вручную" \
+    assert "Анализ ИИ не выполнен: внутренняя ошибка этапа — подробности в журнале воркера; проверьте вручную" \
         in ad_events(aid, "system")
     with SessionLocal() as db:
         assert llm.due(db, aid, models.utcnow()) is True  # строки нет — публикация всё ещё ждёт дозапроса
@@ -967,7 +968,7 @@ def test_reanalyze_auth_and_preconditions(client, run_worker, ocr_stub, env, api
     aid = take(pub()).ad_id
     run_worker()
     r = reanalyze(client, aid, ok)
-    assert (r.status_code, r.json()["detail"]) == (503, "Анализ ИИ (Claude) не настроен: задайте ANTHROPIC_API_KEY "
+    assert (r.status_code, r.json()["detail"]) == (503, "Анализ ИИ не настроен: задайте ANTHROPIC_API_KEY "
                                                         "на сервере")
     env(ANTHROPIC_API_KEY=KEY, ANTHROPIC_DAILY_BUDGET_USD="0")
     r = reanalyze(client, aid, ok)
@@ -1014,8 +1015,8 @@ def test_reanalyze_force_keeps_history_and_calls_again(client, run_worker, ocr_s
     assert got["llm"]["summary"] == "Повторный анализ: реклама продажи с бронью."
     assert got["processing"]["status"] == "done"
     added = ad_events(aid)[len(before):]
-    assert added[0].startswith("Запрошен повторный анализ ИИ (Claude")
-    assert len(added) == 2 and added[1].startswith("ИИ (Claude): признаки продажи")  # одно событие на новый результат
+    assert added[0].startswith("Запрошен повторный анализ ИИ (модель")
+    assert len(added) == 2 and added[1].startswith("Анализ ИИ: признаки продажи")  # одно событие на новый результат
     with SessionLocal() as db:
         job = db.scalars(select(models.Job).where(models.Job.ad_id == aid).order_by(models.Job.id.desc())).first()
         assert job.result["force"] is True and job.result["llm"]["status"] == "done"
@@ -1062,7 +1063,7 @@ def test_reanalyze_skipped_for_budget_keeps_previous_answer(client, run_worker, 
     assert run_worker() == 1 and len(api.messages) == 1
     (row,) = rows(aid)
     assert (row.id, row.status, row.content_hash, row.result) == (first.id, "done", first.content_hash, first.result)
-    assert claude_events(aid)[-1].startswith("Анализ ИИ (Claude) пропущен: дневной бюджет $5.00 исчерпан")
+    assert claude_events(aid)[-1].startswith("Анализ ИИ пропущен: дневной бюджет $5.00 исчерпан")
     assert client.get(f"/api/ads/{aid}").json()["llm"]["status"] == "done"
 
 

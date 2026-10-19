@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { LinkMark } from '../components/Hypothesis'
-import { Faq, Modal, Hero, HeroTile, Highlight, PlatformIcon, SafeImg, Score, StatusDot, Seg, adKey, fmtShort, statusMeta } from '../components/ui'
+import { Faq, Modal, Hero, Highlight, PlatformIcon, SafeImg, Score, StatusDot, Seg, adKey, fmtShort, statusMeta } from '../components/ui'
 import { READ_ONLY } from '../data/snapshot'
 import type { Ad, AdStatus, Complex } from '../data/types'
 import { initialsOf } from '../lib/audit'
@@ -10,7 +10,7 @@ import { adImage } from '../lib/media'
 import { from } from '../lib/nav'
 import { scoreAd } from '../lib/risk'
 import { useStore } from '../lib/store'
-import { IcCheck, IcClock, IcClose, IcFlag, IcHelp, IcInbox, IcUsers } from '../ui/icons'
+import { Board, Cap, Flow, Meter, Row } from '../components/StatBoard'
 
 const COLS: AdStatus[] = ['new', 'needs_check', 'in_review', 'confirmed', 'dismissed']
 type Item = { a: Ad; c?: Complex; s: ReturnType<typeof scoreAd> }
@@ -114,15 +114,28 @@ export default function Queue() {
       <Hero crumb="Очередь проверки" title="Очередь проверки"
         info={ro ? `Сверху — самые рискованные. ${READ_ONLY}` : 'Сверху — самые рискованные. Перетащите карточку в колонку, чтобы сменить статус'}
         actions={<Seg value={who} onChange={setWho} items={[['all', 'Все'], ['me', 'Мои'], ['none', 'Без исполнителя']]} />}
-        tiles={<>
-          <HeroTile icon={<IcInbox size={32} />} label="Новые" value={n('new')} tone="blue" />
-          <HeroTile icon={<IcHelp size={32} />} label="Нужна проверка" value={n('needs_check')} tone="yellow" />
-          <HeroTile icon={<IcClock size={32} />} label="На проверке" value={n('in_review')} />
-          <HeroTile icon={<IcCheck size={32} />} label="Нарушение подтверждено" value={n('confirmed')} tone="red" />
-          <HeroTile icon={<IcClose size={32} />} label="Отклонено" value={n('dismissed')} tone="green" />
-          <HeroTile icon={<IcUsers size={32} />} label="Без исполнителя" value={ads.filter((a) => !a.assignee && a.status !== 'dismissed').length} onClick={() => setWho(who === 'none' ? 'all' : 'none')} active={who === 'none'} />
-          <HeroTile icon={<IcFlag size={32} />} label="Сигналы ждут решения" value={sigNew} tone={sigNew ? 'red' : undefined} to="/signals?status=new" />
-        </>}>
+        board={<Board kind="queue">
+          <div className="sb-col">
+            <Cap aside={`решено ${n('confirmed') + n('dismissed')} из ${ads.length}`}>Путь публикации</Cap>
+            <Flow
+              stages={[
+                { em: 'inbox', tone: 'blue', value: n('new'), label: 'Новые' },
+                { em: 'search', tone: 'yellow', value: n('needs_check'), label: 'Нужна проверка' },
+                { em: 'review', value: n('in_review'), label: 'На проверке' },
+              ]}
+              outcomes={[
+                { em: 'stamp', tone: 'red', value: n('confirmed'), label: 'Нарушение подтверждено' },
+                { em: 'dismiss', tone: 'green', value: n('dismissed'), label: 'Отклонено' },
+              ]} />
+          </div>
+          <div className="sb-sep" />
+          <div className="sb-col">
+            <Cap>Ждёт людей</Cap>
+            <Meter label="Без исполнителя" value={ads.filter((a) => !a.assignee && a.status !== 'dismissed').length} of={ads.filter((a) => a.status !== 'dismissed').length}
+              tone="yellow" onClick={() => setWho(who === 'none' ? 'all' : 'none')} active={who === 'none'} />
+            <Row em="flag" tone="red" label="Сигналы ждут решения" value={sigNew} to="/signals?status=new" />
+          </div>
+        </Board>}>
         {top && (
           <div className="panel" style={{ gridTemplateColumns: 'minmax(0, 1fr) 320px' }}>
             <div className="pl row" style={{ gap: 20, alignItems: 'flex-start', paddingBottom: 16 }}>

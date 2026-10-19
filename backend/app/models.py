@@ -192,7 +192,7 @@ class Ad(Base):
 
     @property
     def llm(self) -> Optional[dict]:
-        """Последний анализ ИИ (Claude) — гипотезы для аналитика (AdOut.llm); None — анализа не было."""
+        """Последний анализ ИИ — гипотезы для аналитика (AdOut.llm); None — анализа не было."""
         rows = self.llm_analyses
         return rows[0].view() if rows else None
 

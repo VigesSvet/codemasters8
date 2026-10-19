@@ -113,9 +113,7 @@
 
 /* ───── Объекты из рекламы ───── */
 .disc-list { display: flex; flex-direction: column; gap: 16px; }
-.disc-card { border-radius: var(--r-l); box-shadow: inset 0 0 0 1px var(--line); padding: 20px 24px; display: flex; flex-direction: column; gap: 12px; }
-.disc-card.suspect { box-shadow: inset 4px 0 0 var(--scr-suspect), inset 0 0 0 1px var(--line); }
-.disc-card.check { box-shadow: inset 4px 0 0 var(--scr-check), inset 0 0 0 1px var(--line); }
+.disc-card { border-radius: var(--r-l); box-shadow: inset 0 0 0 1px var(--line); padding: 20px 24px 20px 20px; display: flex; flex-direction: column; }
 .disc-card .dh { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .disc-card .nm { font-family: var(--font-display); font-size: 22px; line-height: 28px; font-weight: 700; }
 .disc-card .kv { grid-template-columns: 170px minmax(0, 1fr); gap: 6px 16px; font-size: 14px; line-height: 19px; }
@@ -197,3 +195,18 @@
 .rs.drag, .rs.drag .rs-rail, .rs-h.on { cursor: grabbing; }
 .rs-ticks { position: relative; height: 16px; margin: 0 var(--rs-pad); font-size: 12px; line-height: 16px; color: var(--text-2); }
 .rs-ticks span { position: absolute; top: 0; transform: translateX(-50%); }
+
+/* Карточка: шаги разбора на направляющей слева — что нашли → сверка 2ГИС → решение */
+.dc-step { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 16px; position: relative; padding-bottom: 20px; }
+.dc-step.last { padding-bottom: 0; }
+.dc-step::before { content: ''; position: absolute; left: 17px; top: 38px; bottom: 2px; width: 2px; border-radius: 1px; background: repeating-linear-gradient(to bottom, #d6d3cf 0 6px, transparent 6px 11px); }
+.dc-step.last::before { display: none; }
+.dc-step.done::before { background: var(--green); opacity: 0.5; }
+.dc-node { width: 36px; height: 36px; display: grid; place-items: center; position: relative; z-index: 1; }
+.dc-node i { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-weight: 800; font-size: 14px; background: #fff; color: var(--text-2); box-shadow: inset 0 0 0 2px #d6d3cf; font-family: var(--font-display); }
+.dc-step.done .dc-node i { background: var(--green); color: #fff; box-shadow: none; }
+.dc-step-b { min-width: 0; display: flex; flex-direction: column; gap: 12px; padding-top: 6px; }
+.dc-step-h { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+.dc-st { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 6px; background: var(--fill); color: var(--text-2); }
+.dc-st.check { background: var(--amber-bg); color: var(--amber-ink); } .dc-st.suspect { background: var(--red-bg); color: var(--red-ink); } .dc-st.ok { background: var(--green-bg); color: var(--green-ink); }
+.dc-hint { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 13px; color: var(--text-3); }

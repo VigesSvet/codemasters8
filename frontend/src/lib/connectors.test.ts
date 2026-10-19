@@ -290,7 +290,7 @@ describe('строки карточки подключения', () => {
     expect(testOkLine(conn({ kind: 'geo', enabled: false }))).toBe('Ключ 2ГИС работает — сверка адреса доступна в карточке ЖК.')
     expect(testOkLine(conn({ kind: 'oauth', enabled: false }))).toBe('Аккаунт OLX доступен — только ресурсы своего аккаунта.')
     expect(testOkLine(conn({ kind: 'intake' }))).toBe('Подключение проверено.')
-    expect(testOkLine(conn({ kind: 'analyzer' }))).toBe('Ключ Anthropic принят, модель доступна — новые публикации анализирует Claude (гипотезы для аналитика).')
+    expect(testOkLine(conn({ kind: 'analyzer' }))).toBe('Ключ Anthropic принят, модель доступна — новые публикации анализирует ИИ (гипотезы для аналитика).')
     for (const kind of ['geo', 'oauth', 'intake', 'analyzer'] as const) expect(testOkLine(conn({ kind }))).not.toMatch(/сбор/)
   })
 
@@ -374,7 +374,7 @@ describe('анализ собранной публикации', () => {
   it('очередь, этап, ошибка; готово — без пояснения', () => {
     expect(processingNote({ status: 'queued', version: 1 })).toBe('Анализ публикации в очереди')
     expect(processingNote({ status: 'running', version: 1, stage: 'ocr' })).toBe('Идёт анализ: распознавание текста')
-    expect(processingNote({ status: 'running', version: 1, stage: 'llm' })).toBe('Идёт анализ: анализ ИИ (Claude)')
+    expect(processingNote({ status: 'running', version: 1, stage: 'llm' })).toBe('Идёт анализ: анализ ИИ')
     expect(processingNote({ status: 'running', version: 1 })).toBe('Идёт анализ публикации')
     expect(processingNote({ status: 'failed', version: 2, stage: 'media', error: 'Файл недоступен (404)' })).toBe('Анализ не выполнен: Файл недоступен (404) — проверьте вручную')
     expect(processingNote({ status: 'failed', version: 2 })).toBe('Анализ не выполнен — проверьте вручную')

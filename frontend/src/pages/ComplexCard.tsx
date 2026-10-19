@@ -8,6 +8,7 @@ import GeoCheck from '../components/GeoCheck'
 import MapView from '../components/MapView'
 import { DocSourceLine, Origin } from '../components/Provenance'
 import { DevScreeningBlock, NoScreening, ScreeningBlock, ScreeningTag } from '../components/Screening'
+import SatHistory from '../components/SatHistory'
 import SignalPanel from '../components/SignalPanel'
 import { AddButton, CheckedBy, TileActions, VerifyDialogs, VerifyProgress } from '../components/Verification'
 import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, RiskZone, SafeImg, Seg, StatusTag, TriTag, fmtDate, fmtDT, plural, zoneShort } from '../components/ui'
@@ -24,7 +25,7 @@ import { appealLines, dmy, enteredLine, isChecked, newAppeal, newAppealsCheck, n
 import { IcBuilding, IcCalendar, IcCamera, IcCheck, IcClose, IcCrane, IcDatabase, IcDoc, IcHelp, IcMap, IcMapPin, IcMegaphone, IcShield, IcUsers, IcWorker } from '../ui/icons'
 
 const STAGES: Stage[] = ['котлован', 'фундамент', 'каркас', 'кровля', 'отделка', 'введён']
-const TABS = ['basis', 'risk', 'ads', 'photos', 'dev', 'log'] as const
+const TABS = ['basis', 'risk', 'ads', 'photos', 'sat', 'dev', 'log'] as const
 type Tab = (typeof TABS)[number]
 const COMMENT_MAX = 2000
 /** Журнал объекта с сервера: id — чей; при ошибке перечитывания остаются прежние события */
@@ -275,7 +276,7 @@ export default function ComplexCard() {
           ) : <p className="c2">Стадия строительства не известна: «В строительстве» или «Завершён» у источника — фильтр реестра, а не стадия работ; акта ввода в записях нет.</p>}
 
           <div className="subtabs" ref={tabsRef} style={{ marginTop: 40, scrollMarginTop: 'calc(var(--yhead, 113px) + 19px)' }}>
-            {([['basis', 'Основания'], ['risk', 'Риск'], ['ads', 'Реклама', linked.length], ['photos', 'Снимки', c.photos.length], ['dev', 'Застройщик'], ['log', 'Журнал', logReady ? events.length : undefined]] as const).map(([k, l, n]) => (
+            {([['basis', 'Основания'], ['risk', 'Риск'], ['ads', 'Реклама', linked.length], ['photos', 'Снимки', c.photos.length], ['sat', 'Спутник'], ['dev', 'Застройщик'], ['log', 'Журнал', logReady ? events.length : undefined]] as const).map(([k, l, n]) => (
               <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}{n !== undefined && <span className="n">{n}</span>}</button>
             ))}
           </div>
@@ -429,6 +430,12 @@ export default function ComplexCard() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+          {tab === 'sat' && (
+            <div className="fade">
+              {hasPoint(c) ? <SatHistory c={c} />
+                : <div className="ai-note">У ЖК нет координат — архив спутниковых снимков открывается по точке объекта. Сверьте адрес в 2ГИС на вкладке «Основания».</div>}
             </div>
           )}
           {tab === 'log' && (

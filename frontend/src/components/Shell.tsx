@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { IcBell, IcBuilding, IcCheck, IcChevronDown, IcChevronRight, IcClose, IcDatabase, IcFlag, IcLogout, IcPhone, IcQueue, IcRefresh, IcUsers, IcWarning } from '../ui/icons'
 import { API } from '../lib/api'
@@ -42,6 +42,37 @@ export default function Shell() {
   const discNew = stats?.screening?.discovered?.new ?? 0
   const isMap = loc.pathname === '/'
   const adsActive = loc.pathname === '/ads' || /^\/ads\/(?!new)/.test(loc.pathname)
+
+  // вкладки не помещаются на узком экране — лента прокручивается по горизонтали (колесо мыши тоже), края затухают,
+  // активная вкладка подъезжает в видимую часть; «ещё» — вне ленты, чтобы её меню не обрезалось прокруткой
+  const tabsRef = useRef<HTMLDivElement>(null)
+  const [edges, setEdges] = useState({ l: false, r: false })
+  // не scrollIntoView: он прокрутил бы и окно, а у страницы своя прокрутка (вверх или к якорю)
+  const revealActive = () => {
+    const el = tabsRef.current
+    const a = el?.querySelector<HTMLElement>('.ytab.active')
+    if (!el || !a) return
+    if (a.offsetLeft < el.scrollLeft) el.scrollLeft = a.offsetLeft - 24
+    else if (a.offsetLeft + a.offsetWidth > el.scrollLeft + el.clientWidth) el.scrollLeft = a.offsetLeft + a.offsetWidth - el.clientWidth + 24
+  }
+  useEffect(() => {
+    const el = tabsRef.current
+    if (!el) return
+    const upd = () => setEdges({ l: el.scrollLeft > 1, r: el.scrollLeft + el.clientWidth < el.scrollWidth - 1 })
+    const wheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return
+      e.preventDefault()
+      el.scrollLeft += e.deltaY
+    }
+    // ширина вкладок меняется после загрузки шрифтов и счётчиков — следим и за лентой, и за каждой вкладкой
+    const ro = new ResizeObserver(() => { revealActive(); upd() })
+    ro.observe(el)
+    for (const c of el.children) ro.observe(c)
+    el.addEventListener('scroll', upd, { passive: true })
+    el.addEventListener('wheel', wheel, { passive: false })
+    return () => { ro.disconnect(); el.removeEventListener('scroll', upd); el.removeEventListener('wheel', wheel) }
+  }, [])
+  useEffect(revealActive, [loc.pathname])
 
   const tab = (to: string, label: React.ReactNode, active?: boolean) => (
     <NavLink to={to} end={to === '/'} className={({ isActive }) => `ytab ${(active ?? isActive) ? 'active' : ''}`}>{label}</NavLink>
@@ -102,23 +133,25 @@ export default function Shell() {
           </div>
         </div>
         <nav className="ytabs">
-          {tab('/', 'Карта')}
-          {tab('/complexes', 'Новостройки', loc.pathname.startsWith('/complexes') || loc.pathname.startsWith('/registry/'))}
-          {tab('/ads', <>Реклама<span className="badge gray">{ads.length}</span></>, adsActive)}
-          {tab('/queue', <>Очередь проверки{queue > 0 && <span className="badge">{queue}</span>}</>)}
-          {tab('/signals', <>Сигналы{sigNew > 0 && <span className="badge">{sigNew}</span>}</>)}
-          {tab('/discovered', <span title="Объекты из рекламы: ЖК, которых нет в реестре и справочнике">Из рекламы{discNew > 0 && <span className="badge" style={{ marginLeft: 6 }}>{discNew}</span>}</span>)}
-          {tab('/developers', 'Застройщики')}
-          {tab('/sites', 'Фото-мониторинг')}
-          {tab('/ops', 'Сводка')}
-          {tab('/reports', 'Отчёты')}
-          {tab('/method', 'Методика')}
-          <div className="nav-item">
+          <div ref={tabsRef} className={`ytabs-scroll${edges.l ? ' fade-l' : ''}${edges.r ? ' fade-r' : ''}`}>
+            {tab('/', 'Карта')}
+            {tab('/complexes', 'Новостройки', loc.pathname.startsWith('/complexes') || loc.pathname.startsWith('/registry/'))}
+            {tab('/ads', <>Реклама<span className="badge gray">{ads.length}</span></>, adsActive)}
+            {tab('/queue', <>Очередь проверки{queue > 0 && <span className="badge">{queue}</span>}</>)}
+            {tab('/signals', <>Сигналы{sigNew > 0 && <span className="badge">{sigNew}</span>}</>)}
+            {tab('/discovered', <span title="Объекты из рекламы: ЖК, которых нет в реестре и справочнике">Из рекламы{discNew > 0 && <span className="badge" style={{ marginLeft: 6 }}>{discNew}</span>}</span>)}
+            {tab('/developers', 'Застройщики')}
+            {tab('/sites', 'Фото-мониторинг')}
+            {tab('/ops', 'Сводка')}
+            {tab('/reports', 'Отчёты')}
+            {tab('/method', 'Методика')}
+          </div>
+          <div className="nav-item ytabs-more">
             <button className={`ytab ${['/sources', '/residents'].includes(loc.pathname) ? 'active' : ''}`} onClick={() => setOpen(open === 'more' ? null : 'more')}>ещё<IcChevronDown size={16} /></button>
             {open === 'more' && (
               <>
                 <div className="menu-scrim" onClick={() => setOpen(null)} />
-                <div className="menu fade" style={{ top: '100%' }}>
+                <div className="menu fade" style={{ top: '100%', left: 'auto', right: 0 }}>
                   <Link to="/sources"><span className="ic"><IcDatabase size={16} /></span><span className="lbl">Источники данных<small>Откуда берём данные</small></span><IcChevronRight size={16} /></Link>
                   <Link to="/residents"><span className="ic"><IcPhone size={16} /></span><span className="lbl">Жителям<small>Идея: push-уведомления</small></span><IcChevronRight size={16} /></Link>
                   <Link to="/ads/new"><span className="ic"><IcQueue size={16} /></span><span className="lbl">Ручной ввод публикации<small>Текст, ссылка, скриншот</small></span><IcChevronRight size={16} /></Link>

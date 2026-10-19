@@ -30,7 +30,7 @@ _FALLBACK = {"instagram": ("collector", "collectors", "Instagram"),
              "tiktok": ("collector", "collectors", "TikTok"), "krisha": ("collector", "collectors", "Krisha.kz"),
              "telegram_bot": ("intake", "intake", "Telegram-бот заявок"),
              "intake": ("intake", "intake", "Приём публикаций API"), "dgis": ("geo", "geo", "2ГИС — геокодер"),
-             "anthropic": ("analyzer", "analyzer", "Claude (Anthropic) — анализатор"),
+             "anthropic": ("analyzer", "analyzer", "Анализатор ИИ (Anthropic)"),
              "olx": ("oauth", "limited", "OLX.kz")}
 
 

@@ -21,7 +21,7 @@ import {
   countsLine, hasPoint, labelOf, reasonShort, statusOf, topReason,
 } from '../lib/screening'
 import { useStore } from '../lib/store'
-import { IcCheck, IcChevronDown, IcChevronLeft, IcChevronRight, IcChevronUp, IcClose, IcHelp, IcInfo, IcList, IcMapPin, IcMegaphone, IcSearch, IcCamera, IcUsers } from '../ui/icons'
+import { IcCheck, IcChevronDown, IcChevronLeft, IcChevronRight, IcChevronUp, IcClose, IcHelp, IcInfo, IcList, IcMapPin, IcMegaphone, IcSearch, IcCamera, IcGlobe, IcUsers } from '../ui/icons'
 
 /** Чипы «Проверки по рекламе» после «Все» — в порядке задачи: без замечаний, проверить, подозрение, нет данных; можно несколько */
 const SCREEN_CHIPS: ScreeningStatus[] = ['ok', 'check', 'suspect', 'unknown']
@@ -176,7 +176,7 @@ export default function Dashboard() {
 
   return (
     <div className="mapscreen">
-      <MapView items={onMapItems} points={points} onPoint={onPoint} selected={sel} onSelect={setSel} controls labels={labels} padLeft={400} />
+      <MapView items={onMapItems} points={points} onPoint={onPoint} selected={sel} onSelect={setSel} controls modes labels={labels} padLeft={400} />
 
       <div className="left">
         {!s ? (
@@ -328,6 +328,7 @@ export default function Dashboard() {
             <div className="card">
               <Cell icon={<span className="ico"><IcMegaphone size={18} /></span>} title="Реклама" sub={linked.length ? `${linked.length} публ. · последняя ${fmtShort(linked[0].date)}` : 'Не найдено'} chevron to={`/complexes/${s.c.id}?tab=ads`} inset />
               <Cell icon={<span className="ico"><IcCamera size={18} /></span>} title="Фото-мониторинг" sub={s.c.idleDays ? `Нет активности ${s.c.idleDays} дн.` : s.c.photos.length ? `${s.c.photos.length} ${plural(s.c.photos.length, ['снимок', 'снимка', 'снимков'])} · стройка идёт` : 'Снимков пока нет'} chevron to={`/complexes/${s.c.id}?tab=photos`} inset />
+              {hasPoint(s.c) && <Cell icon={<span className="ico"><IcGlobe size={18} /></span>} title="Спутник" sub="Снимки места с 2014 года · период стройки" chevron to={`/complexes/${s.c.id}?tab=sat`} inset />}
               <Cell icon={<span className="ico"><IcUsers size={18} /></span>} title="Застройщик" sub={dev ? `${dev.name}${dev.bin ? ` · БИН ${dev.bin}` : ''}` : 'Не указан'}
                 end={dev?.screening ? <span className={`scr-pic ${dev.screening.status}`} title={dev.screening.label} style={{ width: 22, height: 22, fontSize: 12 }}>{SCREENING_GLYPH[dev.screening.status]}</span> : undefined}
                 chevron to={dev ? `/developers?dev=${dev.id}` : '/developers'} inset />

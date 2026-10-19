@@ -1,4 +1,4 @@
-"""Claude (Anthropic) — анализатор публикаций: подключение для страницы «Подключения» и транспорт запросов этапа «llm»
+"""Анализатор ИИ (Anthropic) публикаций: подключение для страницы «Подключения» и транспорт запросов этапа «llm»
 задания анализа (app.llm).
 
 Ключ только серверный (ANTHROPIC_API_KEY): клиенту SDK он передаётся явно, переменные окружения и профили SDK не
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("saq.integrations")
 
 CODE = "anthropic"
-NAME = "Claude (Anthropic) — анализатор"
+NAME = "Анализатор ИИ (Anthropic)"
 KEY_ENV = "ANTHROPIC_API_KEY"
 BETA_FALLBACK = "server-side-fallback-2026-07-01"
 # модели, у которых есть серверные резервные модели (fallbacks: "default"); Haiku — без них
@@ -363,7 +363,8 @@ class AnthropicAnalyzer(Connector):
             v = getattr(m, attr, None)
             if isinstance(v, int) and not isinstance(v, bool):
                 facts[key] = v
-        detail = (f"Ключ принят, модель {shown} ({mid}) доступна; уровень размышления {s.anthropic_effort}, бюджет "
+        # в тексте — только ID модели, без торгового имени (display_name остаётся в facts)
+        detail = (f"Ключ принят, модель {mid} доступна; уровень размышления {s.anthropic_effort}, бюджет "
                   f"${float(s.anthropic_daily_budget_usd):.2f} в день"
                   + ("; при отказе модели — резервная модель Anthropic (fallbacks: default)" if fb else ""))
         return CheckResult(True, detail, facts)

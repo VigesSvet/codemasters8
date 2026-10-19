@@ -4,7 +4,7 @@ import { AuditList } from '../components/Audit'
 import { LinkMark } from '../components/Hypothesis'
 import MapView from '../components/MapView'
 import { Disclaimer, NoScreening, ScreeningPic } from '../components/Screening'
-import { Faq, Hero, HeroTile, Highlight, LinkCols, PlatformIcon, RiskScore, SafeImg, Score, SectionHead, StatusTag, ZoneTag, fmtDT, fmtShort, platformMeta, plural } from '../components/ui'
+import { Faq, Hero, Highlight, LinkCols, PlatformIcon, RiskScore, SafeImg, Score, SectionHead, StatusTag, ZoneTag, fmtDT, fmtShort, platformMeta, plural } from '../components/ui'
 import type { Ad, AuditEvent, Platform, Zone } from '../data/types'
 import { errorText } from '../lib/api'
 import { HUMAN_KINDS, SYSTEM } from '../lib/audit'
@@ -15,7 +15,8 @@ import { adSignals, isAssessed, model } from '../lib/risk'
 import { isDemo, isDemoAd, stageText } from '../lib/provenance'
 import { DEV_SCREENING_LABEL, SCREENING_FILTER_LABEL, SCREENING_HINT, SCREENING_ORDER, SCREENING_TONE, anyScreening, countByStatus, decidedCounts, decidedLine, statusOf } from '../lib/screening'
 import { useStore } from '../lib/store'
-import { IcBuilding, IcClock, IcFlag, IcHelp, IcInbox, IcMegaphone, IcTraffic } from '../ui/icons'
+import { IcHelp, IcMegaphone } from '../ui/icons'
+import { Board, Cap, Kpi, Row, Shares } from '../components/StatBoard'
 
 const RECENT = 8
 const WEEKS = 8
@@ -94,15 +95,25 @@ export default function Ops() {
     <>
       <Hero crumb="Оперативная сводка" title={`Сводка по городу на ${new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`}
         info="Нажмите на плитку зоны — карта и рейтинг покажут только её объекты"
-        tiles={<>
-          <HeroTile icon={<IcBuilding size={32} />} label="На контроле" value={scored.length} onClick={() => setZone('all')} active={zone === 'all'} />
-          <HeroTile icon={<IcTraffic size={32} />} label="Красная зона" value={count('red')} tone="red" onClick={() => setZone('red')} active={zone === 'red'} />
-          <HeroTile icon={<IcTraffic size={32} />} label="Жёлтая зона" value={count('yellow')} tone="yellow" onClick={() => setZone('yellow')} active={zone === 'yellow'} />
-          <HeroTile icon={<IcTraffic size={32} />} label="Зелёная зона" value={count('green')} tone="green" onClick={() => setZone('green')} active={zone === 'green'} />
-          <HeroTile icon={<IcInbox size={32} />} label="Ждут решения" value={queue.length} tone="blue" to="/queue" />
-          <HeroTile icon={<IcFlag size={32} />} label="Сигналы ждут решения" value={waiting.length} tone={waiting.length ? 'red' : undefined} to="/signals?status=new" />
-          <HeroTile icon={<IcClock size={32} />} label="Стройка стоит 30+ дн." value={idle.length} to="/sites" />
-        </>}>
+        board={<Board kind="ops">
+          <Kpi big em="city" value={scored.length} label="ЖК на контроле" hint="весь город" onClick={() => setZone('all')} active={zone === 'all'} />
+          <div className="sb-col">
+            <Cap aside="нажмите зону — карта и рейтинг покажут её объекты">Светофор риска</Cap>
+            <Shares parts={[
+              { key: 'red', label: 'Красная зона', value: count('red'), tone: 'red', onClick: () => setZone(zone === 'red' ? 'all' : 'red'), active: zone === 'red' },
+              { key: 'yellow', label: 'Жёлтая зона', value: count('yellow'), tone: 'yellow', onClick: () => setZone(zone === 'yellow' ? 'all' : 'yellow'), active: zone === 'yellow' },
+              { key: 'green', label: 'Зелёная зона', value: count('green'), tone: 'green', onClick: () => setZone(zone === 'green' ? 'all' : 'green'), active: zone === 'green' },
+              { key: 'off', label: 'Без оценки риска', value: scored.filter((x) => x.off).length, tone: 'gray' },
+            ]} />
+          </div>
+          <div className="sb-sep" />
+          <div className="sb-col">
+            <Cap>Требуют действий</Cap>
+            <Row em="inbox" tone="blue" label="Публикации ждут решения" value={queue.length} to="/queue" />
+            <Row em="flag" tone="red" label="Сигналы ждут решения" value={waiting.length} to="/signals?status=new" />
+            <Row em="hourglass" tone="yellow" label="Стройка стоит 30+ дней" value={idle.length} to="/sites" />
+          </div>
+        </Board>}>
         <div className="scr-sum-h">
           <h3>Проверка по рекламе — где без замечаний, а где нужна особая проверка</h3>
           {screenOn && <Disclaimer text={stats?.screening?.disclaimer} />}

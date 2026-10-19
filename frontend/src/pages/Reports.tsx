@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { Faq, Hero, HeroTile, RiskScore, RiskZone, Seg, Toggle, adKey, fmtDate, platformMeta, statusMeta, zoneName } from '../components/ui'
+import { Faq, Hero, RiskScore, RiskZone, Seg, Toggle, adKey, fmtDate, platformMeta, statusMeta, zoneName } from '../components/ui'
 import type { Ad, FactorState, Zone } from '../data/types'
 import { isDemo, progressText, stageText } from '../lib/provenance'
 import { NOT_ASSESSED, adSignals, isAssessed, linkConfirmed, model } from '../lib/risk'
 import { useStore } from '../lib/store'
-import { IcCheck, IcClock, IcDoc, IcFlag, IcMegaphone, IcTraffic } from '../ui/icons'
+import { IcDoc } from '../ui/icons'
+import { Board, Kpi } from '../components/StatBoard'
 
 // Всё на странице — из данных: публикации по дате, риск, сигналы (создание и решение). Выдуманных рядов и счётчиков нет (ТЗ §4)
 type Period = 'w' | 'm' | 'q'
@@ -84,8 +85,6 @@ export default function Reports() {
   const part = (k: keyof typeof parts, title: string, sub: string) => (
     <div className="crow"><span>{title}<span className="t-sm c2" style={{ display: 'block' }}>{sub}</span></span><Toggle on={parts[k]} onChange={(v) => setParts((p) => ({ ...p, [k]: v }))} /></div>
   )
-  // подпись под названием плитки (.mtile span задаёт свой размер — поэтому стиль на месте)
-  const sub = (s?: string) => s && <span style={{ fontSize: 13, lineHeight: '16px', color: 'var(--text-3)', marginTop: 2 }}>{s}</span>
   const summary: [string, string | number][] = [
     [`Публикаций за период (${NAME[period]})`, periodAds.length],
     ['Из них с признаками продажи', last],
@@ -103,14 +102,14 @@ export default function Reports() {
       <style>{PAGE}</style>
       <div className="rscreen">
         <Hero crumb="Отчёты" title="Отчёт для руководства" info={`Период: ${periodText} (${NAME[period]} по сегодня) · Усть-Каменогорск · всё по текущим данным`}
-          tiles={<>
-            <HeroTile icon={<IcMegaphone size={32} />} label="Публикаций за период" value={periodAds.length} to="/ads?sort=date" />
-            <HeroTile icon={<IcCheck size={32} />} label={<>Подтверждено нарушений{sub('по публикациям, всего')}</>} value={confirmed} tone="red" to="/ads?status=confirmed" />
-            <HeroTile icon={<IcTraffic size={32} />} label="Объектов в красной зоне" value={red} tone="red" to="/complexes?zone=red" />
-            <HeroTile icon={<IcClock size={32} />} label={<>Среднее время решения{sub(noSig ?? (decided.length ? `по сигналу · решений: ${decided.length}` : 'решённых сигналов нет'))}</>} value={avg === null ? '—' : dur(avg)} to="/signals" />
-            <HeroTile icon={<IcFlag size={32} />} label="Сигналов за период" value={noSig ? '—' : sigPeriod} to="/signals" />
-            <HeroTile icon={<IcFlag size={32} />} label="Сигналы ждут решения" value={noSig ? '—' : sigNew} tone="yellow" to="/signals?status=new" />
-          </>}>
+          board={<Board kind="reports">
+            <Kpi em="feed" value={periodAds.length} label="Публикаций за период" to="/ads?sort=date" />
+            <Kpi em="stamp" tone="red" value={confirmed} label="Подтверждено нарушений" hint="по публикациям, всего" to="/ads?status=confirmed" />
+            <Kpi em="traffic" tone="red" value={red} label="Объектов в красной зоне" to="/complexes?zone=red" />
+            <Kpi em="timer" value={avg === null ? '—' : dur(avg)} label="Среднее время решения" hint={noSig ?? (decided.length ? `по сигналу · решений: ${decided.length}` : 'решённых сигналов нет')} to="/signals" />
+            <Kpi em="flag" value={noSig ? '—' : sigPeriod} label="Сигналов за период" to="/signals" />
+            <Kpi em="flag" tone="yellow" value={noSig ? '—' : sigNew} label="Сигналы ждут решения" to="/signals?status=new" />
+          </Board>}>
           <div className="panel" style={{ gridTemplateColumns: 'minmax(0, 1fr) 380px' }}>
             <div className="pl">
               <div className="row between" style={{ marginBottom: 8 }}><h2 className="t-h2">Соберите отчёт</h2><Seg value={period} onChange={setPeriod} items={[['w', 'Неделя'], ['m', 'Месяц'], ['q', 'Квартал']]} /></div>

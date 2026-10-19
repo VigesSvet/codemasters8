@@ -429,7 +429,7 @@ export interface Ad {
   media?: MediaRef[]
   /** Анализ собранной публикации на сервере: очередь, идёт, готов, не выполнен. Нет у публикаций без приёма */
   processing?: Processing | null
-  /** Последний анализ ИИ (Claude) — гипотезы для аналитика. Нет — анализа не было (ключ не задан, ручной ввод) */
+  /** Последний анализ ИИ — гипотезы для аналитика. Нет — анализа не было (ключ не задан, ручной ввод) */
   llm?: LlmAnalysis | null
 }
 
@@ -452,7 +452,7 @@ export interface LlmMention { name: string; address?: string; quote: string; sou
 export type LlmStage = 'under_construction' | 'completed' | 'unknown'
 export interface LlmObjectStage { value: LlmStage; quote?: string; source?: 'text' | 'ocr' | null }
 
-/** Анализ ИИ (Claude): только гипотезы — статус, привязку и вывод о нарушении модель не задаёт.
+/** Анализ ИИ: только гипотезы — статус, привязку и вывод о нарушении модель не задаёт.
  *  failed / refused / skipped — «анализ ИИ не выполнен», а не «риска нет» */
 export interface LlmAnalysis {
   status: LlmStatus

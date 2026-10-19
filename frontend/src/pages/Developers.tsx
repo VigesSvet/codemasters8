@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DevScreeningBlock, Disclaimer, NoScreening, ScreeningPic, ScreeningTag, StatusCounts, WorstList } from '../components/Screening'
-import { Cell, Faq, Hero, HeroTile, LinkCols, Modal, RiskScore, RiskZone, SectionHead, Seg, fmtDate } from '../components/ui'
+import { Cell, Faq, Hero, LinkCols, Modal, RiskScore, RiskZone, SectionHead, Seg, fmtDate } from '../components/ui'
 import type { ScreeningStatus } from '../data/types'
 import { from } from '../lib/nav'
 import { DEMO_ORG, NO_DATA, REGISTRY_NOTE, UNKNOWN_DEV, isAdvertised, isDemo, isRegistry, portfolioText, progressText } from '../lib/provenance'
@@ -9,7 +9,8 @@ import { isAssessed, model } from '../lib/risk'
 import { DEV_SCREENING_LABEL, SCREENING_FILTER_LABEL, SCREENING_ORDER, anyScreening, compareDevScreening, inScreening, parseScreeningParam, statusOf } from '../lib/screening'
 import { matches } from '../lib/search'
 import { useStore } from '../lib/store'
-import { IcBuilding, IcCrane, IcHelp, IcMegaphone, IcSearch, IcUsers, IcWarning } from '../ui/icons'
+import { IcHelp, IcSearch } from '../ui/icons'
+import { Board, Cap, Kpi, Ring, Row, Shares } from '../components/StatBoard'
 
 const COLORS = ['#e4402d', '#0065d9', '#00b341', '#f59d00', '#1d1f26', '#7a5af8', '#00a1a1']
 type F = 'all' | 'risk' | 'unfinished' | 'ads'
@@ -50,21 +51,43 @@ export default function Developers() {
   return (
     <>
       <Hero crumb="Застройщики" title="Застройщики Усть-Каменогорска" info={`Данные по БИН — для сверки с реестром юрлиц.${developers.some(isDemo) ? ' В демо-наборе компании вымышлены.' : ''}${developers.some(isRegistry) ? ' Застройщики из открытого реестра — название и БИН источника, портфель не проверен.' : ''}`}
-        tiles={screenOn ? <>
-          <HeroTile icon={<IcUsers size={32} />} label="Застройщиков" value={data.length} onClick={() => { setF('all'); pickScr(null) }} active={f === 'all' && !screening.length} />
-          <HeroTile icon={<ScreeningPic status="suspect" size={32} />} label="Подозрение: ЖК с продажей без разрешения" value={scrN('suspect')} tone="red" onClick={() => pickScr(only('suspect') ? null : 'suspect')} active={only('suspect')} />
-          <HeroTile icon={<ScreeningPic status="check" size={32} />} label="Требуют проверки" value={scrN('check')} tone="yellow" onClick={() => pickScr(only('check') ? null : 'check')} active={only('check')} />
-          <HeroTile icon={<ScreeningPic status="ok" size={32} />} label="Все ЖК без замечаний — в реестре, сданы или проверены" value={scrN('ok')} tone="green" onClick={() => pickScr(only('ok') ? null : 'ok')} active={only('ok')} />
-          <HeroTile icon={<ScreeningPic status="unknown" size={32} />} label="Нет данных для оценки" value={scrN('unknown')} onClick={() => pickScr(only('unknown') ? null : 'unknown')} active={only('unknown')} />
-          <HeroTile icon={<IcMegaphone size={32} />} label="С рекламой в ленте" value={data.filter(test.ads).length} onClick={() => setF('ads')} active={f === 'ads'} />
-        </> : <>
-          <HeroTile icon={<IcUsers size={32} />} label="Застройщиков" value={data.length} onClick={() => setF('all')} active={f === 'all'} />
-          <HeroTile icon={<IcWarning size={32} />} label="С объектами в красной зоне" value={data.filter(test.risk).length} tone="red" onClick={() => setF('risk')} active={f === 'risk'} />
-          <HeroTile icon={<IcCrane size={32} />} label="Есть незавершённые" value={data.filter(test.unfinished).length} tone="yellow" onClick={() => setF('unfinished')} active={f === 'unfinished'} />
-          <HeroTile icon={<IcMegaphone size={32} />} label="С рекламой в ленте" value={data.filter(test.ads).length} onClick={() => setF('ads')} active={f === 'ads'} />
-          <HeroTile icon={<IcBuilding size={32} />} label="Объектов на контроле" value={complexes.length} to="/complexes" />
-          <HeroTile icon={<IcBuilding size={32} />} label="Сдано всего" value={data.reduce((s, x) => s + x.d.objects - x.d.unfinished, 0)} tone="green" onClick={() => setF('all')} />
-        </>}>
+        board={screenOn ? <Board kind="devs">
+          <Ring value={data.length} label="застройщиков" parts={[
+            { key: 'suspect', label: 'Подозрение', value: scrN('suspect'), tone: 'red', active: only('suspect') },
+            { key: 'check', label: 'Требуют проверки', value: scrN('check'), tone: 'yellow', active: only('check') },
+            { key: 'ok', label: 'Без замечаний', value: scrN('ok'), tone: 'green', active: only('ok') },
+            { key: 'unknown', label: 'Нет данных', value: scrN('unknown'), tone: 'gray', active: only('unknown') },
+          ]} />
+          <div className="sb-col">
+            <Cap aside="предварительная оценка — не вывод о нарушении">Проверка по рекламе</Cap>
+            <Shares bar={false} parts={[
+              { key: 'suspect', label: 'Подозрение: продажа без разрешения', value: scrN('suspect'), tone: 'red', onClick: () => pickScr(only('suspect') ? null : 'suspect'), active: only('suspect') },
+              { key: 'check', label: 'Требуют проверки', value: scrN('check'), tone: 'yellow', onClick: () => pickScr(only('check') ? null : 'check'), active: only('check') },
+              { key: 'ok', label: 'Без замечаний: в реестре, сданы или проверены', value: scrN('ok'), tone: 'green', onClick: () => pickScr(only('ok') ? null : 'ok'), active: only('ok') },
+              { key: 'unknown', label: 'Нет данных для оценки', value: scrN('unknown'), tone: 'gray', onClick: () => pickScr(only('unknown') ? null : 'unknown'), active: only('unknown') },
+            ]} />
+          </div>
+          <div className="sb-sep" />
+          <div className="sb-col">
+            <Cap>Портфель</Cap>
+            <Row em="devs" label="Все застройщики" value={data.length} onClick={() => { setF('all'); pickScr(null) }} active={f === 'all' && !screening.length} />
+            <Row em="feed" tone="blue" label="С рекламой в ленте" value={data.filter(test.ads).length} onClick={() => setF(f === 'ads' ? 'all' : 'ads')} active={f === 'ads'} />
+            <Row em="crane" tone="yellow" label="Есть незавершённые" value={data.filter(test.unfinished).length} onClick={() => setF(f === 'unfinished' ? 'all' : 'unfinished')} active={f === 'unfinished'} />
+          </div>
+        </Board> : <Board kind="devs">
+          <Kpi big em="devs" value={data.length} label="застройщиков" onClick={() => setF('all')} active={f === 'all'} />
+          <div className="sb-col">
+            <Cap>Портфель</Cap>
+            <Row em="traffic" tone="red" label="С объектами в красной зоне" value={data.filter(test.risk).length} onClick={() => setF(f === 'risk' ? 'all' : 'risk')} active={f === 'risk'} />
+            <Row em="crane" tone="yellow" label="Есть незавершённые" value={data.filter(test.unfinished).length} onClick={() => setF(f === 'unfinished' ? 'all' : 'unfinished')} active={f === 'unfinished'} />
+          </div>
+          <div className="sb-sep" />
+          <div className="sb-col">
+            <Cap>Объекты</Cap>
+            <Row em="feed" tone="blue" label="С рекламой в ленте" value={data.filter(test.ads).length} onClick={() => setF(f === 'ads' ? 'all' : 'ads')} active={f === 'ads'} />
+            <Row em="city" label="Объектов на контроле" value={complexes.length} to="/complexes" />
+          </div>
+        </Board>}>
         <div className="panel" style={{ gridTemplateColumns: '1fr' }}>
           <div className="pl row" style={{ gap: 12, paddingBottom: 16 }}>
             <label className="fsearch" style={{ height: 48 }}><IcSearch /><input placeholder="Название, БИН или руководитель" value={q} onChange={(e) => setQ(e.target.value)} /></label>

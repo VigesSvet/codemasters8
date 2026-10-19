@@ -91,6 +91,13 @@ svg { flex: none; }
 .ytab:hover { color: var(--text-2); }
 .ytab.active::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: #000; border-radius: 2px; }
 .ytab .badge { font-size: 11px; min-width: 18px; height: 18px; }
+/* лента вкладок прокручивается, если не помещается; полоса прокрутки скрыта, у обрезанного края — затухание */
+.ytabs-scroll { position: relative; display: flex; gap: inherit; align-items: stretch; flex: 0 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain; }
+.ytabs-scroll::-webkit-scrollbar { display: none; }
+.ytabs-scroll.fade-r { mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
+.ytabs-scroll.fade-l { mask-image: linear-gradient(to left, #000 calc(100% - 48px), transparent); }
+.ytabs-scroll.fade-l.fade-r { mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent); }
+.ytabs-more { flex: none; }
 .yhead .sep { border-bottom: 1px solid var(--line); }
 .user-btn { display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 4px; border-radius: 12px; }
 .user-btn:hover { background: var(--fill); }
@@ -577,13 +584,6 @@ a.ev:hover { background: var(--fill-hover); }
 .screen .tile.on { background: var(--dark); color: #fff; }
 .screen .tile.on .c2 { color: rgba(255, 255, 255, 0.6); }
 
-/* Методика — плитки как «Ипотечный калькулятор / Ипотека на вторичное…» */
-.mtiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin-bottom: 16px; }
-.mtile { background: #fff; border-radius: var(--r-l); padding: 14px 12px 12px; display: flex; flex-direction: column; gap: 10px; min-height: 104px; transition: box-shadow 0.15s; }
-.mtile:hover { box-shadow: var(--shadow-float); }
-.mtile.static { cursor: default; } .mtile.static:hover { box-shadow: none; }
-.mtile span { font-size: 14px; line-height: 18px; display: flex; flex-direction: column; }
-.mtile b { font-weight: 700; font-size: 15px; margin-top: 2px; }
 /* Калькулятор — как ипотечный: белая форма слева, серый итог справа */
 .calc { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; background: #fff; border-radius: var(--r-l); padding: 8px; }
 .calc-l { padding: 16px 16px 8px; }
@@ -605,10 +605,6 @@ a.ev:hover { background: var(--fill-hover); }
 .chip.fund { background: var(--red-bg); color: var(--red-ink); }
 .chip.safe { background: var(--green-bg); color: var(--green-ink); }
 
-/* Плитки шапки: состояние, тона */
-.mtile.on { box-shadow: inset 0 0 0 2px var(--text); }
-.mtile b.tone-red { color: var(--red); } .mtile b.tone-yellow { color: var(--amber); } .mtile b.tone-green { color: var(--green); } .mtile b.tone-blue { color: var(--link); }
-.mtile b { font-family: var(--font-display); font-size: 24px; line-height: 28px; font-weight: 800; }
 .band .panel { background: #fff; border-radius: var(--r-l); padding: 8px; display: grid; gap: 16px; }
 .band .panel > .pl { padding: 16px 16px 8px; min-width: 0; }
 .band .panel > .pr { background: var(--fill); border-radius: var(--r-m); padding: 24px; display: flex; flex-direction: column; min-width: 0; }

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import Connectors, { CollectAllButton, CollectorsTile, ConnectorsProvider } from '../components/Connectors'
+import Connectors, { CollectAllButton, CollectorsChain, ConnectorsProvider } from '../components/Connectors'
 import { Origin, SrcLink } from '../components/Provenance'
-import { Faq, Hero, HeroTile } from '../components/ui'
+import { Faq, Hero } from '../components/ui'
 import { OFFLINE_FILE } from '../data/openData'
 import { READ_ONLY, SNAPSHOT_DIR } from '../data/snapshot'
 import type { ImportReport, SourceInfo } from '../data/types'
@@ -10,7 +10,8 @@ import { errorText } from '../lib/api'
 import { OPEN_DATA_NOTE, REGISTRY_NOTE, isDemo, isDemoAd, isRegistry, sourceName, when } from '../lib/provenance'
 import { useStore } from '../lib/store'
 import { listChecked } from '../lib/verification'
-import { IcBuilding, IcClock, IcDatabase, IcDoc, IcInfo, IcMegaphone, IcPencil, IcShield, IcUpload } from '../ui/icons'
+import { IcDatabase, IcInfo, IcPencil, IcShield, IcUpload } from '../ui/icons'
+import { Board, Chain, type Fact } from '../components/StatBoard'
 
 const MAX_MB = 5
 const ACCEPT = '.xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv'
@@ -44,6 +45,12 @@ export default function Sources() {
   const total = open.reduce((n, s) => n + (s.records || 0), 0)
   const last = latest(open.map((s) => s.collectedAt))
   const demoAds = ads.filter(isDemoAd)
+  // свежесть открытых данных по дате последнего сбора: до недели — свежие, до месяца — стареют, дальше — устарели
+  const freshness = (d: string): Fact => {
+    const days = Math.floor((Date.now() - new Date(d).getTime()) / 86400000)
+    const text = `собрано ${when(d).split(',')[0]}`
+    return { text, tone: days <= 7 ? 'green' : days <= 30 ? 'yellow' : 'red' }
+  }
   // строки прежнего демо-набора — только в старых БД (до python -m app.demo purge); карточки ЖК из открытого реестра — всегда
   const demoCx = complexes.filter(isDemo), demoDevs = developers.filter(isDemo), demoAppeals = appeals.filter(isDemo)
   const regCx = complexes.filter(isRegistry), regDevs = developers.filter(isRegistry)
@@ -71,14 +78,15 @@ export default function Sources() {
       <Hero crumb="Источники данных" title="Откуда берутся данные"
         info="Открытые данные загружаются файлом, публикации — подключёнными сборщиками, через бота заявок и вручную. У каждой записи — источник, ссылка и время сбора. Состояние подключений — фактическое, с сервера"
         actions={<CollectAllButton />}
-        tiles={<>
-          <HeroTile icon={<IcDatabase size={32} />} label="Записей открытых данных" value={load?.data ? total : '—'} to="/complexes?layer=open" />
-          <HeroTile icon={<IcDoc size={32} />} label="Открытых источников" value={load?.data ? open.length : '—'} onClick={() => document.getElementById('open')?.scrollIntoView({ behavior: 'smooth' })} />
-          <HeroTile icon={<IcClock size={32} />} label="Последний сбор" value={last ? when(last).split(',')[0] : '—'} onClick={() => document.getElementById('open')?.scrollIntoView({ behavior: 'smooth' })} />
-          <HeroTile icon={<IcMegaphone size={32} />} label="Публикаций в ленте" value={ads.length} tone="blue" to="/ads" />
-          <CollectorsTile />
-          <HeroTile icon={<IcBuilding size={32} />} label="ЖК на контроле" value={complexes.length} to="/complexes" />
-        </>} />
+        board={<Board kind="sources">
+          <Chain n="1 · Открытые данные" em="database" value={load?.data ? total : '—'} label="записей реестров" to="/complexes?layer=open" next
+            facts={load?.data ? [{ text: `${open.length} ${open.length === 1 ? 'источник' : open.length < 5 ? 'источника' : 'источников'}` }, ...(last ? [freshness(last)] : [])] : []} />
+          <CollectorsChain />
+          <Chain n="3 · Лента" em="feed" tone="blue" value={ads.length} label="публикаций в ленте" to="/ads" next
+            facts={[{ text: `собрано автоматически — ${ads.filter((a) => a.origin === 'collected').length}` }]} />
+          <Chain n="4 · Контроль" em="city" value={complexes.length} label="ЖК на контроле" to="/complexes"
+            facts={[{ text: `из реестра — ${complexes.filter(isRegistry).length}` }]} />
+        </Board>} />
 
       <div className="box warn t-sm" style={{ marginBottom: 32, lineHeight: '20px' }}>
         <b>Автоматической синхронизации с реестрами нет.</b> Записи Homeportal и Казреестра (CSV Ashyq Data) собраны в файл и загружены импортом —
@@ -226,7 +234,7 @@ export default function Sources() {
           ['Почему реклама попадает не вся?', 'Сборщики читают только публичные аккаунты и каналы из списка; таргетированную рекламу соцсети показывают конкретным людям — её присылают аналитики и жители (ручной ввод и Telegram-бот заявок).'],
           ['Нужен ли доступ к закрытым госреестрам?', 'Нет. Система работает на открытых данных, загруженных файлом, на публикациях подключённых источников (публичные аккаунты, каналы и выдача площадок) и на ручном вводе. Закрытые реестры и чужие аккаунты не нужны.'],
           ['Кто настраивает подключения?', 'Только администратор: токен SAQ_ADMIN_TOKEN он вводит в этой вкладке, проверяет его сервер. Ключи площадок и сервисов (Meta, Telegram, Apify, 2ГИС, OLX, Anthropic) задаются в .env на сервере и в браузер не передаются. Вход аналитика без пароля прав администратора не даёт.'],
-          ['Почему 2ГИС, Claude и OLX — не сборщики?', '2ГИС — геосервис: предлагает кандидатов адреса для карточки ЖК, решение принимает аналитик. Claude (Anthropic) — анализатор: читает текст и OCR уже собранных публикаций и предлагает гипотезы с дословными цитатами (признаки продажи, суммы, кандидаты ЖК); текст и OCR для этого отправляются в Anthropic, решение принимает аналитик. OLX Partner API даёт доступ только к ресурсам своего авторизованного аккаунта — чужие объявления так не собрать.'],
+          ['Почему 2ГИС, анализатор ИИ и OLX — не сборщики?', '2ГИС — геосервис: предлагает кандидатов адреса для карточки ЖК, решение принимает аналитик. Анализатор ИИ (Anthropic): читает текст и OCR уже собранных публикаций и предлагает гипотезы с дословными цитатами (признаки продажи, суммы, кандидаты ЖК); текст и OCR для этого отправляются в Anthropic, решение принимает аналитик. OLX Partner API даёт доступ только к ресурсам своего авторизованного аккаунта — чужие объявления так не собрать.'],
           ['Как связывается публикация с ЖК?', 'ИИ сравнивает текст и распознанный скриншот с объектами: название (с транслитерацией и опечатками), адрес, аккаунт и телефон застройщика — и предлагает до трёх гипотез с причинами и уверенностью. Фактом привязка становится только после того, как аналитик примет гипотезу или выберет ЖК сам.'],
         ]} />
     </ConnectorsProvider>

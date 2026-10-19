@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
+import type { FeatureCollection } from 'geojson'
 import type { Complex, ScreeningStatus, Zone } from '../data/types'
 import { NOT_ASSESSED } from '../lib/risk'
 import { SCREENING_GLYPH, SCREENING_LABEL, VARIANT_SHORT, hasPoint, labelOf, variantOf } from '../lib/screening'
@@ -18,6 +19,50 @@ const STYLE: maplibregl.StyleSpecification = {
   },
   layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#f6f4ef' } }, { id: 'yandex', type: 'raster', source: 'yandex' }],
 }
+// Спутник — Esri World Imagery (Web Mercator, без пересчёта широт) с подписями поверх; 3D — тот же снимок и объёмные
+// дома OpenStreetMap (OpenFreeMap, без ключа), а наши ЖК — столбики цвета статуса высотой по этажности
+const ESRI_ATTR = 'Снимки © Esri, Maxar, Earthstar Geographics'
+const SAT_SOURCES: maplibregl.StyleSpecification['sources'] = {
+  sat: { type: 'raster', tileSize: 256, maxzoom: 17, attribution: ESRI_ATTR, tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'] },
+  places: { type: 'raster', tileSize: 256, maxzoom: 17, tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'] },
+}
+const SAT_STYLE: maplibregl.StyleSpecification = {
+  version: 8, sources: SAT_SOURCES,
+  layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#2a2a2a' } }, { id: 'sat', type: 'raster', source: 'sat' }, { id: 'places', type: 'raster', source: 'places', paint: { 'raster-opacity': 0.9 } }],
+}
+const D3_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: { ...SAT_SOURCES, osm: { type: 'vector', url: 'https://tiles.openfreemap.org/planet', attribution: '© OpenStreetMap · OpenFreeMap' } },
+  layers: [
+    { id: 'bg', type: 'background', paint: { 'background-color': '#2a2a2a' } },
+    { id: 'sat', type: 'raster', source: 'sat', paint: { 'raster-saturation': -0.35, 'raster-brightness-max': 0.85 } },
+    { id: 'houses', type: 'fill-extrusion', source: 'osm', 'source-layer': 'building', minzoom: 13,
+      paint: { 'fill-extrusion-color': '#e9e6e1', 'fill-extrusion-opacity': 0.82,
+        'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 9], 'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0] } },
+  ],
+}
+export type MapMode = 'scheme' | 'sat' | '3d'
+const MODE_KEY = 'saq.mapMode'
+const MODES: [MapMode, string][] = [['scheme', 'Схема'], ['sat', 'Спутник'], ['3d', '3D']]
+const styleOf = (m: MapMode) => (m === 'scheme' ? STYLE : m === 'sat' ? SAT_STYLE : D3_STYLE)
+const COLOR: Record<string, string> = { suspect: '#e4402d', check: '#f59d00', ok: '#00b341', unknown: '#8a8c91', red: '#e4402d', yellow: '#f59d00', green: '#00b341', na: '#8a8c91' }
+
+/** Столбик ЖК для 3D: круг ~45 м, высота — этажность × 3,2 м (нет этажности — 36 м) */
+function columns(items: MapItem[], selected?: string): FeatureCollection {
+  const R = 45
+  return {
+    type: 'FeatureCollection',
+    features: items.flatMap(({ c, zone, off, screen }) => {
+      if (!hasPoint(c)) return []
+      const dLat = R / 111320, dLng = R / (111320 * Math.cos((c.lat * Math.PI) / 180))
+      const ring = Array.from({ length: 33 }, (_, i) => { const a = (i / 32) * 2 * Math.PI; return [c.lng + dLng * Math.cos(a), c.lat + dLat * Math.sin(a)] })
+      const tone = screen ?? (off ? 'na' : zone)
+      return [{ type: 'Feature' as const, properties: { id: c.id, color: COLOR[tone] ?? COLOR.na, h: (c.floors > 0 ? c.floors * 3.2 : 36) + (c.id === selected ? 12 : 0) },
+        geometry: { type: 'Polygon' as const, coordinates: [ring] } }]
+    }),
+  }
+}
+
 const E = 0.0818191908426
 /** Широта WGS84 → широта в сетке тайлов Яндекса, отображённой как Web Mercator */
 export const yLat = (lat: number) => {
@@ -25,7 +70,10 @@ export const yLat = (lat: number) => {
   const y = Math.log(Math.tan(Math.PI / 4 + phi / 2) * Math.pow((1 - es) / (1 + es), E / 2))
   return ((2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180) / Math.PI
 }
-const ll = (lng: number, lat: number): [number, number] => [lng, yLat(lat)]
+/** Координаты метки: подложка Яндекса — со сдвигом широты, спутник и 3D — как есть (Web Mercator) */
+const toMap = (mode: MapMode) => (lng: number, lat: number): [number, number] => [lng, mode === 'scheme' ? yLat(lat) : lat]
+/** Обратно: широта в сетке Яндекса → WGS84 (несколько итераций метода простой подстановки) */
+const unYLat = (y: number) => { let lat = y; for (let i = 0; i < 6; i++) lat += y - yLat(lat); return lat }
 export const UKA_CENTER: [number, number] = [82.62, 49.937]
 
 /** Метка открытых данных: серая, без балла — риск для реальных объектов не считается */
@@ -51,18 +99,28 @@ interface Props {
   padLeft?: number
   /** вписать все объекты в видимую область */
   fit?: boolean
+  /** переключатель «Схема · Спутник · 3D» (выбор запоминается) */
+  modes?: boolean
 }
 
-export default function MapView({ items, points, onPoint, selected, onSelect, zoom = 11.6, center = UKA_CENTER, interactive = true, controls = false, labels = false, padLeft = 0, fit = false }: Props) {
+export default function MapView({ items, points, onPoint, selected, onSelect, zoom = 11.6, center = UKA_CENTER, interactive = true, controls = false, labels = false, padLeft = 0, fit = false, modes = false }: Props) {
   const el = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const markers = useRef<maplibregl.Marker[]>([])
   const plain = useRef<maplibregl.Marker[]>([])
   const [ready, setReady] = useState(false)
+  const [mode, setMode] = useState<MapMode>(() => {
+    if (!modes) return 'scheme'
+    try { const v = localStorage.getItem(MODE_KEY); return v === 'sat' || v === '3d' ? v : 'scheme' } catch { return 'scheme' }
+  })
+  const at = toMap(mode)
+  const [styled, setStyled] = useState(0) // растёт после каждой смены подложки — слой столбиков ставится заново
 
   useEffect(() => {
     if (!el.current) return
-    const m = new maplibregl.Map({ container: el.current, style: STYLE, center: ll(center[0], center[1]), zoom, attributionControl: { compact: true }, interactive })
+    const m = new maplibregl.Map({ container: el.current, style: styleOf(mode), center: at(center[0], center[1]), zoom, attributionControl: { compact: true }, interactive,
+      ...(mode === '3d' ? { pitch: 55, bearing: -17 } : {}), maxPitch: 70 })
+    m.on('style.load', () => setStyled((n) => n + 1))
     if (padLeft) m.setPadding({ left: padLeft, top: 80, right: 0, bottom: 0 })
     m.on('load', () => setReady(true))
     map.current = m
@@ -109,9 +167,9 @@ export default function MapView({ items, points, onPoint, selected, onSelect, zo
       node.setAttribute('role', 'button')
       node.setAttribute('aria-label', node.title || c.name)
       node.addEventListener('click', (e) => { e.stopPropagation(); onSelect?.(c.id) })
-      return [new maplibregl.Marker({ element: node, anchor: 'bottom', offset: [0, -6] }).setLngLat(ll(c.lng, c.lat)).addTo(m)]
+      return [new maplibregl.Marker({ element: node, anchor: 'bottom', offset: [0, -6] }).setLngLat(at(c.lng, c.lat)).addTo(m)]
     })
-  }, [items, selected, onSelect, labels, ready])
+  }, [items, selected, onSelect, labels, ready, mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const m = map.current
@@ -126,22 +184,50 @@ export default function MapView({ items, points, onPoint, selected, onSelect, zo
       b.append(n)
       node.append(b)
       node.addEventListener('click', (e) => { e.stopPropagation(); onPoint?.(p.key) })
-      return new maplibregl.Marker({ element: node, anchor: 'bottom', offset: [0, -6] }).setLngLat(ll(p.lng, p.lat)).addTo(m)
+      return new maplibregl.Marker({ element: node, anchor: 'bottom', offset: [0, -6] }).setLngLat(at(p.lng, p.lat)).addTo(m)
     })
-  }, [points, onPoint, labels, ready])
+  }, [points, onPoint, labels, ready, mode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // смена подложки: камера та же (для схемы Яндекса широта центра пересчитывается), в 3D — наклон и поворот
+  // прежний режим — в ref: повторный запуск эффекта (StrictMode) с тем же режимом ничего не делает
+  const prev = useRef(mode)
+  useEffect(() => {
+    const m = map.current
+    if (!m || prev.current === mode) return
+    const wasScheme = prev.current === 'scheme'
+    prev.current = mode
+    try { localStorage.setItem(MODE_KEY, mode) } catch { /* выбор не запомнится — не страшно */ }
+    const c = m.getCenter()
+    const lat = wasScheme === (mode === 'scheme') ? c.lat : mode === 'scheme' ? yLat(c.lat) : unYLat(c.lat)
+    m.setStyle(styleOf(mode), { diff: false })
+    m.jumpTo({ center: [c.lng, lat] })
+    m.easeTo(mode === '3d' ? { pitch: 55, bearing: -17, zoom: Math.max(m.getZoom(), 14.2), duration: 900 } : { pitch: 0, bearing: 0, duration: 600 })
+  }, [mode])
+
+  // 3D: столбики наших ЖК поверх домов города
+  useEffect(() => {
+    const m = map.current
+    if (!m || mode !== '3d' || !m.getStyle()?.sources?.osm) return
+    const data = columns(items, selected)
+    const src = m.getSource('saq-cx') as maplibregl.GeoJSONSource | undefined
+    if (src) { src.setData(data); return }
+    m.addSource('saq-cx', { type: 'geojson', data })
+    m.addLayer({ id: 'saq-cx', type: 'fill-extrusion', source: 'saq-cx',
+      paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-opacity': 0.2 } })
+  }, [mode, styled, items, selected])
 
   useEffect(() => {
     const m = map.current
     const all = [...items.flatMap(({ c }) => (hasPoint(c) ? [{ lng: c.lng, lat: c.lat }] : [])), ...(points ?? [])]
     if (!fit || !ready || !m || !all.length) return
-    const lngs = all.map((x) => x.lng), lats = all.map((x) => yLat(x.lat))
+    const lngs = all.map((x) => x.lng), lats = all.map((x) => at(x.lng, x.lat)[1])
     m.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: { top: 60, bottom: 40, left: 40, right: 70 }, maxZoom: 14, duration: 400 })
   }, [fit, ready, items, points])
 
   useEffect(() => {
     const c = items.find((x) => x.c.id === selected)?.c
-    if (c && hasPoint(c) && map.current) map.current.easeTo({ center: ll(c.lng, c.lat), zoom: Math.max(map.current.getZoom(), 14), duration: 600 })
-  }, [selected, items])
+    if (c && hasPoint(c) && map.current) map.current.easeTo({ center: at(c.lng, c.lat), zoom: Math.max(map.current.getZoom(), mode === '3d' ? 15 : 14), duration: 600 })
+  }, [selected, items]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -153,8 +239,14 @@ export default function MapView({ items, points, onPoint, selected, onSelect, zo
             <button aria-label="Отдалить" onClick={() => map.current?.zoomOut()}><IcMinus size={18} /></button>
           </div>
           <div className="loc">
-            <button aria-label="К центру города" title="Показать весь город" onClick={() => map.current?.easeTo({ center: ll(...UKA_CENTER), zoom: 11.8 })}><IcLocate size={18} /></button>
+            <button aria-label="К центру города" title="Показать весь город" onClick={() => map.current?.easeTo({ center: at(...UKA_CENTER), zoom: mode === '3d' ? 13 : 11.8 })}><IcLocate size={18} /></button>
           </div>
+          {modes && (
+            <div className="modes" role="group" aria-label="Подложка карты">
+              {MODES.map(([k, l]) => <button key={k} className={mode === k ? 'on' : ''} aria-pressed={mode === k} onClick={() => setMode(k)}
+                title={k === 'scheme' ? 'Схема Яндекс Карт' : k === 'sat' ? 'Спутниковый снимок Esri' : 'Объёмные дома OpenStreetMap на снимке, ЖК — столбики цвета статуса'}>{l}</button>)}
+            </div>
+          )}
         </div>
       )}
     </>

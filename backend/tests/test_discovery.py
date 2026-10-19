@@ -139,7 +139,7 @@ def test_v2_verification_and_discovered_object(client, run_worker, ocr_stub, key
     got = client.get(f"/api/ads/{res.ad_id}").json()["llm"]
     assert [m["name"] for m in got["mentionedComplexes"]] == ["Nova Park", "Ульба Ривер"]
     assert got["objectStage"]["value"] == "under_construction"
-    ev = next(e for e in client.get(f"/api/ads/{res.ad_id}/audit").json() if e["what"].startswith("ИИ (Claude)"))
+    ev = next(e for e in client.get(f"/api/ads/{res.ad_id}/audit").json() if e["what"].startswith("Анализ ИИ:"))
     assert "упомянуты ЖК — «Nova Park», «Ульба Ривер»" in ev["what"]
     assert "стадия объекта — строится «сдача в 2027 году»" in ev["what"]
     # «Ульба Ривер» — ЖК справочника: объекта из рекламы нет; «Nova Park» — новый объект
@@ -508,7 +508,7 @@ def test_screening_suspect_recency_stage_confirmed_and_veto(client, env):
     assert (s["status"], s["label"], s["basis"]) == ("suspect", "Подозрение: продажа без разрешения", "hypothesis")
     assert s["counts"]["ads"] == 1 and s["counts"]["concerning"] == 1 and s["inRegistry"] is False
     r = next(x for x in s["reasons"] if x.get("adId") == aid)
-    assert r["quote"] == "Бронь квартиры 200 000 ₸" and r["signal"] == "booking" and "Claude" in r["text"]
+    assert r["quote"] == "Бронь квартиры 200 000 ₸" and r["signal"] == "booking" and "в ответе ИИ" in r["text"]
     assert any("сдача дома не подтверждена" in x["text"] for x in s["reasons"])
     d = dev(client, "rd-191040019288")["screening"]
     assert d["status"] == "suspect" and d["worst"][0] == {"complexId": ab, "name": "AB-Residence 2",
