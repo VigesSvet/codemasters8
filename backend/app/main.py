@@ -673,3 +673,9 @@ app.include_router(decisions.router)
 app.include_router(integration_routes.router)
 for _router in connectors.routers():
     app.include_router(_router)
+
+# ---------- кто продаёт: связанные продавцы, аномальная цена, связи застройщика — гипотезы вне балла (app.sellers) ----------
+
+from .sellers import router as sellers_router  # noqa: E402
+
+app.include_router(sellers_router)

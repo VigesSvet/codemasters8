@@ -1,0 +1,30 @@
+/* «Кто продаёт»: список групп продавцов, схема связей, таблица цен; блоки в разборе публикации и профиле застройщика */
+.sl-grid { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 1100px) { .sl-grid { grid-template-columns: 1fr; } }
+.sl-list { display: flex; flex-direction: column; gap: 8px; }
+.sl-item { text-align: left; width: 100%; border: 0; background: var(--card, #fff); border-radius: 16px; padding: 14px 16px; cursor: pointer;
+  box-shadow: inset 0 0 0 1px var(--line); display: flex; flex-direction: column; gap: 6px; font: inherit; color: inherit; }
+.sl-item:hover { box-shadow: inset 0 0 0 1px var(--text-3); }
+.sl-item.on { box-shadow: inset 0 0 0 2px var(--text); }
+.sl-item .t { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sl-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sl-graph { width: 100%; height: auto; display: block; background: var(--fill); border-radius: 16px; }
+.sl-graph text { font: 12px var(--font, 'YS Text', sans-serif); fill: var(--text); paint-order: stroke; stroke: var(--fill, #f3f1f1); stroke-width: 4px; }
+.sl-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--text-2); margin-top: 8px; }
+.sl-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.sl-ev { border-left: 3px solid var(--line); padding: 4px 0 4px 12px; margin: 6px 0; font-size: 14px; line-height: 20px; }
+.sl-ev .src { color: var(--text-3); font-size: 12px; }
+.sl-tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.sl-tbl th { text-align: left; font-weight: 500; color: var(--text-3); font-size: 12px; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.sl-tbl td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.sl-tbl td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sl-tbl tr.anom td { background: var(--red-bg); }
+.sl-hint { display: flex; flex-direction: column; gap: 8px; }
+.sl-hint .ln { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.sb-sellers { grid-template-columns: 260px minmax(0, 1fr) 1px minmax(0, 1fr); align-items: center; }
+@media (max-width: 1100px) { .sb-sellers { grid-template-columns: 1fr; } .sb-sellers .sb-sep { display: none; } }
+.sl-pairs { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.sl-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: var(--fill); border-radius: 12px; padding: 8px; }
+.sl-pair a { display: flex; flex-direction: column; gap: 4px; color: inherit; }
+.sl-pair img, .sl-pair .noimg { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: #e9e6e6; display: block; }
+.sl-pair > .t-xs { grid-column: 1 / -1; }

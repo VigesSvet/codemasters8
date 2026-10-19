@@ -167,6 +167,14 @@ export const kk: Partial<Record<Key, string>> = {
   'nav.residentsSub': 'Идея: push-хабарландырулар',
   'nav.adNew': 'Жарияланымды қолмен енгізу',
   'nav.adNewSub': 'Мәтін, сілтеме, скриншот',
+  'nav.sellers': 'Кім сатады',
+  'nav.sellersSub': 'Байланысты сатушылар және баға',
+  'sellers.title': 'Кім сатады',
+  'sellers.sub': 'Ортақ телефон, WhatsApp, БСН, аккаунт атауы немесе сурет арқылы байланысқан аккаунттар; м² бағасы нарықпен салыстырғанда',
+  'sellers.tabGroups': 'Сатушылар',
+  'sellers.tabPrice': 'Баға',
+  'sellers.adTitle': 'Кім сатады',
+  'sellers.devTitle': 'БСН бойынша тексеру және байланыстар',
 
   // ---------- төменгі бөлім ----------
   'foot.objects': 'Нысандар',

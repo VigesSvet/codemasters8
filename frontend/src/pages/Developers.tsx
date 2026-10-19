@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { DevAffiliations } from '../components/DevAffiliations'
 import { DevScreeningBlock, Disclaimer, NoScreening, ScreeningPic, ScreeningTag, StatusCounts, WorstList } from '../components/Screening'
 import { Cell, Faq, Hero, LinkCols, Modal, RiskScore, RiskZone, SectionHead, Seg, fmtDate } from '../components/ui'
 import type { ScreeningStatus } from '../data/types'
@@ -169,6 +170,7 @@ export default function Developers() {
           {[['БИН', cur.d.bin || NO_DATA], ['Руководитель', cur.d.director || NO_DATA], ['Регистрация', cur.d.registered ? fmtDate(cur.d.registered) : NO_DATA], ['Сайт', cur.d.site ?? '—'], ['Instagram', cur.d.instagram ?? '—']].map(([k, v]) => (
             <Cell key={k} title={<span className="c2 t-sm">{k}</span>} end={<span style={{ color: 'var(--text)' }}>{v}</span>} />
           ))}
+          <DevAffiliations id={cur.d.id} />
           <SectionHead title="Объекты на контроле" />
           {cur.objs.map(({ c, r }) => (
             <Cell key={c.id} inset to={`/complexes/${c.id}`} icon={c.screening ? <ScreeningPic status={c.screening.status} size={40} /> : <img className="th" src={c.cover || undefined} alt="" style={{ width: 48, height: 48, borderRadius: 12 }} />}
