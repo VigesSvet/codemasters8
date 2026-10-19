@@ -7,6 +7,7 @@ import Ads from './pages/Ads'
 import ComplexCard from './pages/ComplexCard'
 import Complexes from './pages/Complexes'
 import Dashboard from './pages/Dashboard'
+import Landing from './pages/Landing'
 import Developers from './pages/Developers'
 import Discovered from './pages/Discovered'
 import Ops from './pages/Ops'
@@ -22,7 +23,7 @@ import Signals from './pages/Signals'
 import Sites from './pages/Sites'
 import Sources from './pages/Sources'
 
-/** Всё, кроме /login, — только после входа; иначе на вход с возвратом на текущий адрес.
+/** Всё, кроме /login и лендинга /about, — только после входа; иначе на вход с возвратом на текущий адрес.
  *  После выхода (здесь или в соседней вкладке) — на вход без возврата: страница была чужой сессии */
 function RequireUser() {
   const { user, signedOut } = useStore()
@@ -37,6 +38,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/about" element={<Landing />} />
           <Route element={<RequireUser />}>
             <Route path="/signals/:id/print" element={<SignalPrint />} />
             <Route element={<Shell />}>

@@ -78,8 +78,7 @@ svg { flex: none; }
 .yhead { position: sticky; top: 0; z-index: 50; background: #fff; }
 .yhead .bar { max-width: var(--wide); margin: 0 auto; padding: 0 40px; height: 68px; display: flex; align-items: center; gap: 16px; }
 .logo { display: flex; align-items: center; gap: 8px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
-.logo .mark { width: 30px; height: 30px; border-radius: 50%; background: var(--yellow); display: grid; place-items: center; color: #000; }
-.logo .mark svg { width: 18px; height: 18px; }
+.logo .mark { width: 32px; height: 32px; flex: none; display: block; } /* знак — public/logo.svg (лупа над стройкой) */
 .city { display: flex; align-items: center; gap: 4px; font-size: 16px; font-weight: 500; margin-left: 12px; padding: 6px 8px; white-space: nowrap; }
 .head-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .icon-btn { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; position: relative; color: var(--text); }

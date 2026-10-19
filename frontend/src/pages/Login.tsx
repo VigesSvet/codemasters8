@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { isDemo } from '../lib/provenance'
 import { model } from '../lib/risk'
 import { safeNext } from '../lib/session'
 import { useStore } from '../lib/store'
-import { IcBuilding, IcCheck, IcKey } from '../ui/icons'
+import { IcCheck, IcKey } from '../ui/icons'
 
 /** Вход — как страницы входа сервисов Яндекса: фото слева, справа короткая форма с жёлтой кнопкой.
  *  Пилот: выбор сотрудника без пароля; его имя становится автором всех действий в журнале */
@@ -35,7 +35,7 @@ export default function Login() {
         </div>
       </div>
       <div className="side">
-        <div className="logo"><span className="mark"><IcBuilding /></span>SAQ Qurylys</div>
+        <div className="row between"><div className="logo"><img src="/logo.svg" alt="" className="mark" />SAQ Qurylys</div><Link to="/about" className="link t-sm">О системе</Link></div>
         <form onSubmit={(e) => { e.preventDefault(); enter() }}>
           <h1 className="t-h1">Войдите в рабочее место</h1>
           <p className="c2" style={{ margin: '4px 0 12px', lineHeight: '21px' }}>Для сотрудников уполномоченного органа. ИИ находит рекламу и считает риск — решение принимаете вы.</p>

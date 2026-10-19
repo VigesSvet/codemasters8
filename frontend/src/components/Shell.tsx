@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { IcBell, IcBuilding, IcCheck, IcChevronDown, IcChevronRight, IcClose, IcDatabase, IcFlag, IcLogout, IcPhone, IcQueue, IcRefresh, IcUsers, IcWarning } from '../ui/icons'
+import { IcBell, IcCheck, IcChevronDown, IcChevronRight, IcClose, IcDatabase, IcFlag, IcLogout, IcPhone, IcQueue, IcRefresh, IcUsers, IcWarning } from '../ui/icons'
 import { API } from '../lib/api'
 import { fmtStamp } from '../lib/audit'
 import { useStore } from '../lib/store'
@@ -82,7 +82,7 @@ export default function Shell() {
     <>
       <header className="yhead">
         <div className="bar">
-          <Link to="/" className="logo"><span className="mark"><IcBuilding /></span>SAQ Qurylys</Link>
+          <Link to="/" className="logo"><img src="/logo.svg" alt="" className="mark" />SAQ Qurylys</Link>
           <span className="city">Усть-Каменогорск</span>
           <QuickSearch />
           <div className="head-right">
