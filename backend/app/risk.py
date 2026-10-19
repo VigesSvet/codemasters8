@@ -1,9 +1,8 @@
 """Риск-скоринг ЖК и публикаций по ТЗ §5.
 
-Чистые функции над данными в форме API: camelCase-словари, как в shared/seed_data.json
-и frontend/src/data/types.ts. Веса, пороги, словари и тексты — в shared/risk_model.json.
-Тот же алгоритм исполняет фронтенд (frontend/src/lib/risk.ts) как офлайн-фоллбэк;
-совпадение результатов проверяется на shared/risk_golden.json.
+Чистые функции над данными в форме API: camelCase-словари, как в frontend/src/data/types.ts.
+Веса, пороги, словари и тексты — в shared/risk_model.json. Тот же алгоритм исполняет фронтенд (frontend/src/lib/risk.ts)
+как офлайн-фоллбэк; совпадение результатов проверяется на shared/testdata/risk_golden.json.
 
 Правила:
 - балл = min(100, сумма весов подтверждённых факторов);
@@ -11,7 +10,11 @@
 - привязка публикации к ЖК — факт только после подтверждения аналитиком; уверенность ИИ — гипотеза, а не факт;
 - решение аналитика «это не предложение внести деньги» снимает R2 по публикации (R3 не затрагивается);
 - при действующей гарантии ЕО отсутствие отдельного разрешения МИО — не R1;
-- красная зона только при score ≥ 60 и подтверждённых R1 + R2.
+- красная зона только при score ≥ 60 и подтверждённых R1 + R2;
+- карточка ЖК из открытого реестра (origin «registry») без проверенных сведений не оценивается (assessed = False):
+  балл 0 не выдаётся за «низкий риск» — UI показывает «риск не оценивается», сигнал не создаётся;
+- у карточки из реестра или по рекламе пустой список обращений — R4 «нужна проверка» (unchecked), пока аналитик не
+  отметит «Обращений нет — сверено» с источником и датой (appealsCheck); у демо-ЖК пустой список — «нет» (как прежде).
 """
 import math
 import re
@@ -21,6 +24,7 @@ from typing import Any, Dict, List, Optional
 from .risk_model import ALMATY, BUILT, FACTORS, MARKERS, MODEL, OBSERVATIONS, T, VERSION, fill, fmt_date, zone_for
 
 Obj = Dict[str, Any]
+NOT_ASSESSED: Obj = MODEL["notAssessed"]
 
 _SENTENCE = re.compile(r"(?<=[.!?…])\s+|\n+")
 
@@ -213,6 +217,13 @@ def factor_r4(c: Obj, appeals: List[Obj]) -> Obj:
     pending = _by_date_desc([a for a in own if a.get("status") == "pending"])
     if pending:
         return _factor("R4", "unknown", "pending", items=[item(a) for a in pending])
+    if c.get("origin") in NOT_ASSESSED["origins"]:
+        # карточка реестра или рекламы: обращения сюда никто не заносил — пустой список не значит «обращений нет»;
+        # «нет» — только после сверки аналитиком с источником и датой (POST /api/complexes/{id}/appeals-check)
+        chk = c.get("appealsCheck") or {}
+        if chk.get("source") and chk.get("checkedAt"):
+            return _factor("R4", "clear", "none_checked", {"source": chk["source"], "checkedAt": fmt_date(chk["checkedAt"])})
+        return _factor("R4", "unknown", "unchecked")
     return _factor("R4", "clear", "none")
 
 
@@ -264,7 +275,8 @@ def observations(c: Obj, dev: Optional[Obj]) -> List[Obj]:
 
     lst = c.get("inPublishedList", "unknown")
     out = [obs("O1", {"yes": "ok", "no": "flag"}.get(lst, "unknown"))]
-    if dev is None:
+    # застройщик из открытого реестра: портфель (объектов, незавершённых) не получен — профиль неизвестен, а не «в порядке»
+    if dev is None or dev.get("origin") in NOT_ASSESSED["origins"]:
         out.append(obs("O2", "unknown"))
     else:
         flag = (dev.get("unfinished") or 0) > 0 and (dev.get("objects") or 0) <= 3
@@ -284,8 +296,29 @@ def _total(factors: List[Obj]) -> Obj:
     return {"score": score, "zone": zone, "needsCheck": bool(unknown), "unknown": unknown}
 
 
+def assessed(c: Obj, ads: List[Obj], appeals: List[Obj]) -> bool:
+    """Оценивается ли риск ЖК. ЖК не из открытого реестра — всегда. Карточка из реестра (сведения источника, аналитиком не
+    проверены) — только когда по ней есть проверенные сведения: подтверждённая аналитиком привязка публикации, документ
+    основания «есть/нет» с источником и датой сверки, проверенное обращение, подтверждённая готовность с источником и датой
+    или датированный снимок площадки с источником."""
+    if c.get("origin") not in NOT_ASSESSED["origins"]:
+        return True
+    if any(a.get("complexId") == c["id"] and a.get("status") != "dismissed" and link_confirmed(a) for a in ads):
+        return True
+    b = c.get("basis") or {}
+    if any(_sourced(doc_source(b, d["key"])) for d in MODEL["documents"]):
+        return True
+    if any(a.get("complexId") == c["id"] and a.get("status") == "verified" for a in appeals):
+        return True
+    k = (c.get("readiness") or {}).get("confirmed")
+    if k and isinstance(k.get("value"), (int, float)) and k.get("source") and k.get("date"):
+        return True
+    return any(p.get("date") and p.get("source") for p in c.get("photos") or [])
+
+
 def score_complex(c: Obj, dev: Optional[Obj], ads: List[Obj], appeals: List[Obj], as_of: Any = None) -> Obj:
-    """Риск ЖК: шесть факторов §5, балл, зона, «Нужна проверка», наблюдения вне балла."""
+    """Риск ЖК: шесть факторов §5, балл, зона, «Нужна проверка», наблюдения вне балла. Карточка из открытого реестра без
+    проверенных сведений — assessed False, балл 0 и пояснение «риск не оценивается» (факторы — как есть, для справки)."""
     d = _as_date(as_of)
     built = c.get("stage") == BUILT
     linked = _by_date_desc([a for a in ads if a.get("complexId") == c["id"] and a.get("status") != "dismissed"])
@@ -298,13 +331,17 @@ def score_complex(c: Obj, dev: Optional[Obj], ads: List[Obj], appeals: List[Obj]
         factor_r6(c, d),
     ]
     t = _total(factors)
+    if not assessed(c, ads, appeals):
+        return {"score": 0, "zone": zone_for(0, []), "needsCheck": t["needsCheck"], "factors": factors,
+                "observations": observations(c, dev), "summary": NOT_ASSESSED["summary"], "modelVersion": VERSION,
+                "assessed": False}
     s = MODEL["summaries"]
     key = t["zone"] if t["zone"] != "yellow" else ("yellow_high" if t["score"] >= MODEL["zones"]["redFrom"] else "yellow")
     summary = fill(s[key], {"score": t["score"]})
     if t["needsCheck"]:
         summary += " " + fill(s["needs_check"], {"codes": ", ".join(t["unknown"])})
     return {"score": t["score"], "zone": t["zone"], "needsCheck": t["needsCheck"], "factors": factors,
-            "observations": observations(c, dev), "summary": summary, "modelVersion": VERSION}
+            "observations": observations(c, dev), "summary": summary, "modelVersion": VERSION, "assessed": True}
 
 
 def score_ad(ad: Obj, c: Optional[Obj]) -> Obj:

@@ -1,21 +1,24 @@
-// Происхождение сведений (ТЗ §4, §7 «Достоверность»): видно, что факт из источника, что демонстрационный пример,
-// что гипотеза ИИ, а что решение аналитика. Бейдж — у сущности; вариант «у поля» — мелкой строкой рядом со значением.
+// Происхождение сведений (ТЗ §4, §7 «Достоверность»): видно, что факт из источника, что гипотеза ИИ, а что решение аналитика;
+// «демо» — только у строк прежнего демо-набора в старых БД. Бейдж — у сущности; вариант «у поля» — мелкой строкой рядом со значением.
 import type { ReactNode } from 'react'
 import type { BasisSource } from '../data/types'
-import { OPEN_DATA_NOTE, when } from '../lib/provenance'
-import { IcCheck, IcDatabase, IcDoc, IcExternal, IcHelp, IcInfo } from '../ui/icons'
+import { ADVERTISED_LABEL, ADVERTISED_NOTE, OPEN_DATA_NOTE, REGISTRY_LABEL, when } from '../lib/provenance'
+import { IcCheck, IcDatabase, IcDoc, IcExternal, IcHelp, IcInfo, IcMegaphone } from '../ui/icons'
 import { AiBadge, Confidence } from './Hypothesis'
 
-export type OriginKind = 'source' | 'demo' | 'ai' | 'analyst'
+export type OriginKind = 'source' | 'demo' | 'ai' | 'analyst' | 'registry' | 'advertised'
 
 const LABEL: Record<OriginKind, string> = {
-  source: 'Факт из источника', demo: 'Демонстрационные данные', ai: 'Гипотеза ИИ', analyst: 'Решение аналитика',
+  source: 'Факт из источника', demo: 'Демонстрационные данные', ai: 'Гипотеза ИИ', analyst: 'Решение аналитика', registry: REGISTRY_LABEL,
+  advertised: ADVERTISED_LABEL,
 }
 const HINT: Record<OriginKind, string> = {
   source: 'Сведения открытого источника — как их опубликовал источник, со ссылкой и временем сбора. Не проверены аналитиком и не являются выводом системы',
+  registry: 'Карточка создана по открытому реестру: сведения из открытого реестра, аналитиком не проверены. Риск не оценивается, пока по объекту нет проверенных данных',
   demo: 'Демонстрационные данные: вымышленный сценарий для показа модели риска. Не сведения о реальных объектах и организациях',
   ai: 'Вывод ИИ: не факт, пока аналитик его не примет. Принятие и отклонение пишутся в журнал',
   analyst: 'Внесено или решено сотрудником: кто и когда — в журнале',
+  advertised: `${ADVERTISED_NOTE}. Формальный риск не оценивается, пока по объекту нет проверенных данных`,
 }
 
 /** Ссылка на источник: внешняя, в новой вкладке */
@@ -50,7 +53,7 @@ export function Origin({ kind, label, source, at, url, who, confidence, low, fie
   const details = kind === 'source' ? [source, at && `зафиксировано ${when(at)}`] : kind === 'analyst' ? [who, when(at)] : []
   const hint = title ?? [HINT[kind], ...details.filter(Boolean)].join('. ')
   if (field) {
-    const Icon = kind === 'source' ? IcDatabase : kind === 'analyst' ? IcCheck : kind === 'demo' ? IcInfo : null
+    const Icon = kind === 'source' || kind === 'registry' ? IcDatabase : kind === 'advertised' ? IcMegaphone : kind === 'analyst' ? IcCheck : kind === 'demo' ? IcInfo : null
     if (kind === 'ai') return (
       <span className="prov-f ai" title={hint}>
         <AiBadge label={typeof text === 'string' ? text.toLowerCase() : undefined} />
@@ -65,8 +68,8 @@ export function Origin({ kind, label, source, at, url, who, confidence, low, fie
     )
   }
   if (kind === 'ai') return <AiBadge label={typeof text === 'string' ? text.toLowerCase() : 'гипотеза ИИ'} title={title} />
-  const cls = kind === 'source' ? 'src' : kind === 'demo' ? 'demo' : 'green'
-  const Icon = kind === 'source' ? IcDatabase : kind === 'analyst' ? IcCheck : IcInfo
+  const cls = kind === 'source' || kind === 'registry' ? 'src' : kind === 'advertised' ? 'adv' : kind === 'demo' ? 'demo' : 'green'
+  const Icon = kind === 'source' || kind === 'registry' ? IcDatabase : kind === 'advertised' ? IcMegaphone : kind === 'analyst' ? IcCheck : IcInfo
   return <span className={`tag prov ${cls} ${onPhoto ? 'on-ph' : ''}`} title={hint}><Icon size={12} />{text}</span>
 }
 

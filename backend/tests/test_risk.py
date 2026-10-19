@@ -1,7 +1,7 @@
 """Модель риска по ТЗ §5: контрольные кейсы A/B/C, границы зон, факторы R1–R6, наблюдения, оценка публикации, эталон.
 
 Только чистые функции (app.risk / app.risk_model / app.golden) — без API и БД.
-Синтетические входы — shared/risk_fixtures.json; ожидания ниже записаны явно, а не берутся из эталона.
+Синтетические входы — shared/testdata/risk_fixtures.json; ожидания ниже записаны явно, а не берутся из эталона.
 """
 import copy
 import itertools
@@ -21,8 +21,8 @@ from app.risk_model import ALMATY, FACTORS, MARKERS, MODEL, OBSERVATIONS, SHARED
 
 AS_OF = "2026-10-15"
 REGEN = "cd backend && .venv/bin/python -m app.golden"
-SEED = json.loads((SHARED / "seed_data.json").read_text(encoding="utf-8"))
-FX = json.loads((SHARED / "risk_fixtures.json").read_text(encoding="utf-8"))
+SEED = json.loads((SHARED / "testdata" / "demo_seed.json").read_text(encoding="utf-8"))  # только для тестов
+FX = json.loads((SHARED / "testdata" / "risk_fixtures.json").read_text(encoding="utf-8"))
 CX_FX = {f["name"]: f for f in FX["complex"]}
 AD_FX = {f["name"]: f for f in FX["ad"]}
 DEVS = {d["id"]: d for d in SEED["developers"]}
@@ -124,7 +124,7 @@ REASONS = {
     "R1": {"built", "ok_guarantee", "ok_guarantee_no_mio", "ok_mio", "absent", "absent_unsourced", "mio_without_bank", "unknown"},
     "R2": {"built", "offer", "offer_unlinked", "offer_rejected", "none"},
     "R3": {"built", "ads", "ads_unlinked", "none"},
-    "R4": {"verified", "pending", "none"},
+    "R4": {"verified", "pending", "none", "unchecked", "none_checked"},
     "R5": {"built", "mismatch", "match", "incomplete"},
     "R6": {"built", "overdue", "idle", "idle_unconfirmed", "no_photos", "active"},
 }
@@ -283,11 +283,38 @@ EXPECT = {
     "o2_young_developer_flag": (0, "green", False, {}),
     "o2_developer_unknown": (0, "green", False, {}),
 }
+# Карточка ЖК из открытого реестра (origin «registry»): основание, готовность и снимки — «нет сведений»; обращения не
+# сверены — пустой список не значит «обращений нет» (R4 unchecked), пока аналитик не отметит «Обращений нет — сверено»
+REG_UNKNOWN = {"R1": ("unknown", "unknown"), "R4": ("unknown", "unchecked"), "R5": ("unknown", "incomplete"),
+               "R6": ("unknown", "no_photos")}
+APPEALS_CHECKED = ("clear", "none_checked")
+EXPECT |= {
+    # без проверенных сведений риск не оценивается: балл 0, факторы — справочно (просрочка из реестра — hit без балла)
+    "registry_not_assessed": (0, "green", True, REG_UNKNOWN),
+    "registry_hypothesis_not_assessed": (0, "green", True, {**REG_UNKNOWN, "R2": UNLINKED, "R3": ADS_UNLINKED,
+                                                            "R4": ("unknown", "pending")}),
+    "registry_overdue_not_assessed": (0, "green", True, {**REG_UNKNOWN, "R6": ("hit", "overdue")}),
+    "registry_dismissed_link_not_assessed": (0, "green", True, REG_UNKNOWN),
+    "registry_unsourced_basis_not_assessed": (0, "green", True, {**REG_UNKNOWN, "R1": ("unknown", "absent_unsourced")}),
+    # проверенные сведения есть — обычный расчёт только по подтверждённым фактам
+    "registry_confirmed_link_assessed": (35, "yellow", True, {**REG_UNKNOWN, "R2": OFFER, "R3": ADS}),
+    "registry_sourced_basis_assessed": (35, "yellow", True, {**REG_UNKNOWN, "R1": ABSENT}),
+    "registry_verified_appeal_assessed": (15, "green", True, {**REG_UNKNOWN, "R4": VERIFIED}),
+    "registry_photo_assessed": (0, "green", True, {"R1": ("unknown", "unknown"), "R4": ("unknown", "unchecked"),
+                                                   "R5": ("unknown", "incomplete")}),
+    # «Обращений нет — сверено» (источник и дата): R4 снят; без даты — не сверено; сама сверка риск не открывает
+    "registry_appeals_checked_assessed": (35, "yellow", True, {**REG_UNKNOWN, "R1": ABSENT, "R4": APPEALS_CHECKED}),
+    "registry_appeals_check_undated_assessed": (35, "yellow", True, {**REG_UNKNOWN, "R1": ABSENT}),
+    "registry_appeals_check_only_not_assessed": (0, "green", True, {**REG_UNKNOWN, "R4": APPEALS_CHECKED}),
+}
+NOT_ASSESSED = {n for n in EXPECT if n.endswith("_not_assessed")}
 OBS_DEFAULT = {"O1": "ok", "O2": "ok", "O3": "ok"}
 OBS_EXPECT = {
     "r6_idle_89_clear": {"O3": "flag"},
     "o2_young_developer_flag": {"O1": "flag", "O2": "flag"},
     "o2_developer_unknown": {"O1": "unknown", "O2": "unknown"},
+    # застройщик из реестра: портфель не получен — профиль неизвестен
+    **{n: {"O1": "unknown", "O2": "unknown"} for n in EXPECT if n.startswith("registry_")},
 }
 
 
@@ -305,7 +332,11 @@ def test_complex_fixture(name):
     assert {f["code"]: (f["state"], f["reason"]) for f in r["factors"]} == {**DEFAULT, **over}
     assert {o["code"]: o["state"] for o in r["observations"]} == {**OBS_DEFAULT, **OBS_EXPECT.get(name, {})}
     assert r["modelVersion"] == MODEL["version"]
-    assert ("Нужна проверка" in r["summary"]) == needs
+    assert r["assessed"] is (name not in NOT_ASSESSED)
+    if r["assessed"]:
+        assert ("Нужна проверка" in r["summary"]) == needs
+    else:  # вместо итога — «риск не оценивается»
+        assert r["summary"] == MODEL["notAssessed"]["summary"]
 
 
 def test_case_a_unknown_basis_is_not_r1():
@@ -961,8 +992,11 @@ def test_formula_and_texts_hold_for_every_result():
     """Для всего сида и всех синтетических случаев: формула §5, зона, «нужна проверка», тексты из модели."""
     for name, r, is_ad in _all_results():
         hit = hit_codes(r)
-        assert r["score"] == min(100, sum(FACTORS[c]["weight"] for c in hit)), name
-        assert r["zone"] == zone_for(r["score"], hit), name
+        if r.get("assessed", True):
+            assert r["score"] == min(100, sum(FACTORS[c]["weight"] for c in hit)), name
+            assert r["zone"] == zone_for(r["score"], hit), name
+        else:  # карточка из реестра без проверенных сведений: балла и зоны нет (0 / green — только для формы ответа)
+            assert (r["score"], r["zone"], r["summary"]) == (0, "green", MODEL["notAssessed"]["summary"]), name
         assert r["needsCheck"] == bool(unknown_codes(r)), name
         assert ("R2" not in hit) or ("R3" in hit), f"{name}: предложение денег — это и реклама продажи (кейсы A/B)"
         for f in r["factors"]:
@@ -1104,8 +1138,8 @@ def test_golden_up_to_date():
                 f"{part}.{kind}: набор кейсов изменился — перегенерируйте: {REGEN}"
             for k in actual[part][kind]:
                 assert actual[part][kind][k] == stored[part][kind][k], \
-                    f"shared/risk_golden.json устарел ({part}.{kind}.{k}) — перегенерируйте: {REGEN}"
-    assert actual == stored, f"shared/risk_golden.json устарел — перегенерируйте: {REGEN}"
+                    f"shared/testdata/risk_golden.json устарел ({part}.{kind}.{k}) — перегенерируйте: {REGEN}"
+    assert actual == stored, f"shared/testdata/risk_golden.json устарел — перегенерируйте: {REGEN}"
 
 
 def test_as_of_accepts_datetime_and_string():

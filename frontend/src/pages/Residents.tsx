@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Cell, Faq, Hero, HeroTile, Modal, Score, Seg } from '../components/ui'
+import { Cell, Faq, Hero, HeroTile, Modal, RiskScore, Seg } from '../components/ui'
 import type { Complex, Zone } from '../data/types'
-import { model } from '../lib/risk'
+import { isAssessed, model } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcBuilding, IcCheck, IcChevronDown, IcClock, IcSend, IcShield, IcTraffic } from '../ui/icons'
 
@@ -31,7 +31,7 @@ const TPL: Record<Tpl, TplDef> = {
 const TPLS = Object.keys(TPL) as Tpl[]
 const firstFit = (c: Complex, cur?: Tpl): Tpl => (cur && TPL[cur].fits(c) ? cur : TPLS.find((k) => TPL[k].fits(c)) ?? 'basis')
 // Страница-идея: подписчиков, рассылок и согласования в MVP нет — ничего не отправляется и не имитируется (ТЗ §4)
-const IDEA = 'Демо: сообщения не отправляются — рассылки, подписчиков и согласования в MVP нет'
+const IDEA = 'Макет: сообщения не отправляются — рассылки, подписчиков и согласования в MVP нет'
 const NOW = new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })
 
 /** Жителям — шапка с главным блоком «конструктор уведомления + превью на телефоне», ниже аудитория и FAQ */
@@ -48,7 +48,7 @@ export default function Residents() {
   const title = TPL[tpl].title
   const text = msg || TPL[tpl].text(c)
   const fits = TPL[tpl].fits(c)
-  const count = (z: Zone) => scored.filter((x) => x.r.zone === z).length
+  const count = (z: Zone) => scored.filter((x) => isAssessed(x.r) && x.r.zone === z).length
   const fitN = (k: Tpl) => scored.filter((x) => TPL[k].fits(x.c)).length
   /** Плитка шаблона: выбрать его; если к текущему объекту он не подходит — самый рискованный объект, к которому подходит */
   const pickTpl = (k: Tpl) => {
@@ -60,7 +60,7 @@ export default function Residents() {
   return (
     <>
       <Hero crumb="Жителям" title="Предупредить жителей"
-        info={<span><b className="bold">Идея для развития · демо, сообщения не отправляются.</b> Не входит в MVP: подписчиков, рассылок и согласования нет. В рабочей версии отправка — только после решения уполномоченного органа</span>}
+        info={<span><b className="bold">Идея для развития · макет, сообщения не отправляются.</b> Не входит в MVP: подписчиков, рассылок и согласования нет. В рабочей версии отправка — только после решения уполномоченного органа</span>}
         tiles={<>
           <HeroTile icon={<IcTraffic size={32} />} label="Красная зона" value={count('red')} tone="red" to="/complexes?zone=red" />
           <HeroTile icon={<IcTraffic size={32} />} label="Жёлтая зона" value={count('yellow')} tone="yellow" to="/complexes?zone=yellow" />
@@ -73,7 +73,7 @@ export default function Residents() {
           <div className="pl">
             <h2 className="t-h2" style={{ marginBottom: 12 }}>Уведомление</h2>
             <div className="frow"><label>Объект</label>
-              <button className="input row between" onClick={() => setPick(true)} style={{ textAlign: 'left' }}><span className="row" style={{ gap: 8 }}>ЖК «{c.name}»<Score value={cur.r.score} zone={cur.r.zone} /></span><IcChevronDown size={16} /></button>
+              <button className="input row between" onClick={() => setPick(true)} style={{ textAlign: 'left' }}><span className="row" style={{ gap: 8 }}>ЖК «{c.name}»<RiskScore r={cur.r} /></span><IcChevronDown size={16} /></button>
             </div>
             <div className="frow"><label>Шаблон</label><Seg value={tpl} onChange={(v) => { setTpl(v); setMsg('') }} items={TPLS.map((k) => [k, TPL[k].label])} /></div>
             {!fits && <div className="frow"><span /><span className="t-sm" style={{ color: 'var(--amber-ink)' }}>Шаблон не подходит к объекту: {TPL[tpl].why}. Выберите другой.</span></div>}
@@ -81,9 +81,9 @@ export default function Residents() {
               <div><textarea className="input" maxLength={240} value={text} onChange={(e) => setMsg(e.target.value)} /><div className="t-xs c2" style={{ marginTop: 4, textAlign: 'right' }}>{text.length} / 240</div></div>
             </div>
             <div className="frow"><label>Канал</label><Seg value={ch} onChange={setCh} items={[['push', 'Push в приложении'], ['tg', 'Telegram-бот']]} /></div>
-            <div className="frow"><label>Кому</label><span>жителям района <b className="bold">{c.district}</b><span className="c2"> · подписчиков нет: канала рассылки в MVP нет</span></span></div>
+            <div className="frow"><label>Кому</label><span>жителям района <b className="bold">{c.district || 'не указан'}</b><span className="c2"> · подписчиков нет: канала рассылки в MVP нет</span></span></div>
             <div className="frow"><span /><div className="row wrap-f" style={{ gap: 12 }}>
-              <button className="btn y" disabled title={IDEA}><IcSend />Отправить на согласование · демо</button>
+              <button className="btn y" disabled title={IDEA}><IcSend />Отправить на согласование · макет</button>
               <span className="t-sm c2">{IDEA}</span>
             </div></div>
           </div>
@@ -120,8 +120,8 @@ export default function Residents() {
 
       {pick && (
         <Modal title="Выберите объект" onClose={() => setPick(false)}>
-          {scored.map(({ c: x, r }) => <Cell key={x.id} inset icon={<img className="th" src={x.cover} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name} sub={x.address}
-            end={<><Score value={r.score} zone={r.zone} />{x.id === cid && <IcCheck size={18} style={{ color: 'var(--text)' }} />}</>} onClick={() => { setCid(x.id); setTpl(firstFit(x, tpl)); setMsg(''); setPick(false) }} />)}
+          {scored.map(({ c: x, r }) => <Cell key={x.id} inset icon={<img className="th" src={x.cover || undefined} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name} sub={x.address}
+            end={<><RiskScore r={r} />{x.id === cid && <IcCheck size={18} style={{ color: 'var(--text)' }} />}</>} onClick={() => { setCid(x.id); setTpl(firstFit(x, tpl)); setMsg(''); setPick(false) }} />)}
         </Modal>
       )}
     </>

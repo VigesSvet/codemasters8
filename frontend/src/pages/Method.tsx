@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react'
 import { Link } from 'react-router-dom'
 import { AiBadge } from '../components/Hypothesis'
-import { Faq, Gauge, Score, Seg, ZoneTag } from '../components/ui'
+import { Faq, Gauge, RiskScore, Seg, ZoneTag, zoneShort } from '../components/ui'
 import type { AiEval, FactorState } from '../data/types'
 import { errorText } from '../lib/api'
 import { from } from '../lib/nav'
-import { factorDef, model, zoneFor, type ModelCase } from '../lib/risk'
+import { isDemo } from '../lib/provenance'
+import { factorDef, isAssessed, model, zoneFor, type ModelCase } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcBank, IcCheck, IcChevronDown, IcChevronUp, IcClock, IcClose, IcHelp, IcInfo, IcMegaphone, IcUsersFamily, IcWallet, IcWorker } from '../ui/icons'
 
@@ -103,7 +104,7 @@ export default function Method() {
   }, [st])
   const zoneItem = model.zones.items.find((z) => z.zone === calc.zone)
   const pair = model.zones.redRequires.join('+')
-  const sameZone = complexes.filter((c) => riskOf(c).zone === calc.zone).length
+  const sameZone = complexes.filter((c) => { const r = riskOf(c); return isAssessed(r) && r.zone === calc.zone }).length
   const loaded = model.cases.find((k) => model.factors.every((f) => fromCase(k)[f.code] === st[f.code]))
   const toCalc = (k: ModelCase) => { setSt(fromCase(k)); document.getElementById('calc')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
   // таблица и словари
@@ -120,10 +121,12 @@ export default function Method() {
             <h1 className="t-h1">Как считается риск</h1>
             <div className="row t-body" style={{ gap: 8, marginTop: 12 }}><span style={{ color: 'var(--link)', display: 'flex' }}><IcInfo /></span>{model.disclaimer}</div>
             <div className="row wrap-f t-sm" style={{ gap: 8, marginTop: 14 }}>
-              <span className="c2">Демо-сценарии ТЗ §5:</span>
+              <span className="c2">Контрольные сценарии ТЗ §5:</span>
               {model.cases.map((k) => {
                 const c = complexes.find((x) => x.id === k.complexId)
-                return c ? <Link key={k.id} to={`/complexes/${c.id}?tab=risk`} state={from('Методика', '/method')} className="chip" style={{ height: 32 }}><b>{k.id}</b>ЖК «{c.name}»<span className="n">{k.score}</span></Link> : null
+                // ЖК сценария есть только в тестовом наборе (и в старых БД) — иначе сценарий открывается в калькуляторе
+                return c ? <Link key={k.id} to={`/complexes/${c.id}?tab=risk`} state={from('Методика', '/method')} className="chip" style={{ height: 32 }}><b>{k.id}</b>ЖК «{c.name}»<span className="n">{k.score}</span></Link>
+                  : <button key={k.id} type="button" className="chip" style={{ height: 32 }} onClick={() => toCalc(k)} title="Открыть сценарий в калькуляторе"><b>{k.id}</b>{zoneShort[k.zone]}<span className="n">{k.score}</span></button>
               })}
               <a href="#cases" className="link">Подробнее</a>
             </div>
@@ -228,7 +231,7 @@ export default function Method() {
       </div>
 
       <h2 className="t-h2" id="cases" style={{ margin: '48px 0 4px' }}>Контрольные сценарии ТЗ</h2>
-      <p className="c2" style={{ marginBottom: 16, maxWidth: 760 }}>Три кейса из ТЗ §5 и вымышленные ЖК демо-набора, на которых они воспроизводятся. Живой балл считается по текущим данным. Реальные объекты из открытых данных в сценариях не участвуют.</p>
+      <p className="c2" style={{ marginBottom: 16, maxWidth: 760 }}>Три эталонных кейса из ТЗ §5. Их проверяют автотесты на тестовом наборе (shared/testdata) — он не входит в данные приложения. Реальные ЖК стартового набора в сценариях не участвуют: кейс можно открыть в калькуляторе выше.</p>
       <div className="promo-tiles cases">
         {model.cases.map((k) => {
           const c = complexes.find((x) => x.id === k.complexId)
@@ -244,11 +247,11 @@ export default function Method() {
               <div className="case-live">
                 {c && r ? (
                   <>
-                    <span className="t-sm" style={{ flex: 1, minWidth: 0 }}>ЖК «{c.name}» <span className="c3">· демо</span></span>
-                    <Score value={r.score} zone={r.zone} />
-                    {same ? <span className="tag green"><IcCheck size={12} strokeWidth={3} />совпадает</span> : <span className="tag yellow" title="Данные объекта изменились после демо-набора">отличается</span>}
+                    <span className="t-sm" style={{ flex: 1, minWidth: 0 }}>ЖК «{c.name}»{isDemo(c) && <span className="c3"> · демо</span>}</span>
+                    <RiskScore r={r} />
+                    {same ? <span className="tag green"><IcCheck size={12} strokeWidth={3} />совпадает</span> : <span className="tag yellow" title="Данные объекта изменились после эталона сценария">отличается</span>}
                   </>
-                ) : <span className="t-sm c3">Объекта {k.complexId} нет в данных</span>}
+                ) : <span className="t-sm c3">Проверяется автотестом на тестовом наборе</span>}
               </div>
               <div className="row" style={{ gap: 8 }}>
                 {c && <Link to={`/complexes/${c.id}?tab=risk`} state={from('Сценарии в методике', '/method#cases')} className="btn y m" style={{ flex: 1 }}>Открыть сценарий {k.id}</Link>}
@@ -288,12 +291,12 @@ export default function Method() {
 
       <h2 className="t-h2" id="ai-eval" style={{ margin: '48px 0 4px' }}>Проверка на новых данных</h2>
       <p className="c2" style={{ marginBottom: 16, maxWidth: 760 }}>
-        Тексты, которых нет в демо-наборе: транслит и опечатки в названиях, адрес без названия, телефон застройщика, подборка нескольких ЖК, шумный
+        Синтетические тестовые тексты — не из собранной рекламы: транслит и опечатки в названиях, адрес без названия, телефон застройщика, подборка нескольких ЖК, шумный
         OCR, «бесплатная бронь», вторичка в сданном доме и контрпримеры без признаков. Сервер прогоняет движок при открытии страницы; те же кейсы
         проверяет автотест (shared/ai_cases.json).
       </p>
       {!live ? (
-        <div className="ai-note">{mode === 'loading' ? 'Подключаемся к серверу…' : 'Прогон выполняется на сервере — в демо-режиме без бэкенда его нет. Запустите ./dev.sh и откройте страницу снова.'}</div>
+        <div className="ai-note">{mode === 'loading' ? 'Подключаемся к серверу…' : 'Прогон выполняется на сервере — в офлайн-копии его нет. Запустите ./dev.sh и откройте страницу снова.'}</div>
       ) : !ev ? <div className="ai-note">Прогоняем кейсы…</div>
         : !ev.data ? <div className="ai-note err">Проверка не загрузилась: {ev.err} <button className="link" onClick={() => setEvVer((v) => v + 1)}>Повторить</button></div>
           : (() => {

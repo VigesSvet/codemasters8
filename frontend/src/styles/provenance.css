@@ -21,9 +21,14 @@
 .od-note { display: flex; gap: 10px; align-items: flex-start; padding: 14px 18px; line-height: 19px; }
 .od-note > svg { flex: none; margin-top: 1px; color: var(--text-2); }
 
-/* Баннер демо-сценария A/B/C в карточке ЖК */
+/* Баннер контрольного сценария A/B/C в карточке ЖК */
 .case-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: -8px 0 20px; padding: 12px 16px; border-radius: var(--r-l); background: var(--fill); font-size: 14px; line-height: 19px; }
 .case-banner .grow { flex: 1; min-width: 240px; }
+
+/* Риск не оценивается (карточка из открытого реестра без проверенных сведений): серые балл, точка и метка на карте */
+.score.na { background: var(--fill); color: var(--text-3); }
+.zdot.na { background: #8a8c91; }
+.gpin.na { --c: #8a8c91; }
 
 /* Метки открытых данных на карте — серые, без балла */
 .gpin.src { --c: #8a8c91; }

@@ -1,4 +1,4 @@
-"""«Мир» для движка риска: ORM → camelCase-словари в форме API (как shared/seed_data.json и types.ts).
+"""«Мир» для движка риска: ORM → camelCase-словари в форме API (как frontend/src/data/types.ts).
 
 Движок (app.risk) работает только со словарями; здесь — загрузка данных из БД и вызовы score_complex / score_ad.
 """

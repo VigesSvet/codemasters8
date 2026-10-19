@@ -2,6 +2,8 @@
 
 Отдельный слой, не смешанный с демо-ЖК: у записей и объектов нет риска, зон, «нужна проверка» и сигналов — это сведения
 источника на момент сбора, а не выводы системы (ТЗ §7 «Достоверность», «Безопасность»). Сигнал по ключу объекта — 404.
+Карточки ЖК по объектам реестра («r-<ключ>», origin «registry») создаёт app.demo — риск по ним не оценивается до
+проверенных сведений (risk.assessed).
 """
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
@@ -24,7 +26,7 @@ DEMO = {"code": "demo", "name": "Демонстрационный набор (в
         "note": "Вымышленные ЖК, застройщики, публикации и обращения для сценариев проверки (ТЗ §5). Только на них "
                 "считаются риск, зоны и сигналы; совпадений с реальными организациями нет."}
 NOT_SCORED = ("Объект открытых данных: риск, зона и сигналы для сведений из источников не рассчитываются — сигнал "
-              "формируется только по ЖК демо-реестра")
+              "формируется только по карточке ЖК (раздел «Новостройки»)")
 
 
 def _snake(key: str) -> str:
@@ -161,10 +163,11 @@ def sources(db: Session) -> List[Obj]:
             "collectedAt": iso(stat[code][2]), "providerLoadedAt": stat[code][3]}
            for code in importer.SOURCE_ORDER if code in stat]
     count = lambda m: db.scalar(select(func.count()).select_from(m).where(m.origin == "demo"))  # noqa: E731
-    complexes = count(models.Complex)
-    out.append({**DEMO, "records": complexes, "objects": complexes, "collectedAt": None, "providerLoadedAt": None,
-                "counts": {"complexes": complexes, "developers": count(models.Developer), "ads": count(models.Ad),
-                           "appeals": count(models.Appeal)}})
+    counts = {"complexes": count(models.Complex), "developers": count(models.Developer), "ads": count(models.Ad),
+              "appeals": count(models.Appeal)}
+    if any(counts.values()):  # после python -m app.demo purge демо-набора нет — и строки о нём нет
+        out.append({**DEMO, "records": counts["complexes"], "objects": counts["complexes"], "collectedAt": None,
+                    "providerLoadedAt": None, "counts": counts})
     return out
 
 

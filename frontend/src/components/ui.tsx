@@ -1,18 +1,27 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ImgHTMLAttributes, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import type { AdStatus, Platform, Tri, Zone } from '../data/types'
+import type { AdStatus, Platform, RiskResult, Tri, Zone } from '../data/types'
 import { adKey as codeKey } from '../lib/find'
 import { PLATFORMS, platformName, type PlatformInfo } from '../lib/platform'
-import { MARKERS } from '../lib/risk'
+import { MARKERS, NOT_ASSESSED, isAssessed } from '../lib/risk'
 import { siFacebook, siInstagram, siTelegram, siTiktok } from 'simple-icons'
 import { IcCheck, IcChevronDown, IcChevronLeft, IcChevronRight, IcChevronUp, IcClose, IcGlobe, IcHelp, IcInfo as IcInfoY } from '../ui/icons'
 
 export const zoneName: Record<Zone, string> = { red: 'Красная зона', yellow: 'Жёлтая зона', green: 'Зелёная зона' }
 export const zoneShort: Record<Zone, string> = { red: 'Красная', yellow: 'Жёлтая', green: 'Зелёная' }
 
-export const ZoneTag = ({ zone }: { zone: Zone }) => <span className={`tag ${zone}`}><span className={`zdot ${zone}`} style={{ width: 6, height: 6 }} />{zoneName[zone]}</span>
-export const ZoneDot = ({ zone }: { zone: Zone }) => <span className={`zdot ${zone}`} />
-export const Score = ({ value, zone }: { value: number; zone: Zone }) => <span className={`score ${zone}`}>{value}</span>
+/** Зона риска; off — риск не оценивается (карточка из открытого реестра без проверенных сведений): серая метка без зоны */
+export const ZoneTag = ({ zone, off }: { zone: Zone; off?: boolean }) => (off
+  ? <span className="tag gray" title={NOT_ASSESSED}>Риск не оценивается</span>
+  : <span className={`tag ${zone}`}><span className={`zdot ${zone}`} style={{ width: 6, height: 6 }} />{zoneName[zone]}</span>)
+export const ZoneDot = ({ zone, off }: { zone: Zone; off?: boolean }) => <span className={`zdot ${off ? 'na' : zone}`} title={off ? NOT_ASSESSED : undefined} />
+/** Балл; off — риск не оценивается: «—» без цвета зоны */
+export const Score = ({ value, zone, off }: { value: number; zone: Zone; off?: boolean }) => (off
+  ? <span className="score na" title={NOT_ASSESSED} aria-label={NOT_ASSESSED}>—</span>
+  : <span className={`score ${zone}`}>{value}</span>)
+/** Балл и зона ЖК по результату риска: не оценённый (assessed false) — без балла и зоны */
+export const RiskScore = ({ r }: { r: RiskResult }) => <Score value={r.score} zone={r.zone} off={!isAssessed(r)} />
+export const RiskZone = ({ r }: { r: RiskResult }) => <ZoneTag zone={r.zone} off={!isAssessed(r)} />
 export const NeedsCheck = () => <span className="tag yellow"><IcHelp size={14} />Нужна проверка</span>
 
 const triText: Record<Tri, string> = { yes: 'Есть', no: 'Нет', unknown: 'Нет сведений' }
@@ -49,6 +58,14 @@ export function PlatformIcon({ p, size = 28 }: { p: Platform; size?: number }) {
     </span>
   )
   return <img className="plat" src={png} alt={platformMeta[p].name} title={platformMeta[p].name} style={{ width: size, height: size, borderRadius: r }} />
+}
+
+/** Картинка, которая может не загрузиться (файл удалён; офлайн-копия открыта без сервера её картинок — 404): вместо значка
+ *  «битой» картинки — fallback (по умолчанию ничего: виден фон рамки .ph). Нет src — сразу fallback */
+export function SafeImg({ src, fallback = null, ...rest }: ImgHTMLAttributes<HTMLImageElement> & { fallback?: ReactNode }) {
+  const [broken, setBroken] = useState<string | null>(null)
+  if (!src || broken === src) return <>{fallback}</>
+  return <img src={src} {...rest} onError={() => setBroken(src)} />
 }
 
 export const statusMeta: Record<AdStatus, { name: string; tag: string; color: string }> = {

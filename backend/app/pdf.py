@@ -31,8 +31,9 @@ MARGIN = 16 * mm
 WIDTH = A4[0] - 2 * MARGIN
 CODE_W = 12 * mm  # колонка «Код» в таблице факторов
 
-DISCLAIMER = ("Демонстрационные данные. Рекомендация для проверки, не юридическое заключение. "
-              "Автоматической отправки в госорганы нет.")
+DISCLAIMER = ("Предварительная оценка по открытым данным и публичной рекламе. Рекомендация для проверки, не юридическое "
+              "заключение. Автоматической отправки в госорганы нет.")
+DEMO_NOTE = "Демонстрационные данные (вымышленный ЖК). "  # демо-строки прежних версий (до python -m app.demo purge)
 
 INK, MUTED = colors.HexColor("#1f1f1f"), colors.HexColor("#6b6b6b")
 LINE, SOFT = colors.HexColor("#d9d9d9"), colors.HexColor("#f3f3f3")
@@ -243,7 +244,7 @@ def _header(sig: Obj, generated_at: datetime) -> list:
         P(_join(f"Сформирована {when(generated_at)} (Алматы, UTC+5)", f"сигнал создан {when(sig['createdAt'])}",
                 f"модель {sig['modelVersion']}"), "small"),
         Spacer(1, 6),
-        _box(esc(DISCLAIMER), colors.HexColor("#8a6100"), colors.HexColor("#fff4d6")),
+        _box(esc((DEMO_NOTE if _demo(c) else "") + DISCLAIMER), colors.HexColor("#8a6100"), colors.HexColor("#fff4d6")),
     ]
 
 
@@ -451,6 +452,7 @@ def render_signal(sig: Obj, generated_at: Optional[datetime] = None) -> bytes:
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=MARGIN,
                             bottomMargin=MARGIN + 2 * mm, title=f"Сигнальная карточка {sig['code']}",
                             author="SAQ Qurylys", subject=clean(DISCLAIMER), creator="SAQ Qurylys")
-    footer = clean(f"SAQ Qurylys · сигнал {sig['code']} · модель риска {sig['modelVersion']} · демонстрационные данные")
+    demo = " · демонстрационные данные" if _demo(sig["evidence"]["complex"]) else ""
+    footer = clean(f"SAQ Qurylys · сигнал {sig['code']} · модель риска {sig['modelVersion']}{demo}")
     doc.build(content, canvasmaker=_canvas(footer))
     return buf.getvalue()

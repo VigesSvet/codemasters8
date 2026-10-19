@@ -107,11 +107,16 @@ def counts(db: Session) -> Dict[str, int]:
 
 # ---------- эндпоинты ----------
 
-@router.post("", response_model=schemas.SignalOut, response_model_by_alias=True, status_code=201)
+@router.post("", response_model=schemas.SignalOut, response_model_by_alias=True, status_code=201,
+             responses={422: {"description": "Риск по ЖК не оценивается — нет проверенных данных"}})
 def create_signal(body: schemas.SignalCreateIn, db: Session = Depends(get_db)):
     snap = snapshot(db, body.complex_id)
-    if snap is None:  # в т. ч. ключ объекта открытых данных: сигналы — только по ЖК демо-реестра (T-31)
+    if snap is None:  # в т. ч. ключ объекта открытых данных: сигналы — только по карточкам ЖК (T-31)
         raise registry.not_found(db, body.complex_id)
+    if not snap["risk"].get("assessed", True):  # карточка из открытого реестра без проверенных сведений
+        raise HTTPException(422, f"{MODEL['notAssessed']['label']}: сигнал по ЖК «{snap['complex']['name']}» не создаётся. "
+                                 "Нужны проверенные сведения — подтверждённая привязка публикации, сверенный документ "
+                                 "основания, проверенное обращение или снимок площадки")
     existing = _open_signal(db, body.complex_id)
     if existing:
         raise _conflict(existing)

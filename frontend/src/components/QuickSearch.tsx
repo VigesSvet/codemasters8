@@ -1,14 +1,14 @@
-// Быстрый поиск в шапке (ТЗ §7 «быстрый поиск ЖК»): ЖК демо-набора, объекты открытых данных, публикации, сигналы.
+// Быстрый поиск в шапке (ТЗ §7 «быстрый поиск ЖК»): ЖК на контроле, объекты открытых данных, публикации, сигналы.
 // «/» — к полю (если фокус не в поле ввода), ↑/↓ и Enter — выбор, Esc — закрыть. Нормализация и транслит — lib/search.ts.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { adHit, codeQuery, finder, rankComplex, rankObject } from '../lib/find'
-import { useRegistry } from '../lib/provenance'
+import { placeText, useRegistry } from '../lib/provenance'
 import { norm, rankIn } from '../lib/search'
 import { useStore } from '../lib/store'
 import { IcClose, IcDatabase, IcFlag, IcSearch } from '../ui/icons'
 import { SignalStatusTag } from './SignalPanel'
-import { PlatformIcon, Score, StatusTag, adKey } from './ui'
+import { PlatformIcon, RiskScore, StatusTag, adKey } from './ui'
 
 interface Hit { key: string; to: string; icon?: ReactNode; title: ReactNode; sub?: ReactNode; end?: ReactNode; more?: boolean }
 interface Group { title: string; hits: Hit[] }
@@ -50,11 +50,11 @@ export default function QuickSearch() {
     // совпадения — только они, скелетные («Береке» ≈ «Барака», «Ертис» ≈ «Протозанова») — когда точных нет
     const best = <T,>(xs: T[], rank: (x: T) => number) => xs.filter(finder(s, xs, (_, x) => rank(x)))
     const cx = code ? [] : best(complexes, (c) => rankComplex(s, c, devOf(c.developerId)))
-    if (cx.length) out.push({ title: 'Новостройки · демо-сценарии', hits: [
+    if (cx.length) out.push({ title: 'Новостройки · ЖК на контроле', hits: [
       ...cx.slice(0, LIMIT).map((c): Hit => {
         const r = riskOf(c), d = devOf(c.developerId)
-        return { key: `c:${c.id}`, to: `/complexes/${c.id}`, icon: <img src={c.cover} alt="" />, title: `ЖК «${c.name}»`,
-          sub: [`${c.address}, ${c.district}`, d && `${d.name} · БИН ${d.bin}`].filter(Boolean).join(' · '), end: <Score value={r.score} zone={r.zone} /> }
+        return { key: `c:${c.id}`, to: `/complexes/${c.id}`, icon: <img src={c.cover || undefined} alt="" />, title: `ЖК «${c.name}»`,
+          sub: [placeText(c, ', '), d && (d.bin ? `${d.name} · БИН ${d.bin}` : d.name)].filter(Boolean).join(' · '), end: <RiskScore r={r} /> }
       }),
       ...(cx.length > LIMIT ? [more('c:more', `Все ${cx.length} в реестре новостроек`, `/complexes?q=${enc(s)}`)] : []),
     ] })
@@ -130,7 +130,7 @@ export default function QuickSearch() {
   // пусто по номеру — говорим про номер, а не про название
   const asked = codeQuery(s)
   const nothing = asked?.kind === 'signal'
-    ? (mode === 'demo' ? 'Сигналы хранятся на сервере — в демо-режиме их нет.' : `Сигнала S-${String(asked.n).padStart(4, '0')} нет — все сигналы в разделе «Сигналы».`)
+    ? `Сигнала S-${String(asked.n).padStart(4, '0')} нет${mode === 'snapshot' ? ' в офлайн-копии' : ''} — все сигналы в разделе «Сигналы».`
     : asked ? `Публикации с номером ${asked.key} нет в ленте — проверьте номер.`
       : <>Ничего не нашли по «{s}». Проверьте название или ищите по адресу, застройщику или БИН.{loadingOd && ' Открытые данные ещё загружаются…'}</>
   return (
@@ -152,7 +152,7 @@ export default function QuickSearch() {
             <div className="qs-help">
               <b>Быстрый поиск</b><br />
               ЖК — по названию (можно латиницей и без казахских букв: «Shygys», «Нур Алем»), адресу, району, застройщику или БИН.
-              Публикации — по номеру (AD-001), аккаунту или тексту. Сигналы — по номеру (S-0001) или ЖК{mode === 'demo' && ' — когда подключён сервер'}.
+              Публикации — по номеру (AD-3F2A9C1B), аккаунту или тексту. Сигналы — по номеру (S-0001) или ЖК.
             </div>
           ) : groups.length === 0 ? (
             <div className="qs-help">{nothing}</div>

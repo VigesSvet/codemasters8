@@ -3,13 +3,14 @@ import { Link } from 'react-router-dom'
 import Connectors, { CollectAllButton, CollectorsTile, ConnectorsProvider } from '../components/Connectors'
 import { Origin, SrcLink } from '../components/Provenance'
 import { Faq, Hero, HeroTile } from '../components/ui'
-import { publishedListMeta } from '../data/demo'
 import { OFFLINE_FILE } from '../data/openData'
+import { READ_ONLY, SNAPSHOT_DIR } from '../data/snapshot'
 import type { ImportReport, SourceInfo } from '../data/types'
 import { errorText } from '../lib/api'
-import { OPEN_DATA_NOTE, isDemoAd, sourceName, when } from '../lib/provenance'
+import { OPEN_DATA_NOTE, REGISTRY_NOTE, isDemo, isDemoAd, isRegistry, sourceName, when } from '../lib/provenance'
 import { useStore } from '../lib/store'
-import { IcClock, IcDatabase, IcDoc, IcInfo, IcMegaphone, IcPencil, IcShield, IcUpload } from '../ui/icons'
+import { listChecked } from '../lib/verification'
+import { IcBuilding, IcClock, IcDatabase, IcDoc, IcInfo, IcMegaphone, IcPencil, IcShield, IcUpload } from '../ui/icons'
 
 const MAX_MB = 5
 const ACCEPT = '.xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv'
@@ -20,9 +21,9 @@ const latest = (xs: (string | null | undefined)[]) => xs.filter((x): x is string
 type Imp = { file?: File; busy?: boolean; report?: ImportReport; err?: string }
 
 /** Источники — что реально есть: открытые данные (импорт файла), подключения сбора публикаций (фактическое состояние с сервера),
- *  ручной ввод, демо-набор. Без имитации интеграций (ТЗ §4) */
+ *  ручной ввод, стартовый набор (shared/snapshot). Без имитации интеграций (ТЗ §4) */
 export default function Sources() {
-  const { mode, ads, complexes, developers, appeals, sources, importSource, notify, revision } = useStore()
+  const { mode, snapshot, ads, complexes, developers, appeals, sources, importSource, notify, revision } = useStore()
   const live = mode === 'api'
   const [load, setLoad] = useState<{ data?: SourceInfo[]; err?: string } | null>(null)
   const [ver, setVer] = useState(0)
@@ -37,11 +38,17 @@ export default function Sources() {
     return () => { alive = false }
   }, [mode, ver, revision]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const open = (load?.data ?? []).filter((s) => s.code !== 'demo')
+  // демо-набор (старые БД) и офлайн-копия — не открытые источники: у них свои карточки ниже
+  const open = (load?.data ?? []).filter((s) => s.code !== 'demo' && s.code !== 'snapshot')
+  const snap = load?.data?.find((s) => s.code === 'snapshot')
   const total = open.reduce((n, s) => n + (s.records || 0), 0)
   const last = latest(open.map((s) => s.collectedAt))
   const demoAds = ads.filter(isDemoAd)
+  // строки прежнего демо-набора — только в старых БД (до python -m app.demo purge); карточки ЖК из открытого реестра — всегда
+  const demoCx = complexes.filter(isDemo), demoDevs = developers.filter(isDemo), demoAppeals = appeals.filter(isDemo)
+  const regCx = complexes.filter(isRegistry), regDevs = developers.filter(isRegistry)
   const manual = ads.filter((a) => !isDemoAd(a) && (a.origin === 'analyst' || a.source === 'manual')).length
+  const listN = complexes.filter(listChecked).length
 
   const pick = (f?: File) => setImp(f ? { file: f, err: f.size > MAX_MB * 1024 * 1024 ? `Файл больше ${MAX_MB} МБ` : undefined } : {})
   const upload = () => {
@@ -70,7 +77,7 @@ export default function Sources() {
           <HeroTile icon={<IcClock size={32} />} label="Последний сбор" value={last ? when(last).split(',')[0] : '—'} onClick={() => document.getElementById('open')?.scrollIntoView({ behavior: 'smooth' })} />
           <HeroTile icon={<IcMegaphone size={32} />} label="Публикаций в ленте" value={ads.length} tone="blue" to="/ads" />
           <CollectorsTile />
-          <HeroTile icon={<IcInfo size={32} />} label="Демо-набор, ЖК" value={complexes.length} to="/complexes" />
+          <HeroTile icon={<IcBuilding size={32} />} label="ЖК на контроле" value={complexes.length} to="/complexes" />
         </>} />
 
       <div className="box warn t-sm" style={{ marginBottom: 32, lineHeight: '20px' }}>
@@ -84,7 +91,7 @@ export default function Sources() {
 
       <h2 className="t-h2" id="open" style={{ marginBottom: 4 }}>Открытые данные</h2>
       <p className="c2" style={{ marginBottom: 16, maxWidth: 820 }}>{OPEN_DATA_NOTE} <Link className="link" to="/complexes?layer=open">Объекты в реестре</Link></p>
-      {mode === 'demo' && <div className="ai-note" style={{ marginBottom: 16 }}>Демо-режим без бэкенда: показана встроенная копия открытых данных ({OFFLINE_FILE}) — те же записи, что загружает сервер. Импорт новых файлов — с бэкендом (./dev.sh).</div>}
+      {mode === 'snapshot' && <div className="ai-note" style={{ marginBottom: 16 }}>Офлайн-копия: показана встроенная копия открытых данных ({OFFLINE_FILE}) — те же записи, что загружает сервер. Импорт новых файлов — с сервером (./dev.sh).</div>}
       {mode === 'loading' ? <div className="ai-note">Подключаемся к серверу…</div>
         : !load ? <div className="ai-note">Загружаем список источников…</div>
           : !load.data ? <div className="ai-note err">Список источников не загрузился: {load.err} <button className="link" onClick={() => setVer((v) => v + 1)}>Повторить</button></div>
@@ -99,7 +106,7 @@ export default function Sources() {
                           <div className="t-h3" style={{ fontSize: 18 }}>{s.name || sourceName(s.code)}</div>
                           <div className="t-sm c2" style={{ marginTop: 2 }}>{records(s.records)}{s.objects != null && ` · объектов: ${s.objects}`}</div>
                         </div>
-                        <span className="tag gray">{live ? 'импорт файла' : 'встроенная копия'}</span>
+                        <span className="tag gray">{live ? 'импорт файла' : 'офлайн-копия'}</span>
                       </div>
                       <div className="kv t-sm" style={{ gridTemplateColumns: '170px minmax(0, 1fr)', gap: '6px 12px' }}>
                         <span>Когда собрано</span><span>{s.collectedAt ? <span title={s.collectedAt}>{when(s.collectedAt)}</span> : '—'}</span>
@@ -129,7 +136,7 @@ export default function Sources() {
           <button className="btn y" disabled={!live || !imp.file || !!imp.err || imp.busy} onClick={upload}>{imp.busy ? 'Загружаем…' : 'Импортировать'}</button>
           {imp.file && !imp.busy && <span className="t-sm c2">{(imp.file.size / 1024).toLocaleString('ru-RU', { maximumFractionDigits: 0 })} КБ</span>}
         </div>
-        {!live && <p className="t-sm c2" style={{ marginTop: 10 }}>{mode === 'loading' ? 'Подключаемся к серверу…' : 'Импорт выполняется на сервере — в демо-режиме без бэкенда недоступен (запустите ./dev.sh).'}</p>}
+        {!live && <p className="t-sm c2" style={{ marginTop: 10 }}>{mode === 'loading' ? 'Подключаемся к серверу…' : 'Импорт выполняется на сервере — в офлайн-копии недоступен (запустите ./dev.sh).'}</p>}
         {imp.err && <div className="alog-err t-sm" style={{ marginTop: 12 }}>Не импортировано: {imp.err}</div>}
         {imp.report && (
           <>
@@ -160,7 +167,7 @@ export default function Sources() {
         )}
       </section>
 
-      <h2 className="t-h2" style={{ margin: '48px 0 16px' }}>Публикации и демо-набор</h2>
+      <h2 className="t-h2" style={{ margin: '48px 0 16px' }}>Публикации и стартовый набор</h2>
       <div className="gcards" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 16 }}>
         <div className="devcard" style={{ cursor: 'default' }}>
           <div className="row" style={{ gap: 14, alignItems: 'flex-start' }}>
@@ -169,35 +176,56 @@ export default function Sources() {
             <span className="tag green">работает</span>
           </div>
           <div className="t-sm" style={{ lineHeight: '19px' }}>Аналитик вставляет ссылку, текст и скриншот: текст со скриншота распознаётся на сервере (OCR), ИИ предлагает ЖК и находит условия оплаты.</div>
-          <div className="row between"><span className="t-sm c2">Добавлено вручную: {manual}</span><Link to="/ads/new" className="link t-sm bold">Добавить публикацию</Link></div>
+          <div className="row between"><span className="t-sm c2">Добавлено вручную: {manual}</span>{live ? <Link to="/ads/new" className="link t-sm bold">Добавить публикацию</Link> : <span className="t-sm c2">с сервером</span>}</div>
         </div>
         <div className="devcard" style={{ cursor: 'default' }}>
           <div className="row" style={{ gap: 14, alignItems: 'flex-start' }}>
+            {gray(<IcDatabase size={22} />)}
+            <div style={{ flex: 1 }}><div className="t-h3" style={{ fontSize: 18 }}>Стартовый набор данных</div><div className="t-sm c2" style={{ marginTop: 2 }}>{SNAPSHOT_DIR}</div></div>
+            <span className={`tag ${mode === 'snapshot' ? 'yellow' : 'gray'}`}>{mode === 'snapshot' ? 'офлайн-копия' : 'загружается в пустую БД'}</span>
+          </div>
+          <div className="t-sm" style={{ lineHeight: '19px' }}>Реальные данные мониторинга: ЖК из открытого реестра и известные по рекламе, их застройщики, публичная реклама застройщиков и агентств
+            (собрана 18–19.10.2026) с распознанным текстом и анализом ИИ, объекты из рекламы. Сервер загружает набор в пустую базу при первом запуске,
+            дальше данные пополняют сборщики и аналитики. «Проверка по рекламе» — предварительная автоматическая оценка, не вывод о нарушении.</div>
+          {mode === 'snapshot' && <div className="t-sm" style={{ lineHeight: '19px' }}>Сервер недоступен — открыта копия набора{snap?.collectedAt ? ` (выгружена ${when(snap.collectedAt)})` : ''}. {READ_ONLY}.</div>}
+          {snapshot && <div className="t-sm c2">{snapshot.counts.complexes} ЖК · {snapshot.counts.developers} застройщиков · {snapshot.counts.ads} публикаций · {snapshot.counts.discovered} объектов из рекламы · {snapshot.counts.images} изображений</div>}
+        </div>
+        {(demoCx.length > 0 || demoAds.length > 0) && <div className="devcard" style={{ cursor: 'default' }}>
+          <div className="row" style={{ gap: 14, alignItems: 'flex-start' }}>
             {gray(<IcInfo size={22} />)}
-            <div style={{ flex: 1 }}><div className="t-h3" style={{ fontSize: 18 }}>Демонстрационный набор</div><div className="t-sm c2" style={{ marginTop: 2 }}>shared/seed_data.json</div></div>
+            <div style={{ flex: 1 }}><div className="t-h3" style={{ fontSize: 18 }}>Прежний демонстрационный набор</div><div className="t-sm c2" style={{ marginTop: 2 }}>python -m app.demo purge — удалить</div></div>
             <Origin kind="demo" label="демо" />
           </div>
-          <div className="t-sm" style={{ lineHeight: '19px' }}>Вымышленные ЖК, застройщики, публикации и обращения — на них показаны модель риска и сценарии A, B, C (ТЗ §5). Во всём интерфейсе помечены «демо».</div>
-          <div className="t-sm c2">{complexes.length} ЖК · {developers.length} застройщиков · {demoAds.length} публикаций · {appeals.length} обращений</div>
-        </div>
+          <div className="t-sm" style={{ lineHeight: '19px' }}>В базе остались вымышленные ЖК, застройщики, публикации и обращения прежнего демо-набора — в интерфейсе они помечены «демо». Новые развёртывания их не получают.</div>
+          <div className="t-sm c2">{demoCx.length} ЖК · {demoDevs.length} застройщиков · {demoAds.length} публикаций · {demoAppeals.length} обращений</div>
+        </div>}
+        {regCx.length > 0 && <div className="devcard" style={{ cursor: 'default' }}>
+          <div className="row" style={{ gap: 14, alignItems: 'flex-start' }}>
+            {gray(<IcDatabase size={22} />)}
+            <div style={{ flex: 1 }}><div className="t-h3" style={{ fontSize: 18 }}>Карточки ЖК из открытого реестра</div><div className="t-sm c2" style={{ marginTop: 2 }}>python -m app.demo import-registry</div></div>
+            <Origin kind="registry" />
+          </div>
+          <div className="t-sm" style={{ lineHeight: '19px' }}>Объекты реестра с координатами стали карточками ЖК, к которым привязываются собранные публикации: {REGISTRY_NOTE}. Риск по карточке не оценивается, пока нет проверенных данных.</div>
+          <div className="t-sm c2">{regCx.length} ЖК · {regDevs.length} застройщиков</div>
+        </div>}
         <div className="devcard" style={{ cursor: 'default' }}>
           <div className="row" style={{ gap: 14, alignItems: 'flex-start' }}>
             {gray(<IcShield size={22} />)}
             <div style={{ flex: 1 }}><div className="t-h3" style={{ fontSize: 18 }}>Перечень ГАСК</div><div className="t-sm c2" style={{ marginTop: 2 }}>Разрешённые ЖК · наблюдение O1, вне балла</div></div>
-            <Origin kind="demo" label="демо" />
+            <span className="tag gray">сверка вручную</span>
           </div>
-          <div className="t-sm" style={{ lineHeight: '19px' }}>Список объектов из Instagram ГАСК ВКО, с которым сверяются ЖК демо-набора. Отметка в карточке ЖК — с источником и датой перечня.</div>
-          <div className="t-sm c2">{publishedListMeta.count} ЖК · {publishedListMeta.source} · обновлён {when(publishedListMeta.updated)}</div>
+          <div className="t-sm" style={{ lineHeight: '19px' }}>Список объектов из Instagram ГАСК ВКО. Файлом не загружается: аналитик сверяет ЖК с перечнем в карточке ЖК — отметка с источником, датой перечня и автором.</div>
+          <div className="t-sm c2">Сверено с перечнем: {listN} ЖК из {complexes.length}</div>
         </div>
       </div>
 
       <Faq title="Вопросы об источниках"
         items={[
           ['Есть ли автоматическая синхронизация с реестрами?', 'Нет. Записи Homeportal и Казреестра (CSV Ashyq Data) собраны в файл и загружены импортом; у каждой сохранены ссылка, ID в источнике, время сбора и дата загрузки у поставщика. Чтобы обновить — загрузите новый файл: известные записи обновятся, новые добавятся. Реестр с API можно подключить как ещё один источник, когда появится доступ.'],
-          ['Почему у реальных объектов нет балла риска?', `${OPEN_DATA_NOTE} Демо не публикует обвинений в адрес реальных компаний (ТЗ §7): риск, зоны и сигналы строятся только на вымышленных ЖК демо-набора.`],
+          ['Почему у реальных объектов нет балла риска?', `${OPEN_DATA_NOTE} Система не публикует обвинений в адрес реальных компаний по непроверенным сведениям (ТЗ §7): у карточки ЖК из открытого реестра балл, зона и сигнал появляются только после проверенных данных — подтверждённой аналитиком привязки публикации, сверенного документа, обращения или снимка площадки.`],
           ['Почему реклама попадает не вся?', 'Сборщики читают только публичные аккаунты и каналы из списка; таргетированную рекламу соцсети показывают конкретным людям — её присылают аналитики и жители (ручной ввод и Telegram-бот заявок).'],
-          ['Нужен ли доступ к закрытым госреестрам?', 'Нет. Система работает на открытых данных, загруженных файлом, на публикациях подключённых источников (публичные аккаунты, каналы и выдача площадок), на ручном вводе и на демо-наборе. Закрытые реестры и чужие аккаунты не нужны.'],
-          ['Кто настраивает подключения?', 'Только администратор: токен SAQ_ADMIN_TOKEN он вводит в этой вкладке, проверяет его сервер. Ключи площадок и сервисов (Meta, Telegram, Apify, 2ГИС, OLX, Anthropic) задаются в .env на сервере и в браузер не передаются. Демо-вход аналитика прав администратора не даёт.'],
+          ['Нужен ли доступ к закрытым госреестрам?', 'Нет. Система работает на открытых данных, загруженных файлом, на публикациях подключённых источников (публичные аккаунты, каналы и выдача площадок) и на ручном вводе. Закрытые реестры и чужие аккаунты не нужны.'],
+          ['Кто настраивает подключения?', 'Только администратор: токен SAQ_ADMIN_TOKEN он вводит в этой вкладке, проверяет его сервер. Ключи площадок и сервисов (Meta, Telegram, Apify, 2ГИС, OLX, Anthropic) задаются в .env на сервере и в браузер не передаются. Вход аналитика без пароля прав администратора не даёт.'],
           ['Почему 2ГИС, Claude и OLX — не сборщики?', '2ГИС — геосервис: предлагает кандидатов адреса для карточки ЖК, решение принимает аналитик. Claude (Anthropic) — анализатор: читает текст и OCR уже собранных публикаций и предлагает гипотезы с дословными цитатами (признаки продажи, суммы, кандидаты ЖК); текст и OCR для этого отправляются в Anthropic, решение принимает аналитик. OLX Partner API даёт доступ только к ресурсам своего авторизованного аккаунта — чужие объявления так не собрать.'],
           ['Как связывается публикация с ЖК?', 'ИИ сравнивает текст и распознанный скриншот с объектами: название (с транслитерацией и опечатками), адрес, аккаунт и телефон застройщика — и предлагает до трёх гипотез с причинами и уверенностью. Фактом привязка становится только после того, как аналитик примет гипотезу или выберет ЖК сам.'],
         ]} />

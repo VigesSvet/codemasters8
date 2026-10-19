@@ -79,6 +79,8 @@ class Settings:
     service_token: Secret = field(default_factory=_no_secret)
     allow_schema_reset: bool = False
     collected_autolink: bool = False
+    # «Проверка по рекламе» (app.screening): окно свежести рекламы, дней — по дате публикации
+    screening_days: int = 120
     worker_poll_s: float = 5.0
     worker_id: Optional[str] = None
     job_lease_s: int = 1800
@@ -198,6 +200,7 @@ VARS: tuple[_Var, ...] = (
     _Var("SERVICE_API_TOKEN", "service_token", "token"),
     _Var("SAQ_ALLOW_SCHEMA_RESET", "allow_schema_reset", "bool"),
     _Var("SAQ_COLLECTED_AUTOLINK", "collected_autolink", "bool"),
+    _Var("SAQ_SCREENING_DAYS", "screening_days", "int", 1, 3650),
     _Var("SAQ_WORKER_POLL_S", "worker_poll_s", "float", 0.1),
     _Var("SAQ_WORKER_ID", "worker_id", "optstr"),
     _Var("SAQ_JOB_LEASE_S", "job_lease_s", "int", 60),
@@ -253,6 +256,9 @@ VARS: tuple[_Var, ...] = (
     _Var("ANTHROPIC_BACKFILL_INTERVAL_MIN", "anthropic_backfill_interval_min", "int", 1, 1440),
 )
 _BY_ENV = {v.env: v for v in VARS}
+# Переменные прежних версий: приложение их не читает, заданное значение — предупреждение при разборе настроек
+RETIRED = {"SAQ_DEMO_DATA": "демо-набора в приложении больше нет — пустая БД получает стартовый набор shared/snapshot "
+                            "(README, «Развёртывание со стартовым набором данных»); строку можно удалить из .env"}
 # Все имена, которые читает приложение (SAQ_ENV_FILE — только из реального окружения)
 ENV_NAMES: tuple[str, ...] = tuple(v.env for v in VARS) + ("SAQ_ENV_FILE",)
 TOKENS = ("SAQ_ADMIN_TOKEN", "INTEGRATION_INGEST_TOKEN", "SERVICE_API_TOKEN")
@@ -361,6 +367,9 @@ def _parse(environ: Mapping[str, str]) -> tuple[Settings, list[str]]:
     file = _file_values(path, warns)
     defaults = {f.name: (f.default_factory() if callable(f.default_factory) else f.default) for f in fields(Settings)}
     values: dict[str, Any] = {"env_file": path if path is not None and path.is_file() else None}
+    for name, why in RETIRED.items():
+        if _raw(name, environ, file) is not None:
+            warns.append(f"{name} больше не используется: {why}")
     ignored: list[Secret] = []
     tokens: dict[str, str] = {}
     for var in VARS:

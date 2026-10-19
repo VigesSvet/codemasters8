@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { Faq, Hero, HeroTile, Score, Seg, Toggle, ZoneTag, adKey, fmtDate, platformMeta, statusMeta, zoneName } from '../components/ui'
+import { Faq, Hero, HeroTile, RiskScore, RiskZone, Seg, Toggle, adKey, fmtDate, platformMeta, statusMeta, zoneName } from '../components/ui'
 import type { Ad, FactorState, Zone } from '../data/types'
-import { isDemo } from '../lib/provenance'
-import { adSignals, linkConfirmed, model } from '../lib/risk'
+import { isDemo, progressText, stageText } from '../lib/provenance'
+import { NOT_ASSESSED, adSignals, isAssessed, linkConfirmed, model } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcCheck, IcClock, IcDoc, IcFlag, IcMegaphone, IcTraffic } from '../ui/icons'
 
@@ -49,7 +49,7 @@ const saleMarkers = (a: Ad) => { const s = adSignals(a); return a.status === 'di
 /** Отчёты — шапка с конструктором отчёта (как ипотечный калькулятор), ниже рейтинг и FAQ; печать — лист A4 с выбранными разделами */
 export default function Reports() {
   const nav = useNavigate()
-  const { mode, complexes, ads, developers, signals, user, riskOf } = useStore()
+  const { mode, snapshot, complexes, ads, developers, signals, user, riskOf } = useStore()
   const live = mode === 'api'
   const [period, setPeriod] = useState<Period>('w')
   const [parts, setParts] = useState({ map: true, rating: true, ads: true, photos: false, method: true })
@@ -60,9 +60,12 @@ export default function Reports() {
     window.addEventListener('beforeprint', on)
     return () => window.removeEventListener('beforeprint', on)
   }, [])
-  const scored = complexes.map((c) => ({ c, r: riskOf(c) })).sort((a, b) => b.r.score - a.r.score)
+  // не оценённые (карточки реестра без проверенных сведений) — после оценённых и ни в одной зоне
+  const scored = complexes.map((c) => ({ c, r: riskOf(c) }))
+    .sort((a, b) => Number(isAssessed(b.r)) - Number(isAssessed(a.r)) || b.r.score - a.r.score)
+  const unscored = scored.filter((x) => !isAssessed(x.r))
   const confirmed = ads.filter((a) => a.status === 'confirmed').length
-  const red = scored.filter((x) => x.r.zone === 'red').length
+  const red = scored.filter((x) => isAssessed(x.r) && x.r.zone === 'red').length
   const bs = buckets(period, now)
   const cur = bs[bs.length - 1]
   const periodText = range(cur.from, now)
@@ -71,12 +74,12 @@ export default function Reports() {
   // текущий период ещё идёт — без процента роста к прошлому: рядом просто число за прошлый
   const [last, prev] = [series[series.length - 1], series[series.length - 2]]
   const periodAds = ads.filter((a) => inB(a.date, cur)).sort((a, b) => b.date.localeCompare(a.date))
-  // сигналы — только с сервера; время решения — от создания до решения по журналу сигнала (decidedAt)
+  // сигналы — с сервера (в офлайн-копии — её реестр); время решения — от создания до решения по журналу сигнала (decidedAt)
   const decided = signals.filter((s) => s.status !== 'new' && s.decidedAt)
   const avg = decided.length ? decided.reduce((x, s) => x + Date.parse(s.decidedAt!) - Date.parse(s.createdAt), 0) / decided.length : null
   const sigPeriod = signals.filter((s) => inB(s.createdAt, cur)).length
   const sigNew = signals.filter((s) => s.status === 'new').length
-  const noSig = mode === 'demo' ? 'сигналы — только с сервером' : mode === 'loading' ? 'загружаем…' : undefined
+  const noSig = mode === 'loading' ? 'загружаем…' : undefined
   const chosen = Object.values(parts).filter(Boolean).length
   const part = (k: keyof typeof parts, title: string, sub: string) => (
     <div className="crow"><span>{title}<span className="t-sm c2" style={{ display: 'block' }}>{sub}</span></span><Toggle on={parts[k]} onChange={(v) => setParts((p) => ({ ...p, [k]: v }))} /></div>
@@ -139,13 +142,13 @@ export default function Reports() {
             {scored.map(({ c, r }, i) => (
               <tr key={c.id} onClick={() => nav(`/complexes/${c.id}`)}>
                 <td className="c3 num">{i + 1}</td>
-                <td><div className="row" style={{ gap: 12 }}><img src={c.cover} alt="" style={{ width: 56, height: 42, borderRadius: 8, objectFit: 'cover' }} /><div><span className="link">ЖК «{c.name}»</span><div className="t-sm c2">{c.district} · {c.stage}</div></div></div></td>
+                <td><div className="row" style={{ gap: 12 }}><img src={c.cover} alt="" style={{ width: 56, height: 42, borderRadius: 8, objectFit: 'cover' }} /><div><span className="link">ЖК «{c.name}»</span><div className="t-sm c2">{[c.district, stageText(c)].filter(Boolean).join(' · ')}</div></div></div></td>
                 <td className="t-sm c2">{developers.find((d) => d.id === c.developerId)?.name}</td>
                 <td><div className="row wrap-f" style={{ gap: 4 }}>
                   {r.factors.filter((f) => f.state !== 'clear').map((f) => <span key={f.code} className={`tag ${f.state === 'hit' ? 'gray' : 'yellow'}`} title={f.evidence}>{f.code}{f.state === 'unknown' && '?'}</span>)}
                   {r.factors.every((f) => f.state === 'clear') && <span className="c3">—</span>}
                 </div></td>
-                <td className="r"><div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}><ZoneTag zone={r.zone} /><Score value={r.score} zone={r.zone} /></div></td>
+                <td className="r"><div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}><RiskZone r={r} /><RiskScore r={r} /></div></td>
               </tr>
             ))}
           </tbody>
@@ -172,7 +175,7 @@ export default function Reports() {
             <dt>Сформирован</dt><dd>{now.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</dd>
             <dt>Подготовил</dt><dd>{user?.name ?? '—'}</dd>
             <dt>Модель</dt><dd>{model.version}</dd>
-            <dt>Данные</dt><dd>{live ? 'сервер' : 'демо-набор без сервера'}</dd>
+            <dt>Данные</dt><dd>{live ? 'сервер' : mode === 'snapshot' ? `офлайн-копия стартового набора${snapshot?.asOf ? ` на ${snapshot.asOf.split('-').reverse().join('.')}` : ''}` : 'загружаются'}</dd>
           </dl>
         </header>
         <div className="sheet-note">{demoData && 'Демонстрационные данные: ЖК и организации вымышлены. '}Рекомендация для проверки, не юридическое заключение. Автоматической отправки в госорганы нет.</div>
@@ -188,9 +191,10 @@ export default function Reports() {
             <h2>Светофор: объекты по зонам</h2>
             <table className="sheet-grid">
               <thead><tr><th>Зона</th><th>Объектов</th><th>Объекты</th></tr></thead>
-              <tbody>{ZONES.map((z) => { const xs = scored.filter((x) => x.r.zone === z); return (
+              <tbody>{ZONES.map((z) => { const xs = scored.filter((x) => isAssessed(x.r) && x.r.zone === z); return (
                 <tr key={z}><td className="nowrap">{zoneName[z]}</td><td>{xs.length}</td><td>{xs.map((x) => `${x.c.name} (${x.r.score})`).join(', ') || '—'}</td></tr>
-              ) })}</tbody>
+              ) })}
+              {unscored.length > 0 && <tr><td className="nowrap">Риск не оценивается</td><td>{unscored.length}</td><td>{unscored.map((x) => x.c.name).join(', ')} — {NOT_ASSESSED.toLowerCase()}</td></tr>}</tbody>
             </table>
             <p className="sheet-small">Нужна проверка (часть сведений не подтверждена, 0 баллов за них): {scored.filter((x) => x.r.needsCheck).length} из {scored.length}.</p>
           </section>
@@ -203,11 +207,11 @@ export default function Reports() {
               <thead><tr><th>#</th><th>Жилой комплекс</th><th>Застройщик</th><th>Подтверждено</th><th>Нужна проверка</th><th>Балл</th><th>Зона</th></tr></thead>
               <tbody>{scored.map(({ c, r }, i) => (
                 <tr key={c.id}>
-                  <td>{i + 1}</td><td>ЖК «{c.name}»<div className="sheet-small">{c.district} · {c.stage}</div></td>
+                  <td>{i + 1}</td><td>ЖК «{c.name}»<div className="sheet-small">{[c.district, stageText(c)].filter(Boolean).join(' · ')}</div></td>
                   <td>{developers.find((d) => d.id === c.developerId)?.name ?? '—'}</td>
                   <td>{r.factors.filter((f) => f.state === 'hit').map((f) => f.code).join(', ') || '—'}</td>
                   <td>{r.factors.filter((f) => f.state === 'unknown').map((f) => f.code).join(', ') || '—'}</td>
-                  <td><b>{r.score}</b></td><td className="nowrap">{zoneName[r.zone]}</td>
+                  {isAssessed(r) ? <><td><b>{r.score}</b></td><td className="nowrap">{zoneName[r.zone]}</td></> : <><td>—</td><td className="nowrap">не оценивается</td></>}
                 </tr>
               ))}</tbody>
             </table>
@@ -241,7 +245,7 @@ export default function Reports() {
               <thead><tr><th>Жилой комплекс</th><th>Стадия</th><th>Снимков</th><th>Последний снимок</th><th>Дней без изменений</th><th>R6</th></tr></thead>
               <tbody>{building.map(({ c, r }) => { const lastPh = c.photos.at(-1); const r6 = r.factors.find((f) => f.code === 'R6'); return (
                 <tr key={c.id}>
-                  <td>ЖК «{c.name}»</td><td>{c.stage}, {c.progress}%</td><td>{c.photos.length}</td>
+                  <td>ЖК «{c.name}»</td><td>{progressText(c)}</td><td>{c.photos.length}</td>
                   <td>{lastPh ? `${fmtDate(lastPh.date)}, ${lastPh.source}` : 'нет'}</td><td>{c.idleDays}</td><td>{r6 ? STATE[r6.state] : '—'}</td>
                 </tr>
               ) })}</tbody>

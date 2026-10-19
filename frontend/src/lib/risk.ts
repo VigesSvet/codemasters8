@@ -32,6 +32,8 @@ export interface RiskModel {
   factors: ModelFactor[]
   observations: ModelObservation[]
   summaries: Record<'red' | 'yellow_high' | 'yellow' | 'green' | 'needs_check', string>
+  /** Карточки ЖК из открытого реестра (origins) без проверенных сведений: риск не оценивается — подпись, итог, зачем */
+  notAssessed: { origins: string[]; label: string; summary: string; why: string }
   ad: { factors: string[]; reasons: Record<string, string> }
   markers: { money: string[]; sale: string[]; safe: string[]; search: string[] }
   cases: ModelCase[]
@@ -45,6 +47,10 @@ const FACTORS: Record<string, ModelFactor> = Object.fromEntries(model.factors.ma
 const OBSERVATIONS: Record<string, ModelObservation> = Object.fromEntries(model.observations.map((o) => [o.code, o]))
 
 export const factorDef = (code: string): ModelFactor | undefined => FACTORS[code]
+/** «Риск не оценивается — нет проверенных данных»: подпись для карточек из открытого реестра без проверенных сведений */
+export const NOT_ASSESSED = model.notAssessed.label
+/** Риск оценён (балл и зона показываются); false — карточка из открытого реестра без проверенных сведений */
+export const isAssessed = (r?: Pick<RiskResult, 'assessed'> | null) => !!r && r.assessed !== false
 export const zoneLabel = Object.fromEntries(model.zones.items.map((z) => [z.zone, z.name])) as Record<Zone, string>
 
 // ---------- паритет с Python ----------
@@ -225,6 +231,15 @@ export function factorR4(c: Complex, appeals: Appeal[]): RiskFactor {
   if (verified.length) return factor('R4', 'hit', 'verified', { count: verified.length }, verified.map(it))
   const pending = byDateDesc(own.filter((a) => a.status === 'pending'))
   if (pending.length) return factor('R4', 'unknown', 'pending', null, pending.map(it))
+  if (model.notAssessed.origins.includes(c.origin ?? '')) {
+    // карточка реестра или рекламы: обращения сюда никто не заносил — пустой список не значит «обращений нет»;
+    // «нет» — только после сверки аналитиком с источником и датой (appealsCheck), как в risk.py
+    const chk = (get(c, 'appealsCheck') ?? {}) as { source?: string | null; checkedAt?: string | null }
+    if (truthy(chk.source) && truthy(chk.checkedAt)) {
+      return factor('R4', 'clear', 'none_checked', { source: chk.source, checkedAt: fmtDate(chk.checkedAt) })
+    }
+    return factor('R4', 'unknown', 'unchecked')
+  }
   return factor('R4', 'clear', 'none')
 }
 
@@ -274,7 +289,8 @@ export function observations(c: Complex, dev?: Developer | null): Observation[] 
   }
   const lst = get(c, 'inPublishedList', 'unknown')
   const out = [obs('O1', lst === 'yes' ? 'ok' : lst === 'no' ? 'flag' : 'unknown')]
-  if (dev == null) out.push(obs('O2', 'unknown'))
+  // застройщик из открытого реестра: портфель (объектов, незавершённых) не получен — профиль неизвестен, а не «в порядке»
+  if (dev == null || model.notAssessed.origins.includes(dev.origin ?? '')) out.push(obs('O2', 'unknown'))
   else {
     const flag = (dev.unfinished || 0) > 0 && (dev.objects || 0) <= 3
     out.push(obs('O2', flag ? 'flag' : 'ok', { unfinished: dev.unfinished, objects: dev.objects }))
@@ -294,7 +310,23 @@ function total(factors: RiskFactor[]) {
   return { score, zone: zoneFor(score, hit.map((f) => f.code)), needsCheck: unknown.length > 0, unknown }
 }
 
-/** Риск ЖК: шесть факторов §5, балл, зона, «Нужна проверка», наблюдения вне балла. asOf — 'YYYY-MM-DD', по умолчанию сегодня */
+/** Оценивается ли риск ЖК. ЖК не из открытого реестра — всегда. Карточка из реестра (сведения источника, аналитиком не
+ *  проверены) — только когда по ней есть проверенные сведения: подтверждённая аналитиком привязка публикации, документ
+ *  основания «есть/нет» с источником и датой сверки, проверенное обращение, подтверждённая готовность с источником и датой
+ *  или датированный снимок площадки с источником (как assessed в risk.py) */
+export function assessed(c: Complex, ads: Ad[], appeals: Appeal[]): boolean {
+  if (!model.notAssessed.origins.includes(c.origin ?? '')) return true
+  if (ads.some((a) => a.complexId === c.id && a.status !== 'dismissed' && linkConfirmed(a))) return true
+  const b = (c.basis || {}) as Partial<Basis>
+  if (model.documents.some((d) => sourced(docSource(b, d.key)))) return true
+  if (appeals.some((a) => a.complexId === c.id && a.status === 'verified')) return true
+  const k = ((c.readiness || {}) as Partial<Readiness>).confirmed
+  if (k && typeof k.value === 'number' && truthy(k.source) && truthy(k.date)) return true
+  return (c.photos || []).some((p) => truthy(p.date) && truthy(p.source))
+}
+
+/** Риск ЖК: шесть факторов §5, балл, зона, «Нужна проверка», наблюдения вне балла. asOf — 'YYYY-MM-DD', по умолчанию сегодня.
+ *  Карточка из открытого реестра без проверенных сведений — assessed false, балл 0 и «риск не оценивается» */
 export function scoreComplex(c: Complex, dev: Developer | null | undefined, ads: Ad[], appeals: Appeal[], asOf?: string): RiskResult {
   const d = (asOf ?? today()).slice(0, 10)
   const built = c.stage === BUILT
@@ -308,10 +340,14 @@ export function scoreComplex(c: Complex, dev: Developer | null | undefined, ads:
     factorR6(c, d),
   ]
   const t = total(factors), s = model.summaries
+  if (!assessed(c, ads, appeals)) {
+    return { score: 0, zone: zoneFor(0, []), needsCheck: t.needsCheck, factors, observations: observations(c, dev),
+      summary: model.notAssessed.summary, modelVersion: model.version, assessed: false }
+  }
   const key = t.zone !== 'yellow' ? t.zone : t.score >= model.zones.redFrom ? 'yellow_high' : 'yellow'
   let summary = fill(s[key], { score: t.score })
   if (t.needsCheck) summary += ' ' + fill(s.needs_check, { codes: t.unknown.join(', ') })
-  return { score: t.score, zone: t.zone, needsCheck: t.needsCheck, factors, observations: observations(c, dev), summary, modelVersion: model.version }
+  return { score: t.score, zone: t.zone, needsCheck: t.needsCheck, factors, observations: observations(c, dev), summary, modelVersion: model.version, assessed: true }
 }
 
 /** Оценка одной публикации: основание объекта (R1) + её собственные R2 и R3, те же веса и зоны */

@@ -53,12 +53,11 @@ export default function Signals() {
           <h2 className="t-h2">{status ? TITLE[status] : 'Все сигналы'}</h2>
           {cid && <Link to={href(status, false)} className="tag outline" title="Показать по всем объектам">{cx ? `ЖК «${cx.name}»` : cid}<IcClose size={12} /></Link>}
         </div>
-        {mode === 'api' && <span className="t-sm c2">{shown.length} из {signals.length}</span>}
+        {mode !== 'loading' && <span className="t-sm c2">{shown.length} из {signals.length}</span>}
       </div>
+      {mode === 'snapshot' && <div className="ai-note" style={{ margin: '8px 0 16px' }}>Офлайн-копия: реестр сигналов на момент выгрузки, только просмотр. Карточка сигнала, решение по нему и PDF — с сервером (./dev.sh).</div>}
 
-      {mode === 'demo' ? (
-        <div className="empty">Сигналы хранятся на сервере, а сейчас открыт демо-набор без бэкенда.<br />Запустите <code>./dev.sh</code> — и сигнал можно будет сформировать из карточки ЖК.</div>
-      ) : mode === 'loading' ? (
+      {mode === 'loading' ? (
         <div className="empty">Загружаем сигналы…</div>
       ) : base.length === 0 ? (
         <div className="empty">
@@ -78,8 +77,8 @@ export default function Signals() {
                   <td className="b">{s.code}</td>
                   <td>
                     <div className="row" style={{ gap: 12 }}>
-                      {c && <img src={c.cover} alt="" style={{ width: 56, height: 42, borderRadius: 8, objectFit: 'cover' }} />}
-                      <div><Link to={`/complexes/${s.complexId}`} state={back} className="link" onClick={(e) => e.stopPropagation()}>ЖК «{s.complexName}»</Link>{c && <div className="t-sm c2">{c.district} · {c.stage}</div>}</div>
+                      {c?.cover && <img src={c.cover} alt="" style={{ width: 56, height: 42, borderRadius: 8, objectFit: 'cover' }} />}
+                      <div><Link to={`/complexes/${s.complexId}`} state={back} className="link" onClick={(e) => e.stopPropagation()}>ЖК «{s.complexName}»</Link>{c && <div className="t-sm c2">{[c.district, c.stage].filter(Boolean).join(' · ')}</div>}</div>
                     </div>
                   </td>
                   <td><div className="row" style={{ gap: 8 }}><Score value={s.score} zone={s.zone} /><ZoneTag zone={s.zone} /></div></td>
@@ -107,7 +106,7 @@ export default function Signals() {
           ['Можно ли отправить сигнал в госорган?', 'Нет, автоматической отправки нет. Сигнал — рекомендация для проверки, не юридическое заключение. Для внутреннего маршрута есть PDF и печатная версия с местом для отметки аналитика.'],
           ['Почему балл в сигнале отличается от текущего?', <>Сигнал — снимок на момент создания: дальше он не пересчитывается, чтобы было видно, на каком основании его сформировали. Если по объекту появились новые данные, карточка сигнала покажет текущий балл рядом. Как считается балл — в <Link className="link" to="/method">методике</Link>.</>],
         ]} />
-      <div className="row t-sm c2" style={{ gap: 6, marginTop: 24 }}><IcHelp size={16} />Данные демонстрационные. Решение по сигналу принимает сотрудник.</div>
+      <div className="row t-sm c2" style={{ gap: 6, marginTop: 24 }}><IcHelp size={16} />Сигнал — рекомендация для проверки, не вывод о нарушении. Решение по сигналу принимает сотрудник.</div>
     </>
   )
 }

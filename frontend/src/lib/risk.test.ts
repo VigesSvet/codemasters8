@@ -1,10 +1,12 @@
-// Паритет TS-движка с эталонным Python (backend/app/risk.py) на shared/risk_golden.json.
+// Паритет TS-движка с эталонным Python (backend/app/risk.py) на shared/testdata/risk_golden.json: тестовый сид
+// (прежний демо-набор shared/testdata/demo_seed.json) и синтетические случаи shared/testdata/risk_fixtures.json.
 // Эталон перегенерируется: cd backend && .venv/bin/python -m app.golden
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Ad, AdScore, Appeal, Complex, Developer, RiskResult } from '../data/types'
-import { linkConfirmed, model, quote, scoreAd, scoreComplex, termsRejected, zoneFor } from './risk'
+import { NOT_ASSESSED, assessed, isAssessed, linkConfirmed, model, quote, scoreAd, scoreComplex, termsRejected, zoneFor } from './risk'
+import { portfolioText, progressText, registryKeyOf, stageText } from './provenance'
 
 const shared = (name: string) => fileURLToPath(new URL(`../../../shared/${name}`, import.meta.url))
 const read = <T>(name: string): T => JSON.parse(readFileSync(shared(name), 'utf-8')) as T
@@ -21,10 +23,10 @@ interface Fixtures {
   ad?: { name: string; ad: Ad; complex?: Complex | null }[]
 }
 
-const golden = read<Golden>('risk_golden.json')
-const seed = read<Seed>('seed_data.json')
+const golden = read<Golden>('testdata/risk_golden.json')
+const seed = read<Seed>('testdata/demo_seed.json')
 // risk_fixtures.json может ещё не существовать или быть пустым — тогда проверяем только сид
-const fxRaw = existsSync(shared('risk_fixtures.json')) ? readFileSync(shared('risk_fixtures.json'), 'utf-8').trim() : ''
+const fxRaw = existsSync(shared('testdata/risk_fixtures.json')) ? readFileSync(shared('testdata/risk_fixtures.json'), 'utf-8').trim() : ''
 const fx: Fixtures = fxRaw ? JSON.parse(fxRaw) : {}
 
 const devs = new Map(seed.developers.map((d) => [d.id, d]))
@@ -144,5 +146,58 @@ describe('дата расчёта по умолчанию — сегодня п�
     const r = scoreComplex(f.complex, f.developer, f.ads ?? [], f.appeals ?? [])
     expect(r).toEqual(scoreComplex(f.complex, f.developer, f.ads ?? [], f.appeals ?? [], day))
     expect(r.factors.find((x) => x.code === 'R6')?.state).toBe(state)
+  })
+})
+
+describe('карточка ЖК из открытого реестра: риск не оценивается без проверенных сведений', () => {
+  const fxByName = new Map((fx.complex ?? []).map((f) => [f.name, f]))
+  const reg = fxByName.get('registry_not_assessed')!
+  const score = (name: string) => {
+    const f = fxByName.get(name)!
+    return scoreComplex(f.complex, f.developer, f.ads ?? [], f.appeals ?? [], f.asOf ?? golden.asOf)
+  }
+  it('без проверенных сведений — assessed false, балл 0, пояснение вместо итога; гипотеза ИИ не в счёт', () => {
+    for (const name of ['registry_not_assessed', 'registry_hypothesis_not_assessed', 'registry_overdue_not_assessed',
+      'registry_dismissed_link_not_assessed', 'registry_unsourced_basis_not_assessed']) {
+      const r = score(name)
+      expect([name, r.assessed, r.score, isAssessed(r)]).toEqual([name, false, 0, false])
+      expect(r.summary).toBe(model.notAssessed.summary)
+    }
+    expect(NOT_ASSESSED).toBe('Риск не оценивается — нет проверенных данных')
+    // просроченный срок из реестра остаётся справкой в факторах, но балла не даёт
+    expect(score('registry_overdue_not_assessed').factors.find((f) => f.code === 'R6')!.state).toBe('hit')
+  })
+  it('проверенные сведения появились — риск считается обычным порядком, только по подтверждённым фактам', () => {
+    const r = score('registry_confirmed_link_assessed')
+    expect([r.assessed, r.score, r.zone]).toEqual([true, 35, 'yellow'])
+    // R4 — «нужна проверка»: обращения по карточке реестра не сверены (пустой список не значит «обращений нет»)
+    expect(r.factors.map((f) => [f.code, f.state])).toEqual([['R1', 'unknown'], ['R2', 'hit'], ['R3', 'hit'], ['R4', 'unknown'], ['R5', 'unknown'], ['R6', 'unknown']])
+    const checked = score('registry_appeals_checked_assessed').factors.find((f) => f.code === 'R4')!
+    expect([checked.state, checked.reason, checked.evidence]).toEqual(['clear', 'none_checked', 'Коллективных обращений нет — сверено (ДЭР ВКО, ответ на запрос (тест), 14.10.2026)'])
+    expect(score('registry_appeals_check_only_not_assessed').assessed).toBe(false) // «обращений нет» риск не открывает
+    expect([score('registry_sourced_basis_assessed').score, score('registry_verified_appeal_assessed').score, score('registry_photo_assessed').assessed])
+      .toEqual([35, 15, true])
+    // застройщик из реестра: профиль неизвестен, а не «в порядке»
+    expect(r.observations.find((o) => o.code === 'O2')!.state).toBe('unknown')
+  })
+  it('assessed: подтверждённая привязка публикации к этому ЖК — проверенные сведения; ЖК не из реестра — всегда', () => {
+    const ad = { id: 'x', complexId: reg.complex.id, status: 'new', linkConfirmedBy: 'Омарова Ж.' } as Ad
+    expect(assessed(reg.complex, [ad], [])).toBe(true)
+    expect(assessed(reg.complex, [{ ...ad, complexId: 'other' }], [])).toBe(false)
+    expect(assessed({ ...reg.complex, origin: undefined }, [], [])).toBe(true)
+    expect(assessed(cxs.get('c1')!, [], [])).toBe(true)
+    // ответ сервера прежней версии без поля assessed — оценён
+    expect(isAssessed({})).toBe(true)
+    expect(isAssessed(null)).toBe(false)
+  })
+  it('подписи карточки из реестра: ключ записи, стадия, готовность, портфель', () => {
+    expect(registryKeyOf({ id: 'r-satti-city', origin: 'registry' })).toBe('satti-city')
+    expect(registryKeyOf({ id: 'rh-0123456789abcdef', origin: 'registry' })).toBeNull()
+    expect(registryKeyOf({ id: 'c1', origin: 'demo' })).toBeNull()
+    expect([stageText({ stage: '' }), stageText({ stage: 'введён' }), stageText({ stage: 'каркас' })]).toEqual(['стадия не известна', 'сдан', 'каркас'])
+    expect([progressText({ stage: '', progress: 0 }), progressText({ stage: 'каркас', progress: 58 })]).toEqual(['нет сведений', 'каркас, 58%'])
+    expect([progressText({ stage: 'введён', progress: 100 }), progressText({ stage: 'введён', progress: 0 })]).toEqual(['введён, 100%', 'введён'])
+    expect(portfolioText({ objects: 0, unfinished: 0, origin: 'registry' }, 2)).toBe('портфель не проверен · объектов в реестре: 2')
+    expect(portfolioText({ objects: 6, unfinished: 2, origin: 'demo' })).toBe('4 сдано · 2 строится')
   })
 })
