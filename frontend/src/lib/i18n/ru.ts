@@ -444,6 +444,15 @@ export const ru = {
   'cx.noScore': 'нет оценки',
   'cx.showN': 'Показать {n} новостройку|Показать {n} новостройки|Показать {n} новостроек',
   'cx.signs': 'Признаки',
+  // ---------- маршрут рассмотрения сигнала (T-79): реестр сигналов ----------
+  'route.col': 'Срок',
+  'route.cap': 'Маршрут рассмотрения',
+  'route.capHint': 'разбор — {a} раб. дн., согласование — {b}',
+  'route.analysis': 'Разбор аналитиком',
+  'route.approval': 'На согласовании',
+  'route.overdue': 'Просрочено',
+  'route.overdueTag': 'просрочен',
+  'route.closed': 'рассмотрен',
 } as const
 
 export type Key = keyof typeof ru

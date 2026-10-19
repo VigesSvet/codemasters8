@@ -1,0 +1,33 @@
+/* ───── Проект запроса сведений (components/RequestLetter.tsx) и маршрут рассмотрения сигнала (components/SignalRoute.tsx) ───── */
+.chk.round { border-radius: 50%; }
+.rl-grid { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 0; align-items: stretch; height: clamp(320px, calc(100vh - 400px), 720px); }
+.rl-grid > div { overflow: auto; min-height: 0; }
+.rl-prev { border-left: 1px solid var(--line); padding: 16px 24px 20px; background: var(--bg); }
+.rl-sheet { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08); padding: 22px 26px; font-size: 13px; line-height: 19px; color: var(--text); }
+.rl-addr { text-align: right; margin: 4px 0 14px auto; max-width: 340px; }
+.rl-meta { color: var(--text-2); }
+.rl-subj { font-weight: 700; margin: 12px 0 8px; }
+.rl-h { font-weight: 700; margin: 14px 0 4px; }
+.rl-p { margin: 4px 0; text-indent: 24px; }
+.rl-li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 2px; margin: 2px 0; overflow-wrap: anywhere; }
+.rl-li.sm { font-size: 12px; line-height: 17px; color: var(--text-2); }
+.rl-sign { margin-top: 18px; }
+@media (max-width: 900px) { .rl-grid { grid-template-columns: 1fr; height: auto; } .rl-prev { border-left: 0; border-top: 1px solid var(--line); } }
+
+.rt-now { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
+.rt-steps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
+.rt-steps li { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 10px; font-size: 13px; line-height: 18px; }
+.rt-steps li > i { width: 10px; height: 10px; border-radius: 50%; margin-top: 4px; background: var(--line-2); }
+.rt-steps li.cur > i { background: var(--dark); box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08); }
+.rt-steps li.late > i { background: var(--red); }
+.rt-steps li.done > i { background: var(--green); }
+.rt-due { white-space: nowrap; }
+.rt-due .tag { height: 22px; font-size: 12px; }
+
+/* панель /signals с колонкой «Маршрут рассмотрения» (pages/Signals.tsx) */
+.sb-signals:has(> .sb-col ~ .sb-col) { grid-template-columns: 240px 1px minmax(0, 1fr) 1px minmax(260px, 320px); }
+@media (max-width: 1280px) {
+  .sb-signals:has(> .sb-col ~ .sb-col) { grid-template-columns: 220px 1px minmax(0, 1fr); }
+  .sb-signals:has(> .sb-col ~ .sb-col) > .sb-sep:nth-of-type(2) { display: none; }
+  .sb-signals:has(> .sb-col ~ .sb-col) > .sb-col:last-child { grid-column: 1 / -1; }
+}
