@@ -1,3 +1,4 @@
+import { coverSrc } from '../lib/gallery'
 import { useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
@@ -141,7 +142,7 @@ export default function Reports() {
             {scored.map(({ c, r }, i) => (
               <tr key={c.id} onClick={() => nav(`/complexes/${c.id}`)}>
                 <td className="c3 num">{i + 1}</td>
-                <td><div className="row" style={{ gap: 12 }}><img src={c.cover} alt="" style={{ width: 56, height: 42, borderRadius: 8, objectFit: 'cover' }} /><div><span className="link">ЖК «{c.name}»</span><div className="t-sm c2">{[c.district, stageText(c)].filter(Boolean).join(' · ')}</div></div></div></td>
+                <td><div className="row" style={{ gap: 12 }}><img src={coverSrc(c)} alt="" style={{ width: 56, height: 42, borderRadius: 8, objectFit: 'cover' }} /><div><span className="link">ЖК «{c.name}»</span><div className="t-sm c2">{[c.district, stageText(c)].filter(Boolean).join(' · ')}</div></div></div></td>
                 <td className="t-sm c2">{developers.find((d) => d.id === c.developerId)?.name}</td>
                 <td><div className="row wrap-f" style={{ gap: 4 }}>
                   {r.factors.filter((f) => f.state !== 'clear').map((f) => <span key={f.code} className={`tag ${f.state === 'hit' ? 'gray' : 'yellow'}`} title={f.evidence}>{f.code}{f.state === 'unknown' && '?'}</span>)}

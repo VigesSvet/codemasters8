@@ -3,36 +3,13 @@
 // подтверждения — гипотеза. Нет ни одного фото — оператор добавляет своё; выбранное фото можно закрепить обложкой.
 // На риск фото не влияют: датированный снимок площадки с активностью — «Добавить снимок» на вкладке «Снимки». Стили — gallery.css
 import { useRef, useState } from 'react'
-import type { Complex, GalleryPhoto } from '../data/types'
-import { errorText, mediaSrc } from '../lib/api'
+import type { Complex } from '../data/types'
+import { errorText } from '../lib/api'
+import { galleryOf, photoCaption, photoSrc, photoTag } from '../lib/gallery'
 import { useStore } from '../lib/store'
 import { IcCameraAdd, IcCheck, IcClose, IcDownload, IcPicture } from '../ui/icons'
-import { SafeImg, fmtDate } from './ui'
+import { SafeImg } from './ui'
 import '../styles/gallery.css'
-
-/** Фото объекта, обложка первой; сервер старой версии — только cover */
-export function galleryOf(c: Complex): GalleryPhoto[] {
-  if (c.gallery) return c.gallery
-  return c.cover ? [{ src: c.cover, kind: 'operator', source: 'Обложка карточки', cover: true }] : []
-}
-
-export const photoSrc = (p: GalleryPhoto) => mediaSrc(p.src) ?? p.src
-
-const KIND: Record<GalleryPhoto['kind'], string> = { operator: 'Фото оператора', site: 'Фото-мониторинг', homeportal: 'Homeportal', ad: 'Реклама' }
-
-/** Короткая подпись на фото: откуда оно */
-export const photoTag = (p: GalleryPhoto) => (p.kind === 'ad' && p.hypothesis ? 'Реклама · гипотеза' : KIND[p.kind])
-
-/** Полная подпись: источник, дата, кто загрузил, оговорка */
-export function photoCaption(p: GalleryPhoto): string {
-  const when = p.date ? fmtDate(p.date) : null
-  switch (p.kind) {
-    case 'operator': return [p.source, when, p.by].filter(Boolean).join(' · ')
-    case 'site': return ['Снимок площадки', p.source, when].filter(Boolean).join(' · ')
-    case 'homeportal': return 'Homeportal — фото или визуализация из карточки ЖК, не снимок площадки'
-    case 'ad': return [`Из рекламы: ${p.source}`, when, p.hypothesis ? 'публикация отнесена к ЖК гипотезой' : 'привязка подтверждена'].filter(Boolean).join(' · ') + ' — может быть визуализация'
-  }
-}
 
 /** Выбор файла и загрузка фото оператора; children — кнопка */
 function useUpload(c: Complex) {

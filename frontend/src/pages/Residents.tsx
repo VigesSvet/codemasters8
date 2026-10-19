@@ -1,3 +1,4 @@
+import { coverSrc } from '../lib/gallery'
 import { useMemo, useState } from 'react'
 import { Cell, Faq, Hero, Modal, RiskScore, Seg } from '../components/ui'
 import type { Complex, Zone } from '../data/types'
@@ -137,7 +138,7 @@ function ResidentsMock() {
 
       {pick && (
         <Modal title="Выберите объект" onClose={() => setPick(false)}>
-          {scored.map(({ c: x, r }) => <Cell key={x.id} inset icon={<img className="th" src={x.cover || undefined} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name} sub={x.address}
+          {scored.map(({ c: x, r }) => <Cell key={x.id} inset icon={<img className="th" src={coverSrc(x)} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name} sub={x.address}
             end={<><RiskScore r={r} />{x.id === cid && <IcCheck size={18} style={{ color: 'var(--text)' }} />}</>} onClick={() => { setCid(x.id); setTpl(firstFit(x, tpl)); setMsg(''); setPick(false) }} />)}
         </Modal>
       )}

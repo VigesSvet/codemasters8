@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Complex, GalleryPhoto } from '../data/types'
 import { loadSnapshot, withSnapshotGallery } from '../data/snapshot'
-import { galleryOf, photoCaption, photoTag } from './Gallery'
+import { galleryOf, photoCaption, photoTag } from '../lib/gallery'
 
 const cx = (p: Partial<Complex>) => ({ id: 'x', name: 'x', cover: '', photos: [], ...p }) as Complex
 

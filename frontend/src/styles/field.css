@@ -47,3 +47,10 @@
 .fld-err { margin: 0; color: var(--red-ink, #c2261b); font-size: 14px; }
 .fld-ok { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; background: #e9f8ee; color: #136c2e; border-radius: 18px; padding: 14px 16px; }
 .fld-ok .fld-row { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; }
+
+/* узкий экран: подпись геолокации над кнопкой */
+@media (max-width: 480px) {
+  .fld-geo { flex-wrap: wrap; }
+  .fld-geo-t { flex: 1 1 100%; }
+  .fld-geo .fld-btn { flex: 1 1 auto; }
+}

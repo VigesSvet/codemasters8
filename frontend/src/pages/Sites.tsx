@@ -1,3 +1,4 @@
+import { coverSrc } from '../lib/gallery'
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Compare from '../components/Compare'
@@ -82,7 +83,7 @@ export default function Sites() {
       <div className="hscroll" ref={strip}>
         {list.map((x) => (
           <button key={x.id} className={`pcard ${sel === x.id ? 'sel' : ''}`} onClick={() => { setSel(x.id); window.scrollTo({ top: 0, behavior: 'smooth' }) }} style={{ textAlign: 'left' }}>
-            <div className="ph"><img src={mediaSrc(x.photos.at(-1)?.src) ?? (x.cover || undefined)} alt="" /><div className="tl"><span className="tag white">{x.photos.length} {plural(x.photos.length, SHOTS)}</span></div></div>
+            <div className="ph"><img src={mediaSrc(x.photos.at(-1)?.src) ?? coverSrc(x)} alt="" /><div className="tl"><span className="tag white">{x.photos.length} {plural(x.photos.length, SHOTS)}</span></div></div>
             <span className="big">{x.name}</span>
             <span className="t-sm c2">{x.photos.at(-1) ? `последний ${fmtDate(x.photos.at(-1)!.date)}` : 'снимков нет'}</span>
             <span style={{ marginTop: 6 }}><span className={`tag ${x.photos.length === 0 ? 'gray' : x.idleDays >= 90 ? 'red' : x.idleDays >= 30 ? 'yellow' : 'green'}`}>{x.photos.length === 0 ? 'нет данных' : x.idleDays ? `стоит ${x.idleDays} дн.` : 'работы идут'}</span></span>

@@ -1,3 +1,4 @@
+import { coverSrc } from '../lib/gallery'
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DevAffiliations } from '../components/DevAffiliations'
@@ -138,7 +139,7 @@ export default function Developers() {
             {isRegistry(d) || isAdvertised(d)
               ? <div className="t-sm c2">{portfolioText(d, objs.length)} · {adsCount} публ. в ленте</div>
               : <div className="t-sm"><b className="bold">{d.objects - d.unfinished} сдано</b><span className="c2"> · </span><b className="bold" style={{ color: d.unfinished ? 'var(--red)' : undefined }}>{d.unfinished} строится</b><span className="c2"> · {adsCount} публ. в ленте</span></div>}
-            <div className="objs">{objs.filter(({ c }) => c.cover).slice(0, 4).map(({ c }) => <img key={c.id} src={c.cover} alt={c.name} title={c.name} />)}</div>
+            <div className="objs">{objs.filter(({ c }) => coverSrc(c)).slice(0, 4).map(({ c }) => <img key={c.id} src={coverSrc(c)} alt={c.name} title={c.name} />)}</div>
             {!d.screening && <div className="row wrap-f" style={{ gap: 6 }}>{objs.map(({ c, r }) => <span key={c.id} className={`tag ${isAssessed(r) ? r.zone : 'gray'}`}>{c.name}</span>)}</div>}
           </div>
         ))}
@@ -173,7 +174,7 @@ export default function Developers() {
           <DevAffiliations id={cur.d.id} />
           <SectionHead title="Объекты на контроле" />
           {cur.objs.map(({ c, r }) => (
-            <Cell key={c.id} inset to={`/complexes/${c.id}`} icon={c.screening ? <ScreeningPic status={c.screening.status} size={40} /> : <img className="th" src={c.cover || undefined} alt="" style={{ width: 48, height: 48, borderRadius: 12 }} />}
+            <Cell key={c.id} inset to={`/complexes/${c.id}`} icon={c.screening ? <ScreeningPic status={c.screening.status} size={40} /> : <img className="th" src={coverSrc(c)} alt="" style={{ width: 48, height: 48, borderRadius: 12 }} />}
               title={`ЖК «${c.name}»`} sub={c.screening ? `${c.screening.label} · ${progressText(c)}` : progressText(c)} end={(!c.screening || isAssessed(r)) && <RiskScore r={r} />} chevron />
           ))}
         </Modal>

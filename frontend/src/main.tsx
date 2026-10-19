@@ -15,6 +15,7 @@ import './styles/sat.css'
 import './styles/landing.css'
 import './styles/lang.css'
 import './styles/route.css'
+import './styles/mobile.css' // телефон — последним из общих стилей
 import App from './App.tsx'
 
 

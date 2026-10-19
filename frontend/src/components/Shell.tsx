@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { IcBell, IcCamera, IcCheck, IcChevronDown, IcChevronRight, IcClose, IcDatabase, IcFlag, IcGrid, IcLogout, IcPhone, IcQueue, IcRefresh, IcShield, IcUsers, IcWarning } from '../ui/icons'
+import { IcBell, IcCamera, IcCheck, IcChevronDown, IcChevronRight, IcClose, IcDatabase, IcFlag, IcGrid, IcLogout, IcPhone, IcQueue, IcRefresh, IcSearch, IcShield, IcUsers, IcWarning } from '../ui/icons'
 import { API } from '../lib/api'
 import { fmtStamp } from '../lib/audit'
 import { roleIn, useT, type I18n } from '../lib/i18n'
@@ -25,7 +25,9 @@ export default function Shell() {
   const { t } = i
   const [open, setOpen] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
-  useEffect(() => { setOpen(null) }, [loc.pathname])
+  // телефон: поле поиска — отдельной строкой по кнопке с лупой (styles/mobile.css)
+  const [qsOpen, setQsOpen] = useState(false)
+  useEffect(() => { setOpen(null); setQsOpen(false) }, [loc.pathname])
   // новая страница — сверху; с якорем (/method#cases) — к нему: эффект оболочки идёт после эффектов страницы, страница уже отрисована
   useEffect(() => {
     const el = loc.hash && document.getElementById(decodeURIComponent(loc.hash.slice(1)))
@@ -82,11 +84,12 @@ export default function Shell() {
 
   return (
     <>
-      <header className="yhead">
+      <header className={`yhead${qsOpen ? ' qs-open' : ''}`}>
         <div className="bar">
           <Link to="/" className="logo"><img src="/logo.svg" alt="" className="mark" />SAQ Qurylys</Link>
           <QuickSearch />
           <div className="head-right">
+            <button className="icon-btn only-m" aria-label={t('qs.aria')} aria-expanded={qsOpen} onClick={() => { setQsOpen((v) => !v); setTimeout(() => document.querySelector<HTMLInputElement>('.qsearch input')?.focus(), 0) }}>{qsOpen ? <IcClose /> : <IcSearch />}</button>
             <LangSwitch />
             <div className="nav-item">
               <button className={`conn ${conn}`} onClick={() => setOpen(open === 'conn' ? null : 'conn')} aria-expanded={open === 'conn'} title={C.title}>
@@ -122,7 +125,10 @@ export default function Shell() {
                       <div className="bold">{me?.title}</div>
                       <div className="t-sm c2">{me?.dept}</div>
                       <div className="t-xs c3" style={{ marginTop: 4 }}>{t('shell.pilotNote')}</div>
+                      {/* телефон: язык и действия шапки, которые не поместились */}
+                      <div className="only-m" style={{ marginTop: 10 }}><LangSwitch /></div>
                     </div>
+                    <Link to="/ads/new" className="only-m"><span className="ic"><IcQueue size={16} /></span><span className="lbl">{t('shell.addAd')}</span><IcChevronRight size={16} /></Link>
                     <Link to="/queue?who=me"><span className="ic"><IcCheck size={16} /></span><span className="lbl">{t('shell.myChecks')}</span><IcChevronRight size={16} /></Link>
                     <Link to="/signals?status=new"><span className="ic"><IcFlag size={16} /></span><span className="lbl">{t('shell.signalsWaiting')}</span><IcChevronRight size={16} /></Link>
                     <Link to={`/login?next=${here}`}><span className="ic"><IcUsers size={16} /></span><span className="lbl">{t('shell.switchRole')}</span><IcChevronRight size={16} /></Link>

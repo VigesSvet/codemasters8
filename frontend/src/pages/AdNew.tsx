@@ -1,3 +1,4 @@
+import { coverSrc } from '../lib/gallery'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AiBadge, HypothesisItem, TermList } from '../components/Hypothesis'
@@ -373,7 +374,7 @@ export default function AdNew() {
           <Cell title={live ? 'По гипотезе ИИ' : 'Без привязки'} sub={live ? 'ЖК выберет ИИ при сохранении — как гипотезу' : 'Публикацию можно привязать позже в разборе'}
             end={!manual ? <IcCheck size={22} strokeWidth={2.5} style={{ color: 'var(--text)' }} /> : undefined} onClick={() => { setPick({ by: 'auto' }); setModal(false) }} />
           {complexes.filter(finder(cq, complexes, (q, x) => rankComplex(q, x, developers.find((d) => d.id === x.developerId)))).map((x) => (
-            <Cell key={x.id} inset icon={<img className="th" src={x.cover || undefined} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name} sub={x.address}
+            <Cell key={x.id} inset icon={<img className="th" src={coverSrc(x)} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name} sub={x.address}
               end={manual && pick.complexId === x.id ? <IcCheck size={22} strokeWidth={2.5} style={{ color: 'var(--text)' }} /> : undefined}
               onClick={() => { setPick({ by: 'manual', complexId: x.id }); setModal(false) }} />
           ))}

@@ -1,3 +1,4 @@
+import { coverSrc } from '../lib/gallery'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import HotspotPanel from '../components/Hotspots'
@@ -23,6 +24,7 @@ import {
   DISCLAIMER, DISCLAIMER_SHORT, SCREENING_GLYPH, SCREENING_ORDER, SCREENING_TONE, anyScreening, compareScreening, countByStatus,
   hasPoint, labelOf, reasonShort, statusOf, topReason,
 } from '../lib/screening'
+import { useIsPhone } from '../lib/phone'
 import { useStore } from '../lib/store'
 import { IcCheck, IcChevronDown, IcChevronLeft, IcChevronRight, IcChevronUp, IcClose, IcHelp, IcInfo, IcList, IcMapPin, IcMegaphone, IcSearch, IcCamera, IcGlobe, IcUsers } from '../ui/icons'
 
@@ -106,6 +108,7 @@ export default function Dashboard() {
   const { mode, complexes, ads, developers, riskOf, stats } = useStore()
   const nav = useNavigate()
   const i18n = useT()
+  const phone = useIsPhone() // телефон: панель — снизу, карта без отступа под неё
   const { t, tn, tr } = i18n
   const [q, setQ] = useState('')
   // три блока фильтров: выбор живёт, пока открыт экран карты; свёрнут ли блок — запоминается в браузере
@@ -200,7 +203,7 @@ export default function Dashboard() {
 
   return (
     <div className="mapscreen">
-      <MapView items={onMapItems} heat={heat} points={points} onPoint={onPoint} selected={sel} onSelect={setSel} controls modes labels={labels} padLeft={400} />
+      <MapView items={onMapItems} heat={heat} points={points} onPoint={onPoint} selected={sel} onSelect={setSel} controls modes labels={labels} padLeft={phone ? 0 : 400} />
 
       <div className="left">
         {!s ? (
@@ -279,7 +282,7 @@ export default function Dashboard() {
               {visible.length === 0 && <div className="empty">{t('map.nothing')}</div>}
               {visible.filter((x) => hasPoint(x.c)).map((x) => (
                 <Cell key={x.c.id} onClick={() => setSel(x.c.id)} inset
-                  icon={x.screen ? <ScreeningPic status={x.screen} size={40} /> : <img className="th" src={x.c.cover || undefined} alt="" style={{ width: 44, height: 44, borderRadius: 10 }} />}
+                  icon={x.screen ? <ScreeningPic status={x.screen} size={40} /> : <img className="th" src={coverSrc(x.c)} alt="" style={{ width: 44, height: 44, borderRadius: 10 }} />}
                   title={<span className="bold">{x.c.name}{isAdvertised(x.c) && <span className="c2" style={{ fontWeight: 400 }}>{t('map.byAds')}</span>}</span>} sub={sub(x)}
                   end={!screenOn || !x.off ? <RiskScore r={x.r} /> : undefined} />
               ))}
@@ -315,13 +318,13 @@ export default function Dashboard() {
           <div className="scroll fade" key={s.c.id}>
             <div className="card">
               <Cell onClick={() => setSel(undefined)} icon={<IcChevronLeft />} title={t('map.allObjects')} />
-              {s.c.cover && (
+              {coverSrc(s.c) && (
                 <div className="ph" style={{ height: 160, margin: '0 12px', borderRadius: 16 }}>
-                  <img src={s.c.cover} alt="" />
+                  <img src={coverSrc(s.c)} alt="" />
                   <div className="tl"><span className="tag white">{tr(stageText(s.c))}</span>{s.r.needsCheck && <span className="tag white">{t('common.needsCheckLow')}</span>}</div>
                 </div>
               )}
-              <div className="card-pad" style={{ paddingTop: s.c.cover ? 14 : 4 }}>
+              <div className="card-pad" style={{ paddingTop: coverSrc(s.c) ? 14 : 4 }}>
                 <div className="t-xs c2">{dev?.name}</div>
                 <div className="row between" style={{ alignItems: 'flex-start', marginTop: 2 }}>
                   <h2 className="t-h2">{t('common.complex', { name: s.c.name })}</h2>

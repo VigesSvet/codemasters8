@@ -1,3 +1,4 @@
+import { coverSrc } from '../lib/gallery'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
@@ -87,7 +88,7 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
           <section className="card">
             <div className="card-head"><h3>Объект</h3><Link to={`/complexes/${c.id}`} state={from(back.label, back.to)} className="link t-sm">Карточка ЖК</Link></div>
             <div className="sig-obj">
-              {c.cover && <img src={c.cover} alt="" />}
+              {coverSrc(c) && <img src={coverSrc(c)} alt="" />}
               <div className="kv">
                 <span>ЖК</span><span><Link className="link" to={`/complexes/${c.id}`} state={from(back.label, back.to)}>ЖК «{c.name}»</Link></span>
                 <span>Адрес</span><span>{c.address}{c.district && <span className="c2"> · {c.district}</span>}</span>

@@ -1,3 +1,4 @@
+import { coverSrc } from '../lib/gallery'
 import { useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { SignalStatusTag } from '../components/SignalPanel'
@@ -105,7 +106,7 @@ export default function Signals() {
                   <td className="b">{s.code}</td>
                   <td>
                     <div className="row" style={{ gap: 12 }}>
-                      {c?.cover && <img src={c.cover} alt="" style={{ width: 56, height: 42, borderRadius: 8, objectFit: 'cover' }} />}
+                      {coverSrc(c) && <img src={coverSrc(c)} alt="" style={{ width: 56, height: 42, borderRadius: 8, objectFit: 'cover' }} />}
                       <div><Link to={`/complexes/${s.complexId}`} state={back} className="link" onClick={(e) => e.stopPropagation()}>ЖК «{s.complexName}»</Link>{c && <div className="t-sm c2">{[c.district, c.stage].filter(Boolean).join(' · ')}</div>}</div>
                     </div>
                   </td>

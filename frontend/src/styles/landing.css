@@ -62,3 +62,25 @@
   .lp-row .lp-w { grid-template-columns: minmax(0, 1fr); }
   .lp-apple .lp-bento { grid-template-columns: 1fr; } .lp-apple .t.img2, .lp-apple .t.img3 { grid-column: span 1; }
 }
+
+@media (max-width: 760px) {
+  .lp-w { padding: 0 16px; }
+  .lp-nav .lp-w { gap: 12px; }
+  .lp-apple .lp-nav nav { display: none; }
+  .lp-apple .lp-nav .lp-w > .lang-sw { margin-left: auto; }
+  .lp-apple .lp-hero { padding: 48px 16px 0; }
+  .lp-apple h1 { font-size: 48px; }
+  .lp-apple .lp-hero p { font-size: 19px; line-height: 26px; }
+  .lp-links { flex-direction: column; gap: 10px; font-size: 18px; align-items: center; }
+  .lp-hero-img { margin-top: 36px; border-radius: 16px; }
+  .lp-black { padding: 64px 16px; margin-top: 64px; }
+  .lp-black h2 { font-size: 40px; } .lp-black p { font-size: 18px; line-height: 25px; margin-bottom: 32px; }
+  .lp-bento-wrap { padding: 64px 0; }
+  .lp-apple .lp-bento-wrap h2 { font-size: 36px; margin-bottom: 28px; }
+  .lp-apple .lp-bento { grid-auto-rows: minmax(220px, auto); gap: 12px; }
+  .lp-apple .t { padding: 22px; border-radius: 20px; }
+  .lp-apple .t h3 { font-size: 24px; }
+  .lp-apple .t.n b { font-size: 80px; }
+  .lp-close h2 { font-size: 40px; } .lp-close p { font-size: 18px; }
+  .lp-foot .lp-w { flex-direction: column; align-items: flex-start; }
+}

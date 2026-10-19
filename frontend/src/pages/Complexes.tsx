@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { CoverPh, galleryOf, photoSrc } from '../components/Gallery'
+import { CoverPh } from '../components/Gallery'
+import { galleryOf, photoSrc } from '../lib/gallery'
 import { OpenDataList } from '../components/OpenData'
 import { OFFLINE_FILE } from '../data/openData'
 import { OpenDataNote, Origin } from '../components/Provenance'
@@ -233,7 +234,7 @@ export default function Complexes() {
       ) : (
         <div className="card fade">
           {rows.map(({ c, r, dev }) => (
-            <button key={c.id} className="cell" onClick={() => go(`/complexes/${c.id}`)} style={{ display: 'grid', gridTemplateColumns: screenOn ? '88px minmax(0,1.3fr) minmax(0,1.1fr) minmax(0,1fr) 170px 60px' : '88px minmax(0,1.3fr) minmax(0,1fr) 170px 60px', gap: 20, minHeight: 92 }}>
+            <button key={c.id} className="cell cx-row" onClick={() => go(`/complexes/${c.id}`)} style={{ display: 'grid', gridTemplateColumns: screenOn ? '88px minmax(0,1.3fr) minmax(0,1.1fr) minmax(0,1fr) 170px 60px' : '88px minmax(0,1.3fr) minmax(0,1fr) 170px 60px', gap: 20, minHeight: 92 }}>
               {(() => { const p = galleryOf(c)[0]; const box = <span className="th" style={{ width: 88, height: 64, display: 'block', background: 'var(--fill)' }} />; return p ? <SafeImg className="th" src={photoSrc(p)} alt="" loading="lazy" style={{ width: 88, height: 64, objectFit: 'cover' }} fallback={box} /> : box })()}
               <div style={{ minWidth: 0 }}>
                 <div className="t-xs c2">{dev?.name}</div>

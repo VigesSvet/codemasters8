@@ -81,3 +81,32 @@
 .tv-table .n { width: 12vw; font-variant-numeric: tabular-nums; }
 .tv-table .r { text-align: right; }
 .tv-table .e { padding: 3vh 2vw; color: var(--dim); }
+
+/* телефон: один столбец — шапка, карта, показатели, доли, лента; страница прокручивается */
+@media (max-width: 760px) {
+  .tv { position: relative; inset: auto; display: block; min-height: 100dvh; overflow: visible; }
+  .tv-top { flex-wrap: wrap; height: auto; padding: 10px 14px; gap: 6px 10px; font-size: 13px; }
+  .tv-top .tv-sep, .tv-fs { display: none; }
+  .tv-name { order: 3; flex: 1 1 100%; }
+  .tv-sync { order: 4; margin-left: 0; }
+  .tv-clock { margin-left: auto; font-size: 20px; }
+  .tv-main { display: flex; flex-direction: column; }
+  .tv-map { height: 46vh; border-right: 0; border-bottom: 1px solid var(--line); }
+  .tv-side { overflow: visible; }
+  .tv-kpis > div { padding: 14px; }
+  .tv-kpis dt { font-size: 12px; min-height: 0; }
+  .tv-kpis dd { font-size: 30px; }
+  .tv-sec { padding: 16px 14px; }
+  .tv-sec h3, .tv-note { font-size: 12px; }
+  .tv-legend li { font-size: 14px; } .tv-legend b { font-size: 16px; }
+  .tv-feed { border-right: 0; }
+  .tv-tabs { padding: 0 14px; overflow-x: auto; scrollbar-width: none; }
+  .tv-tabs::-webkit-scrollbar { display: none; }
+  .tv-tabs button { flex: none; font-size: 14px; margin-right: 18px; padding: 12px 0; }
+  .tv-keys { display: none; }
+  .tv-table { font-size: 13px; }
+  .tv-table td { padding: 10px 8px; }
+  .tv-table td:first-child { padding-left: 14px; } .tv-table td:last-child { padding-right: 14px; }
+  .tv-table .d { width: 64px; } .tv-table .p { width: 34%; } .tv-table .c { width: 34%; } .tv-table .n { width: 76px; }
+  .tv-table .q { display: none; }
+}

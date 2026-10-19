@@ -1,3 +1,4 @@
+import { coverSrc } from '../lib/gallery'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
@@ -260,7 +261,7 @@ export default function AdDetail() {
 
       <div className="cols-r">
         <div className="stack" style={{ gap: 16 }}>
-          <div className="card" style={{ display: 'grid', gridTemplateColumns: img ? '300px 1fr' : '1fr', gap: 28 }}>
+          <div className="card m-stack" style={{ display: 'grid', gridTemplateColumns: img ? '300px 1fr' : '1fr', gap: 28 }}>
             {img && (
               // обложка целиком, без обрезки: по нажатию — просмотр с масштабом и всеми файлами публикации
               <div className="mv-cover">
@@ -332,7 +333,7 @@ export default function AdDetail() {
             <div className="card-head"><h3>Оценка публикации</h3><span className="row" style={{ gap: 6 }}>{proc && proc.status !== 'done' && (
               <span className={`tag ${proc.status === 'failed' ? 'yellow' : 'gray'}`} title="Анализ файлов публикации не завершён — оценка посчитана только по тексту">{proc.status === 'failed' ? 'анализ не выполнен' : 'предварительная'}</span>
             )}<ZoneTag zone={s.zone} /></span></div>
-            <div style={{ display: 'grid', gridTemplateColumns: '290px minmax(0, 1fr)', gap: 32, alignItems: 'start' }}>
+            <div className="m-stack" style={{ display: 'grid', gridTemplateColumns: '290px minmax(0, 1fr)', gap: 32, alignItems: 'start' }}>
               <div>
                 <div className="row" style={{ alignItems: 'flex-end', gap: 6, margin: '8px 0 16px' }}><span className="big-num" style={{ fontSize: 52 }}>{s.score}</span><span className="c3" style={{ paddingBottom: 4 }}>из 100</span></div>
                 <Gauge value={s.score} />
@@ -344,7 +345,7 @@ export default function AdDetail() {
                 )}
                 {c && cr && (
                   <Link to={`/complexes/${c.id}`} state={from(`Публикация ${adKey(a.id)}`, `/ads/${a.id}`)} className="row" style={{ marginTop: 18, background: 'var(--bg)', borderRadius: 16, padding: 8, gap: 12 }}>
-                    <img src={c.cover || undefined} alt="" style={{ width: 52, height: 52, borderRadius: 12, objectFit: 'cover' }} />
+                    <img src={coverSrc(c)} alt="" style={{ width: 52, height: 52, borderRadius: 12, objectFit: 'cover' }} />
                     <div style={{ flex: 1, minWidth: 0 }}><div className="bold t-sm">ЖК «{c.name}»</div><div className="t-xs c2">риск объекта · привязка — {fact ? 'факт' : linkText(a, lc, true)}</div></div>
                     <RiskScore r={cr} />
                   </Link>
@@ -464,7 +465,7 @@ export default function AdDetail() {
           <div style={{ padding: '8px 16px' }}><div className="search"><IcSearch size={20} /><input autoFocus placeholder="Название или адрес ЖК" value={cq} onChange={(e) => setCq(e.target.value)} /></div></div>
           {a.complexId && <Cell icon={<span className="ico"><IcClose size={20} /></span>} title="Снять привязку" sub="Публикация останется без ЖК — нужна ручная привязка" onClick={() => link(null)} />}
           {complexes.filter((x) => matches(cq, x.name, x.address)).map((x) => (
-            <Cell key={x.id} inset icon={<img className="th" src={x.cover || undefined} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name}
+            <Cell key={x.id} inset icon={<img className="th" src={coverSrc(x)} alt="" style={{ width: 44, height: 44, borderRadius: 12 }} />} title={x.name}
               sub={x.id === a.complexId ? (fact ? 'привязка — факт' : `${linkText(a, lc, true)} — выбор примет привязку`) : x.address}
               end={x.id === a.complexId ? <IcCheck size={22} strokeWidth={2.5} style={{ color: 'var(--text)' }} /> : undefined}
               onClick={() => (x.id === a.complexId && fact ? setModal(null) : link(x))} />

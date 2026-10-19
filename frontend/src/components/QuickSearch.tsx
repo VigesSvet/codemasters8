@@ -1,5 +1,6 @@
 // Быстрый поиск в шапке (ТЗ §7 «быстрый поиск ЖК»): ЖК на контроле, объекты открытых данных, публикации, сигналы.
 // «/» — к полю (если фокус не в поле ввода), ↑/↓ и Enter — выбор, Esc — закрыть. Нормализация и транслит — lib/search.ts.
+import { coverSrc } from '../lib/gallery'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { adHit, codeQuery, finder, rankComplex, rankObject } from '../lib/find'
@@ -55,7 +56,7 @@ export default function QuickSearch() {
     if (cx.length) out.push({ title: 'Новостройки · ЖК на контроле', hits: [
       ...cx.slice(0, LIMIT).map((c): Hit => {
         const r = riskOf(c), d = devOf(c.developerId)
-        return { key: `c:${c.id}`, to: `/complexes/${c.id}`, icon: <img src={c.cover || undefined} alt="" />, title: `ЖК «${c.name}»`,
+        return { key: `c:${c.id}`, to: `/complexes/${c.id}`, icon: <img src={coverSrc(c)} alt="" />, title: `ЖК «${c.name}»`,
           sub: [placeText(c, ', '), d && (d.bin ? `${d.name} · БИН ${d.bin}` : d.name)].filter(Boolean).join(' · '), end: <RiskScore r={r} /> }
       }),
       ...(cx.length > LIMIT ? [more('c:more', `Все ${cx.length} в реестре новостроек`, `/complexes?q=${enc(s)}`)] : []),

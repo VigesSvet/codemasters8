@@ -1,3 +1,4 @@
+import { coverSrc } from '../lib/gallery'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
@@ -153,7 +154,7 @@ export default function Ops() {
             {shown.map(({ c, r }, i) => (
               <Link key={c.id} to={`/complexes/${c.id}`} className="rrow">
                 <span className="c3 num t-sm" style={{ width: 18 }}>{i + 1}</span>
-                <img src={c.cover || undefined} alt="" />
+                <img src={coverSrc(c)} alt="" />
                 <span style={{ flex: 1, minWidth: 0 }}><span className="bold">{c.name}</span><span className="t-xs c2" style={{ display: 'block' }}>{[c.district, stageText(c)].filter(Boolean).join(' · ')}</span></span>
                 <RiskScore r={r} />
               </Link>
@@ -221,7 +222,7 @@ export default function Ops() {
         })}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 16, marginTop: 48 }}>
+      <div className="m-stack" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 16, marginTop: 48 }}>
         <div className="box">
           <div className="row between" style={{ marginBottom: 4 }}><h3 className="t-h3">Реклама продажи</h3>
             {delta === null ? <span className="tag gray">за неделю: {curW.n}</span>
@@ -244,7 +245,7 @@ export default function Ops() {
           <h3 className="t-h3" style={{ marginBottom: 8 }}>Стройка стоит</h3>
           {idle.map(({ c }) => (
             <Link key={c.id} to={`/complexes/${c.id}?tab=photos`} className="rrow" style={{ borderColor: 'rgba(0,0,0,.06)' }}>
-              <img src={c.cover || undefined} alt="" /><span style={{ flex: 1 }} className="bold">{c.name}</span>
+              <img src={coverSrc(c)} alt="" /><span style={{ flex: 1 }} className="bold">{c.name}</span>
               <span className={`tag ${c.idleDays >= 90 ? 'red' : 'yellow'}`}>{c.idleDays} дн.</span>
             </Link>
           ))}
