@@ -6,7 +6,11 @@ import type { SignalStatus } from '../data/types'
 import { from } from '../lib/nav'
 import { useStore } from '../lib/store'
 import { IcClose, IcHelp } from '../ui/icons'
-import { Board, Cap, Kpi, Shares } from '../components/StatBoard'
+import { Board, Cap, Kpi, Row, Shares } from '../components/StatBoard'
+import { RouteDue } from '../components/SignalRoute'
+import { useT } from '../lib/i18n'
+import { routeCounts } from '../lib/route'
+import { useRoutes } from '../lib/useRoutes'
 
 const STATUSES: SignalStatus[] = ['new', 'confirmed', 'returned']
 const TITLE: Record<SignalStatus, string> = { new: 'Ждут решения', confirmed: 'Подтверждённые', returned: 'Возвращённые на доработку' }
@@ -31,6 +35,12 @@ export default function Signals() {
   }
   // сигнал и ЖК открываются с «← Сигналы» на эту же выборку: фильтр статуса и объекта сохраняется при возврате
   const back = from('Сигналы', `/signals${sp.toString() ? `?${sp}` : ''}`)
+  // маршрут рассмотрения (T-79): этап, срок и просрочка по каждому сигналу — с сервера
+  const { t } = useT()
+  const routes = useRoutes()
+  const rows = routes ? base.map((s) => routes.rows.get(s.id)).filter((r) => !!r) : []
+  const rc = routeCounts(rows)
+  const sla = (st: 'analysis' | 'approval') => rows.find((r) => r.stage === st && r.slaDays)?.slaDays
 
   // список мог поменяться у других аналитиков — перечитываем при открытии реестра; ошибка — баннером под шапкой
   useEffect(() => {
@@ -53,6 +63,17 @@ export default function Signals() {
               { key: 'returned', label: 'Возвращены', value: n('returned'), tone: 'gray', to: href('returned'), active: status === 'returned' },
             ]} />
           </div>
+          {routes && <>
+            <div className="sb-sep" />
+            <div className="sb-col">
+              <Cap aside={sla('analysis') && sla('approval') ? t('route.capHint', { a: sla('analysis')!, b: sla('approval')! }) : undefined}>{t('route.cap')}</Cap>
+              <Shares parts={[
+                { key: 'analysis', label: t('route.analysis'), value: rc.analysis, tone: 'yellow' },
+                { key: 'approval', label: t('route.approval'), value: rc.approval, tone: 'blue' },
+              ]} />
+              <Row em="timer" tone="red" label={t('route.overdue')} value={rc.overdue} />
+            </div>
+          </>}
         </Board>} />
 
       <div className="row between" style={{ marginBottom: 4, flexWrap: 'wrap' }}>
@@ -75,7 +96,7 @@ export default function Signals() {
         <div className="empty">Сигналов с таким статусом нет. <Link to={href()} className="link">Показать все</Link></div>
       ) : (
         <table className="ytable">
-          <thead><tr><th>Код</th><th>Жилой комплекс</th><th>Риск</th><th>Подтверждённые факторы</th><th>Создан</th><th>Статус</th><th>Решение</th></tr></thead>
+          <thead><tr><th>Код</th><th>Жилой комплекс</th><th>Риск</th><th>Подтверждённые факторы</th><th>Создан</th><th>Статус</th><th>{t('route.col')}</th><th>Решение</th></tr></thead>
           <tbody>
             {shown.map((s) => {
               const c = complexes.find((x) => x.id === s.complexId)
@@ -98,6 +119,7 @@ export default function Signals() {
                   </td>
                   <td className="t-sm">{fmtDT(s.createdAt)}<div className="c2">{s.createdBy}</div></td>
                   <td><SignalStatusTag s={s.status} /></td>
+                  <td>{routes ? <RouteDue r={routes.rows.get(s.id)} now={routes.at} /> : <span className="c3">—</span>}</td>
                   <td className="t-sm">{s.decidedAt ? <>{s.decidedBy}<div className="c2">{fmtDT(s.decidedAt)}</div></> : <span className="c3">—</span>}</td>
                 </tr>
               )

@@ -6,6 +6,7 @@ import { DecisionPanel } from '../components/Decision'
 import { FactorList, LawNote, ObservationList } from '../components/Factors'
 import GeoCheck from '../components/GeoCheck'
 import MapView from '../components/MapView'
+import { RequestLetterButton } from '../components/RequestLetter'
 import { DocSourceLine, Origin } from '../components/Provenance'
 import { DevScreeningBlock, NoScreening, ScreeningBlock, ScreeningTag } from '../components/Screening'
 import SatHistory from '../components/SatHistory'
@@ -526,6 +527,7 @@ export default function ComplexCard() {
             <div className="stack" style={{ gap: 8 }}>
               <SignalPanel complex={c} />
               <button className="btn g full" disabled={!live} onClick={openReq}>Запросить сведения</button>
+              <RequestLetterButton complexId={c.id} complexName={c.name} topics={suggestTopics(r)} onSaved={() => setVer((v) => v + 1)} />
               {mode === 'snapshot' && <div className="t-xs c2">Запрос записывается в журнал объекта на сервере — в офлайн-копии недоступен</div>}
             </div>
             <div className="row" style={{ marginTop: 18, alignItems: 'flex-start', gap: 12 }}>

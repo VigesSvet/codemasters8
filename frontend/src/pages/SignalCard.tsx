@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
 import { EvidenceView, FactorList, LawNote, ObservationList } from '../components/Factors'
 import { MediaViewer } from '../components/MediaViewer'
+import { RequestLetterButton } from '../components/RequestLetter'
+import { RoutePanel } from '../components/SignalRoute'
 import { Origin } from '../components/Provenance'
 import { SignalGate, SignalStatusTag, SignalTime } from '../components/SignalPanel'
 import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, RiskScore, RiskZone, SafeImg, Score, StatusTag, ZoneTag, adKey, fmtDT, fmtDate, zoneName } from '../components/ui'
@@ -173,11 +175,14 @@ function Card({ sig, set, reload }: { sig: Signal; set: (s: Signal) => void; rel
             <p className="t-xs c2" style={{ marginTop: 12, lineHeight: '17px' }}>Решение принимает аналитик. Автор, дата, время и комментарий фиксируются в журнале.</p>
           </div>
 
+          <RoutePanel sig={sig} onChanged={() => { reload(); void refreshSignals() }} />
+
           <div className="card">
             <div className="t-h3">Выгрузка</div>
             <div className="stack" style={{ gap: 8, marginTop: 12 }}>
               <a className="btn g m full" href={signalPdfUrl(sig.id)} download={sig.fileName} onClick={exported}><IcDownload />Скачать PDF</a>
               <Link className="btn g m full" to={`/signals/${sig.id}/print`} target="_blank" rel="noopener"><IcDoc />Печатная версия</Link>
+              <RequestLetterButton complexId={c.id} complexName={c.name} className="btn g m full" label="Запрос в ЖАО / ЕО" />
             </div>
             <p className="t-xs c2" style={{ marginTop: 12, lineHeight: '17px' }}>
               {sig.exportedAt ? <>PDF выгружен: <SignalTime at={sig.exportedAt} />. </> : 'PDF ещё не выгружался. '}

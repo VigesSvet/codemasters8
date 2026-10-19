@@ -19,6 +19,7 @@ from .ai import evaluate, ocr as ocr_engine
 from .db import get_db
 from .integrations import registry as connectors, routes as integration_routes, service as integration_service
 from .risk_model import MODEL, T
+from . import letters, route
 from .seed import init_db
 from .settings import get_settings
 from .world import audit, audit_dict, iso
@@ -642,9 +643,14 @@ def stats(as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
             "screening": screening.summary(screening.compute(db, as_of), db)}
 
 
-# ---------- сигналы (модуль 05) ----------
+# ---------- сигналы (модуль 05); маршрут рассмотрения — раньше /{sid}, иначе /routes ушёл бы в него (T-79) ----------
 
+app.include_router(route.router)
 app.include_router(signals.router)
+
+# ---------- проект запроса сведений в ЖАО / Единому оператору / ГАСК (T-78) ----------
+
+app.include_router(letters.router)
 
 # ---------- открытые данные: источники, объекты, импорт (без риска и сигналов) ----------
 
