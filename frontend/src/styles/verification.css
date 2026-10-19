@@ -1,0 +1,47 @@
+/* ───── Сверка сведений аналитиком в карточке ЖК (components/Verification.tsx) ───── */
+
+/* «Сверено 1 из 4 оснований» — жёлтая плашка с кнопкой к первому несверенному */
+.vf-progress { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; padding: 14px 18px; color: var(--amber-ink); line-height: 19px; }
+.vf-progress > svg { flex: none; }
+.vf-progress .grow { flex: 1; min-width: 220px; }
+.vf-progress b { font-weight: 500; color: var(--text); }
+.vf-dots { display: flex; gap: 4px; margin-top: 8px; }
+.vf-dots i { width: 28px; height: 4px; border-radius: 2px; background: rgba(154, 97, 0, 0.22); }
+.vf-dots i.on { background: var(--green); }
+
+/* Плитка основания: не сверено — жёлтая рамка, «есть» — зелёная, «нет» — красная; подсветка при переходе из подсказки */
+.promo-tile.vf-tile { min-height: 150px; transition: box-shadow 0.3s, background 0.3s; }
+.promo-tile.vf-tile.open { box-shadow: inset 0 0 0 1px rgba(245, 157, 0, 0.45); }
+.promo-tile.vf-tile.ok { background: var(--green-bg); }
+.promo-tile.vf-tile.bad { background: var(--red-bg); }
+.promo-tile.vf-tile.flash { box-shadow: inset 0 0 0 3px var(--yellow); }
+.vf-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.vf-acts .btn.s { height: 34px; font-size: 14px; }
+.vf-acts .btn.g { background: #fff; box-shadow: inset 0 0 0 1px var(--line-2); }
+.vf-acts .btn.g:hover { background: var(--fill-hover); }
+.vf-main svg { width: 14px; height: 14px; }
+.vf-edit { display: inline-flex; align-items: center; gap: 4px; }
+.vf-edit[disabled] { color: var(--text-3); cursor: not-allowed; }
+
+/* «Сверено: имя, дата · источник» */
+.prov-f.vf-ok { color: var(--green-ink); }
+.prov-f.vf-ok .prov-a { color: var(--link); }
+.vf-who { display: block; margin-top: 2px; font-size: 13px; line-height: 16px; color: var(--text-2); }
+
+/* Окна сверки */
+.vf-err { margin-top: 6px; font-size: 13px; line-height: 17px; color: var(--red-ink); }
+.vf-src { display: grid; gap: 8px; }
+.vf-chip.on.yes { background: var(--green); }
+.vf-chip.on.no { background: var(--red); }
+.vf-chip.on.active { background: var(--green); }
+.vf-chip.on.idle { background: var(--red); }
+.vf-kv { grid-template-columns: 140px minmax(0, 1fr); }
+.vf-kv span:nth-child(even) { overflow-wrap: anywhere; }
+.vf-file { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vf-add { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vf-add .btn.s svg { width: 14px; height: 14px; }
+
+@media (max-width: 720px) {
+  .vf-progress .btn { width: 100%; }
+  .vf-acts .btn.s { white-space: normal; height: auto; min-height: 34px; padding: 6px 12px; }
+}

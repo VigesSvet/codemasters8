@@ -40,7 +40,9 @@ TYPE_NAMES = {"image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WEBP", "i
 # Основные бренды контейнера ISO BMFF, которые считаются MP4. HEIC/AVIF (ai.ocr.HEIF_BRANDS), 3GP и прочие — не MP4
 MP4_BRANDS = {b"isom", b"iso2", b"iso4", b"iso5", b"iso6", b"mp41", b"mp42", b"avc1", b"M4V ", b"dash", b"mmp4",
               b"MSNV"}
-UPLOAD_MAX = 10 * MB  # POST /api/media — скриншот из формы ручного ввода
+UPLOAD_MAX = 10 * MB  # POST /api/media — скриншот из формы ручного ввода; снимок площадки (app.verification) — так же
+# Ручные загрузки: скриншот формы (upload — непривязанный удаляется через сутки) и снимок площадки ЖК (site — хранится)
+MANUAL_ORIGINS = ("upload", "site")
 UPLOAD_HOURLY_FILES = 50  # непривязанных загрузок за час — больше нельзя (429)
 UPLOAD_HOURLY_BYTES = 200 * MB
 UPLOAD_TTL = timedelta(hours=24)  # непривязанная загрузка удаляется через сутки
@@ -276,14 +278,14 @@ def read_bytes(asset) -> bytes:
 # ---------- ручные загрузки и уборка ----------
 
 def check_upload_budget(db: Session, now: datetime, size: int = 0) -> None:
-    """Частота ручных загрузок (POST /api/media): за последний час не больше UPLOAD_HOURLY_FILES файлов и
-    UPLOAD_HOURLY_BYTES байт вместе с новым, иначе 429. Считаются все загрузки часа — и уже привязанные к публикации:
+    """Частота ручных загрузок (POST /api/media и снимки площадки POST /api/complexes/{id}/photos — общий счёт): за
+    последний час не больше UPLOAD_HOURLY_FILES файлов и UPLOAD_HOURLY_BYTES байт вместе с новым, иначе 429. Считаются все загрузки часа — и уже привязанные к публикации:
     иначе привязка через POST /api/ads (image="/api/media/{id}") выводила бы файл из счёта и хранилище росло без
     предела, пока не кончится место и для собранных файлов."""
     A = models.MediaAsset
     since = models.as_utc(now - timedelta(hours=1))
     files, total = db.execute(select(func.count(A.id), func.coalesce(func.sum(A.size), 0))
-                              .where(A.origin_ref == "upload", A.created_at >= since)).one()
+                              .where(A.origin_ref.in_(MANUAL_ORIGINS), A.created_at >= since)).one()
     if files + 1 > UPLOAD_HOURLY_FILES or (total or 0) + size > UPLOAD_HOURLY_BYTES:
         raise MediaRejected(429, TOO_MANY_UPLOADS)
 

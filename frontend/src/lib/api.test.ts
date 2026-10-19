@@ -44,7 +44,14 @@ describe('messageOf', () => {
   })
 
   it('незнакомое поле и тип — как есть', () => {
-    expect(messageOf({ detail: [{ type: 'int_parsing', loc: ['query', 'limit'], msg: 'Input should be a valid integer' }] }, 'x')).toBe('limit: Input should be a valid integer')
+    expect(messageOf({ detail: [{ type: 'uuid_parsing', loc: ['query', 'limit'], msg: 'Input should be a valid UUID' }] }, 'x')).toBe('limit: Input should be a valid UUID')
+  })
+
+  it('числа и поля сверки сведений — по-русски', () => {
+    expect(messageOf({ detail: [{ type: 'int_parsing', loc: ['body', 'applicants'], msg: 'Input should be a valid integer' }] }, 'x')).toBe('заявителей: нужно целое число')
+    expect(messageOf({ detail: [{ type: 'float_parsing', loc: ['body', 'value'], msg: 'Input should be a valid number' }] }, 'x')).toBe('значение: нужно число')
+    expect(messageOf({ detail: [{ type: 'value_error', loc: ['body', 'checkedAt'], msg: 'дата не может быть позже сегодняшней' }] }, 'x'))
+      .toBe('дата сверки: дата не может быть позже сегодняшней')
   })
 
   it('нет detail — запасной текст', () => {
