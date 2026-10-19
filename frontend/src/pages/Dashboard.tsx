@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import HotspotPanel from '../components/Hotspots'
 import { LinkMark } from '../components/Hypothesis'
 import MapView, { type MapItem, type PlainPoint } from '../components/MapView'
 import { Origin } from '../components/Provenance'
@@ -8,6 +9,7 @@ import { Disclaimer, NoScreening, ScreeningBlock, ScreeningPic, ScreeningTag } f
 import { Cell, Highlight, PlatformIcon, RiskScore, RiskZone, StatusTag, Toggle } from '../components/ui'
 import type { RiskResult, ScreeningStatus, Tri } from '../data/types'
 import { findComplex } from '../lib/find'
+import { heatPoints } from '../lib/hotspots'
 import { countsLineT, useT, type I18n } from '../lib/i18n'
 import { from } from '../lib/nav'
 import { isAdvertised, isDemo, isRegistry, onMap, placeText, registryKeyOf, stageText, useRegistry } from '../lib/provenance'
@@ -124,6 +126,8 @@ export default function Dashboard() {
   // легенда закрыта, пока её не откроют кнопкой; список объектов в панели сворачивается — оба выбора запоминаются в браузере
   const [legend, setLegend] = useFlag('saq.map.legend', false)
   const [listOpen, setListOpen] = useFlag('saq.map.list', true)
+  const [hot, setHot] = useFlag('saq.map.hot', false)
+  const heat = useMemo(() => (hot ? heatPoints(complexes) : undefined), [hot, complexes])
   // слой «Открытые данные»: реальные объекты серыми метками без балла; грузится, когда слой включён
   const [open, setOpen] = useState(false)
   const reg = useRegistry(open)
@@ -196,7 +200,7 @@ export default function Dashboard() {
 
   return (
     <div className="mapscreen">
-      <MapView items={onMapItems} points={points} onPoint={onPoint} selected={sel} onSelect={setSel} controls modes labels={labels} padLeft={400} />
+      <MapView items={onMapItems} heat={heat} points={points} onPoint={onPoint} selected={sel} onSelect={setSel} controls modes labels={labels} padLeft={400} />
 
       <div className="left">
         {!s ? (
@@ -298,6 +302,7 @@ export default function Dashboard() {
               <Cell title={t('map.labels')} end={<Toggle on={labels} onChange={setLabels} label={t('map.labelsShort')} />} />
               <Cell title={t('map.withAds')} end={<Toggle on={withAds} onChange={setWithAds} label={t('map.withAds')} />} />
               <Cell title={t('map.idle')} end={<Toggle on={idle} onChange={setIdle} label={t('map.idleShort')} />} />
+              <Cell title={t('hot.toggle')} sub={t('hot.toggleSub')} end={<Toggle on={hot} onChange={setHot} label={t('hot.toggle')} />} />
               <Cell title={t('map.openData')} end={<Toggle on={open} onChange={setOpen} label={t('map.openData')} />}
                 sub={!open ? t('map.openDataOff')
                   : reg.err && !reg.data ? t('map.openDataErr', { e: reg.err })
@@ -389,6 +394,8 @@ export default function Dashboard() {
           <div className="lnote" title={tr(stats?.screening?.disclaimer || DISCLAIMER)}>{tr(DISCLAIMER_SHORT)}{noCoords.length > 0 && t('map.legendNoCoords', { n: noCoords.length })}</div>
         </div>
       )}
+
+      {hot && <HotspotPanel complexes={complexes} onClose={() => setHot(false)} />}
 
       <Link to="/queue" className="promo dark" style={{ right: 16, bottom: 32, width: 280 }}>
         <div className="tx" style={{ padding: '18px 20px' }}>

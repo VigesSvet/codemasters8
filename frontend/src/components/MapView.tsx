@@ -84,8 +84,14 @@ export interface PlainPoint { key: string; name: string; lng: number; lat: numbe
  *  off — риск не оценивается: серая метка с «—». ЖК без координат на карту не попадают */
 export interface MapItem { c: Complex; zone: Zone; score: number; off?: boolean; screen?: ScreeningStatus | null }
 
+/** Горячая точка (переключатель «Горячие точки рекламы» на главной карте): круг под меткой ЖК, w — публикаций с предложением
+ *  оплаты, red — основания по открытым данным нет, amber — есть */
+export interface HeatPoint { id: string; lng: number; lat: number; w: number; tone: 'red' | 'amber' }
+
 interface Props {
   items: MapItem[]
+  /** Горячие точки рекламы: размытые круги, радиус растёт с √w; нет или пусто — слоя нет */
+  heat?: HeatPoint[]
   /** Слой «Открытые данные»: серые метки без балла */
   points?: PlainPoint[]
   onPoint?: (key: string) => void
@@ -103,7 +109,7 @@ interface Props {
   modes?: boolean
 }
 
-export default function MapView({ items, points, onPoint, selected, onSelect, zoom = 11.6, center = UKA_CENTER, interactive = true, controls = false, labels = false, padLeft = 0, fit = false, modes = false }: Props) {
+export default function MapView({ items, heat, points, onPoint, selected, onSelect, zoom = 11.6, center = UKA_CENTER, interactive = true, controls = false, labels = false, padLeft = 0, fit = false, modes = false }: Props) {
   const el = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const markers = useRef<maplibregl.Marker[]>([])
@@ -215,6 +221,27 @@ export default function MapView({ items, points, onPoint, selected, onSelect, zo
     m.addLayer({ id: 'saq-cx', type: 'fill-extrusion', source: 'saq-cx',
       paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-opacity': 0.2 } })
   }, [mode, styled, items, selected])
+
+  // горячие точки: слой кругов под HTML-метками; после смены подложки (styled) — заново, широты — как у меток
+  useEffect(() => {
+    const m = map.current
+    if (!m || !ready) return
+    try {
+      const src = m.getSource('saq-heat') as maplibregl.GeoJSONSource | undefined
+      if (!heat?.length) {
+        if (m.getLayer('saq-heat')) m.removeLayer('saq-heat')
+        if (src) m.removeSource('saq-heat')
+        return
+      }
+      const data: FeatureCollection = { type: 'FeatureCollection', features: heat.map((p) => ({ type: 'Feature' as const,
+        properties: { id: p.id, w: Math.max(1, p.w), color: p.tone === 'red' ? COLOR.red : COLOR.yellow }, geometry: { type: 'Point' as const, coordinates: at(p.lng, p.lat) } })) }
+      if (src) { src.setData(data); return }
+      m.addSource('saq-heat', { type: 'geojson', data })
+      m.addLayer({ id: 'saq-heat', type: 'circle', source: 'saq-heat', paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, ['+', 12, ['*', 8, ['sqrt', ['get', 'w']]]], 15, ['+', 46, ['*', 30, ['sqrt', ['get', 'w']]]]],
+        'circle-color': ['get', 'color'], 'circle-opacity': 0.38, 'circle-blur': 0.6 } })
+    } catch { /* подложка ещё грузится — слой поставится после style.load (styled) */ }
+  }, [heat, ready, styled, mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const m = map.current

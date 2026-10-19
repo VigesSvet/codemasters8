@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { IcBell, IcCheck, IcChevronDown, IcChevronRight, IcClose, IcDatabase, IcFlag, IcLogout, IcPhone, IcQueue, IcRefresh, IcUsers, IcWarning } from '../ui/icons'
+import { IcBell, IcCamera, IcCheck, IcChevronDown, IcChevronRight, IcClose, IcDatabase, IcFlag, IcGrid, IcLogout, IcPhone, IcQueue, IcRefresh, IcShield, IcUsers, IcWarning } from '../ui/icons'
 import { API } from '../lib/api'
 import { fmtStamp } from '../lib/audit'
 import { roleIn, useT, type I18n } from '../lib/i18n'
@@ -157,6 +157,9 @@ export default function Shell() {
                   <Link to="/sources"><span className="ic"><IcDatabase size={16} /></span><span className="lbl">{t('nav.sources')}<small>{t('nav.sourcesSub')}</small></span><IcChevronRight size={16} /></Link>
                   <Link to="/residents"><span className="ic"><IcPhone size={16} /></span><span className="lbl">{t('nav.residents')}<small>{t('nav.residentsSub')}</small></span><IcChevronRight size={16} /></Link>
                   <Link to="/ads/new"><span className="ic"><IcQueue size={16} /></span><span className="lbl">{t('nav.adNew')}<small>{t('nav.adNewSub')}</small></span><IcChevronRight size={16} /></Link>
+                  <Link to="/tv"><span className="ic"><IcGrid size={16} /></span><span className="lbl">{t('nav.tv')}<small>{t('nav.tvSub')}</small></span><IcChevronRight size={16} /></Link>
+                  <Link to="/field"><span className="ic"><IcCamera size={16} /></span><span className="lbl">{t('nav.field')}<small>{t('nav.fieldSub')}</small></span><IcChevronRight size={16} /></Link>
+                  <Link to="/check"><span className="ic"><IcShield size={16} /></span><span className="lbl">{t('nav.check')}<small>{t('nav.checkSub')}</small></span><IcChevronRight size={16} /></Link>
                 </div>
               </>
             )}

@@ -1,0 +1,49 @@
+/* ───── Мобильный режим выезда pages/Field.tsx: mobile-first, крупные кнопки под палец, жёлтая главная кнопка как в UI-ките ───── */
+.fld { min-height: 100vh; min-height: 100dvh; background: #f2f2f4; color: var(--text); font-family: var(--font-body, 'YS Text', Arial, sans-serif); -webkit-font-smoothing: antialiased; }
+.fld-top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 16px; padding-top: env(safe-area-inset-top);
+  background: rgba(255, 255, 255, 0.86); backdrop-filter: saturate(180%) blur(18px); border-bottom: 1px solid rgba(0, 0, 0, 0.06); }
+.fld-logo { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 700; font-size: 17px; color: inherit; margin-right: auto; min-width: 0; }
+.fld-logo img { width: 26px; height: 26px; flex: none; }
+.fld-logo span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fld-full { font-size: 13px; color: var(--link, #0065d9); white-space: nowrap; }
+.fld-main { max-width: 560px; margin: 0 auto; padding: 14px 14px calc(28px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 12px; }
+.fld-geo { display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 18px; padding: 12px 12px 12px 16px; }
+.fld-geo-t { flex: 1; min-width: 0; font-size: 14px; line-height: 19px; }
+.fld-geo-t .warn, .fld-note.warn { color: var(--amber-ink, #9a5b00); }
+.fld-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 12px; font-size: 15px; font-weight: 600;
+  background: var(--fill, #f3f1f1); color: var(--text); white-space: nowrap; flex: none; }
+.fld-btn.y { background: var(--yellow, #fed42b); }
+.fld-btn.big { height: 64px; font-size: 18px; border-radius: 18px; width: 100%; box-shadow: 0 10px 24px -12px rgba(160, 120, 0, 0.6); }
+.fld-btn:disabled { opacity: 0.5; }
+.fld-search { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 14px; border-radius: 14px; background: #fff; color: var(--text-3, #999); }
+.fld-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 16px; color: var(--text); }
+.fld-h { font-family: var(--font-display); font-size: 22px; margin: 6px 4px 0; }
+.fld-list { list-style: none; margin: 0; padding: 0; background: #fff; border-radius: 18px; overflow: hidden; }
+.fld-list li + li { border-top: 1px solid #f0eeee; }
+.fld-list button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 12px 12px 14px; text-align: left; color: var(--text-3, #999); }
+.fld-list button:active { background: #f6f5f5; }
+.fld-dist { flex: none; width: 64px; font-family: var(--font-display); font-weight: 700; font-size: 17px; color: var(--text); font-variant-numeric: tabular-nums; }
+.fld-name { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.fld-name b { font-size: 16px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fld-name small { font-size: 13px; color: var(--text-2, #666); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fld-note { font-size: 13px; line-height: 18px; color: var(--text-2, #666); margin: 0 4px; }
+.fld-back { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; font-size: 15px; color: var(--link, #0065d9); padding: 4px 2px; }
+.fld-card { background: #fff; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.fld-card h1 { font-family: var(--font-display); font-size: 28px; line-height: 32px; margin: 0; overflow-wrap: anywhere; }
+.fld-card .fld-note { margin: 0; }
+.fld-addr { margin: 0; font-size: 15px; color: var(--text-2, #666); }
+.fld-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; font-size: 14px; color: var(--text-2, #666); }
+.fld-meta b { color: var(--text); } .fld-meta b.far { color: var(--red-ink, #c2261b); }
+.fld-shot { width: 100%; max-height: 360px; object-fit: cover; border-radius: 14px; background: #eee; }
+.fld-warn { display: flex; gap: 8px; margin: 0; padding: 10px 12px; border-radius: 12px; background: #fff3e0; color: #8a4b00; font-size: 14px; line-height: 19px; }
+.fld-warn svg { flex: none; margin-top: 1px; }
+.fld-field { display: grid; gap: 6px; font-size: 13px; color: var(--text-2, #666); }
+.fld-field textarea { width: 100%; box-sizing: border-box; border: 0; border-radius: 12px; background: var(--fill, #f3f1f1); padding: 10px 12px; font: inherit; font-size: 16px; color: var(--text); resize: vertical; }
+.fld-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: var(--fill, #f3f1f1); }
+.fld-seg button { height: 40px; border-radius: 9px; font-size: 14px; font-weight: 600; color: var(--text-2, #666); padding: 0 4px; }
+.fld-seg button.on { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.fld-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 8px; }
+.fld-row .fld-btn { width: 100%; padding: 0 10px; white-space: normal; text-align: center; line-height: 17px; }
+.fld-err { margin: 0; color: var(--red-ink, #c2261b); font-size: 14px; }
+.fld-ok { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; background: #e9f8ee; color: #136c2e; border-radius: 18px; padding: 14px 16px; }
+.fld-ok .fld-row { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; }
