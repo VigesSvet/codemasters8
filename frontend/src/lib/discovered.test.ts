@@ -42,9 +42,9 @@ async function failure(p: Promise<unknown>): Promise<ApiError> {
   throw new Error('запрос должен был завершиться ошибкой')
 }
 
-beforeEach(() => clearAdminToken(null))
+beforeEach(() => clearAdminToken())
 afterEach(() => {
-  clearAdminToken(null)
+  clearAdminToken()
   vi.unstubAllGlobals()
 })
 
@@ -70,7 +70,7 @@ describe('запросы', () => {
     expect([sent(f).url, sent(f).method, sent(f).headers[ADMIN_HEADER], sent(f).body]).toEqual(['/api/discovered/7/geo', 'POST', undefined, { author: AUTHOR }])
     await runDiscoveredGeo(7, AUTHOR, true)
     expect([sent(f, 1).headers[ADMIN_HEADER], sent(f, 1).body]).toEqual([TOKEN, { author: AUTHOR, force: true }])
-    clearAdminToken(null)
+    clearAdminToken()
     const e = await failure(runDiscoveredGeo(7, AUTHOR, true))
     expect([e.status, e.message]).toEqual([401, NEED_ADMIN])
   })

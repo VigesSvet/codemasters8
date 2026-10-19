@@ -67,9 +67,9 @@ describe('«Проанализировать ещё раз»', () => {
     const TOKEN = 't-admin-0123456789abcdef0123'
     const reply = (status: number, body: unknown) =>
       vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
-    beforeEach(() => clearAdminToken(null))
+    beforeEach(() => clearAdminToken())
     afterEach(() => {
-      clearAdminToken(null)
+      clearAdminToken()
       vi.unstubAllGlobals()
     })
 

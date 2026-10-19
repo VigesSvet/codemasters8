@@ -36,9 +36,9 @@ async function failure(p: Promise<unknown>): Promise<ApiError> {
   throw new Error('запрос должен был завершиться ошибкой')
 }
 
-beforeEach(() => clearAdminToken(null))
+beforeEach(() => clearAdminToken())
 afterEach(() => {
-  clearAdminToken(null)
+  clearAdminToken()
   vi.unstubAllGlobals()
 })
 
