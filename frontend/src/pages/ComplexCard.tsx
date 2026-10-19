@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigationType, useParams, useSearchParams } from 'react-router-dom'
 import { AuditList } from '../components/Audit'
 import Compare from '../components/Compare'
+import { ObjectGallery } from '../components/Gallery'
 import { DecisionPanel } from '../components/Decision'
 import { FactorList, LawNote, ObservationList } from '../components/Factors'
 import GeoCheck from '../components/GeoCheck'
@@ -55,7 +56,6 @@ export default function ComplexCard() {
   const tab: Tab = TABS.find((t) => t === sp.get('tab')) ?? 'basis'
   const tabsRef = useRef<HTMLDivElement>(null)
   const arrived = useRef<string>(undefined)
-  const [ph, setPh] = useState(0)
   const [log, setLog] = useState<Log | null>(null)
   const [ver, setVer] = useState(0)
   const [group, setGroup] = useState<AuditGroup>('all')
@@ -158,8 +158,6 @@ export default function ComplexCard() {
   const rd = c.readiness ?? { declared: null, confirmed: null }
   // округление как в модели (п.п. до сотых, половина — вверх)
   const gap = rd.declared && rd.confirmed ? Math.floor(Math.abs(rd.declared.value - rd.confirmed.value) * 100 + 0.5) / 100 : null
-  // только снимки этого объекта: общие кадры города выдавали бы чужую площадку за эту (ТЗ §7 «Достоверность»)
-  const photos = [c.cover, ...c.photos.map((p) => p.src)].filter((v, i, a) => v && a.indexOf(v) === i).slice(0, 5).map((v) => mediaSrc(v) ?? v)
   const stageIdx = c.stage ? STAGES.indexOf(c.stage) : -1
   const events = live && log?.id === c.id ? log.events ?? [] : []
   const logReady = live && log?.id === c.id && !!log.events
@@ -253,21 +251,8 @@ export default function ComplexCard() {
 
       <div className="cols-r">
         <div>
-          <div className="gallery">
-            <div className="ph main-ph">
-              {photos.length > 0 ? <img src={photos[ph]} alt="" />
-                : <div className="c2 t-sm" style={{ height: '100%', display: 'grid', placeItems: 'center', textAlign: 'center', padding: 24 }}><span><IcCamera /><br />Снимков площадки нет</span></div>}
-              <div className="tl">{c.stage && <span className="tag white">{c.stage === 'введён' ? 'сдан' : 'строится'}</span>}{r.needsCheck && <span className="tag white">нужна проверка</span>}{c.idleDays >= 30 && <span className="tag white">стоит {c.idleDays} дн.</span>}</div>
-            </div>
-            <div className="thumbs">
-              {photos.map((p, i) => (
-                <button key={p} className={ph === i ? 'on' : ''} onClick={() => setPh(i)}>
-                  <img src={p} alt="" />
-                  {i === photos.length - 1 && c.photos.length > 1 && <span className="more" onClick={(e) => { e.stopPropagation(); goTab('photos') }}>Снимки · {c.photos.length}</span>}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* фото объекта: Homeportal, фото-мониторинг, реклама, фото оператора — с подписью источника (ТЗ §7 «Достоверность») */}
+          <ObjectGallery key={`gallery-${c.id}`} c={c} tags={<>{c.stage && <span className="tag white">{c.stage === 'введён' ? 'сдан' : 'строится'}</span>}{r.needsCheck && <span className="tag white">нужна проверка</span>}{c.idleDays >= 30 && <span className="tag white">стоит {c.idleDays} дн.</span>}</>} />
 
           <h2 className="t-h2" style={{ margin: '40px 0 16px' }}>Ход строительства</h2>
           {c.stage ? (

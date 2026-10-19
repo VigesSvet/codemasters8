@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from . import (ads_service, ai, changes, decisions, discovery, importer, logs, media, models, registry, satstage,
+from . import (ads_service, ai, changes, decisions, discovery, gallery, importer, logs, media, models, registry, satstage,
                schemas, screening, signals, verification, world)
 from .ads_service import REASON_NAMES, _event, _pct, _why  # noqa: F401 — прежние имена main (журнал, гипотезы)
 from .ai import evaluate, ocr as ocr_engine
@@ -86,7 +86,7 @@ class UploadLimit:
               "/api/intake/publications": (media.INTAKE_JSON_MAX, "Тело запроса больше 2 МБ"),
               "/api/intake/telegram": (media.BOT_MAX_BODY, "Заявка больше 60 МБ")}
     REJECTS = {"/api/intake/publications": "intake", "/api/intake/telegram": "telegram_bot"}
-    PHOTO = re.compile(r"^/api/complexes/[^/]+/photos$")  # снимок площадки — предел как у скриншота
+    PHOTO = re.compile(r"^/api/complexes/[^/]+/(photos|gallery)$")  # снимок площадки, фото объекта — как у скриншота
 
     def __init__(self, app):
         self.app = app
@@ -667,6 +667,10 @@ app.include_router(verification.router)
 # ---------- решение аналитика по «Проверке по рекламе»: «Объект сдан», «Проверено — замечаний нет», отмена ----------
 
 app.include_router(decisions.router)
+
+# ---------- фото объекта: Homeportal, фото-мониторинг, реклама, загрузка оператором, обложка карточки ----------
+
+app.include_router(gallery.router)
 
 # ---------- сбор публикаций: подключения, запуски, приём, файлы; маршруты модулей подключений ----------
 

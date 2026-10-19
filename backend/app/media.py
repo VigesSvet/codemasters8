@@ -42,7 +42,7 @@ MP4_BRANDS = {b"isom", b"iso2", b"iso4", b"iso5", b"iso6", b"mp41", b"mp42", b"a
               b"MSNV"}
 UPLOAD_MAX = 10 * MB  # POST /api/media — скриншот из формы ручного ввода; снимок площадки (app.verification) — так же
 # Ручные загрузки: скриншот формы (upload — непривязанный удаляется через сутки) и снимок площадки ЖК (site — хранится)
-MANUAL_ORIGINS = ("upload", "site")
+MANUAL_ORIGINS = ("upload", "site", "gallery")  # gallery — фото объекта от оператора (app.gallery)
 UPLOAD_HOURLY_FILES = 50  # непривязанных загрузок за час — больше нельзя (429)
 UPLOAD_HOURLY_BYTES = 200 * MB
 UPLOAD_TTL = timedelta(hours=24)  # непривязанная загрузка удаляется через сутки

@@ -181,6 +181,7 @@ def _offline(monkeypatch):
         mod = sys.modules.get(mod_name)
         if mod is not None and hasattr(mod, attr):
             monkeypatch.setattr(mod, attr, _raiser(what))
+    monkeypatch.setenv("SAQ_GALLERY_SYNC_HOURS", "0")  # фото Homeportal воркером — только в тестах app.gallery
     service = sys.modules.get("app.integrations.service")
     if service is not None and hasattr(service, "_REJECT_AT"):
         service._REJECT_AT.clear()  # ограничение частоты записи отказов — своё у каждого теста

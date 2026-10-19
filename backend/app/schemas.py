@@ -1197,9 +1197,30 @@ class AdvertOut(Camel):
     ads: int = 0
 
 
+GalleryKind = Literal["operator", "site", "homeportal", "ad"]
+
+
+class GalleryPhotoOut(Camel):
+    """Фото объекта (app.gallery): operator — загрузил оператор, site — снимок площадки фото-мониторинга, homeportal —
+    фото карточки ЖК на Homeportal (фото или визуализация застройщика), ad — изображение рекламы ЖК (hypothesis — привязка
+    публикации не подтверждена). cover — закреплённая обложка карточки."""
+
+    src: str
+    kind: GalleryKind
+    source: str
+    date: Optional[str] = None
+    by: Optional[str] = None
+    note: Optional[str] = None
+    url: Optional[str] = None
+    ad_id: Optional[str] = None
+    media_id: Optional[str] = None
+    hypothesis: bool = False
+    cover: bool = False
+
+
 class ComplexListOut(ComplexOut):
     """ЖК в списке и карточке (GET /api/complexes, /api/complexes/{id}): основание по открытым данным и «Проверка по
-    рекламе»."""
+    рекламе»; gallery — фото объекта, обложка первой."""
 
     permit: Optional[PermitOut] = None
     screening: Optional[ScreeningOut] = None
@@ -1208,6 +1229,8 @@ class ComplexListOut(ComplexOut):
     basis_suggest: Optional[Dict[str, "BasisSuggestionOut"]] = None
     # Решение аналитика по «Проверке по рекламе» («сдан» / «проверено — замечаний нет»); null — оценка автоматическая
     decision: Optional["ScreeningDecisionOut"] = None
+    gallery: List[GalleryPhotoOut] = []
+    homeportal: bool = False  # есть карточка Homeportal в записях реестра — фото можно подгрузить оттуда
 
 
 class ScreeningWorstOut(Camel):
@@ -1621,6 +1644,26 @@ class ScreeningDecisionIn(Camel):
     source: SourceText
     source_url: OptUrl = None
     comment: OptNote = None
+
+
+class AuthorIn(Camel):
+    """Действие сотрудника без других полей (подгрузить фото Homeportal, удалить фото оператора)."""
+
+    author: HumanName
+
+
+class GalleryUploadIn(Camel):
+    """Поля формы фото объекта от оператора (POST /api/complexes/{id}/gallery, multipart): файл — отдельно."""
+
+    author: HumanName
+    note: OptNote = None
+
+
+class CoverIn(Camel):
+    """Обложка карточки ЖК: src одного из фото объекта; пустой или null — снова автоматическая."""
+
+    author: HumanName
+    src: Optional[str] = Field(None, max_length=512)
 
 
 class DecisionCancelIn(Camel):

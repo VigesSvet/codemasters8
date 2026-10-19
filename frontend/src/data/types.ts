@@ -161,6 +161,32 @@ export interface Complex {
   basisSuggest?: Partial<Record<BasisDoc, BasisSuggestion>> | null
   /** Решение аналитика по «Проверке по рекламе» («сдан» / «проверено — замечаний нет», сервер); null — оценка автоматическая */
   decision?: ScreeningDecision | null
+  /** Фото объекта (сервер: app.gallery), обложка первой; нет поля — сервер старой версии, обложка — cover */
+  gallery?: GalleryPhoto[]
+  /** Есть карточка Homeportal в записях реестра — фото можно подгрузить оттуда */
+  homeportal?: boolean
+}
+
+/** operator — загрузил оператор, site — снимок площадки фото-мониторинга, homeportal — фото карточки ЖК на Homeportal (фото
+ *  или визуализация застройщика), ad — изображение рекламы ЖК */
+export type GalleryKind = 'operator' | 'site' | 'homeportal' | 'ad'
+
+export interface GalleryPhoto {
+  src: string
+  kind: GalleryKind
+  /** Откуда: «Фото оператора», «Homeportal», «Instagram, @account», источник снимка площадки */
+  source: string
+  date?: string | null
+  by?: string | null
+  note?: string | null
+  /** Страница источника (Homeportal) */
+  url?: string | null
+  adId?: string | null
+  mediaId?: string | null
+  /** Публикация отнесена к ЖК гипотезой — привязка не подтверждена аналитиком */
+  hypothesis?: boolean
+  /** Закреплённая обложка карточки */
+  cover?: boolean
 }
 
 // ---------- «Проверка по рекламе» (сервер: app.screening) ----------

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { CoverPh, galleryOf, photoSrc } from '../components/Gallery'
 import { OpenDataList } from '../components/OpenData'
 import { OFFLINE_FILE } from '../data/openData'
 import { OpenDataNote, Origin } from '../components/Provenance'
 import { Disclaimer, NoScreening, ScreeningPic, ScreeningTag } from '../components/Screening'
-import { FilterPop, Modal, NeedsCheck, RiskScore, RiskZone, Seg } from '../components/ui'
+import { FilterPop, Modal, NeedsCheck, RiskScore, RiskZone, SafeImg, Seg } from '../components/ui'
 import type { Stage, Tri, Zone } from '../data/types'
 import { findComplex, useSearchText } from '../lib/find'
 import { useT, type I18n } from '../lib/i18n'
@@ -202,10 +203,9 @@ export default function Complexes() {
         <div className="gcards fade">
           {rows.map(({ c, r, dev, nAds }) => (
             <div key={c.id} className="gcard" onClick={() => go(`/complexes/${c.id}`)}>
-              <div className="ph">
-                <img src={c.cover || undefined} alt="" />
+              <CoverPh c={c}>
                 <div className="tl">{c.screening && <ScreeningTag s={c.screening} short />}{isDemo(c) && <Origin kind="demo" label={t('cx.demo')} onPhoto title={t('cx.demoHint')} />}{isRegistry(c) && <Origin kind="registry" label={t('cx.registry')} onPhoto />}{isAdvertised(c) && <Origin kind="advertised" label={t('cx.advertised')} onPhoto />}<span className="tag white">{tr(stageText(c))}</span>{r.needsCheck && <span className="tag white">{t('common.needsCheckLow')}</span>}{c.idleDays >= 30 && <span className="tag white">{t('cx.idleN', { n: c.idleDays })}</span>}</div>
-              </div>
+              </CoverPh>
               <div className="b">
                 <span className="dev">{dev?.name}</span>
                 <div className="row between" style={{ alignItems: 'flex-start' }}><span className="nm">{c.name}</span><RiskScore r={r} /></div>
@@ -234,7 +234,7 @@ export default function Complexes() {
         <div className="card fade">
           {rows.map(({ c, r, dev }) => (
             <button key={c.id} className="cell" onClick={() => go(`/complexes/${c.id}`)} style={{ display: 'grid', gridTemplateColumns: screenOn ? '88px minmax(0,1.3fr) minmax(0,1.1fr) minmax(0,1fr) 170px 60px' : '88px minmax(0,1.3fr) minmax(0,1fr) 170px 60px', gap: 20, minHeight: 92 }}>
-              <img className="th" src={c.cover || undefined} alt="" style={{ width: 88, height: 64 }} />
+              {(() => { const p = galleryOf(c)[0]; const box = <span className="th" style={{ width: 88, height: 64, display: 'block', background: 'var(--fill)' }} />; return p ? <SafeImg className="th" src={photoSrc(p)} alt="" loading="lazy" style={{ width: 88, height: 64, objectFit: 'cover' }} fallback={box} /> : box })()}
               <div style={{ minWidth: 0 }}>
                 <div className="t-xs c2">{dev?.name}</div>
                 <div className="bold row" style={{ fontSize: 17, gap: 8 }}>{c.name}{isDemo(c) && <Origin kind="demo" label={t('cx.demo')} title={t('cx.demoHint')} />}{isRegistry(c) && <Origin kind="registry" label={t('cx.registry')} />}{isAdvertised(c) && <Origin kind="advertised" label={t('cx.advertised')} />}</div>

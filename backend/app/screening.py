@@ -700,6 +700,8 @@ class Result:
     days: int
     suggest: Dict[str, Obj] = field(default_factory=dict)  # ЖК → документы основания из открытого реестра
     decisions: Dict[str, Obj] = field(default_factory=dict)  # ЖК → решение аналитика (действует или снято рекламой)
+    attributed: Dict[str, List[Tuple[str, str]]] = field(default_factory=dict)  # ЖК → [(публикация, основание)]
+    homeportal: Set[str] = field(default_factory=set)  # ЖК с карточкой Homeportal в записях реестра (фото — app.gallery)
 
 
 def compute(db: Session, as_of: Optional[date] = None) -> Result:
@@ -728,7 +730,9 @@ def compute(db: Session, as_of: Optional[date] = None) -> Result:
         by_dev.setdefault(c.developer_id, []).append((c, comp[c.id]))
     dev = {d.id: screen_developer(d, by_dev.get(d.id, [])) for d in devs}
     suggest = {cid: sg for cid, (_, rs) in groups.items() if rs and (sg := suggestions(rs))}
-    return Result(comp, dev, pm, advert_info(db), as_of, days, suggest, decided)
+    links = {cid: [(f.id, kind) for f, kind in items] for cid, items in attributed.items()}
+    hp = {cid for cid, (_, rs) in groups.items() if any(r.get("source") in ("homeportal", "homeportal_section") for r in rs)}
+    return Result(comp, dev, pm, advert_info(db), as_of, days, suggest, decided, links, hp)
 
 
 def summary(r: Result, db: Optional[Session] = None) -> Obj:
@@ -756,13 +760,16 @@ def summary(r: Result, db: Optional[Session] = None) -> Obj:
 
 def complex_rows(db: Session, rows: Iterable[models.Complex], r: Result) -> List[Obj]:
     """ЖК для ответа API (ComplexListOut): поля карточки, основание, оценка, объекты из рекламы."""
-    from . import schemas
+    from . import gallery, schemas
 
+    rows = list(rows)
+    photos = gallery.collect(db, rows, r.attributed)
     out = []
     for c in rows:
         d = schemas.ComplexOut.model_validate(c).model_dump()
         d.update(permit=r.permits.get(c.id), screening=r.complexes.get(c.id), advert=r.advert.get(c.id),
-                 basis_suggest=r.suggest.get(c.id), decision=r.decisions.get(c.id))
+                 basis_suggest=r.suggest.get(c.id), decision=r.decisions.get(c.id), gallery=photos.get(c.id, []),
+                 homeportal=c.id in r.homeportal)
         out.append(d)
     return out
 

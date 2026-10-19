@@ -114,6 +114,15 @@ interface Store {
   decideAppeal: (appealId: string, action: 'verify' | 'reject', comment?: string) => Promise<Appeal>
   /** Снимок площадки: файл и поля формы (дата, источник, активность, примечание) */
   addSitePhoto: (complexId: string, file: File, fields: Record<string, string>) => Promise<Complex>
+  // Фото объекта (сервер: app.gallery) — на риск не влияют; ЖК из ответа — сразу в список
+  /** Фото дома от оператора; без закреплённой обложки становится обложкой */
+  addGalleryPhoto: (complexId: string, file: File, note?: string) => Promise<Complex>
+  /** Закрепить обложку (src одного из фото) или вернуть автоматическую ('') */
+  setCover: (complexId: string, src: string) => Promise<Complex>
+  /** Удалить фото оператора */
+  removeGalleryPhoto: (complexId: string, mediaId: string) => Promise<Complex>
+  /** Подгрузить фото карточки ЖК с Homeportal (по записям открытого реестра) */
+  fetchGallery: (complexId: string) => Promise<Complex>
   // Решение аналитика по «Проверке по рекламе» (сервер: app.decisions) — как сверка: только с бэкендом, ЖК из ответа — сразу
   // в список, затем застройщики, сводка и журнал
   /** «Объект сдан»: акт №, дата акта, источник, ссылка, комментарий */
@@ -642,6 +651,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         form.append('file', file, file.name || 'site.jpg')
         for (const [k, v] of Object.entries({ ...fields, author: who })) form.append(k, v)
         return verified('Снимок площадки не сохранён', () => apiUpload<Complex>(`/complexes/${enc(complexId)}/photos`, form))
+      },
+      addGalleryPhoto: async (complexId, file, note) => {
+        needVerify()
+        const who = author()
+        const form = new FormData()
+        form.append('file', file, file.name || 'photo.jpg')
+        form.append('author', who)
+        if (note?.trim()) form.append('note', note.trim())
+        return verified('Фото не сохранено', () => apiUpload<Complex>(`/complexes/${enc(complexId)}/gallery`, form))
+      },
+      setCover: async (complexId, src) => {
+        needVerify()
+        const who = author()
+        return verified('Обложка не сохранена', () => apiPost<Complex>(`/complexes/${enc(complexId)}/cover`, { author: who, src }))
+      },
+      removeGalleryPhoto: async (complexId, mediaId) => {
+        needVerify()
+        const who = author()
+        return verified('Фото не удалено', () => apiDelete<Complex>(`/complexes/${enc(complexId)}/gallery/${enc(mediaId)}`, { author: who }))
+      },
+      fetchGallery: async (complexId) => {
+        needVerify()
+        const who = author()
+        return verified('Фото с Homeportal не подгрузились', () => apiPost<Complex>(`/complexes/${enc(complexId)}/gallery/fetch`, { author: who }))
       },
       markCommissioned: async (complexId, body) => {
         needVerify()

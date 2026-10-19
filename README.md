@@ -522,6 +522,17 @@ cd backend && .venv/bin/python -c "from app.ai import evaluate; print(evaluate.r
 - **Офлайн-копия без сервера** — кнопки сверки недоступны с подписью «доступно с сервером».
 - Заявки жителей через Telegram-бота по-прежнему становятся публикациями (`source = bot`), а не обращениями: обращение вносит аналитик.
 
+## Фото объекта
+
+В выдаче «Новостройки» у каждого ЖК — обложка, в карточке ЖК — галерея фото объекта с миниатюрами (`backend/app/gallery.py`, `frontend/src/components/Gallery.tsx`). Источник подписан на каждом фото — Homeportal и реклама дают фото или визуализацию застройщика, а не снимок площадки (ТЗ §7 «Достоверность»):
+
+- **Фото оператора** — «Добавить фото» на пустой обложке в выдаче или в галерее карточки: JPEG, PNG, WEBP, GIF до 10 МБ (пределы скриншота). Без закреплённой обложки новое фото становится обложкой. Ошибся домом — «Удалить фото».
+- **Фото-мониторинг** — датированные снимки площадки (вкладка «Снимки», `/field`), новые первыми.
+- **Homeportal** — фото карточки ЖК на homeportal.kz по ссылке из записи открытого реестра (`api.homeportal.kz`: `objects-detail/{id}`, для раздела «Без разрешения» — `illegal-objects/{id}`). Файлы сохраняются в хранилище (безопасная загрузка `integrations/http.fetch_to_temp`, только этот хост), повтор не дублирует. Подгружает воркер раз в `SAQ_GALLERY_SYNC_HOURS` (24 ч; `0` — выключено) для ЖК реестра без фото, вручную — «Фото с Homeportal» в карточке или `cd backend && .venv/bin/python -m app.gallery fetch`.
+- **Реклама** — изображения публикаций, отнесённых к ЖК «Проверкой по рекламе»: подтверждённая привязка — «Реклама», остальные — «Реклама · гипотеза».
+
+Обложка — первое фото по этому порядку или закреплённое («Сделать обложкой», «Обложка автоматически»). Каждое действие — событие журнала объекта от имени сотрудника. На риск и «Проверку по рекламе» фото объекта не влияют: проверенные сведения о площадке — только снимок с датой и активностью («Добавить снимок»). В офлайн-копии — фото из рекламы, вошедшие в набор.
+
 ## Подключение источников рекламы
 
 Публикации застройщиков собирают подключения: Instagram (Meta Graph API · Business Discovery), Telegram-каналы (MTProto, Telethon, отдельный аккаунт), TikTok (Apify, платно), Krisha.kz (HTML выдачи — API у сайта нет). Ещё два входа принимают готовое: приёмник Telegram-бота заявок жителей и `POST /api/intake/publications` для внешних сборщиков. Всё идёт через единый приём (дедупликация по внешнему ID, версии, файлы в хранилище на сервере) в очередь воркера: кадры видео → речь в роликах (faster-whisper, локально) → OCR → правила `saq-ai-1` → анализ ИИ Claude (если задан `ANTHROPIC_API_KEY`) → лента и журнал → решение аналитика. 2ГИС — сверка адреса в карточке ЖК, OLX — OAuth собственного аккаунта, Claude (Anthropic) — гипотезы с дословными цитатами по тексту и OCR. Пошаговая инструкция (ключи, токены Meta, вход в Telegram, расходы Apify и Anthropic, OLX и ngrok, воркер, резервные копии) — **[docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)**.
@@ -727,6 +738,10 @@ cd backend && .venv/bin/python -c "from app.ai import evaluate; print(evaluate.r
 | `POST /api/complexes/{id}/screening-decision` | «Проверено — замечаний нет» `{author, decision: "no_issues", reason (от 10 символов), source, sourceUrl?, comment?}` → ЖК (`variant: analyst`). `DELETE` того же адреса `{author, reason}` — отменить действующее или снятое рекламой решение (404 — решения нет) |
 | `GET /api/complexes/{id}/screening-decisions` | История решений по ЖК, новые первыми: `active`, `cancelled`, `superseded` — кто, когда, акт, источник, причина отмены |
 | `POST /api/complexes/{id}/photos` | Снимок площадки, multipart `{file, author, date, source, activity: active\|idle\|unknown, note?}` → 201, ЖК со снимком в `photos` (`src = /api/media/{id}`); пределы — как у `POST /api/media` (413, 415, 429, 507) |
+| `POST /api/complexes/{id}/gallery` | Фото объекта от оператора, multipart `{file, author, note?}` → 201, ЖК с `gallery` (обложка первой); пределы — как у `POST /api/media` |
+| `POST /api/complexes/{id}/cover` | Обложка карточки `{author, src}`: `src` — одно из фото объекта (иначе 422), пустой — снова автоматическая |
+| `DELETE /api/complexes/{id}/gallery/{mediaId}` | Удалить фото оператора `{author}` |
+| `POST /api/complexes/{id}/gallery/fetch` | Подгрузить фото карточки ЖК с Homeportal `{author}`; нет карточки Homeportal в реестре (`homeportal = false`) — 422, источник не ответил — 502 |
 | `GET /api/ads/{id}/score` | Оценка публикации |
 | `PATCH /api/ads/{id}/complex` | Привязка к ЖК аналитиком `{complexId, author}`: факт — `linkConfirmedBy` = автор, `linkConfirmedAt`, уверенность 100%, ЖК убирается из отклонённых; `complexId: null` — снять привязку (0%, подтверждение сбрасывается); событие в журнале; нет публикации или ЖК → 404, пустой автор → 422 |
 | `POST /api/analyze` | Анализ ИИ без записи в БД `{text, ocr?, account?, platform?, url?}` → `{engine, terms, hypotheses, signals, phones, addresses, note?}`: условия оплаты (вид, сумма, валюта, процент, срок, цитата, источник `text`/`ocr`, уверенность, `low`, `money`) и до трёх гипотез ЖК (уверенность, `low`, причины, фрагмент) |

@@ -64,6 +64,13 @@ export function withSnapshotMedia(a: Ad, media: MediaMap): Ad {
   return { ...a, image, ...(files ? { media: files } : {}) }
 }
 
+/** ЖК копии: фото объекта — на файлы копии; чего в копии нет (фото Homeportal, загруженные оператором) — убираем */
+export function withSnapshotGallery(c: Complex, media: MediaMap): Complex {
+  if (!c.gallery) return c
+  const gallery = c.gallery.flatMap((p) => { const src = snapshotMediaUrl(p.src, media); return src ? [{ ...p, src }] : [] })
+  return { ...c, gallery }
+}
+
 /** Копия как строка списка источников (страница «Источники» без сервера) */
 export function snapshotSource(m: SnapshotMeta): SourceInfo {
   const on = m.asOf ? ` на ${m.asOf.split('-').reverse().join('.')}` : ''
@@ -95,7 +102,7 @@ async function read(): Promise<Snapshot> {
   const [manifest, ...got] = await Promise.all([file('manifest.json'), ...names.map((n) => file(`api/${n}.json`))])
   const raw = Object.fromEntries(names.map((n, i) => [n, got[i]])) as Record<(typeof names)[number], unknown>
   const media = obj(raw.media) as MediaMap
-  const complexes = list<Complex>(raw.complexes, 'complexes.json')
+  const complexes = list<Complex>(raw.complexes, 'complexes.json').map((c) => withSnapshotGallery(c, media))
   const developers = list<Developer>(raw.developers, 'developers.json')
   const ads = list<Ad>(raw.ads, 'ads.json').map((a) => withSnapshotMedia(a, media))
   const appeals = list<Appeal>(raw.appeals, 'appeals.json')

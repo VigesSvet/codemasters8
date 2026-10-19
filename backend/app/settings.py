@@ -145,6 +145,8 @@ class Settings:
     asr_model_dir: Path = DEFAULT_ASR_MODEL_DIR
     asr_max_s: int = 300
     asr_timeout_s: int = 300
+    # фото карточек Homeportal для ЖК открытого реестра без фото (app.gallery, такт лидера воркера): раз в N часов; 0 — выключено
+    gallery_sync_hours: int = 24
     # значения, отброшенные правилами токенов (слабые/совпадающие): для подключения не используются, но в логах маскируются
     ignored_secrets: tuple = field(default=(), repr=False)
 
@@ -265,6 +267,8 @@ VARS: tuple[_Var, ...] = (
     _Var("SAQ_ASR_MODEL_DIR", "asr_model_dir", "path"),
     _Var("SAQ_ASR_MAX_S", "asr_max_s", "int", 5, 3600),
     _Var("SAQ_ASR_TIMEOUT_S", "asr_timeout_s", "int", 10, 3600),
+    # подгрузка фото карточек Homeportal для ЖК реестра без фото: раз в N часов; 0 — выключена
+    _Var("SAQ_GALLERY_SYNC_HOURS", "gallery_sync_hours", "int", 0, 720),
 )
 _BY_ENV = {v.env: v for v in VARS}
 # Переменные прежних версий: приложение их не читает, заданное значение — предупреждение при разборе настроек

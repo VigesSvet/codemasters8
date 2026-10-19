@@ -272,6 +272,29 @@ def backfill(db: Session, now: datetime) -> list[str]:
     return ids
 
 
+# ---------- фото объектов: карточки Homeportal для ЖК реестра без фото ----------
+
+def _gallery_due(db: Session, worker_id: str, now: datetime) -> bool:
+    hours = int(get_settings().gallery_sync_hours)
+    return hours > 0 and _periodic_due(db, worker_id, now, "gallerySyncAt", hours * 3600.0)
+
+
+def gallery_sync(db: Session) -> None:
+    """Фото карточек Homeportal для ЖК открытого реестра, у которых их ещё нет (app.gallery.fetch_all, missing_only).
+    Сбой — предупреждение в журнал, такт лидера продолжается."""
+    from . import gallery
+
+    try:
+        rep = gallery.fetch_all(db, missing_only=True)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        log.warning("Фото объектов с Homeportal не подгружены", exc_info=True)
+        return
+    added = sum(r["added"] for _, r in rep)
+    if added:
+        log.info("Фото объектов с Homeportal: добавлено %s (ЖК: %s)", added, len(rep))
+
+
 # ---------- сведения, видимые только воркеру ----------
 
 def report_local(db: Session) -> None:
@@ -315,6 +338,8 @@ def _tick(worker_id: str, now: datetime) -> None:
         db.commit()
         if _backfill_due(db, worker_id, now):
             backfill(db, now)
+        if _gallery_due(db, worker_id, now):
+            gallery_sync(db)
         if _housekeeping_due(db, worker_id, now):
             try:
                 housekeeping(db, now)
