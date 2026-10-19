@@ -16,6 +16,7 @@ import Method from './pages/Method'
 import Queue from './pages/Queue'
 import RegistryCard from './pages/RegistryCard'
 import Reports from './pages/Reports'
+import Sellers from './pages/Sellers'
 import Residents from './pages/Residents'
 import SignalCard from './pages/SignalCard'
 import SignalPrint from './pages/SignalPrint'
@@ -62,6 +63,7 @@ export default function App() {
               <Route path="sources" element={<Sources />} />
               <Route path="residents" element={<Residents />} />
               <Route path="reports" element={<Reports />} />
+              <Route path="sellers" element={<Sellers />} />
             </Route>
           </Route>
         </Routes>

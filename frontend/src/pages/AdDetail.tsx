@@ -5,6 +5,7 @@ import { FactorList, Quote } from '../components/Factors'
 import { AiBadge, Confidence, HypothesisItem, LinkMark, OcrTag, TermList } from '../components/Hypothesis'
 import { MediaViewer } from '../components/MediaViewer'
 import { Origin } from '../components/Provenance'
+import { SellerHints } from '../components/SellerHints'
 import { SignalAction } from '../components/SignalPanel'
 import { Cell, Gauge, Highlight, Modal, NeedsCheck, PageTitle, PlatformIcon, RiskScore, SafeImg, StatusDot, ZoneTag, adKey, fmtDT, plural, statusMeta } from '../components/ui'
 import { READ_ONLY } from '../data/snapshot'
@@ -391,6 +392,8 @@ export default function AdDetail() {
           {(a.llm || (mode === 'api' && a.origin === 'collected')) && <LlmCard key={`llm-${a.id}`} a={a} x={a.llm ?? null} onQueued={recheck} />}
 
           {proc && live && <SourceVersions key={`ver-${a.id}`} a={a} version={proc.version} />}
+
+          <SellerHints adId={a.id} />
 
           <div className="card">
             <div className="card-head"><h3>История</h3>{mine?.events && <span className="t-sm c2">{mine.events.length} · журнал сервера</span>}</div>

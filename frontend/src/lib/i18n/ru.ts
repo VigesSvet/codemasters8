@@ -164,6 +164,14 @@ export const ru = {
   'nav.residentsSub': 'Идея: push-уведомления',
   'nav.adNew': 'Ручной ввод публикации',
   'nav.adNewSub': 'Текст, ссылка, скриншот',
+  'nav.sellers': 'Кто продаёт',
+  'nav.sellersSub': 'Связанные продавцы и цена',
+  'sellers.title': 'Кто продаёт',
+  'sellers.sub': 'Аккаунты, связанные общим телефоном, WhatsApp, БИН, именем аккаунта или картинкой; цена за м² против рынка',
+  'sellers.tabGroups': 'Продавцы',
+  'sellers.tabPrice': 'Цена',
+  'sellers.adTitle': 'Кто продаёт',
+  'sellers.devTitle': 'Проверка по БИН и связи',
 
   // ---------- подвал ----------
   'foot.objects': 'Объекты',
