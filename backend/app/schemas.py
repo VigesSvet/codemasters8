@@ -184,14 +184,37 @@ class AdIn(Camel):
         return v
 
 
+class SpeechOut(Camel):
+    """Речь в ролике (app.speech, faster-whisper): status как у OCR — done | empty (нет звука или речи) | unavailable
+    (нет движка, ffmpeg или модели) | failed | skipped (выключено, ролик длиннее SAQ_ASR_MAX_S, тайм-аут). text —
+    расшифровка (она же — абзац «Речь в ролике: …» в ocr публикации), language — ru | kk, audioS — секунд звука."""
+
+    status: Literal["done", "empty", "unavailable", "failed", "skipped"]
+    text: Optional[str] = None
+    engine: Optional[str] = None
+    model: Optional[str] = None
+    language: Optional[str] = None
+    audio_s: Optional[float] = None
+    detail: Optional[str] = None
+
+
 class MediaRefOut(Camel):
-    """Файл публикации в хранилище: адрес /api/media/{id} (только загруженные изображения и видео текущей версии)."""
+    """Файл публикации в хранилище: адрес /api/media/{id} (только загруженные изображения и видео текущей версии).
+    speech — только у видео, речь которого распознавалась (иначе поля нет: JSON прочих файлов не меняется)."""
 
     id: str
     kind: Literal["image", "video"]
     mime: Optional[str] = None
     url: str = ""
     role: Optional[str] = None
+    speech: Optional[SpeechOut] = None
+
+    @model_serializer(mode="wrap")
+    def _out(self, handler) -> Dict[str, Any]:
+        out = handler(self)
+        if out.get("speech") is None:
+            out.pop("speech", None)
+        return out
 
 
 class ProcessingOut(Camel):

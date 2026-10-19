@@ -406,7 +406,7 @@ class IngestItem(Base):
     analyzed_engine: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     analyzed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     analysis_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # queued | running | done | failed
-    # media | frames | ocr | rules | events — пока идёт; после сбоя — этап, на котором он случился
+    # media | frames | speech | ocr | rules | llm | events — пока идёт; после сбоя — этап, на котором он случился
     analysis_stage: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     analysis_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # замаскировано
 
@@ -467,7 +467,8 @@ class MediaAsset(Base):
     sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     storage_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # ab/cd/<sha256>.<ext>
     frame_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    # width/height/duration; src — адрес ожидающей загрузки из приёма (не выводится и не пишется в лог); retryAt
+    # width/height/duration; src — адрес ожидающей загрузки из приёма (не выводится и не пишется в лог); retryAt;
+    # speech — расшифровка речи видео (app.speech: status, text, engine, model, language, audioS, durationMs, detail)
     meta: Mapped[dict] = mapped_column(MutableJSONDict, default=dict)
     ocr_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # done|empty|unavailable|failed|skipped
     ocr_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -479,6 +480,12 @@ class MediaAsset(Base):
     @property
     def url(self) -> str:
         return f"/api/media/{self.id}"
+
+    @property
+    def speech(self) -> Optional[dict]:
+        """Расшифровка речи видео (meta.speech, app.speech) для MediaRefOut; у изображений и кадров — None."""
+        sp = (self.meta or {}).get("speech") if self.kind == "video" else None
+        return sp if isinstance(sp, dict) and sp.get("status") else None
 
 
 ACTIVE_JOB = "status IN ('queued', 'running')"

@@ -37,10 +37,15 @@ def _limits(timeout: int) -> list[str]:
     return []
 
 
+def container(mime: str) -> str:
+    """Формат контейнера для -f по MIME из сигнатуры (ffmpeg не угадывает формат недоверенного файла)."""
+    return "mov" if mime in ("video/mp4", "video/quicktime") else "matroska"
+
+
 def command(path: Path, mime: str, out_dir: Path, *, every_s: float = 2.0, max_frames: int = 8,
             timeout: int = 90) -> list[str]:
     """Команда извлечения кадров (список аргументов)."""
-    fmt = "mov" if mime in ("video/mp4", "video/quicktime") else "matroska"
+    fmt = container(mime)
     return [*_limits(timeout), "ffmpeg", "-nostdin", "-v", "error", "-protocol_whitelist", "file", "-f", fmt,
             "-threads", "1", "-i", f"file:{path}", "-filter_threads", "1", "-threads", "1",
             "-vf", f"fps=1/{every_s},scale='min(1280,iw)':-2", "-frames:v", str(max_frames), f"{out_dir}/f_%03d.png"]

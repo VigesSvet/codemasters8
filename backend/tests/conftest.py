@@ -48,6 +48,15 @@ def _demo_start():
     _seed.START = _demo_seed.start
 
 
+@pytest.fixture(autouse=True)
+def _no_asr(monkeypatch):
+    """Распознавание речи в тестах — «faster-whisper не установлен»: модель не скачивается и не загружается, даже если
+    пакет стоит в .venv. Тесты речи подменяют speech.available и движок сами (test_speech.py)."""
+    from app import speech
+
+    monkeypatch.setattr(speech, "available", lambda: False)
+
+
 @pytest.fixture
 def client():
     """Клиент API на чистой пересеянной БД — у каждого теста своя."""

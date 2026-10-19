@@ -29,6 +29,8 @@ import { IcBuilding, IcCheck, IcChevronDown, IcChevronUp, IcClose, IcExternal, I
 
 const ORDER: AdStatus[] = ['new', 'needs_check', 'in_review', 'confirmed', 'dismissed']
 const TEXT_MAX = 2000
+/** Начало абзаца расшифровки речи ролика в ocr публикации (сервер: analysis.SPEECH_MARK) */
+const SPEECH_MARK = 'Речь в ролике:'
 
 /** Решения с основанием: для «Нарушение» оно обязательно, для остальных — по желанию */
 type Decision = 'confirmed' | 'dismissed' | 'needs_check'
@@ -195,6 +197,12 @@ export default function AdDetail() {
   const gallery = adGallery(a)
   const at = (src?: string) => Math.max(0, gallery.findIndex((g) => g.src === src))
   const proc = a.processing ?? null
+  // речь в роликах (сервер, faster-whisper): в ocr — абзацы «Речь в ролике: …» после текста OCR, здесь — отдельным блоком;
+  // у роликов без расшифровки — пояснение сервера (нет движка, нет речи, ролик длиннее предела…)
+  const paras = (a.ocr ?? '').split('\n\n')
+  const ocrText = paras.filter((p) => !p.startsWith(SPEECH_MARK)).join('\n\n').trim()
+  const spoken = paras.filter((p) => p.startsWith(SPEECH_MARK)).map((p) => p.slice(SPEECH_MARK.length).trim()).filter(Boolean)
+  const speechNotes = [...new Set((a.media ?? []).flatMap((m) => m.speech && m.speech.status !== 'done' && m.speech.detail ? [m.speech.detail] : []))]
   /** «Обновить» у состояния анализа: перечитать ленту сейчас и снова опрашивать */
   const recheck = () => { setPoll({ id, n: 0 }); void refreshAds() }
 
@@ -264,10 +272,17 @@ export default function AdDetail() {
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <p style={{ fontSize: 20, lineHeight: '28px' }}><Highlight text={a.text} /></p>
-              {a.ocr && (
+              {ocrText && (
                 <div style={{ background: 'var(--bg)', borderRadius: 16, padding: '12px 16px' }}>
                   <div className="t-xs c2" style={{ marginBottom: 4 }}>Текст на изображении (OCR)</div>
-                  <div className="t-sm" style={{ letterSpacing: '.02em' }}><Highlight text={a.ocr} /></div>
+                  <div className="t-sm" style={{ letterSpacing: '.02em' }}><Highlight text={ocrText} /></div>
+                </div>
+              )}
+              {(spoken.length > 0 || speechNotes.length > 0) && (
+                <div style={{ background: 'var(--bg)', borderRadius: 16, padding: '12px 16px' }}>
+                  <div className="t-xs c2" style={{ marginBottom: 4 }} title="Автоматическая расшифровка звука видео: в названиях и числах бывают ошибки">Речь в ролике (распознано автоматически)</div>
+                  {spoken.map((t, i) => <div key={i} className="t-sm" style={{ marginTop: i ? 6 : 0 }}><Highlight text={t} /></div>)}
+                  {speechNotes.map((n) => <div key={n} className="t-xs c2" style={{ marginTop: spoken.length ? 6 : 0 }}>{n}</div>)}
                 </div>
               )}
               {files.length > 0 && (
@@ -756,7 +771,7 @@ function LlmCard({ a, x, onQueued }: { a: Ad; x: LlmAnalysis | null; onQueued: (
         <div className="t-xs c3" style={{ marginTop: 12 }}>
           Модель {modelText(x)}{x.updatedAt ? ` · ${fmtDT(x.updatedAt)}` : ''}{x.contentVersion && x.contentVersion > 1 ? ` · версия ${x.contentVersion}` : ''}
           {(x.inputTokens > 0 || x.outputTokens > 0) && ` · ${x.inputTokens.toLocaleString('ru-RU')} + ${x.outputTokens.toLocaleString('ru-RU')} токенов, ${costText(x.costUsd)}`}
-          {' '}· промпт {x.promptVersion} · текст и OCR отправлены в Anthropic
+          {' '}· промпт {x.promptVersion} · текст и OCR (с речью из роликов) отправлены в Anthropic
         </div>
       )}
       <div className="row wrap-f" style={{ gap: 8, marginTop: 12, alignItems: 'center' }}>

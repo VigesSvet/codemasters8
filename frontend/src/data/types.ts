@@ -487,6 +487,19 @@ export interface LlmAnalysis {
 
 // ---------- Сбор публикаций: файлы, анализ, версии (integration-spec §11.2) ----------
 
+/** Речь в ролике (faster-whisper на сервере): done — расшифровка есть (она же — абзац «Речь в ролике: …» в ocr публикации);
+ *  empty — нет звука или речи; unavailable — нет движка, ffmpeg или модели; failed — сбой; skipped — выключено, ролик длиннее
+ *  предела или не уложился по времени. language — ru | kk, audioS — секунд звука */
+export interface MediaSpeech {
+  status: 'done' | 'empty' | 'unavailable' | 'failed' | 'skipped'
+  text?: string | null
+  engine?: string | null
+  model?: string | null
+  language?: string | null
+  audioS?: number | null
+  detail?: string | null
+}
+
 /** Файл публикации в хранилище сервера: url — /api/media/{id}; в <img>/<video> — только через mediaSrc */
 export interface MediaRef {
   id: string
@@ -495,12 +508,14 @@ export interface MediaRef {
   url: string
   /** cover — обложка, slide — слайд карусели, attachment — вложение */
   role?: string | null
+  /** только у видео, речь которого распознавалась */
+  speech?: MediaSpeech
 }
 
 export type ProcessingStatus = 'queued' | 'running' | 'done' | 'failed'
 
 /** Состояние анализа собранной публикации: version — текущая версия в источнике, analyzedVersion — последняя проанализированная;
- *  stage — этап (media | frames | ocr | rules | llm | events) во время анализа или этап, на котором анализ упал */
+ *  stage — этап (media | frames | speech | ocr | rules | llm | events) во время анализа или этап, на котором анализ упал */
 export interface Processing {
   status: ProcessingStatus
   version: number

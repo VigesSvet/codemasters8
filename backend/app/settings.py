@@ -24,6 +24,7 @@ BACKEND = Path(__file__).resolve().parents[1]
 DEFAULT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 DEFAULT_MEDIA_ROOT = BACKEND / "data" / "media"
 DEFAULT_TG_SESSION_PATH = BACKEND / "data" / "private" / "telegram.session"
+DEFAULT_ASR_MODEL_DIR = BACKEND / "data" / "models"  # модели faster-whisper (скачиваются с HuggingFace, вне Git)
 
 # ASCII: httpx кодирует заголовки в ASCII (иначе UnicodeEncodeError при каждом запросе)
 DEFAULT_UA = "SAQ-Qurylys-monitor/0.3 (+research; construction-ads monitoring)"
@@ -139,6 +140,11 @@ class Settings:
     # дозапрос старых публикаций без ответа Claude (такт лидера воркера): сколько за проход и как часто
     anthropic_backfill_batch: int = 5
     anthropic_backfill_interval_min: int = 10
+    # Распознавание речи в роликах (app.speech, faster-whisper): модель (off — этап выключен), каталог моделей, пределы
+    asr_model: str = "base"
+    asr_model_dir: Path = DEFAULT_ASR_MODEL_DIR
+    asr_max_s: int = 300
+    asr_timeout_s: int = 300
     # значения, отброшенные правилами токенов (слабые/совпадающие): для подключения не используются, но в логах маскируются
     ignored_secrets: tuple = field(default=(), repr=False)
 
@@ -254,6 +260,11 @@ VARS: tuple[_Var, ...] = (
     # дозапрос старых публикаций: 0 — выключен
     _Var("ANTHROPIC_BACKFILL_BATCH", "anthropic_backfill_batch", "int", 0, 100),
     _Var("ANTHROPIC_BACKFILL_INTERVAL_MIN", "anthropic_backfill_interval_min", "int", 1, 1440),
+    # tiny | base | small | medium | large-v3 … (имя модели faster-whisper); off — распознавание речи выключено
+    _Var("SAQ_ASR_MODEL", "asr_model", "model"),
+    _Var("SAQ_ASR_MODEL_DIR", "asr_model_dir", "path"),
+    _Var("SAQ_ASR_MAX_S", "asr_max_s", "int", 5, 3600),
+    _Var("SAQ_ASR_TIMEOUT_S", "asr_timeout_s", "int", 10, 3600),
 )
 _BY_ENV = {v.env: v for v in VARS}
 # Переменные прежних версий: приложение их не читает, заданное значение — предупреждение при разборе настроек

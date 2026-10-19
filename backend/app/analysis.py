@@ -1,12 +1,16 @@
 """Анализ собранной публикации — задание analyze воркера (integration-spec §8; план: AnalysisJob).
 
-Этапы: media (файлы по ссылкам приёма через API) → frames (кадры видео, ffmpeg) → ocr (Tesseract по изображениям и
-кадрам) → rules (правила saq-ai-1: условия оплаты, гипотезы ЖК) → llm (Claude, app.llm — только если задан
+Этапы: media (файлы по ссылкам приёма через API) → frames (кадры видео, ffmpeg) → speech (речь в роликах, app.speech —
+faster-whisper, если установлен) → ocr (Tesseract по изображениям и кадрам) → rules (правила saq-ai-1: условия оплаты, гипотезы ЖК) → llm (Claude, app.llm — только если задан
 ANTHROPIC_API_KEY) → events (журнал). Начало каждого этапа пишется в ingest_items.analysis_stage и jobs.payload.stage —
 при сбое видно, на каком этапе он случился. Сбой этапа llm анализ не роняет: «анализ ИИ не выполнен» — в журнале,
 повтор при сетевой ошибке, 429 и 5xx — новым заданием к сроку повтора (как повтор загрузки файла).
 
-Транзакции короткие: загрузка, OCR и ffmpeg выполняются между фиксациями, без открытой транзакции записи; состояние
+Расшифровка речи ролика хранится у видео (media_assets.meta.speech — без новой колонки) и попадает в ads.ocr абзацем
+«Речь в ролике: …» после текста OCR: правила и Claude читают её вместе с OCR, а версия содержимого и снимок данных
+(ads.ocr) — те же, что у OCR. Аналитик видит расшифровку отдельно (AdOut.media[].speech).
+
+Транзакции короткие: загрузка, OCR, распознавание речи и ffmpeg выполняются между фиксациями, без открытой транзакции записи; состояние
 каждого файла фиксируется сразу. Проблемы отдельных файлов (не скачался, нет Tesseract или ffmpeg) задание не роняют —
 они видны у файла и в журнале. Версия содержимого фиксируется в начале (v): если во время анализа пришла новая версия,
 этот анализ отметит только v, а новая версия получит своё задание.
@@ -31,8 +35,9 @@ from typing import Callable, Optional
 
 from sqlalchemy import func, or_, select, update
 
-from . import ads_service, ai, llm, media, models, video, world
+from . import ads_service, ai, llm, media, models, speech, video, world
 from .ai import ocr as ocr_engine  # тесты подменяют analysis.ocr_engine.recognize
+from .schemas import AD_TEXT_MAX
 from .db import SessionLocal
 from .integrations import http
 from .logs import redact
@@ -44,7 +49,9 @@ log = logging.getLogger("saq.analysis")
 TERM_LABELS = {"booking": "бронь", "deposit": "депозит", "down_payment": "первоначальный взнос",
                "installment": "рассрочка", "ddu": "ДДУ", "direct_payment": "оплата напрямую застройщику",
                "investment": "инвестиции"}  # «price» — не условие оплаты
-STAGES = ("media", "frames", "ocr", "rules", "llm", "events")
+STAGES = ("media", "frames", "speech", "ocr", "rules", "llm", "events")
+SPEECH_MARK = "Речь в ролике:"  # начало абзаца расшифровки в ads.ocr (фронтенд показывает его отдельным блоком)
+_SPEECH_RETRY = ("unavailable", "failed", "skipped")  # «Проанализировать ещё раз» распознаёт такие ролики заново
 FETCH_ATTEMPTS = 3
 RETRY_BASE_S = 60
 SYSTEM = ads_service.SYSTEM
@@ -96,7 +103,21 @@ def _has_work(assets: list[models.MediaAsset], now: datetime) -> bool:
             return True
         if a.current and a.status == "downloaded" and a.ocr_status is None and a.kind in ("image", "frame", "video"):
             return True
+        if _speech_due(a, False):  # ролик, проанализированный до распознавания речи (T-60)
+            return True
     return False
+
+
+def _speech_due(a: models.MediaAsset, force: bool) -> bool:
+    """Загруженное видео текущей версии без расшифровки речи; force — и с неудачной (движок, тайм-аут, длина)."""
+    if a.kind != "video" or a.parent_id is not None or not a.current or a.status != "downloaded":
+        return False
+    sp = (a.meta or {}).get("speech")
+    if not isinstance(sp, dict):
+        return True
+    if sp.get("detail") == speech.DISABLED:  # этап был выключен, теперь включён
+        return get_settings().asr_model.lower() != "off"
+    return force and sp.get("status") in _SPEECH_RETRY
 
 
 def _stage(job_id: Optional[int], item_id: int, stage: str) -> None:
@@ -240,6 +261,39 @@ def _frames_stage(item_id: int, now: datetime, changed: set) -> None:
             db.commit()
 
 
+def _speech_stage(item_id: int, force: bool, heard: set) -> None:
+    """Речь в роликах → meta.speech видео. Тот же файл (sha256), уже расшифрованный у другой публикации, не
+    распознаётся заново. heard — видео, расшифровка которых получена в этом анализе (событие журнала)."""
+    A = models.MediaAsset
+    with SessionLocal() as db:
+        videos = [(a.id, a.storage_key, a.mime, a.sha256) for a in _assets(db, item_id) if _speech_due(a, force)]
+    for vid, key, mime, sha in videos:
+        r = None
+        if sha:
+            with SessionLocal() as db:
+                for other in db.scalars(select(A).where(A.sha256 == sha, A.id != vid, A.kind == "video")):
+                    sp = (other.meta or {}).get("speech")
+                    if isinstance(sp, dict) and sp.get("status") in ("done", "empty"):
+                        r = dict(sp)
+                        break
+        if r is None:
+            try:
+                r = speech.transcribe(media.path_of(key), mime or "video/mp4")
+            except (OSError, ValueError) as e:  # нет файла в хранилище, неверный ключ
+                log.warning("Речь в ролике %s не распознана: %s", vid, type(e).__name__)
+                r = {"status": "failed", "engine": speech.ENGINE,
+                     "detail": f"Файл ролика не прочитан ({type(e).__name__})"}
+        if r.get("detail"):
+            r["detail"] = redact(r["detail"])
+        with SessionLocal() as db:
+            v = db.get(A, vid)
+            if v is None:
+                continue
+            v.meta = {**(v.meta or {}), "speech": r}
+            db.commit()
+        heard.add(vid)
+
+
 def _ocr_result(r: dict) -> tuple[str, str, Optional[str], Optional[str]]:
     """Ответ ocr.recognize → (ocr_status, текст, движок, пояснение)."""
     engine = r.get("engine") or "none"
@@ -290,17 +344,35 @@ def _ocr_stage(item_id: int) -> None:
                 db.commit()
 
 
+def compose_ocr(texts: list[str], said: list[str]) -> Optional[str]:
+    """ads.ocr: тексты OCR, затем абзацы «Речь в ролике: …». Предел AD_TEXT_MAX: обрезается OCR, а не расшифровка
+    (её у ролика не больше speech.TEXT_MAX)."""
+    tail = "\n\n".join(f"{SPEECH_MARK} {t}" for t in said)
+    room = max(AD_TEXT_MAX - len(tail) - 2, AD_TEXT_MAX // 2) if tail else AD_TEXT_MAX
+    head = ocr_engine.clip("\n\n".join(texts), room) if texts else ""
+    out = "\n\n".join(p for p in (head, tail) if p)
+    return ocr_engine.clip(out) if out else None
+
+
 def _ocr_text(item_id: int, ad_id: str) -> bool:
-    """Текст OCR публикации — распознанное по изображениям и кадрам в порядке публикации, без повторов. True — ad.ocr
-    изменился (UPDATE без decision_rev: это не решение аналитика)."""
+    """Текст OCR публикации — распознанное по изображениям и кадрам в порядке публикации, без повторов, и расшифровки
+    речи роликов. True — ad.ocr изменился (UPDATE без decision_rev: это не решение аналитика)."""
     with SessionLocal() as db:
         texts: list[str] = []
+        said: list[str] = []
         for a in _assets(db, item_id):
-            if a.kind in ("image", "frame") and a.current and a.status == "downloaded" and a.ocr_status == "done":
+            if not a.current or a.status != "downloaded":
+                continue
+            if a.kind in ("image", "frame") and a.ocr_status == "done":
                 t = (a.ocr_text or "").strip()
                 if t and t not in texts:
                     texts.append(t)
-        ocr = ocr_engine.clip("\n\n".join(texts)) if texts else None
+            elif a.kind == "video" and a.parent_id is None:
+                sp = (a.meta or {}).get("speech")
+                t = (sp.get("text") or "").strip() if isinstance(sp, dict) and sp.get("status") == "done" else ""
+                if t and t not in said:
+                    said.append(t)
+        ocr = compose_ocr(texts, said)
         current = db.scalar(select(models.Ad.ocr).where(models.Ad.id == ad_id))
         if (current or None) == ocr:
             return False
@@ -391,6 +463,23 @@ def _video_event(cur: list[models.MediaAsset], only: Optional[set]) -> Optional[
     return None
 
 
+def _speech_event(cur: list[models.MediaAsset], heard: set) -> Optional[str]:
+    """Событие распознавания речи по роликам этого анализа. Нет звука или речи и выключенный этап — без события; сбой
+    движка, тайм-аут и слишком длинный ролик не выглядят как «в ролике молчат»."""
+    sps = [(a.meta or {}).get("speech") or {} for a in cur if a.id in heard and a.kind == "video"]
+    done = [s for s in sps if s.get("status") == "done"]
+    bad = [s for s in sps if s.get("status") in _SPEECH_RETRY and s.get("detail") != speech.DISABLED]
+    if not done:
+        return f"Речь в ролике не распознана: {bad[0].get('detail') or 'причина не указана'}" if bad else None
+    langs = ", ".join(dict.fromkeys(speech.LANG_LABELS.get(s.get("language"), s.get("language") or "?") for s in done))
+    n = len(done)
+    what = (f"Речь в ролике распознана ({langs}) — текст добавлен к OCR" if n == 1 else
+            f"Речь распознана в {n} {_plural(n, 'ролике', 'роликах', 'роликах')} ({langs}) — текст добавлен к OCR")
+    if bad:
+        what += f"; не распознано роликов: {len(bad)} ({bad[0].get('detail') or 'причина не указана'})"
+    return what
+
+
 def _hypothesis_event(res: dict, linked: bool, source: str) -> tuple[str, Optional[str]]:
     low = T["lowConfidence"]
     hyps = res.get("hypotheses") or []
@@ -457,7 +546,7 @@ def _rules_only(job_id: Optional[int], ad_id: str, item_id: int, v: int, reason:
 
 def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: bool = False,
                  rules_only: bool = False, reason: Optional[str] = None) -> dict:
-    """Анализ публикации ad_id (задание job_id): этапы media → frames → ocr → rules → llm → events. Итог — jobs.result.
+    """Анализ публикации ad_id (задание job_id): этапы media → frames → speech → ocr → rules → llm → events. Итог — jobs.result.
     now — время захвата задания; сроки повтора загрузок и время событий — от текущего момента (clock). force —
     «Проанализировать ещё раз»: анализ идёт и по уже проанализированной версии, Claude запрашивается снова. rules_only —
     только пересчёт правил по проанализированной версии (без Claude); force его отменяет."""
@@ -496,6 +585,9 @@ def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: boo
     _media_stage(item_id, now, changed, clock)
     _stage(job_id, item_id, "frames")
     _frames_stage(item_id, now, changed)
+    heard: set = set()  # видео, речь которых распознана (или не распознана) в этом анализе
+    _stage(job_id, item_id, "speech")
+    _speech_stage(item_id, force, heard)
     _stage(job_id, item_id, "ocr")
     _ocr_stage(item_id)
     ocr_changed = _ocr_text(item_id, ad_id)
@@ -513,6 +605,10 @@ def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: boo
         events: list[tuple[str, str, Optional[str]]] = []
         if ocr_changed or first:
             what = _ocr_event(cur)
+            if what:
+                events.append(("system", what, None))
+        if heard:
+            what = _speech_event(cur, heard)
             if what:
                 events.append(("system", what, None))
         if first or changed:
@@ -533,6 +629,8 @@ def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: boo
             ads_service._event(db, kind, SYSTEM, what, at=at, ad_id=ad_id, complex_id=cid)
         counts = {k: sum(a.ocr_status == k for a in cur if a.kind in ("image", "frame"))
                   for k in ("done", "empty", "unavailable", "failed")}
+        heard_st = [((a.meta or {}).get("speech") or {}).get("status") for a in cur if a.id in heard]
+        speech_counts = {k: heard_st.count(k) for k in dict.fromkeys(heard_st) if k}
         retry_times = [t for t in (_retry_at(a) for a in cur if a.status == "pending" and a.parent_id is None) if t]
         llm_retry = claude.retry_at if claude is not None else None
         db.execute(update(I).where(I.id == item_id, or_(I.analyzed_version.is_(None), I.analyzed_version <= v))
@@ -556,6 +654,8 @@ def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: boo
            "autolinked": linked}
     if why_not:
         out["autolinkSkipped"] = why_not
+    if speech_counts:
+        out["speech"] = speech_counts
     if retry_times:
         out["mediaRetryAt"] = models.iso(min(retry_times))
     if claude is not None:

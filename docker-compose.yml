@@ -61,8 +61,10 @@ services:
       TG_SESSION_PATH: /data/private/telegram.session
       SAQ_ENV_FILE: ""
       SAQ_WORKER_ID: worker-1
-    # сессия Telegram — секрет: отдельный том, смонтирован только сюда
-    volumes: [media:/data/media, tgsession:/data/private]
+      SAQ_ASR_MODEL_DIR: /data/models
+    # сессия Telegram — секрет: отдельный том, смонтирован только сюда; asrmodels — модели распознавания речи
+    # (скачиваются один раз, пересборка образа их не теряет)
+    volumes: [media:/data/media, tgsession:/data/private, asrmodels:/data/models]
     restart: unless-stopped
     # остановка: текущее задание дорабатывает (загрузка файла прерывается через 30 с), только потом SIGKILL
     stop_grace_period: 120s
@@ -86,3 +88,4 @@ volumes:
   pgdata:
   media:
   tgsession:
+  asrmodels:
