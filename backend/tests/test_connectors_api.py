@@ -1,7 +1,10 @@
 """API подключений (integration-spec §10.4–§10.8, §11.1, §5.3, §16.2 test_connectors_api): состояние без секретов,
 права администратора, настройки, запуски, «Обновить всё», изоляция модулей, защита публичного адреса."""
+import json
 import re
+from datetime import timedelta
 
+import pytest
 from sqlalchemy import select
 
 from conftest import FAKE_ADMIN_TOKEN
@@ -212,6 +215,89 @@ def test_disable_keeps_deferred_paid_run(client, env):
         db.commit()
     client.patch("/api/sources/tiktok", headers=admin(), json={"author": AUTHOR, "enabled": False})
     assert client.get(f"/api/collection-runs/{run_id}").json()["status"] == "cancelled"
+
+
+# ---------- вид для посетителя ----------
+
+KRISHA_URL = "https://krisha.kz/prodazha/kvartiry/ust-kamenogorsk/"
+DETAIL = "Сайт закрыл выдачу проверкой доступа"
+FAILURE = "krisha.kz ответил 503 на /prodazha/kvartiry"
+NOTE = "страница 2: 503 от сервера krisha.kz"
+
+
+def _detailed() -> int:
+    """Подключение и запуск со всеми подробностями (пояснение, ошибка, настройки, факты, автор, стоимость, заметки) и
+    живой воркер с ID — то, что посетитель видеть не должен."""
+    now = models.utcnow()
+    with SessionLocal() as db:
+        r = service.row(db, "krisha", create=True)
+        r.status, r.status_detail, r.last_error, r.last_error_at = "error", DETAIL, FAILURE, now
+        r.config, r.facts = {"searchUrls": [KRISHA_URL]}, {"account": "@saq-monitor", "keyFp": "fp0123456789"}
+        run = models.CollectionRun(collector="krisha", trigger="manual", status="failed", requested_by=AUTHOR,
+                                   created_at=now, finished_at=now, external_run_id="extRun0001", cost_usd=0.12,
+                                   error_code="http_503", error=FAILURE,
+                                   notes=[{"at": models.iso(now), "level": "error", "text": NOTE}])
+        db.add(run)
+        db.add(models.WorkerLease(name="worker:host-01", holder="host-01", expires_at=now + timedelta(seconds=60),
+                                  heartbeat_at=now, info={"id": "host-01"}))
+        db.commit()
+        return run.id
+
+
+@pytest.mark.visitor
+def test_visitor_sees_only_status_and_counts(client, env):
+    """Без токена администратора (и с неверным): статусы, расписание и счётчики есть; способа подключения, имён
+    ключей, списков источников, пояснений, ошибок, фактов, автора, стоимости, заметок и ID воркера нет."""
+    env(SAQ_ADMIN_TOKEN=FAKE_ADMIN_TOKEN)
+    run_id = _detailed()
+    for headers in ({}, {"X-Admin-Token": "t-wrong-0123456789abcdef0123"}):
+        r = client.get("/api/sources/connectors", headers=headers)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert (body["admin"], body["adminConfigured"]) == (False, True)
+        assert body["worker"]["alive"] is True and body["worker"]["id"] is None
+        c = {x["code"]: x for x in body["connectors"]}
+        k = c["krisha"]
+        assert (k["status"], k["statusLabel"], k["intervalMin"], k["counts"]) == (
+            "error", "ошибка", 360, {"items": 0, "ads": 0, "media": 0})
+        assert (k["via"], k["statusDetail"], k["lastError"], k["lastErrorAt"], k["config"], k["facts"]) == (
+            "", None, None, None, {}, {})
+        run = k["lastRun"]
+        assert (run["id"], run["status"], run["trigger"]) == (run_id, "failed", "manual")
+        assert (run["requestedBy"], run["externalRunId"], run["costUsd"], run["errorCode"], run["error"],
+                run["notes"]) == (None, None, None, None, None, [])
+        assert c["instagram"]["configured"] is False
+        assert all(x["missing"] == [] and x["secretRefs"] == [] and x["via"] == "" for x in body["connectors"])
+        one = client.get("/api/sources/connectors/krisha", headers=headers).json()
+        runs = client.get("/api/collection-runs", headers=headers).json()
+        got = client.get(f"/api/collection-runs/{run_id}", headers=headers).json()
+        assert one["statusDetail"] is None and one["lastRun"]["notes"] == []
+        assert [x["id"] for x in runs] == [run_id] and runs[0]["error"] is None and got["costUsd"] is None
+        text = json.dumps([body, one, runs, got], ensure_ascii=False)
+        for hidden in (DETAIL, FAILURE, NOTE, KRISHA_URL, "@saq-monitor", "fp0123456789", "extRun0001", "host-01",
+                       AUTHOR, "META_USER_ACCESS_TOKEN", "APIFY_TOKEN", "TG_API_HASH", "ANTHROPIC_MODEL",
+                       "/api/intake"):
+            assert hidden not in text, hidden
+
+
+@pytest.mark.visitor
+def test_admin_token_gets_full_view(client, env):
+    env(SAQ_ADMIN_TOKEN=FAKE_ADMIN_TOKEN)
+    run_id = _detailed()
+    body = client.get("/api/sources/connectors", headers=admin()).json()
+    assert body["admin"] is True and body["worker"]["id"] == "host-01"
+    k = next(x for x in body["connectors"] if x["code"] == "krisha")
+    assert (k["statusDetail"], k["lastError"], k["config"]["searchUrls"], k["facts"]["account"]) == (
+        DETAIL, FAILURE, [KRISHA_URL], "@saq-monitor")
+    assert k["via"] and (k["lastRun"]["requestedBy"], k["lastRun"]["costUsd"]) == (AUTHOR, 0.12)
+    ig = next(x for x in body["connectors"] if x["code"] == "instagram")
+    assert ig["missing"] == ["META_USER_ACCESS_TOKEN"]
+    got = client.get(f"/api/collection-runs/{run_id}", headers={"Authorization": f"Bearer {FAKE_ADMIN_TOKEN}"})
+    assert got.json()["notes"][0]["text"] == NOTE
+    # администрирование не настроено — подробностей нет никому
+    env(SAQ_ADMIN_TOKEN=None)
+    body = client.get("/api/sources/connectors", headers=admin()).json()
+    assert (body["admin"], body["adminConfigured"]) == (False, False)
 
 
 # ---------- запуски ----------

@@ -472,13 +472,22 @@ describe('режим администратора: токен только в se
 describe('запросы подключений', () => {
   const list = { connectors: [conn()], worker: { alive: true }, adminConfigured: true }
 
-  it('getConnectors: данные; заголовок администратора не отправляется', async () => {
-    setAdminToken(TOKEN)
+  it('getConnectors: без режима администратора — без заголовка (вид для посетителя), в режиме — с токеном (полные сведения)', async () => {
     const f = reply(200, list)
     vi.stubGlobal('fetch', f)
     expect(await getConnectors()).toEqual(list)
     expect(sent(f)).toMatchObject({ url: '/api/sources/connectors', method: 'GET' })
     expect(sent(f).headers[ADMIN_HEADER]).toBeUndefined()
+    setAdminToken(TOKEN)
+    const g = reply(200, { ...list, admin: true })
+    vi.stubGlobal('fetch', g)
+    expect(await getConnectors()).toEqual({ ...list, admin: true })
+    expect(sent(g).headers[ADMIN_HEADER]).toBe(TOKEN)
+    const h = reply(200, run())
+    vi.stubGlobal('fetch', h)
+    await getRun(5)
+    expect(sent(h)).toMatchObject({ url: '/api/collection-runs/5', method: 'GET' })
+    expect(sent(h).headers[ADMIN_HEADER]).toBe(TOKEN)
   })
 
   it('getConnectors: нет связи, сервер старой версии, HTML вместо JSON — null; 500 — ошибка', async () => {

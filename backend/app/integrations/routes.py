@@ -1,6 +1,8 @@
 """API подключений и приёма публикаций (integration-spec §11.1, §7.4).
 
-Чтение (состояние подключений, запуски, версии публикации, файлы) токена не требует и секретов не содержит. Настройка
+Чтение (состояние подключений, запуски, версии публикации, файлы) токена не требует и секретов не содержит; состояние
+подключений и запуски без токена администратора — урезанные (service.public_*): посетитель видит только статусы,
+расписание и счётчики. Настройка
 подключений, ручной запуск и повторный анализ ИИ (платный запрос к Claude) — только администратору (SAQ_ADMIN_TOKEN,
 проверяет сервер). Приём публикаций — по отдельному токену INTEGRATION_INGEST_TOKEN; токен проверяется ДО разбора тела
 запроса, отказы записываются в состояние подключения «Приём публикаций API». Сбор, проверки и анализ в запросе не
@@ -56,17 +58,23 @@ def _invalid(loc: tuple, msg: str, value: Any) -> RequestValidationError:
 # ---------- подключения ----------
 
 @router.get("/api/sources/connectors", response_model=schemas.ConnectorsOut, response_model_by_alias=True)
-def connectors(db: Session = Depends(get_db)):
-    """Подключения в порядке страницы: фактический статус, настройки, счётчики, последний запуск; жив ли воркер."""
+def connectors(request: Request, db: Session = Depends(get_db)):
+    """Подключения в порядке страницы: фактический статус, настройки, счётчики, последний запуск; жив ли воркер.
+    Без токена администратора — только статусы, расписание и счётчики (admin = false)."""
     now = models.utcnow()
-    return {"connectors": service.view(db, now=now), "worker": service.worker_info(db, now),
-            "admin_configured": bool(get_settings().admin_token)}
+    admin = auth.is_admin(request)
+    items, worker = service.view(db, now=now), service.worker_info(db, now)
+    if not admin:
+        items, worker = [service.public_connector(c) for c in items], service.public_worker(worker)
+    return {"connectors": items, "worker": worker, "admin_configured": bool(get_settings().admin_token),
+            "admin": admin}
 
 
 @router.get("/api/sources/connectors/{code}", response_model=schemas.ConnectorOut, response_model_by_alias=True)
-def connector_one(code: str, db: Session = Depends(get_db)):
+def connector_one(code: str, request: Request, db: Session = Depends(get_db)):
     _connector(code)
-    return service.view(db, [code])[0]
+    c = service.view(db, [code])[0]
+    return c if auth.is_admin(request) else service.public_connector(c)
 
 
 @router.post("/api/sources/collect-all", response_model=schemas.CollectAllOut, response_model_by_alias=True)
@@ -130,22 +138,24 @@ def collect_connector(code: registry.ConnectorCode, body: schemas.AdminActionIn,
 # ---------- запуски ----------
 
 @router.get("/api/collection-runs", response_model=List[schemas.RunOut], response_model_by_alias=True)
-def runs(source: Optional[str] = Query(None, max_length=32), limit: int = Query(20, ge=1, le=100),
-         db: Session = Depends(get_db)):
-    """Запуски сбора и проверок, новые первыми."""
+def runs(request: Request, source: Optional[str] = Query(None, max_length=32),
+         limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_db)):
+    """Запуски сбора и проверок, новые первыми; без токена администратора — без автора, ошибок, заметок и стоимости."""
     R = models.CollectionRun
     q = select(R).order_by(R.id.desc()).limit(limit)
     if source:
         q = q.where(R.collector == source)
-    return [service.run_out(db, r) for r in db.scalars(q)]
+    out = [service.run_out(db, r) for r in db.scalars(q)]
+    return out if auth.is_admin(request) else [service.public_run(r) for r in out]
 
 
 @router.get("/api/collection-runs/{run_id}", response_model=schemas.RunOut, response_model_by_alias=True)
-def run_one(run_id: int = Path(ge=1, le=2_147_483_647), db: Session = Depends(get_db)):
+def run_one(request: Request, run_id: int = Path(ge=1, le=2_147_483_647), db: Session = Depends(get_db)):
     run = db.get(models.CollectionRun, run_id)
     if run is None:
         raise HTTPException(404, RUN_NOT_FOUND)
-    return service.run_out(db, run)
+    out = service.run_out(db, run)
+    return out if auth.is_admin(request) else service.public_run(out)
 
 
 # ---------- приём публикаций (§7.4) ----------

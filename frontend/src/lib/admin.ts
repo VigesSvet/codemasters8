@@ -1,6 +1,7 @@
 // Режим администратора подключений (integration-spec §5.1, §13.2): токен SAQ_ADMIN_TOKEN вводит человек, сервер его проверяет.
 // Токен живёт только в sessionStorage этой вкладки (до её закрытия) — не в localStorage, не в коде и не в VITE_*-переменных;
-// уходит заголовком X-Admin-Token только в маршруты администратора (adminCall) и нигде не логируется.
+// уходит заголовком X-Admin-Token только в маршруты администратора (adminCall) и в чтение подключений и запусков
+// (adminHeaders: с токеном — полные сведения, без него — вид для посетителя) и нигде не логируется.
 // Вход аналитика без пароля (lib/session.ts) прав администратора не даёт.
 import { ApiError, apiGet, isRouteMissing, type ExtraHeaders } from './api'
 
@@ -46,7 +47,7 @@ export const isAdmin = (box: Box | null = sessionBox()) => !!getAdminToken(box)
 export function tokenProblem(t: string): string | null {
   const s = t.trim()
   if (!s) return 'Введите токен администратора'
-  if (!/^[\x21-\x7e]+$/.test(s)) return 'Токен содержит недопустимые символы — скопируйте значение SAQ_ADMIN_TOKEN целиком'
+  if (!/^[\x21-\x7e]+$/.test(s)) return 'Токен содержит недопустимые символы — скопируйте токен целиком'
   return null
 }
 

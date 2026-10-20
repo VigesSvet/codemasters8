@@ -739,6 +739,9 @@ export interface ConnectorsResponse {
   worker: WorkerInfo
   /** На сервере задан SAQ_ADMIN_TOKEN — режим администратора доступен */
   adminConfigured: boolean
+  /** true — запрос с верным токеном администратора: полные сведения; false — вид для посетителя (без способа подключения,
+   *  имён ключей, настроек, пояснений, ошибок, фактов, автора, стоимости и заметок запусков); нет — сервер старой версии */
+  admin?: boolean
 }
 
 export interface CollectAllItem {

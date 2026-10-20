@@ -1,7 +1,9 @@
 // «Подключения» на странице «Источники» (integration-spec §13.2): фактическое состояние сборщиков публикаций, приёма заявок,
 // геосервиса и анализатора — с сервера (GET /api/sources/connectors). В офлайн-копии поддельных статусов нет.
 // Настройка и ручной запуск — только в режиме администратора: токен SAQ_ADMIN_TOKEN вводит человек, проверяет сервер,
-// хранится он только в этой вкладке (lib/admin.ts) и уходит заголовком лишь в маршруты администратора.
+// хранится он только в этой вкладке (lib/admin.ts) и уходит заголовком лишь в маршруты администратора и в чтение подключений.
+// Посетитель (без токена) получает от сервера только статусы, расписание и счётчики: способ подключения, имена ключей,
+// настройки, пояснения, ошибки, аккаунты, стоимость, заметки запусков и команды сервера ему не показываются.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { CollectAllResult, CollectionRun, ConfigField, Connector, ConnectorConfig, ConnectorGroup, ConnectorPatch, ConnectorsResponse } from '../data/types'
 import { checkAdmin, clearAdminToken, isAdmin, onAdminChange, setAdminToken, tokenProblem } from '../lib/admin'
@@ -109,7 +111,8 @@ export function ConnectorsProvider({ children }: { children: ReactNode }) {
   const settleRef = useRef(settle)
   useEffect(() => { settleRef.current = settle }, [settle])
 
-  // при входе, после сохранённых изменений (revision) и после восстановления связи — перечитываем
+  // при входе, после сохранённых изменений (revision), после восстановления связи и при входе и выходе из режима
+  // администратора (полные сведения или вид для посетителя) — перечитываем
   useEffect(() => {
     if (!live) return
     let alive = true
@@ -117,6 +120,8 @@ export function ConnectorsProvider({ children }: { children: ReactNode }) {
       // null — нет связи или сервер без сбора публикаций: прежний список не затираем
       (data) => {
         if (!alive) return
+        // токен вкладки сервер не принял (сменили на сервере, администрирование выключено) — выходим из режима администратора
+        if (data && token && data.admin === false) clearAdminToken()
         setLoad((l) => (data ? { data } : l?.data ? { data: l.data, stale: true } : { data: null }))
         if (!data) return
         // первая загрузка только запоминает последние запуски: прежние сборы ленту не перечитывают
@@ -126,7 +131,7 @@ export function ConnectorsProvider({ children }: { children: ReactNode }) {
       (e: unknown) => { if (alive) setLoad((l) => ({ data: l?.data ?? null, err: errorText(e) })) },
     )
     return () => { alive = false }
-  }, [live, ver, revision])
+  }, [live, ver, revision, token])
 
   // проверка, сбор в очереди или идёт — опрашиваем каждые 5 с
   const busy = !!load?.data && anyBusy(load.data.connectors)
@@ -136,8 +141,12 @@ export function ConnectorsProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(t)
   }, [live, busy, load, reload])
 
-  // вход и выход из режима администратора (и сброс токена после отказа сервера)
-  useEffect(() => onAdminChange(setToken), [])
+  // вход и выход из режима администратора (и сброс токена после отказа сервера); после выхода подробности администратора
+  // сразу убираем с экрана — до ответа сервера с видом для посетителя
+  useEffect(() => onAdminChange((on) => {
+    setToken(on)
+    if (!on) setLoad(null)
+  }), [])
 
   const value = useMemo<Conn>(() => {
     const list = load?.data?.connectors ?? []
@@ -229,6 +238,7 @@ export default function Connectors() {
                   {!data.worker?.alive && (
                     <div className="box warn t-sm" style={{ marginTop: 12, lineHeight: '20px' }}>
                       {COPY.workerDown}{data.worker?.lastSeenAt && <> Последний сигнал воркера: {when(data.worker.lastSeenAt)}.</>}
+                      {x.admin && <> {COPY.workerStart}</>}
                     </div>
                   )}
                   <AllResult />
@@ -372,7 +382,8 @@ function ConnectorCard({ c }: { c: Connector }) {
   const missing = c.missing ?? []
   // сессия Telegram — не ключ в .env: её создаёт вход из консоли сервера (подсказка ниже)
   const { env: envMissing, session: noSession } = splitMissing(missing)
-  const tgLogin = c.code === 'telegram' && (noSession || s === 'expired')
+  // команды входа — только администратору
+  const tgLogin = x.admin && c.code === 'telegram' && (noSession || s === 'expired')
   // пояснение сервера без повторов: «Нет на сервере…» уже есть ниже, команды входа Telegram — в подсказке
   const detail = c.statusDetail?.trim()
     && !(missing.length && /^Нет на сервере/i.test(c.statusDetail.trim()))
@@ -451,7 +462,8 @@ function ConnectorCard({ c }: { c: Connector }) {
   const ok = lastOkRow(c)
   const next = nextRun(c)
   const rows: [string, ReactNode][] = []
-  if (c.configFields?.length) rows.push(['Что собираем', configSummary(c)])
+  // списки источников сервер отдаёт только администратору: посетителю «список пуст» не показываем
+  if (x.admin && c.configFields?.length) rows.push(['Что собираем', configSummary(c)])
   if (collector && c.intervalMin) rows.push(['Период', intervalText(c.intervalMin)])
   if (account) rows.push(['Аккаунт', account])
   if (ok) rows.push([ok.label, <span key="ok" title={ok.at ?? undefined}>{when(ok.at)}</span>])
@@ -472,7 +484,7 @@ function ConnectorCard({ c }: { c: Connector }) {
           : <span className="lnk-ico">{c.kind === 'analyzer' ? <IcSparkles size={22} /> : <IcPlugConnection size={22} />}</span>}
         <div className="who">
           <div className="t-h3">{c.name}</div>
-          <div className="t-sm c2" style={{ marginTop: 2 }}>{c.via}</div>
+          {c.via && <div className="t-sm c2" style={{ marginTop: 2 }}>{c.via}</div>}
           <div className="lnk-tags">
             <span className={`tag ${toneOf(c)}`} title={detail ?? undefined}>{statusText(c)}</span>
             {collector && !c.enabled && <span className="tag gray">{COPY.disabled}</span>}

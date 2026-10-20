@@ -57,6 +57,22 @@ def _no_asr(monkeypatch):
     monkeypatch.setattr(speech, "available", lambda: False)
 
 
+def pytest_configure(config):
+    config.addinivalue_line("markers", "visitor: чтение подключений и запусков с настоящей проверкой токена "
+                                       "администратора (вид для посетителя)")
+
+
+@pytest.fixture(autouse=True)
+def _admin_reads(request, monkeypatch):
+    """Чтение подключений и запусков в тестах — с полными сведениями, как у администратора: тесты проверяют пояснения,
+    ошибки, факты и заметки. Вид для посетителя (без токена) проверяют тесты с меткой visitor."""
+    if request.node.get_closest_marker("visitor"):
+        return
+    from app import auth
+
+    monkeypatch.setattr(auth, "is_admin", lambda request: True)
+
+
 @pytest.fixture
 def client():
     """Клиент API на чистой пересеянной БД — у каждого теста своя."""

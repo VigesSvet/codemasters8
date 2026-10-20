@@ -6,7 +6,7 @@ import type {
   AdVersion, CollectAllResult, CollectionRun, ConfigField, Connector, ConnectorCode, ConnectorGroup, ConnectorKind, ConnectorPatch,
   ConnectorStatus, ConnectorsResponse, OlxStart, Platform, Processing, RunCounts, RunStatus, RunTrigger,
 } from '../data/types'
-import { adminCall } from './admin'
+import { adminCall, adminHeaders } from './admin'
 import { ApiError, apiGet, apiPatch, apiPost, orNoRoute, orNull } from './api'
 
 export { checkAdmin, signInAdmin } from './admin'
@@ -20,11 +20,13 @@ const isConnectors = (x: unknown) => isObj(x) && Array.isArray(x.connectors) && 
 const isConnector = (x: unknown) => isObj(x) && typeof x.code === 'string' && typeof x.status === 'string'
 
 /** Все подключения, воркер и adminConfigured. null — недоступно (нет связи, сервер без сбора публикаций, не JSON);
- *  при опросе null лучше не затирать прежний список. Ошибки сервера (500…) — ApiError */
-export const getConnectors = () => orNull(apiGet<ConnectorsResponse>('/sources/connectors'), isConnectors)
+ *  при опросе null лучше не затирать прежний список. Ошибки сервера (500…) — ApiError.
+ *  Чтение — с токеном администратора, если он есть в этой вкладке: без него сервер отдаёт вид для посетителя (admin: false) */
+export const getConnectors = () => orNull(apiGet<ConnectorsResponse>('/sources/connectors', adminHeaders()), isConnectors)
 
 /** Одно подключение; null — недоступно; 404 «Подключение не найдено» — ApiError */
-export const getConnector = (code: ConnectorCode | string) => orNull(apiGet<Connector>(`/sources/connectors/${enc(code)}`), isConnector)
+export const getConnector = (code: ConnectorCode | string) =>
+  orNull(apiGet<Connector>(`/sources/connectors/${enc(code)}`, adminHeaders()), isConnector)
 
 /** Настройки подключения (администратор): включение расписания, период, списки. 409/422 — текст сервера */
 export const patchConnector = (code: ConnectorCode | string, body: ConnectorPatch) =>
@@ -42,13 +44,13 @@ export const collectConnector = (code: ConnectorCode | string, author: string) =
 export const collectAll = (author: string) => adminCall((h) => apiPost<CollectAllResult>('/sources/collect-all', { author }, h))
 
 /** Запуск по номеру — для опроса хода; ошибки (в т. ч. нет связи) — ApiError, их показывает панель запуска */
-export const getRun = (id: number) => orNoRoute(apiGet<CollectionRun>(`/collection-runs/${id}`))
+export const getRun = (id: number) => orNoRoute(apiGet<CollectionRun>(`/collection-runs/${id}`, adminHeaders()))
 
 /** Последние запуски (новые первыми), по подключению или все; null — недоступно */
 export const getRuns = (source?: ConnectorCode | string, limit = 20) => {
   const q = new URLSearchParams({ limit: String(Math.min(100, Math.max(1, Math.round(limit)))) })
   if (source) q.set('source', source)
-  return orNull(apiGet<CollectionRun[]>(`/collection-runs?${q}`), Array.isArray)
+  return orNull(apiGet<CollectionRun[]>(`/collection-runs?${q}`, adminHeaders()), Array.isArray)
 }
 
 /** Версии публикации в источнике (новые первыми; [] — публикация не из приёма). null — недоступно;
@@ -514,14 +516,16 @@ export function processingNote(p: Processing | null | undefined): string | null 
 // ---------- Закреплённые тексты страницы «Источники» (§13.2) ----------
 
 export const COPY = {
-  offline: 'Состояние подключений хранится на сервере — в офлайн-копии недоступно (запустите ./dev.sh).',
+  offline: 'Состояние подключений хранится на сервере — в офлайн-копии недоступно.',
   unavailable: 'Состояние подключений не загрузилось: нет связи с сервером или сервер без сбора публикаций.',
-  workerDown: 'Воркер сбора не запущен — проверки и сбор стоят в очереди. Запуск: ./dev.sh или docker compose up -d worker.',
-  adminNotConfigured: 'Администрирование подключений не настроено на сервере (SAQ_ADMIN_TOKEN)',
+  workerDown: 'Воркер сбора не запущен — проверки и сбор стоят в очереди.',
+  /** Команды запуска воркера — только администратору */
+  workerStart: 'Запуск: ./dev.sh или docker compose up -d worker.',
+  adminNotConfigured: 'Администрирование подключений не настроено на сервере',
   adminButton: 'Режим администратора',
   adminField: 'Токен администратора',
-  adminHint: 'Значение SAQ_ADMIN_TOKEN с сервера. Хранится только в этой вкладке до её закрытия.',
-  adminLine: 'Настройка подключений и ручной запуск — только для администратора: токен проверяет сервер. Вход аналитика без пароля этого не даёт.',
+  adminHint: 'Токен выдаёт ответственный за сервер. Хранится только в этой вкладке до её закрытия.',
+  adminLine: 'Настройка, ручной запуск и подробности подключений (настройки, пояснения, ошибки, ключи) — только для администратора: токен проверяет сервер.',
   adminTag: 'администратор',
   needAdmin: 'Нужен режим администратора',
   stopped: 'Сбор остановлен после ошибки — запустите «Проверить подключение»',

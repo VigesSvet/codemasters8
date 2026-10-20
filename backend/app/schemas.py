@@ -957,6 +957,8 @@ class ConnectorsOut(Camel):
     connectors: List[ConnectorOut]
     worker: WorkerOut
     admin_configured: bool
+    # true — запрос с верным токеном администратора: полные сведения; false — сведения для посетителя
+    admin: bool = False
 
 
 class CollectAllItemOut(Camel):

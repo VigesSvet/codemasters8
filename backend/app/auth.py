@@ -5,7 +5,8 @@
 другими) — 503, заголовка нет — 401 (WWW-Authenticate: Bearer), токен неверный — 403. Сравнение — hmac.compare_digest.
 Отказы приёма публикаций и бота (401/403) записываются (service.record_reject, без токена) и видны в статусе
 подключения: клиент с неверным токеном выглядит как «нет доступа», а не как «ожидает заявок».
-Чтение состояния подключений токена не требует и секретов не содержит.
+Чтение состояния подключений токена не требует и секретов не содержит; полные сведения (пояснения, ошибки, настройки,
+факты проверки) — только с токеном администратора (is_admin), посетителю — статусы и счётчики.
 """
 import hashlib
 import hmac
@@ -82,6 +83,14 @@ def require_admin(request: Request) -> Admin:
     _check(request.headers.get("x-admin-token") or _bearer(request), secret, ADMIN_UNSET, ADMIN_MISSING, ADMIN_WRONG,
            None)
     return Admin(token_fp(secret))
+
+
+def is_admin(request: Request) -> bool:
+    """Чтение состояния подключений: верный токен администратора — полные сведения; без токена, с неверным или при
+    ненастроенном администрировании — сведения для посетителя (чтение открыто, отказа нет)."""
+    secret = get_settings().admin_token.get()
+    got = (request.headers.get("x-admin-token") or _bearer(request) or "").strip()
+    return bool(secret and got and _same(got, secret))
 
 
 def require_ingest(request: Request) -> None:

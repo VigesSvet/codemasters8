@@ -418,6 +418,27 @@ def connector_out(db: Session, conn: Connector, r: Optional[models.Collector], *
     }
 
 
+# Посетителю (без токена администратора) — только состояние: без способа подключения (адреса API, модели, сервисы),
+# имён ключей, списков источников, пояснений и текстов ошибок, фактов проверки (аккаунты, отпечатки ключей), автора,
+# стоимости и заметок запусков, ID воркера
+PUBLIC_CONNECTOR_HIDDEN = {"via": "", "status_detail": None, "missing": [], "secret_refs": [], "config": {},
+                           "last_error": None, "last_error_at": None, "facts": {}}
+PUBLIC_RUN_HIDDEN = {"requested_by": None, "external_run_id": None, "cost_usd": None, "error_code": None,
+                     "error": None, "notes": []}
+
+
+def public_run(run: dict) -> dict:
+    return {**run, **PUBLIC_RUN_HIDDEN}
+
+
+def public_connector(c: dict) -> dict:
+    return {**c, **PUBLIC_CONNECTOR_HIDDEN, "last_run": public_run(c["last_run"]) if c.get("last_run") else None}
+
+
+def public_worker(w: dict) -> dict:
+    return {**w, "id": None}
+
+
 def view(db: Session, codes: Optional[list] = None, *, now: Optional[datetime] = None) -> list[dict]:
     """ConnectorOut по реестру (порядок страницы) или по выбранным кодам."""
     now = models.as_utc(now) or models.utcnow()
