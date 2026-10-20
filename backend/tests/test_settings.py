@@ -300,7 +300,7 @@ def test_redact_is_linear_on_long_tokens():
     """Регрессия: "x-x-x-…" и "a.a.a.…"(путь запроса в журнале доступа uvicorn) маскировались за квадратичное время -
     один запрос с длинным путём останавливал цикл событий API на десятки секунд."""
     for text in ("x-" * 50000, "a." * 50000, "x-a-token-" * 10000, "x-a-" * 25000 + "token"):
-        assert _fastest(lambda: logs.redact(text, limit=None)) < 0.1, text[:12]
+        assert _fastest(lambda text=text: logs.redact(text, limit=None)) < 0.1, text[:12]
     r = logs.redact  # маскирование после переписывания шаблонов - прежнее
     assert r("X-Goog-Api-Token: abc123 x") == "X-Goog-Api-Token: *** x"
     assert r("x-telegram-bot-api-secret-token=abc123") == "x-telegram-bot-api-secret-token=***"

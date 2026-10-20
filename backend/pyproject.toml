@@ -1,0 +1,33 @@
+# Настройки инструментов бэкенда: линтер ruff и pytest. Пакетом бэкенд не собирается - зависимости в requirements*.txt.
+
+[tool.ruff]
+target-version = "py312"  # как образ API(python:3.12-slim-trixie)
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+# Правила, которые ловят ошибки, а не оформление: pyflakes(F), ошибки pycodestyle(E4 импорты, E7 инструкции, E9
+# синтаксис), предупреждения pycodestyle(W), bugbear(B), ошибки pylint(PLE), flake8-pie(PIE), забытый отладчик(T10),
+# ошибки вызова logging(LOG), точечные noqa и type: ignore(PGH), аннотации типов в стиле Python 3.12(UP006, UP007,
+# UP017, UP035, UP045) и опасные вызовы из flake8-bandit: exec, eval, pickle, yaml.load, shell=True, слабые хэши,
+# verify=False, запрос без тайм-аута(S102, S113, S301, S307, S324, S501, S506, S602, S604, S605)
+select = [
+    "F", "E4", "E7", "E9", "W", "B", "PLE", "PIE", "T10", "LOG", "PGH",
+    "UP006", "UP007", "UP017", "UP035", "UP045",
+    "S102", "S113", "S301", "S307", "S324", "S501", "S506", "S602", "S604", "S605",
+]
+ignore = [
+    "B008",  # Depends()/Query() в значениях по умолчанию - так FastAPI объявляет зависимости и параметры
+    "E731",  # короткие лямбды-помощники внутри функций - осознанный стиль
+    "E741",  # однобуквенные псевдонимы I, O(словарь входа и выхода) - осознанный стиль
+]
+
+[tool.ruff.lint.per-file-ignores]
+# переменные окружения тестов задаются до импорта app: engine БД создаётся при импорте app.db
+"tests/conftest.py" = ["E402"]
+# фикстуры pytest из другого модуля тестов: импорт и параметр функции с тем же именем
+"tests/test_discovery.py" = ["F811"]
+
+[tool.pytest.ini_options]
+markers = [
+    "scenario: сквозной сценарий README на стартовом наборе(make e2e)",
+]

@@ -1,5 +1,5 @@
 """Telegram-бот заявок жителей(отдельный проект saq-telegram-bot) - приёмник POST /api/intake/telegram
-(integration-spec §12.3, план §7.2).
+(docs/INTEGRATIONS.md, "Telegram-бот заявок").
 
 Контракт адаптера saq-telegram-bot не сверен - проверить по integration/telegram_intake.py, когда проект бота будет
 доступен(contract_verified = False). Ниже - контракт, который реализует этот приёмник.
@@ -54,13 +54,13 @@ origin = collected, статус "new", без привязки к ЖК) и ан
 комментарий - только в bot_submissions: ни в публикации, ни в снимке приёма(raw), ни в журнале, ни в ответах API их
 нет. Повторная доставка дополняет их, а не стирает: отсутствующие или пустые поля заявителя остаются прежними,
 комментарий заменяется только непустым. Аккаунт и ссылка, указанные жителем, хранятся у публикации как его слова и в
-сопоставлении с ЖК не участвуют(D20).
+сопоставлении с ЖК не участвуют.
 """
 import hashlib
 import logging
 import re
 from datetime import datetime, timedelta, UTC
-from typing import Annotated, Any, Literal, Optional
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
@@ -125,7 +125,7 @@ def _as_text(v: Any) -> Any:
 
 
 def _short(n: int) -> Any:
-    return Optional[Annotated[str, BeforeValidator(_as_text), StringConstraints(strip_whitespace=True, max_length=n)]]
+    return Annotated[str, BeforeValidator(_as_text), StringConstraints(strip_whitespace=True, max_length=n)] | None
 
 
 class TelegramApplicantIn(Camel):
