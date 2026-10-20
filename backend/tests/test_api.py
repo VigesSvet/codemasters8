@@ -3,7 +3,7 @@ import json
 from app.risk import score_complex
 from app.risk_model import SHARED, VERSION, T
 
-AS_OF = "2026-10-15"  # дата контрольных значений (как в shared/testdata/risk_golden.json)
+AS_OF = "2026-10-15"  # дата контрольных значений(как в shared/testdata/risk_golden.json)
 
 
 def _risk(c, cid):
@@ -46,11 +46,11 @@ def test_traffic_light_and_control_cases(client):
     r = _risk(client, "c10")
     assert _f(r, "R1")["state"] == "clear" and _f(r, "R1")["reason"] == "ok_guarantee_no_mio" and r["zone"] == "green"
 
-    # Кейс A: нет сведений об основании → 0 баллов за R1 и «нужна проверка»
+    # Кейс A: нет сведений об основании → 0 баллов за R1 и "нужна проверка"
     r = _risk(client, "c14")
     assert _f(r, "R1")["state"] == "unknown" and r["needsCheck"] and "R1" in r["summary"]
 
-    # 60 баллов без пары R1+R2 — жёлтая
+    # 60 баллов без пары R1+R2 - жёлтая
     r = _risk(client, "c8")
     assert (r["score"], r["zone"]) == (60, "yellow")
 
@@ -62,7 +62,7 @@ def test_risk_endpoints_agree_with_engine(client):
         one = _risk(client, row["complexId"])
         assert {k: v for k, v in row.items() if k != "complexId"} == one
 
-    # API (ORM → camelCase) считает так же, как движок на исходном сиде
+    # API(ORM → camelCase) считает так же, как движок на исходном сиде
     seed = json.loads((SHARED / "testdata" / "demo_seed.json").read_text(encoding="utf-8"))
     devs = {d["id"]: d for d in seed["developers"]}
     by_id = {r["complexId"]: r for r in rows}
@@ -87,7 +87,7 @@ def test_manual_ad_and_status_journal(client):
     assert [f["code"] for f in s["factors"]] == ["R1", "R2", "R3"] and "бронь" in s["signals"]["funds"]
     assert (_f(s, "R1")["state"], _f(s, "R1")["reason"]) == ("unknown", "R1_link_unconfirmed")
 
-    # аналитик подтвердил привязку → факт: R1 объекта входит в оценку, кейс B — красная 70
+    # аналитик подтвердил привязку → факт: R1 объекта входит в оценку, кейс B - красная 70
     r = client.patch(f"/api/ads/{ad['id']}/complex", json={"complexId": "c2", "author": "Тест"})
     assert r.status_code == 200 and (r.json()["complexId"], r.json()["matchConfidence"]) == ("c2", 1)
     assert r.json()["linkConfirmedBy"] == "Тест" and r.json()["linkConfirmedAt"].endswith("+00:00")
@@ -107,7 +107,7 @@ def test_manual_ad_and_status_journal(client):
                               "Основание: Сверено с картотекой ГАСК")
     assert all(e["at"].endswith("+00:00") and e["adId"] == ad["id"] and e["complexId"] == "c2" for e in log)
 
-    # без признаков ЖК — без привязки, в журнале — что ЖК не определён
+    # без признаков ЖК - без привязки, в журнале - что ЖК не определён
     ad = client.post("/api/ads", json={"platform": "olx", "account": "@x", "text": "Продаю гараж"}).json()
     assert ad["complexId"] is None and ad["matchConfidence"] == 0 and ad["linkConfirmedBy"] is None
     assert [(e["kind"], e["what"]) for e in client.get(f"/api/ads/{ad['id']}/audit").json()][-1] == (
@@ -126,7 +126,7 @@ def test_link_ad_to_complex(client):
     def risk_c1():
         return next(r for r in client.get("/api/risk", params={"asOf": AS_OF}).json() if r["complexId"] == "c1")
 
-    # a12 без привязки; привязали к c1 → у c1 появились R2/R3 (публикация с маркерами «вход от», «₸»)
+    # a12 без привязки; привязали к c1 → у c1 появились R2/R3(публикация с маркерами "вход от", "₸")
     assert (risk_c1()["score"], risk_c1()["zone"]) == (0, "green")
     r = link("a12", "c1", author="  Нестерова А.  ")
     assert r.status_code == 200 and (r.json()["complexId"], r.json()["matchConfidence"]) == ("c1", 1)
@@ -140,7 +140,7 @@ def test_link_ad_to_complex(client):
     assert journal("a12")[-1] == ("Тест", "Привязка изменена: «Ертіс Парк» → «Ульба Ривер»")
     assert risk_c1()["score"] == 0
 
-    # гипотеза из сида (a9 → c12, 54%) подтверждается тем же вызовом
+    # гипотеза из сида(a9 → c12, 54%) подтверждается тем же вызовом
     assert _f(_risk(client, "c12"), "R3")["state"] == "unknown"
     assert link("a9", "c12").json()["linkConfirmedBy"] == "Тест"
     assert _f(_risk(client, "c12"), "R3")["state"] == "hit"
@@ -194,7 +194,7 @@ def test_init_db_keeps_foreign_tables(client):
         assert {"keep_me", "meta", "signals", "analysts"} <= set(inspect(engine).get_table_names())
         assert len(client.get("/api/complexes").json()) == 14
 
-        # старая схема без meta, FK на уже удалённую таблицу (так бывает в SQLite) — всё равно пересоздаётся
+        # старая схема без meta, FK на уже удалённую таблицу(так бывает в SQLite) - всё равно пересоздаётся
         fk = " REFERENCES complexes(id)" if engine.dialect.name == "sqlite" else ""
         with engine.begin() as conn:
             for t in APP_TABLES:
@@ -222,7 +222,7 @@ def test_manual_ad_with_suggested_link_is_hypothesis(client):
     def log(aid):
         return [(e["kind"], e["who"], e["what"]) for e in client.get(f"/api/ads/{aid}/audit").json()]
 
-    # форма передаёт выбранную гипотезу ИИ — это гипотеза (в журнале kind ai), даже с высокой уверенностью
+    # форма передаёт выбранную гипотезу ИИ - это гипотеза(в журнале kind ai), даже с высокой уверенностью
     for conf in (0.6, 1):
         body = {"platform": "instagram", "account": "@form", "complexId": "c3", "matchConfidence": conf,
                 "text": "Старт продаж ЖК Ульба Ривер, бронь"}
@@ -230,14 +230,14 @@ def test_manual_ad_with_suggested_link_is_hypothesis(client):
         assert (ad["complexId"], ad["matchConfidence"], ad["linkConfirmedBy"]) == ("c3", conf, None)
         assert log(ad["id"])[-1] == ("ai", "Система", f"Гипотеза ИИ: ЖК «Ульба Ривер», уверенность {int(conf * 100)}% "
                                                       "(название) — нужна проверка аналитиком")
-    # без уверенности от формы — берётся уверенность анализа; ЖК, которого ИИ не предлагал, — «выбран в форме»
+    # без уверенности от формы - берётся уверенность анализа; ЖК, которого ИИ не предлагал, - "выбран в форме"
     ad = client.post("/api/ads", json={"platform": "instagram", "account": "@form", "text": "ЖК Ульба Ривер",
                                        "complexId": "c3"}).json()
     assert ad["matchConfidence"] == 0.8
     ad = client.post("/api/ads", json={"platform": "instagram", "account": "@form", "text": "Старт продаж, бронь",
                                        "complexId": "c7"}).json()
     assert ad["matchConfidence"] == 0 and "(выбран в форме ручного ввода)" in log(ad["id"])[-1][2]
-    # аналитик выбрал ЖК сам (linkConfirmed) — привязка сразу факт, с автором и временем
+    # аналитик выбрал ЖК сам(linkConfirmed) - привязка сразу факт, с автором и временем
     ad = client.post("/api/ads", json={"platform": "instagram", "account": "@form", "text": "Старт продаж, бронь",
                                        "complexId": "c3", "linkConfirmed": True, "author": "Тест"}).json()
     assert (ad["matchConfidence"], ad["linkConfirmedBy"]) == (1, "Тест") and ad["linkConfirmedAt"].endswith("+00:00")

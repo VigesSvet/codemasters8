@@ -1,4 +1,4 @@
-"""Хранилище файлов, безопасный загрузчик, кадры видео (integration-spec §6, §16.2 test_media)."""
+"""Хранилище файлов, безопасный загрузчик, кадры видео(integration-spec §6, §16.2 test_media)."""
 import errno
 import hashlib
 import importlib.util
@@ -40,13 +40,13 @@ def test_store_bytes_content_addressed_and_idempotent():
     path = media.path_of(s.storage_key)
     assert path.read_bytes() == data and oct(path.stat().st_mode & 0o777) == "0o644"
     assert path.is_relative_to(Path(os.environ["MEDIA_ROOT"]).resolve())
-    assert media.store_bytes(data) == s  # повтор — тот же ключ, файл не переписывается
+    assert media.store_bytes(data) == s  # повтор - тот же ключ, файл не переписывается
     assert len(list(path.parent.iterdir())) == 1
     assert oct(media.tmp_dir().stat().st_mode & 0o777) == "0o700"
 
 
 def test_sniff_by_signature():
-    assert media.sniff(png_bytes()[:64]) == "image/png"  # заявлен JPEG, а байты PNG — PNG
+    assert media.sniff(png_bytes()[:64]) == "image/png"  # заявлен JPEG, а байты PNG - PNG
     assert media.sniff(JPEG) == "image/jpeg"
     assert media.sniff(GIF) == "image/gif" and media.sniff(b"GIF87a....") == "image/gif"
     assert media.sniff(b"RIFF\x10\x00\x00\x00WEBPVP8 ") == "image/webp"
@@ -77,9 +77,9 @@ def test_store_rejects_type_size_and_low_disk(env, monkeypatch):
     with pytest.raises(media.MediaRejected) as e:
         media.store_bytes(big)
     assert (e.value.status, e.value.detail) == (413, "Файл больше 1 МБ")
-    assert media.store_bytes(mp4_bytes(1024 * 1024 + 10)).mime == "video/mp4"  # видео — свой предел
+    assert media.store_bytes(mp4_bytes(1024 * 1024 + 10)).mime == "video/mp4"  # видео - свой предел
     assert media.limit_for("video") == 2 * media.MB and media.limit_for("image/png") == media.MB
-    # мало места: свободно меньше MEDIA_MIN_FREE_MB (по умолчанию 1024 МБ) — 507, файл не сохранён
+    # мало места: свободно меньше MEDIA_MIN_FREE_MB(по умолчанию 1024 МБ) - 507, файл не сохранён
     monkeypatch.setattr(media.shutil, "disk_usage", lambda p: shutil._ntuple_diskusage(10, 10, 100 * media.MB))
     data = png_bytes((9, 9, 9))
     with pytest.raises(media.MediaRejected) as e:
@@ -106,7 +106,7 @@ def test_store_file_moves_and_falls_back_on_exdev(monkeypatch):
     assert len(calls) == 2 and media.path_of(s.storage_key).read_bytes() == data
     assert not tmp.exists() and s.sha256 == hashlib.sha256(data).hexdigest()
     assert not [p for p in media.tmp_dir().iterdir() if p.name.startswith("mv-")]
-    # такой файл уже есть — временный просто удаляется; неподходящий тип — тоже удаляется (файл забран)
+    # такой файл уже есть - временный просто удаляется; неподходящий тип - тоже удаляется(файл забран)
     tmp.write_bytes(data)
     assert media.store_file(tmp) == s and not tmp.exists()
     tmp.write_bytes(b"not an image")
@@ -145,7 +145,7 @@ def test_purge_unattached_uploads(client):
         left = {a.id for a in db.query(models.MediaAsset)}
         assert left == {shared_kept.id, fresh.id}
     assert not paths[old.id].exists()  # файл удалён вместе с записью
-    assert paths[shared_old.id].exists()  # тот же файл нужен привязанной записи — остаётся
+    assert paths[shared_old.id].exists()  # тот же файл нужен привязанной записи - остаётся
     assert paths[fresh.id].exists()
 
 
@@ -155,20 +155,20 @@ def _age(path: Path, hours: float = 25) -> None:
 
 
 def test_purge_orphans(client):
-    """Файл хранилища без записи MediaAsset (запись файла прошла, приём — нет) удаляется через сутки после последнего
-    использования; файл с записью, свежий файл и посторонние имена остаются; пустая media_assets — уборки нет."""
+    """Файл хранилища без записи MediaAsset(запись файла прошла, приём - нет) удаляется через сутки после последнего
+    использования; файл с записью, свежий файл и посторонние имена остаются; пустая media_assets - уборки нет."""
     orphan = media.path_of(media.store_bytes(png_bytes((171, 3, 251))).storage_key)
     fresh = media.path_of(media.store_bytes(png_bytes((172, 3, 251))).storage_key)
     stray = media.root() / "00" / "00" / "notes.txt"
     stray.parent.mkdir(parents=True, exist_ok=True)
     stray.write_bytes(b"x")
-    top = media.root() / ("ab" * 32 + ".png")  # имя как в хранилище, но не в ab/cd/ — не трогается
+    top = media.root() / ("ab" * 32 + ".png")  # имя как в хранилище, но не в ab/cd/ - не трогается
     top.write_bytes(b"x")
     for p in (orphan, stray, top):
         _age(p)
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(models.MediaAsset)) == 0
-        assert media.purge_orphans(db) == 0  # записей нет вовсе — похоже на чужую/новую БД: ничего не удаляется
+        assert media.purge_orphans(db) == 0  # записей нет вовсе - похоже на чужую/новую БД: ничего не удаляется
         assert orphan.exists()
         kept = _asset(db, ad_id="a1", data=png_bytes((173, 3, 251)))
         kept_path = media.path_of(kept.storage_key)
@@ -218,11 +218,11 @@ def test_upload_budget(client):
             db.add(models.MediaAsset(id=os.urandom(16).hex(), kind="image", status="downloaded", origin_ref="upload",
                                      size=1000, created_at=now - timedelta(minutes=5)))
         db.add(models.MediaAsset(id=os.urandom(16).hex(), kind="image", status="downloaded", origin_ref="intake",
-                                 size=1000, created_at=now))  # файл приёма публикаций — не ручная загрузка, не считается
+                                 size=1000, created_at=now))  # файл приёма публикаций - не ручная загрузка, не считается
         db.commit()
-        media.check_upload_budget(db, now, size=1000)  # 50-я — можно
+        media.check_upload_budget(db, now, size=1000)  # 50-я - можно
         db.add(models.MediaAsset(id=os.urandom(16).hex(), kind="image", status="downloaded", origin_ref="upload",
-                                 size=1000, ad_id="a1", created_at=now))  # привязанная к публикации — считается
+                                 size=1000, ad_id="a1", created_at=now))  # привязанная к публикации - считается
         db.commit()
         with pytest.raises(media.MediaRejected):
             media.check_upload_budget(db, now, size=1000)
@@ -256,7 +256,7 @@ def test_purge_temp():
 
 BLOCKED = ("127.0.0.1", "10.0.0.5", "169.254.169.254", "::1", "100.64.0.1", "fc00::1", "::ffff:127.0.0.1",
            "64:ff9b::a9fe:a9fe", "2002:7f00:0001::", "2001:0:4136:e378:8000:63bf:3f57:fefe", "0.0.0.0", "224.0.0.1",
-           "192.168.1.10", "fe80::1%eth0", "not-an-ip", "fec0::1", "[feff::1]")  # site-local fec0::/10 — не публичный
+           "192.168.1.10", "fe80::1%eth0", "not-an-ip", "fec0::1", "[feff::1]")  # site-local fec0::/10 - не публичный
 
 
 def test_is_public_ip():
@@ -264,9 +264,9 @@ def test_is_public_ip():
         assert not http.is_public_ip(ip), ip
     for ip in ("93.184.216.34", "8.8.8.8", "2606:4700:4700::1111", "[2a00:1450:4001::200e]"):
         assert http.is_public_ip(ip), ip
-    # NAT64 целиком в ::/8 (is_reserved) — блокируется даже с публичным IPv4 внутри (строже, чем нужно; так безопаснее)
+    # NAT64 целиком в ::/8(is_reserved) - блокируется даже с публичным IPv4 внутри(строже, чем нужно; так безопаснее)
     assert not http.is_public_ip("64:ff9b::808:808")
-    # Teredo: клиентский IPv4 (192.168.1.1) раскрывается и проверяется отдельно
+    # Teredo: клиентский IPv4(192.168.1.1) раскрывается и проверяется отдельно
     import ipaddress
 
     assert ipaddress.IPv4Address("192.168.1.1") in http._embedded(ipaddress.ip_address("2001:0:4136:e378:8000:63bf:3f57:fefe"))
@@ -340,7 +340,7 @@ def test_fetch_blocks_internal_addresses(http_mock):
 
 def test_fetch_redirects(http_mock):
     data = png_bytes((50, 60, 70))
-    # публичный адрес перенаправляет во внутреннюю сеть — запрос туда не выполняется
+    # публичный адрес перенаправляет во внутреннюю сеть - запрос туда не выполняется
     http_mock.on("GET", "https://cdn.example.com/r", status=302, headers={"Location": "https://inner.example.com/x.png"})
     http_mock.resolve("inner.example.com", "10.0.0.5")
     assert err("https://cdn.example.com/r").code == "blocked_address"
@@ -351,10 +351,10 @@ def test_fetch_redirects(http_mock):
                      headers={"Location": f"/hop{i + 1}"})
     e = err("https://cdn.example.com/hop0", max_redirects=3)
     assert e.code == "too_many_redirects"
-    # https → http — не выполняется
+    # https → http - не выполняется
     http_mock.on("GET", "https://cdn.example.com/down", status=302, headers={"Location": "http://cdn.example.com/x.png"})
     assert err("https://cdn.example.com/down").code == "bad_scheme"
-    # относительное перенаправление в пределах лимита — файл загружается
+    # относительное перенаправление в пределах лимита - файл загружается
     http_mock.on("GET", "https://cdn.example.com/ok", status=307, headers={"Location": "/files/ok.png?x=1"})
     http_mock.on("GET", "https://cdn.example.com/files/ok.png", content=data)
     assert fetch("https://cdn.example.com/ok").final_url == "https://cdn.example.com/files/ok.png"
@@ -364,7 +364,7 @@ def test_fetch_size_type_and_encoding(http_mock):
     data = png_bytes((1, 1, 1))
     http_mock.on("GET", "https://cdn.example.com/big", content=b"x", headers={"Content-Length": str(10 * 1024 * 1024)})
     assert err("https://cdn.example.com/big").code == "too_large"
-    # без Content-Length — обрыв по мере чтения, временный файл удалён
+    # без Content-Length - обрыв по мере чтения, временный файл удалён
     http_mock.on("GET", "https://cdn.example.com/stream", handler=lambda r: httpx.Response(
         200, content=iter([data[:16] + b"\x00" * 40000, b"\x00" * 40000])))
     before = set(media.tmp_dir().iterdir())
@@ -398,7 +398,7 @@ def test_fetch_url_rules(http_mock):
         fetch("https://cdn.example.com/a.png", headers={"Authorization": "Bearer x"})
     with pytest.raises(ValueError):
         fetch("https://cdn.example.com/a.png", headers={"X-Apify-Token": "x"})
-    # allowed_hosts: поддомены — да, похожие имена — нет; http — только разрешённым хостам и без учётных данных
+    # allowed_hosts: поддомены - да, похожие имена - нет; http - только разрешённым хостам и без учётных данных
     data = png_bytes((3, 3, 3))
     http_mock.on("GET", re.compile(r"cdninstagram\.com/"), content=data)
     assert fetch("https://scontent-x.cdninstagram.com/v/a.jpg", allowed_hosts=("cdninstagram.com",)).mime == "image/png"
@@ -418,7 +418,7 @@ def test_fetch_auth_headers_only_to_auth_hosts(http_mock):
     fetch(kv, auth_headers={"Authorization": "Bearer apify-secret-token"}, auth_hosts=("api.apify.com",))
     first, second = http_mock.calls
     assert first.headers["authorization"] == "Bearer apify-secret-token"
-    assert "authorization" not in second.headers  # чужой хост после перенаправления — без токена
+    assert "authorization" not in second.headers  # чужой хост после перенаправления - без токена
     http_mock.clear()
     http_mock.on("GET", "https://other.example.com/a.png", content=data)
     fetch("https://other.example.com/a.png", auth_headers={"Authorization": "Bearer x"}, auth_hosts=("api.apify.com",))
@@ -440,7 +440,7 @@ def test_fetch_total_deadline(http_mock, monkeypatch):
 
 def test_fetch_deadline_checked_per_network_block(http_mock, monkeypatch):
     """Регрессия: сервер отдаёт по байту чуть быстрее тайм-аута чтения. Общий срок и остановка воркера проверяются на
-    каждом сетевом блоке, а не раз в 64 КБ (раньше ошибка приходила только после всего тела — воркер стоял часами);
+    каждом сетевом блоке, а не раз в 64 КБ(раньше ошибка приходила только после всего тела - воркер стоял часами);
     тайм-ауты запроса не длиннее остатка срока."""
     url = "https://cdn.example.com/trickle.png"
     clock, sent, timeouts = [0.0], [], []
@@ -452,7 +452,7 @@ def test_fetch_deadline_checked_per_network_block(http_mock, monkeypatch):
 
         def body():
             for i in range(len(data)):
-                clock[0] += 20.0  # байт раз в 20 с — меньше тайм-аута чтения 30 с
+                clock[0] += 20.0  # байт раз в 20 с - меньше тайм-аута чтения 30 с
                 sent.append(i)
                 yield data[i:i + 1]
         return httpx.Response(200, content=body())
@@ -463,7 +463,7 @@ def test_fetch_deadline_checked_per_network_block(http_mock, monkeypatch):
     assert clock[0] <= 120 and len(sent) <= 6, (clock[0], len(sent))
     assert timeouts[0]["read"] == 30 and timeouts[0]["connect"] == 10
     clock[0], sent[:] = 0.0, []
-    flags = iter([False, False, False, True])  # перед запросом, два блока — нет; третий — остановка
+    flags = iter([False, False, False, True])  # перед запросом, два блока - нет; третий - остановка
     assert err(url, max_bytes=10 * 1024 * 1024, cancel=lambda: next(flags)).code == "cancelled" and len(sent) == 3
     clock[0] = 0.0
     assert err(url, max_bytes=10 * 1024 * 1024, total_timeout=5).code == "timeout"
@@ -475,7 +475,7 @@ def test_fetch_cancelled(http_mock):
     url = "https://cdn.example.com/big.png"
     http_mock.on("GET", url, content=png_bytes((178, 3, 251)) + b"\x00" * (3 * 1024 * 1024))
     before = set(media.tmp_dir().iterdir())
-    flags = iter([False, False, True])  # перед запросом, первый блок — нет; второй блок — остановка
+    flags = iter([False, False, True])  # перед запросом, первый блок - нет; второй блок - остановка
     e = err(url, max_bytes=8 * 1024 * 1024, cancel=lambda: next(flags))
     assert (e.code, e.retryable) == ("cancelled", True) and e.detail.startswith("Загрузка прервана: воркер")
     assert set(media.tmp_dir().iterdir()) == before and len(http_mock.calls) == 1
@@ -483,8 +483,8 @@ def test_fetch_cancelled(http_mock):
 
 
 def test_download_media_stops_after_grace(client, http_mock, monkeypatch):
-    """RunContext.download_media при остановке воркера: идущая загрузка получает DOWNLOAD_STOP_GRACE_S с, затем —
-    «failed» с понятной причиной (не SIGKILL посреди файла)."""
+    """RunContext.download_media при остановке воркера: идущая загрузка получает DOWNLOAD_STOP_GRACE_S с, затем -
+    "failed" с понятной причиной(не SIGKILL посреди файла)."""
     import threading
 
     from app.integrations import context, registry
@@ -508,9 +508,9 @@ def test_public_only_backend_pins_dns(monkeypatch):
                         lambda self, host, port, *a, **kw: seen.append((host, port)) or "stream")
     backend = http.PublicOnlyBackend()
     assert backend.connect_tcp("cdn.example.com", 443) == "stream"
-    assert seen == [("93.184.216.34", 443)]  # подключение — к проверенному IP, а не к имени
+    assert seen == [("93.184.216.34", 443)]  # подключение - к проверенному IP, а не к имени
     with pytest.raises(DownloadError) as e:
-        backend.connect_tcp("cdn.example.com", 443)  # второй ответ DNS — внутренний адрес (rebinding)
+        backend.connect_tcp("cdn.example.com", 443)  # второй ответ DNS - внутренний адрес(rebinding)
     assert e.value.code == "blocked_address" and seen == [("93.184.216.34", 443)]
 
 
@@ -547,7 +547,7 @@ def test_base_url_client_is_host_pinned(http_mock):
                 c.get(url)
             assert e.value.code == "host_not_allowed"
         with pytest.raises(DownloadError):
-            c.get("next")  # перенаправление на другой хост — тоже отклонено, токен туда не уходит
+            c.get("next")  # перенаправление на другой хост - тоже отклонено, токен туда не уходит
     assert [str(r.url) for r in http_mock.calls] == ["https://api.example.com/next"]
 
 
@@ -560,8 +560,8 @@ def test_video_command_and_limits(monkeypatch, tmp_path):
     tail = cmd[5:]
     assert tail[:7] == ["ffmpeg", "-nostdin", "-v", "error", "-protocol_whitelist", "file", "-f"]
     assert tail[7] == "mov" and tail[tail.index("-i") + 1] == "file:/m/v.mp4"
-    # -threads 1 — опция ввода (до -i): ограничивает декодер; иначе декодер H.264 заводит поток на ядро и 1080p
-    # не укладывается в --as (регрессия: кадры 1080x1920 не извлекались на 16 ядрах)
+    # -threads 1 - опция ввода(до -i): ограничивает декодер; иначе декодер H.264 заводит поток на ядро и 1080p
+    # не укладывается в --as(регрессия: кадры 1080x1920 не извлекались на 16 ядрах)
     assert tail[tail.index("-i") - 2:tail.index("-i")] == ["-threads", "1"]
     assert tail[tail.index("-filter_threads") + 1] == "1"
     assert tail[tail.index("-vf") + 1] == "fps=1/2.0,scale='min(1280,iw)':-2"
@@ -585,7 +585,7 @@ def test_video_failures_return_nothing(monkeypatch, tmp_path):
     monkeypatch.setattr(video.subprocess, "run", lambda *a, **kw: subprocess.CompletedProcess(a[0], 1, b"", b"bad data"))
     assert video.extract_frames(src, "video/mp4") == []
     assert video._reason(b"[dec:h264] Error submitting packet\n    Last message repeated 1 times\n") == \
-        "[dec:h264] Error submitting packet"  # в журнал — содержательная строка, не «Last message repeated»
+        "[dec:h264] Error submitting packet"  # в журнал - содержательная строка, не "Last message repeated"
     assert set(media.tmp_dir().iterdir()) == before  # каталог кадров удалён
 
 
@@ -602,7 +602,7 @@ def test_video_real_frames(tmp_path):
 
 @pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("prlimit"), reason="нет ffmpeg или prlimit")
 def test_video_real_frames_1080p_under_limits(tmp_path):
-    """Регрессия: 1080p H.264 под prlimit --as — декодер в один поток укладывается в ограничение памяти."""
+    """Регрессия: 1080p H.264 под prlimit --as - декодер в один поток укладывается в ограничение памяти."""
     src = tmp_path / "hd.mp4"
     made = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i",
                            "testsrc=duration=3:size=1920x1080:rate=30", "-pix_fmt", "yuv420p", "-c:v", "libx264",
@@ -613,7 +613,7 @@ def test_video_real_frames_1080p_under_limits(tmp_path):
     assert len(frames) >= 2 and all(media.sniff(png[:64]) == "image/png" for _, png in frames)
 
 
-# ---------- маршруты /api/media (integration-spec §11.1; появляются на шаге маршрутов фундамента) ----------
+# ---------- маршруты /api/media(integration-spec §11.1; появляются на шаге маршрутов фундамента) ----------
 
 needs_routes = pytest.mark.skipif(importlib.util.find_spec("app.integrations.routes") is None,
                                   reason="маршруты /api/media пишутся на следующем шаге фундамента")
@@ -657,8 +657,8 @@ def test_media_upload(client):
 
 @needs_routes
 def test_upload_budget_not_bypassed_by_attaching(client):
-    """Регрессия: загрузка, привязанная к публикации через POST /api/ads, выпадала из часового счёта — без входа можно
-    было загружать без предела, пока место не кончится и для собранных файлов (507)."""
+    """Регрессия: загрузка, привязанная к публикации через POST /api/ads, выпадала из часового счёта - без входа можно
+    было загружать без предела, пока место не кончится и для собранных файлов(507)."""
     codes = []
     for i in range(media.UPLOAD_HOURLY_FILES + 3):
         r = client.post("/api/media", files={"file": ("s.png", png_bytes((i, 7, 99)), "image/png")})

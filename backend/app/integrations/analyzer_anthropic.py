@@ -1,18 +1,18 @@
-"""Анализатор ИИ (Anthropic) публикаций: подключение для страницы «Подключения» и транспорт запросов этапа «llm»
-задания анализа (app.llm).
+"""Анализатор ИИ(Anthropic) публикаций: подключение для страницы "Подключения" и транспорт запросов этапа "llm"
+задания анализа(app.llm).
 
-Ключ только серверный (ANTHROPIC_API_KEY): клиенту SDK он передаётся явно, переменные окружения и профили SDK не
-читаются; в браузер, журнал и ответы API ключ не попадает (Secret, маскирование logs.redact). Запрос — Messages API
-(официальный SDK anthropic 1.x): структурированный ответ по JSON-схеме (output_config.format) и уровень размышления
-(output_config.effort). Модель по умолчанию — Claude Sonnet 5.5 (claude-sonnet-5-5); у неё, как и у Opus 5.5,
-размышление адаптивное и через {"type": "disabled"} не отключается — thinking, budget_tokens и temperature не
-передаются, ответ модели не предзаполняется. Моделям с серверными резервными моделями (claude-opus-5-5, claude-opus-5, claude-fable-5-1,
-claude-sonnet-5-5) добавляется fallbacks: "default" (бета server-side-fallback-2026-07-01): при отказе модели по
+Ключ только серверный(ANTHROPIC_API_KEY): клиенту SDK он передаётся явно, переменные окружения и профили SDK не
+читаются; в браузер, журнал и ответы API ключ не попадает(Secret, маскирование logs.redact). Запрос - Messages API
+(официальный SDK anthropic 1.x): структурированный ответ по JSON-схеме(output_config.format) и уровень размышления
+(output_config.effort). Модель по умолчанию - Claude Sonnet 5.5(claude-sonnet-5-5); у неё, как и у Opus 5.5,
+размышление адаптивное и через {"type": "disabled"} не отключается - thinking, budget_tokens и temperature не
+передаются, ответ модели не предзаполняется. Моделям с серверными резервными моделями(claude-opus-5-5, claude-opus-5, claude-fable-5-1,
+claude-sonnet-5-5) добавляется fallbacks: "default"(бета server-side-fallback-2026-07-01): при отказе модели по
 политике безопасности Anthropic повторяет тот же запрос на рекомендованной резервной модели в том же вызове.
 
-Повторы SDK выключены (max_retries=0): сетевые ошибки, 429 и 5xx повторяет задание анализа с паузой и учётом
-retry-after (app.llm), а не поток воркера. «Проверить подключение» — client.models.retrieve(модель): сведения о модели,
-без генерации и без оплаты. Тесты подменяют CLIENT_FACTORY (сети в тестах нет).
+Повторы SDK выключены(max_retries=0): сетевые ошибки, 429 и 5xx повторяет задание анализа с паузой и учётом
+retry-after(app.llm), а не поток воркера. "Проверить подключение" - client.models.retrieve(модель): сведения о модели,
+без генерации и без оплаты. Тесты подменяют CLIENT_FACTORY(сети в тестах нет).
 """
 import email.utils
 import logging
@@ -25,9 +25,9 @@ from ..logs import redact
 from ..settings import Settings, get_settings
 from .base import AccessDenied, AuthExpired, CheckResult, Connector, NotConfigured, RateLimited, SourceError
 
-try:  # пакет не установлен — подключение показывает ошибку, остальное приложение работает
+try:  # пакет не установлен - подключение показывает ошибку, остальное приложение работает
     import anthropic
-except ImportError:  # pragma: no cover — зависимость из requirements.txt
+except ImportError:  # pragma: no cover - зависимость из requirements.txt
     anthropic = None  # type: ignore[assignment]
 
 if TYPE_CHECKING:
@@ -39,12 +39,12 @@ CODE = "anthropic"
 NAME = "Анализатор ИИ (Anthropic)"
 KEY_ENV = "ANTHROPIC_API_KEY"
 BETA_FALLBACK = "server-side-fallback-2026-07-01"
-# модели, у которых есть серверные резервные модели (fallbacks: "default"); Haiku — без них
+# модели, у которых есть серверные резервные модели(fallbacks: "default"); Haiku - без них
 FALLBACK_MODELS = frozenset({"claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5"})
 SDK_MAX_RETRIES = 0
 SDK_MISSING = "Пакет anthropic не установлен на сервере — pip install -r backend/requirements.txt"
 ERROR_MAX = 300
-# Цены, $ за миллион токенов: вход, выход, запись в кэш (5 мин), чтение из кэша. claude-opus-4-8 — резервная модель
+# Цены, $ за миллион токенов: вход, выход, запись в кэш(5 мин), чтение из кэша. claude-opus-4-8 - резервная модель
 # fallbacks: "default" для отказов категории cyber. Неизвестная модель считается по самой дорогой цене.
 PRICES: dict[str, tuple[float, float, float, float]] = {
     "claude-opus-5-5": (4.0, 20.0, 5.0, 0.20),
@@ -83,7 +83,7 @@ def _sdk_client(s: Settings) -> Any:
 
 
 # Фабрика клиента Messages API: настройки → объект с .beta.messages.create(...) и .models.retrieve(...).
-# Тесты подменяют её поддельным клиентом (conftest запрещает сеть).
+# Тесты подменяют её поддельным клиентом(conftest запрещает сеть).
 CLIENT_FACTORY: Callable[[Settings], Any] = _sdk_client
 
 
@@ -92,15 +92,15 @@ def _close(client: Any) -> None:
     if callable(close):
         try:
             close()
-        except Exception:  # noqa: BLE001 — закрытие пула соединений не должно ронять анализ
+        except Exception:  # noqa: BLE001 - закрытие пула соединений не должно ронять анализ
             pass
 
 
 # ---------- ошибки ----------
 
 class CallError(Exception):
-    """Ошибка запроса к Anthropic. kind: auth (401) | denied (403, 402) | rate (429) | server (5xx, 529, 408, 409) |
-    network (сеть, тайм-аут) | bad_request (400, 404, 413, 422 …) | sdk (нет пакета) | internal. detail — по-русски,
+    """Ошибка запроса к Anthropic. kind: auth(401) | denied(403, 402) | rate(429) | server(5xx, 529, 408, 409) |
+    network(сеть, тайм-аут) | bad_request(400, 404, 413, 422 …) | sdk(нет пакета) | internal. detail - по-русски,
     без секретов и без содержимого публикации."""
 
     RETRYABLE = frozenset({"rate", "server", "network"})
@@ -117,7 +117,7 @@ class CallError(Exception):
         return self.kind in self.RETRYABLE
 
     def connector_error(self) -> Exception:
-        """Ошибка подключения для «Проверить подключение» (статус подключения — jobs._failure)."""
+        """Ошибка подключения для "Проверить подключение"(статус подключения - jobs._failure)."""
         if self.kind == "auth":
             return AuthExpired(self.detail)
         if self.kind == "denied":
@@ -136,7 +136,7 @@ def _seconds(raw: Any, scale: float = 1.0) -> Optional[float]:
 
 
 def _retry_after(headers: Any) -> Optional[float]:
-    """retry-after-ms (миллисекунды) или retry-after (секунды или HTTP-дата); нет или не разобрать — None."""
+    """retry-after-ms(миллисекунды) или retry-after(секунды или HTTP-дата); нет или не разобрать - None."""
     get = getattr(headers, "get", None)
     if not callable(get):
         return None
@@ -159,7 +159,7 @@ def _retry_after(headers: Any) -> Optional[float]:
 
 
 def _api_message(e: Any) -> str:
-    """Текст ошибки из тела ответа API (error.message); тело целиком не выводится."""
+    """Текст ошибки из тела ответа API(error.message); тело целиком не выводится."""
     body = getattr(e, "body", None)
     err = body.get("error") if isinstance(body, dict) else None
     msg = err.get("message") if isinstance(err, dict) else None
@@ -167,7 +167,7 @@ def _api_message(e: Any) -> str:
 
 
 def classify(e: BaseException, s: Optional[Settings] = None) -> CallError:
-    """Исключение SDK → CallError (самые частные классы первыми)."""
+    """Исключение SDK → CallError(самые частные классы первыми)."""
     if isinstance(e, CallError):
         return e
     s = s or get_settings()
@@ -215,7 +215,7 @@ def classify(e: BaseException, s: Optional[Settings] = None) -> CallError:
 
 def build_request(s: Settings, *, system: str, user: str, schema: dict) -> dict:
     """Параметры client.beta.messages.create: модель, предел токенов, структурированный ответ и уровень размышления;
-    fallbacks: "default" — только моделям, у которых есть серверные резервные модели. Без thinking (размышление
+    fallbacks: "default" - только моделям, у которых есть серверные резервные модели. Без thinking(размышление
     адаптивное по умолчанию и не отключается) и без предзаполнения ответа."""
     model = s.anthropic_model
     req: dict = {"model": model, "max_tokens": int(s.anthropic_max_tokens), "system": system,
@@ -229,7 +229,7 @@ def build_request(s: Settings, *, system: str, user: str, schema: dict) -> dict:
 
 @dataclass
 class Reply:
-    """Ответ модели: stop_reason, текст (JSON по схеме), кто ответил, токены, оценка стоимости."""
+    """Ответ модели: stop_reason, текст(JSON по схеме), кто ответил, токены, оценка стоимости."""
     stop_reason: Optional[str]
     text: str
     served_model: Optional[str]
@@ -245,8 +245,8 @@ def _n(v: Any) -> int:
 
 
 def usage_cost(usage: Any, requested: str, served: Optional[str]) -> tuple[dict, float]:
-    """Токены и стоимость ответа. С серверным fallback верхний usage — только попытка, давшая ответ; полный расход —
-    по usage.iterations (каждая попытка — по цене своей модели)."""
+    """Токены и стоимость ответа. С серверным fallback верхний usage - только попытка, давшая ответ; полный расход -
+    по usage.iterations(каждая попытка - по цене своей модели)."""
     entries = [x for x in (getattr(usage, "iterations", None) or []) if hasattr(x, "input_tokens")]
     tokens = {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0}
     total = 0.0
@@ -281,11 +281,11 @@ def to_reply(resp: Any, requested: str) -> Reply:
 
 
 def send(s: Settings, request: dict) -> Reply:
-    """Один запрос Messages API (без повторов SDK). Ошибки — CallError."""
+    """Один запрос Messages API(без повторов SDK). Ошибки - CallError."""
     client = CLIENT_FACTORY(s)
     try:
         resp = client.beta.messages.create(**request)
-    except Exception as e:  # noqa: BLE001 — любая ошибка SDK — типизированный CallError
+    except Exception as e:  # noqa: BLE001 - любая ошибка SDK - типизированный CallError
         raise classify(e, s) from None
     finally:
         _close(client)
@@ -293,7 +293,7 @@ def send(s: Settings, request: dict) -> Reply:
 
 
 def retrieve_model(s: Settings) -> Any:
-    """Сведения о модели ANTHROPIC_MODEL (GET /v1/models/{id}): ключ принят и модель доступна. Без генерации."""
+    """Сведения о модели ANTHROPIC_MODEL(GET /v1/models/{id}): ключ принят и модель доступна. Без генерации."""
     client = CLIENT_FACTORY(s)
     try:
         return client.models.retrieve(s.anthropic_model)
@@ -321,11 +321,11 @@ class AnthropicAnalyzer(Connector):
                   "Anthropic; дневной бюджет — {ANTHROPIC_DAILY_BUDGET_USD} USD.")
 
     def computed_status(self, db, row, now: datetime) -> Optional[tuple[str, str]]:
-        """Нет пакета SDK — «ошибка»; ключ отклонён, ошибка — хранимый статус с пояснением; дневной бюджет исчерпан —
-        «пауза: лимит» (вычисляется по счётчику расхода); иначе — хранимый."""
+        """Нет пакета SDK - "ошибка"; ключ отклонён, ошибка - хранимый статус с пояснением; дневной бюджет исчерпан -
+        "пауза: лимит"(вычисляется по счётчику расхода); иначе - хранимый."""
         if anthropic is None:
             return "error", SDK_MISSING
-        if db is None:  # проверка из командной строки — без БД
+        if db is None:  # проверка из командной строки - без БД
             return None
         if row is not None and row.status in ("expired", "denied", "error"):
             return None
@@ -342,7 +342,7 @@ class AnthropicAnalyzer(Connector):
         return None
 
     def check(self, ctx: "RunContext") -> CheckResult:
-        """Ключ принят и модель доступна: client.models.retrieve(ANTHROPIC_MODEL) — без генерации и без оплаты."""
+        """Ключ принят и модель доступна: client.models.retrieve(ANTHROPIC_MODEL) - без генерации и без оплаты."""
         s = ctx.settings
         if self.missing(s):
             raise NotConfigured(self.missing_detail(s))
@@ -355,7 +355,7 @@ class AnthropicAnalyzer(Connector):
         mid = str(getattr(m, "id", None) or s.anthropic_model)
         shown = str(getattr(m, "display_name", None) or mid)
         fb = supports_fallbacks(s.anthropic_model)
-        # имена без «token»: ingest.scrub отбрасывает такие ключи сведений как секретные
+        # имена без "token": ingest.scrub отбрасывает такие ключи сведений как секретные
         facts = {"model": mid, "displayName": shown, "effort": s.anthropic_effort,
                  "responseLimit": int(s.anthropic_max_tokens), "dailyBudgetUsd": float(s.anthropic_daily_budget_usd),
                  "fallbacks": "default" if fb else None}
@@ -363,7 +363,7 @@ class AnthropicAnalyzer(Connector):
             v = getattr(m, attr, None)
             if isinstance(v, int) and not isinstance(v, bool):
                 facts[key] = v
-        # в тексте — только ID модели, без торгового имени (display_name остаётся в facts)
+        # в тексте - только ID модели, без торгового имени(display_name остаётся в facts)
         detail = (f"Ключ принят, модель {mid} доступна; уровень размышления {s.anthropic_effort}, бюджет "
                   f"${float(s.anthropic_daily_budget_usd):.2f} в день"
                   + ("; при отказе модели — резервная модель Anthropic (fallbacks: default)" if fb else ""))

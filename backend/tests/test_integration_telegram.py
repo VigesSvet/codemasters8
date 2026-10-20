@@ -1,4 +1,4 @@
-"""Telegram-каналы (integration-spec §12.2, §16.3 C2, приёмка §16.5): поддельный клиент Telethon через
+"""Telegram-каналы(integration-spec §12.2, §16.3 C2, приёмка §16.5): поддельный клиент Telethon через
 telegram.CLIENT_FACTORY, настоящие классы telethon.errors; сети нет. Модули подключения импортируются внутри тестов."""
 import asyncio
 import hashlib
@@ -29,7 +29,7 @@ LOGIN = "Нет авторизованной сессии Telegram: выполн
 # ---------- поддельный Telethon ----------
 
 class Msg:
-    """Сообщение канала с полями, которые читает сборщик (как у telethon Message)."""
+    """Сообщение канала с полями, которые читает сборщик(как у telethon Message)."""
 
     def __init__(self, id, message="", *, grouped_id=None, photo=None, video=None, mime=None, size=None, views=None,
                  edit_date=None, fwd=False, action=None, web=False):
@@ -43,7 +43,7 @@ class Msg:
         self.date = T0 + timedelta(minutes=id)
         self.web_preview = SimpleNamespace(url="https://example.com") if web else None
         self.data = photo if photo is not None else video
-        # ID файла Telegram: тот же файл — тот же ID, другой файл (замена правкой) — другой
+        # ID файла Telegram: тот же файл - тот же ID, другой файл(замена правкой) - другой
         fid = int(hashlib.sha256(self.data).hexdigest()[:12], 16) if self.data is not None else None
         self.photo = SimpleNamespace(id=fid) if photo is not None else None
         self.document = SimpleNamespace(id=fid) if video is not None else None
@@ -66,7 +66,7 @@ class FakeTelegram:
         self.history: dict = {}
         self.calls: list = []
         self.fail: dict = {}  # метод → исключение или функция(*аргументы) → исключение | None
-        self.download_fail: dict = {}  # id сообщения → исключение (один раз)
+        self.download_fail: dict = {}  # id сообщения → исключение(один раз)
         self.download_hang: set = set()
         self.factory_args: list = []
         self.saved = "FAKE-NEW-SESSION-abcdefghijklmnopqrstuvwxyz0123"
@@ -128,7 +128,7 @@ class FakeTelegram:
             if x in self.private:
                 raise errors.ChannelPrivateError(request=None)
             ch = self.channels.get(x)
-            if ch is None:  # так Telethon сообщает о свободном имени (UsernameNotOccupiedError внутри)
+            if ch is None:  # так Telethon сообщает о свободном имени(UsernameNotOccupiedError внутри)
                 raise ValueError(f'No user has "{x}" as username') from errors.UsernameNotOccupiedError(request=None)
             return ch
         ch = next((c for c in self.channels.values() if c.id == x.channel_id), None)
@@ -188,7 +188,7 @@ class FakeTelegram:
 
 @pytest.fixture
 def tg(client, env, monkeypatch, tmp_path):
-    """Ключи Telegram (поддельные), свой файл сессии в tmp_path и поддельный клиент вместо Telethon."""
+    """Ключи Telegram(поддельные), свой файл сессии в tmp_path и поддельный клиент вместо Telethon."""
     from app.integrations import telegram
 
     fake = FakeTelegram()
@@ -337,7 +337,7 @@ def test_session_file_states(tg, client):
     rep = telegram.CONNECTOR.report(get_settings())
     assert rep["sessionPresent"] is False and "chmod 600" in rep["problem"]
     assert connector(client)["status"] == "not_configured"
-    # API файла не видит — наличие сессии сообщает воркер (state.report.sessionPresent)
+    # API файла не видит - наличие сессии сообщает воркер(state.report.sessionPresent)
     path.unlink()
     configure([], state={"report": {"sessionPresent": True, "checkedAt": models.iso(models.utcnow())}})
     c = connector(client)
@@ -431,7 +431,7 @@ def test_first_collect_album(tg, client, run_worker, ocr_stub):
     assert a.image == f"/api/media/{files[0].id}"
     st = channel_state("nord_hills")
     assert (st["id"], st["accessHash"], st["lastId"], st["title"]) == (1001, 10017, 12, "Канал nord_hills")
-    assert ("iter_messages", (1001, 50, 0, False)) in tg.calls  # первый запуск — последние TG_HISTORY_LIMIT
+    assert ("iter_messages", (1001, 50, 0, False)) in tg.calls  # первый запуск - последние TG_HISTORY_LIMIT
     assert row().status == "working"
 
 
@@ -538,14 +538,14 @@ def test_channels_config_and_unknown(tg, client, run_worker, admin_headers, ocr_
     tg.private.add("ghost_channel")
     now = models.utcnow()
     run = collect(run_worker, now=now)
-    # недоступный канал — причина «частично», а не запись с ошибкой
+    # недоступный канал - причина "частично", а не запись с ошибкой
     assert (run.status, run.items_new, run.items_failed) == ("partial", 1, 0)
     assert (row().status, row().status_detail) == ("partial", "канал @ghost_channel закрыт")
     with SessionLocal() as db:
         notes = [n for n in db.get(models.CollectionRun, run.id).notes]
     assert {"level": "warn", "text": "канал @ghost_channel закрыт"} in [{k: n[k] for k in ("level", "text")}
                                                                          for n in notes]
-    # следующий запуск: в доступных каналах нового нет — по-прежнему «частично», не «все записи с ошибкой»,
+    # следующий запуск: в доступных каналах нового нет - по-прежнему "частично", не "все записи с ошибкой",
     # и расписание здоровых каналов не откладывается
     later = now + timedelta(hours=1)
     run = collect(run_worker, now=later)
@@ -553,7 +553,7 @@ def test_channels_config_and_unknown(tg, client, run_worker, admin_headers, ocr_
     assert (run.status, run.error_code, run.items_seen, run.items_failed) == ("partial", None, 0, 0)
     assert (r.status, r.status_detail, r.failures) == ("partial", "канал @ghost_channel закрыт", 0)
     assert abs((models.as_utc(r.next_run_at) - later).total_seconds() - 30 * 60) < 1
-    # ни один канал не доступен — ошибка настроек, а не «нет новых»
+    # ни один канал не доступен - ошибка настроек, а не "нет новых"
     configure(["ghost_channel", "missing_one"])
     run = collect(run_worker)
     r = row()
@@ -574,7 +574,7 @@ def test_channel_closed_between_runs_keeps_position(tg, client, run_worker):
         "failed", "bad_config", "Ни один канал не доступен: канал @nord_hills закрыт")
     st = channel_state("nord_hills")
     assert (st["id"], st["lastId"], "accessHash" in st) == (1001, 10, False)
-    # канал снова открыт: адрес ищется по имени, позиция продолжается (тот же id)
+    # канал снова открыт: адрес ищется по имени, позиция продолжается(тот же id)
     tg.fail.clear()
     tg.add(1001, Msg(11, "Пост 2"))
     tg.calls.clear()
@@ -589,8 +589,8 @@ def run_notes(run_id: int) -> list:
 
 
 def test_telegram_outage_retried_not_unknown_channel(tg, client, run_worker):
-    """Сбой серверов Telegram (повторы Telethon исчерпаны) — повтор задания с понятной причиной, а не «канал не
-    найден» (ошибка настроек, остановка расписания) и не «внутренняя ошибка сборщика»."""
+    """Сбой серверов Telegram(повторы Telethon исчерпаны) - повтор задания с понятной причиной, а не "канал не
+    найден"(ошибка настроек, остановка расписания) и не "внутренняя ошибка сборщика"."""
     from telethon import errors
 
     login(tg)
@@ -606,31 +606,31 @@ def test_telegram_outage_retried_not_unknown_channel(tg, client, run_worker):
     notes = run_notes(run.id)
     assert notes[-1].startswith("Telegram временно не отвечает (повторы запроса исчерпаны) — повтор 2 из 5")
     assert not any("не найден" in n for n in notes)
-    # с raise_last_call_error Telethon бросает саму ошибку сервера — тоже повтор
+    # с raise_last_call_error Telethon бросает саму ошибку сервера - тоже повтор
     tg.fail = {"iter_messages": errors.RpcCallFailError(request=None)}
     run_worker(now=t0 + timedelta(minutes=5))
     assert run_notes(run.id)[-1].startswith("Telegram временно не отвечает (RpcCallFailError) — повтор 3 из 5")
     assert ("get_entity", ("nord_hills",)) in tg.calls and channel_state("nord_hills")["id"] == 1001
-    # ValueError об исчерпанных повторах при чтении истории — не «внутренняя ошибка сборщика»
+    # ValueError об исчерпанных повторах при чтении истории - не "внутренняя ошибка сборщика"
     tg.fail = {"iter_messages": ValueError("Request was unsuccessful 3 time(s)")}
     run_worker(now=t0 + timedelta(minutes=15))
     notes = run_notes(run.id)
     assert notes[-1].startswith("Telegram временно не отвечает (повторы запроса исчерпаны) — повтор 4 из 5")
     assert not any("Внутренняя ошибка" in n for n in notes)
-    # сбой прошёл — сбор продолжается тем же запуском
+    # сбой прошёл - сбор продолжается тем же запуском
     tg.fail.clear()
     run_worker(now=t0 + timedelta(hours=1))
     with SessionLocal() as db:
         run = db.get(models.CollectionRun, run.id)
     assert (run.status, run.items_new, row().status) == ("succeeded", 1, "working")
-    # имя, которого нет в Telegram, — по-прежнему «не найден»
+    # имя, которого нет в Telegram, - по-прежнему "не найден"
     configure(["nord_hills", "ghost_channel"])
     run = collect(run_worker, now=t0 + timedelta(hours=2))
     assert (run.status, row().status_detail) == ("partial", "канал @ghost_channel не найден")
 
 
 def test_edit_replacing_photo_downloads_new_file(tg, client, run_worker, ocr_stub):
-    """Правка с заменой фото (editMessageMedia): новый файл загружается и становится текущим, прежний остаётся в
+    """Правка с заменой фото(editMessageMedia): новый файл загружается и становится текущим, прежний остаётся в
     истории нетекущим."""
     login(tg)
     old, new = png_bytes((1, 2, 3)), png_bytes((9, 8, 7))
@@ -658,7 +658,7 @@ def test_edit_replacing_photo_downloads_new_file(tg, client, run_worker, ocr_stu
 
 def test_retry_after_album_first_message_deleted_no_duplicate(tg, client, run_worker, ocr_stub):
     """Повтор загрузки альбома, первое сообщение которого удалено в канале: публикация под ID другого сообщения была бы
-    дубликатом — повтор снимается."""
+    дубликатом - повтор снимается."""
     login(tg)
     tg.channel("nord_hills", 1001, Msg(11, "Альбом ЖК", grouped_id=5, photo=png_bytes((1, 1, 1))),
                Msg(12, "", grouped_id=5, photo=png_bytes((2, 2, 2))))
@@ -715,7 +715,7 @@ def test_file_reference_expired_refetched_and_album_edit(tg, client, run_worker,
     assert (run.status, run.media_saved) == ("succeeded", 3)
     assert ("get_messages", (1001, 10)) in tg.calls  # сообщение перечитано, загрузка повторена один раз
     assert [a.status for a in assets("1001:10")] == ["downloaded"]
-    # правка подписи альбома: изменено одно сообщение, публикация — весь альбом с теми же файлами
+    # правка подписи альбома: изменено одно сообщение, публикация - весь альбом с теми же файлами
     tg.add(1001, Msg(11, "Альбом: цены обновлены", grouped_id=77, photo=png_bytes((8, 1, 0)),
                      edit_date=T0 + timedelta(hours=2)))
     tg.calls.clear()
@@ -748,7 +748,7 @@ def test_make_client_offline():
 
     c = telegram.make_client("", API_ID, "0123456789abcdef0123456789abcdef")
     assert (c.flood_sleep_threshold, c.session.save()) == (30, "")
-    # исчерпав повторы, Telethon бросает саму ошибку Telegram (ServerError…), а не ValueError «Request was unsuccessful»
+    # исчерпав повторы, Telethon бросает саму ошибку Telegram(ServerError…), а не ValueError "Request was unsuccessful"
     assert (c._raise_last_call_error, c._request_retries) == (True, 3)
 
 
@@ -764,7 +764,7 @@ def test_time_up_partial(tg, client, run_worker, monkeypatch):
     assert "iter_messages" not in tg.names()
 
 
-# ---------- вход (telegram_login) ----------
+# ---------- вход(telegram_login) ----------
 
 def pending(fake: FakeTelegram) -> Path:
     return Path(f"{fake.path}.pending.json")
@@ -798,7 +798,7 @@ def test_login_two_step_and_password(tg, client, capsys, monkeypatch):
     assert out.strip() == f"Вход выполнен: @saq_reader (id 777). Сессия сохранена в {tg.path}"
     assert tg.path.read_text() == tg.saved and not p.exists()
     assert stat.S_IMODE(tg.path.stat().st_mode) == 0o600 and stat.S_IMODE(tg.path.parent.stat().st_mode) == 0o700
-    assert tg.factory_args[-1][0] == tg.saved  # пароль — в той же сессии, что и код
+    assert tg.factory_args[-1][0] == tg.saved  # пароль - в той же сессии, что и код
 
 
 def test_login_code_errors_and_guards(tg, client, capsys, env):
@@ -826,7 +826,7 @@ def test_login_code_errors_and_guards(tg, client, capsys, env):
     tg.fail["send_code_request"] = errors.FloodWaitError(request=None, capture=300)
     assert tl.main(["--send-code"]) == 6
     assert "Telegram просит подождать 300 с" in capsys.readouterr().err
-    # сбой серверов Telegram — «повторите позже», а не «отклонил запрос» и не трассировка
+    # сбой серверов Telegram - "повторите позже", а не "отклонил запрос" и не трассировка
     tg.fail["send_code_request"] = errors.RpcCallFailError(request=None)
     assert tl.main(["--send-code"]) == 1
     assert "Telegram временно не отвечает (RpcCallFailError) — повторите позже" in capsys.readouterr().err
@@ -835,11 +835,11 @@ def test_login_code_errors_and_guards(tg, client, capsys, env):
     assert tl.main(["--send-code"]) == 0 and tl.main(["--code", "12345"]) == 0
     assert tg.path.read_text() == tg.saved
     capsys.readouterr()
-    # сессия уже есть — повторный вход только с --force
+    # сессия уже есть - повторный вход только с --force
     assert tl.main(["--send-code"]) == 1
     assert "Сессия уже есть: @saq_reader. Чтобы войти заново — --force" in capsys.readouterr().err
     assert tl.main(["--send-code", "--force"]) == 0
-    # без ключей — код 2, без сети
+    # без ключей - код 2, без сети
     env(TG_PHONE=None)
     calls = len(tg.calls)
     assert tl.main(["--send-code"]) == 2
@@ -875,7 +875,7 @@ def test_login_status_logout_and_interactive(tg, client, capsys, monkeypatch, en
 
     assert tl.main(["--status"]) == 1 and capsys.readouterr().out.strip() == "Сессии нет"
     assert tg.calls == []
-    # каталога сессии нет — «Сессии нет» без создания каталогов
+    # каталога сессии нет - "Сессии нет" без создания каталогов
     env(TG_SESSION_PATH=str(tmp_path / "nope" / "deeper" / "telegram.session"))
     assert tl.main(["--status"]) == 1 and not (tmp_path / "nope").exists()
     env(TG_SESSION_PATH=str(tg.path))
@@ -896,7 +896,7 @@ def test_login_status_logout_and_interactive(tg, client, capsys, monkeypatch, en
     assert tl.main(["--logout"]) == 0 and "log_out" in tg.names() and not tg.path.exists()
 
 
-# ---------- приёмка по §14 плана (integration-spec §16.5) ----------
+# ---------- приёмка по §14 плана(integration-spec §16.5) ----------
 
 def test_acceptance_repeat_no_duplicate(tg, client, run_worker, accept, ocr_stub):
     login(tg)
@@ -917,14 +917,14 @@ def test_acceptance_failure_not_empty(tg, client, run_worker, accept):
     run = collect(run_worker)
     c = accept.assert_failure_visible("telegram", run.id)
     assert c["status"] == "error" and c["statusDetail"].startswith("Ни один канал не доступен")
-    # обрыв связи у работавшего подключения — тоже не «нет новых»: сначала успешный сбор («работает»)…
+    # обрыв связи у работавшего подключения - тоже не "нет новых": сначала успешный сбор("работает")…
     tg.private.clear()
     tg.channel("open_one", 1001, Msg(10, "Пост"))
     configure(["open_one"])
     t0 = models.utcnow()
     run = collect(run_worker, now=t0)
     assert (run.status, connector(client)["status"]) == ("succeeded", "working")
-    # …затем сеть недоступна: запуск не «успешно», задание ждёт повтора, подключение не «работает»
+    # …затем сеть недоступна: запуск не "успешно", задание ждёт повтора, подключение не "работает"
     tg.add(1001, Msg(11, "Новый пост"))
     tg.fail["iter_messages"] = ConnectionError("сеть недоступна")
     t1 = t0 + timedelta(hours=1)
@@ -934,7 +934,7 @@ def test_acceptance_failure_not_empty(tg, client, run_worker, accept):
     assert out["notes"][-1]["text"].startswith("Нет связи с Telegram (ConnectionError) — повтор 2 из 5")
     c = connector(client)
     assert c["status"] == "queued" and c["status"] != "working"
-    # повторы исчерпаны — запуск «ошибка», подключение «ошибка» с причиной; новых записей нет
+    # повторы исчерпаны - запуск "ошибка", подключение "ошибка" с причиной; новых записей нет
     for minutes in (5, 15, 60, 120):
         run_worker(now=t1 + timedelta(minutes=minutes))
     c = accept.assert_failure_visible("telegram", run.id)
@@ -969,7 +969,7 @@ def test_acceptance_media_survives_source(tg, client, run_worker, accept, monkey
     tg.channel("nord_hills", 1001, Msg(10, "Пост с фото", photo=data))
     configure(["nord_hills"])
     collect(run_worker)
-    monkeypatch.setattr(telegram, "CLIENT_FACTORY", None)  # клиента больше нет — файл отдаёт хранилище
+    monkeypatch.setattr(telegram, "CLIENT_FACTORY", None)  # клиента больше нет - файл отдаёт хранилище
     tg.history.clear()
     asset, = assets("1001:10")
     assert accept.media_ok(asset.id) == data
@@ -1012,8 +1012,8 @@ def test_acceptance_limit_no_endless_loop(tg, client, run_worker):
     assert tg.names()[-2:] == ["iter_messages", "disconnect"]  # после FloodWait запросов нет
     tg.calls.clear()
     tg.fail.clear()
-    for minutes in (1, 5, 9):  # такты воркера до next_run_at — без обращений к Telegram
+    for minutes in (1, 5, 9):  # такты воркера до next_run_at - без обращений к Telegram
         run_worker(now=now + timedelta(minutes=minutes))
     assert tg.calls == []
-    run_worker(now=now + timedelta(minutes=11))  # пауза кончилась — сбор по расписанию
+    run_worker(now=now + timedelta(minutes=11))  # пауза кончилась - сбор по расписанию
     assert "iter_messages" in tg.names() and [i.external_id for i in items()] == ["1001:10"]

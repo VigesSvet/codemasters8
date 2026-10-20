@@ -1,10 +1,10 @@
-"""Настройки подключений и инфраструктуры: реальное окружение, затем .env в корне репозитория (без изменения os.environ).
+"""Настройки подключений и инфраструктуры: реальное окружение, затем .env в корне репозитория(без изменения os.environ).
 
 Порядок для каждой переменной: непустое значение окружения → непустое значение из .env → значение по умолчанию; пустая
-строка — то же, что не задано. Путь к .env — SAQ_ENV_FILE (пустая строка — файл не читается), иначе <репозиторий>/.env
-(в Docker — /.env, обычно его нет). Значения из файла читаются буквально (interpolate=False): «$» экранировать не нужно.
+строка - то же, что не задано. Путь к .env - SAQ_ENV_FILE(пустая строка - файл не читается), иначе <репозиторий>/.env
+(в Docker - /.env, обычно его нет). Значения из файла читаются буквально(interpolate=False): "$" экранировать не нужно.
 
-Секреты — объекты Secret: str/repr дают «***», значение — только через .get(). Предупреждения о неверных значениях называют
+Секреты - объекты Secret: str/repr дают "***", значение - только через .get(). Предупреждения о неверных значениях называют
 переменную, но никогда не её значение. Настройки кэшируются на процесс: после правки .env нужен перезапуск API и воркера.
 """
 import hashlib
@@ -24,23 +24,23 @@ BACKEND = Path(__file__).resolve().parents[1]
 DEFAULT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 DEFAULT_MEDIA_ROOT = BACKEND / "data" / "media"
 DEFAULT_TG_SESSION_PATH = BACKEND / "data" / "private" / "telegram.session"
-DEFAULT_ASR_MODEL_DIR = BACKEND / "data" / "models"  # модели faster-whisper (скачиваются с HuggingFace, вне Git)
+DEFAULT_ASR_MODEL_DIR = BACKEND / "data" / "models"  # модели faster-whisper(скачиваются с HuggingFace, вне Git)
 
-# ASCII: httpx кодирует заголовки в ASCII (иначе UnicodeEncodeError при каждом запросе)
+# ASCII: httpx кодирует заголовки в ASCII(иначе UnicodeEncodeError при каждом запросе)
 DEFAULT_UA = "SAQ-Qurylys-monitor/0.3 (+research; construction-ads monitoring)"
-# Предел распознавания скриншота (= ai.ocr.MAX_BYTES, сверяется тестом): settings — листовой модуль и ai не импортирует
+# Предел распознавания скриншота(= ai.ocr.MAX_BYTES, сверяется тестом): settings - листовой модуль и ai не импортирует
 OCR_MAX_BYTES = 10 * 1024 * 1024
 TOKEN_MIN_LEN = 24
 TOKEN_MIN_DISTINCT = 12
 TRUE_WORDS = frozenset({"1", "true", "yes", "on"})
-# Уровни ANTHROPIC_EFFORT (output_config.effort): думать меньше/больше — расход и время ответа
+# Уровни ANTHROPIC_EFFORT(output_config.effort): думать меньше/больше - расход и время ответа
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 _MODEL_ID = re.compile(r"[a-z0-9][a-z0-9._-]{1,63}")
 FALSE_WORDS = frozenset({"0", "false", "no", "off"})
 
 
 class Secret:
-    """Значение секрета: в логах, repr и f-строках — «***»; само значение — только get()."""
+    """Значение секрета: в логах, repr и f-строках - "***"; само значение - только get()."""
 
     __slots__ = ("_v",)
 
@@ -80,7 +80,7 @@ class Settings:
     service_token: Secret = field(default_factory=_no_secret)
     allow_schema_reset: bool = False
     collected_autolink: bool = False
-    # «Проверка по рекламе» (app.screening): окно свежести рекламы, дней — по дате публикации
+    # "Проверка по рекламе"(app.screening): окно свежести рекламы, дней - по дате публикации
     screening_days: int = 120
     worker_poll_s: float = 5.0
     worker_id: Optional[str] = None
@@ -106,7 +106,7 @@ class Settings:
     tg_edit_window: int = 30
     tg_max_video_mb: int = 50
     tg_download_timeout_s: int = 300
-    # Telegram Bot API — предупреждения жителям (app.alerts): тот же бот, что у saq-telegram-bot; только отправка
+    # Telegram Bot API - предупреждения жителям(app.alerts): тот же бот, что у saq-telegram-bot; только отправка
     bot_token: Secret = field(default_factory=_no_secret)
     tg_alerts_channel: str = ""
     # Apify / TikTok
@@ -132,7 +132,7 @@ class Settings:
     olx_client_secret: Secret = field(default_factory=_no_secret)
     olx_redirect_uri: str = ""
     olx_scopes: str = "read v2"
-    # Anthropic (Claude) — этап анализа ИИ публикаций (app.llm)
+    # Anthropic(Claude) - этап анализа ИИ публикаций(app.llm)
     anthropic_api_key: Secret = field(default_factory=_no_secret)
     anthropic_model: str = "claude-sonnet-5-5"
     anthropic_effort: str = "medium"
@@ -140,28 +140,28 @@ class Settings:
     anthropic_daily_budget_usd: float = 5.0
     anthropic_timeout_s: float = 120.0
     anthropic_workspace_id: str = ""
-    # дозапрос старых публикаций без ответа Claude (такт лидера воркера): сколько за проход и как часто
+    # дозапрос старых публикаций без ответа Claude(такт лидера воркера): сколько за проход и как часто
     anthropic_backfill_batch: int = 5
     anthropic_backfill_interval_min: int = 10
-    # Распознавание речи в роликах (app.speech, faster-whisper): модель (off — этап выключен), каталог моделей, пределы
+    # Распознавание речи в роликах(app.speech, faster-whisper): модель(off - этап выключен), каталог моделей, пределы
     asr_model: str = "base"
     asr_model_dir: Path = DEFAULT_ASR_MODEL_DIR
     asr_max_s: int = 300
     asr_timeout_s: int = 300
-    # фото карточек Homeportal для ЖК открытого реестра без фото (app.gallery, такт лидера воркера): раз в N часов; 0 — выключено
+    # фото карточек Homeportal для ЖК открытого реестра без фото(app.gallery, такт лидера воркера): раз в N часов; 0 - выключено
     gallery_sync_hours: int = 24
-    # значения, отброшенные правилами токенов (слабые/совпадающие): для подключения не используются, но в логах маскируются
+    # значения, отброшенные правилами токенов(слабые/совпадающие): для подключения не используются, но в логах маскируются
     ignored_secrets: tuple = field(default=(), repr=False)
 
     def secrets(self) -> list[str]:
-        """Все непустые значения секретов (маскирование в логах и текстах ошибок)."""
+        """Все непустые значения секретов(маскирование в логах и текстах ошибок)."""
         out = [getattr(self, f.name).get() for f in fields(self) if isinstance(getattr(self, f.name), Secret)]
         out += [s.get() for s in self.ignored_secrets if isinstance(s, Secret)]
         return [v for v in out if v]
 
     def _value(self, name: str) -> Any:
         var = _BY_ENV.get(name)
-        if var is None:  # настройка подключения вне Settings (env_str)
+        if var is None:  # настройка подключения вне Settings(env_str)
             return env_str(name) or None
         v = getattr(self, var.field)
         if isinstance(v, Secret):
@@ -171,18 +171,18 @@ class Settings:
         return v
 
     def missing(self, *names: str) -> list[str]:
-        """Имена переменных окружения, которые не заданы (только имена, никогда значения)."""
+        """Имена переменных окружения, которые не заданы(только имена, никогда значения)."""
         return [n for n in names if self._value(n) is None]
 
     def key_fp(self, name: str) -> Optional[str]:
-        """Отпечаток заданного значения (sha256[:12]) — заметить смену ключа, не раскрывая его; None — не задано."""
+        """Отпечаток заданного значения(sha256[:12]) - заметить смену ключа, не раскрывая его; None - не задано."""
         v = self._value(name)
         return hashlib.sha256(str(v).encode()).hexdigest()[:12] if v is not None else None
 
     @property
     def public_host(self) -> Optional[str]:
-        """Хост публичного адреса OLX Callback (ngrok): через него доступен только путь обратного вызова. Без
-        регистра и конечной точки («x.ngrok-free.dev.» — тот же хост)."""
+        """Хост публичного адреса OLX Callback(ngrok): через него доступен только путь обратного вызова. Без
+        регистра и конечной точки("x.ngrok-free.dev." - тот же хост)."""
         host = urlsplit(self.olx_redirect_uri).hostname if self.olx_redirect_uri else None
         host = host.lower().rstrip(".") if host else None
         return host or None
@@ -197,8 +197,8 @@ class _Var:
     env: str
     field: str
     kind: str  # str | secret | token | int | float | bool | path | date | optint | optstr | ua | model | effort
-    lo: Optional[float] = None  # нижняя граница чисел: меньше — значение по умолчанию с предупреждением
-    hi: Optional[float] = None  # верхняя граница чисел: больше — значение по умолчанию с предупреждением
+    lo: Optional[float] = None  # нижняя граница чисел: меньше - значение по умолчанию с предупреждением
+    hi: Optional[float] = None  # верхняя граница чисел: больше - значение по умолчанию с предупреждением
 
 
 VARS: tuple[_Var, ...] = (
@@ -234,9 +234,9 @@ VARS: tuple[_Var, ...] = (
     _Var("TG_EDIT_WINDOW", "tg_edit_window", "int", 0),
     _Var("TG_MAX_VIDEO_MB", "tg_max_video_mb", "int", 0),
     _Var("TG_DOWNLOAD_TIMEOUT_S", "tg_download_timeout_s", "int", 1),
-    # бот заявок: API и воркер только отправляют (sendMessage), getUpdates и webhook — у самого бота
+    # бот заявок: API и воркер только отправляют(sendMessage), getUpdates и webhook - у самого бота
     _Var("BOT_TOKEN", "bot_token", "secret"),
-    # канал ГАСК для предупреждений жителям: @имя или ID вида -100…; бот — администратор канала
+    # канал ГАСК для предупреждений жителям: @имя или ID вида -100…; бот - администратор канала
     _Var("TG_ALERTS_CHANNEL", "tg_alerts_channel", "str"),
     _Var("APIFY_TOKEN", "apify_token", "secret"),
     _Var("APIFY_ACTOR_ID", "apify_actor_id", "str"),
@@ -261,27 +261,27 @@ VARS: tuple[_Var, ...] = (
     _Var("ANTHROPIC_MODEL", "anthropic_model", "model"),
     _Var("ANTHROPIC_EFFORT", "anthropic_effort", "effort"),
     _Var("ANTHROPIC_MAX_TOKENS", "anthropic_max_tokens", "int", 1024, 64000),
-    # счётчик расхода — целые микродоллары в quota_counters (Integer): верхняя граница держит его в 32 битах
+    # счётчик расхода - целые микродоллары в quota_counters(Integer): верхняя граница держит его в 32 битах
     _Var("ANTHROPIC_DAILY_BUDGET_USD", "anthropic_daily_budget_usd", "float", 0, 1000),
     _Var("ANTHROPIC_TIMEOUT_S", "anthropic_timeout_s", "float", 10, 600),
-    # рабочее пространство для ключа организации, не привязанного к нему (заголовок anthropic-workspace-id)
+    # рабочее пространство для ключа организации, не привязанного к нему(заголовок anthropic-workspace-id)
     _Var("ANTHROPIC_WORKSPACE_ID", "anthropic_workspace_id", "str"),
-    # дозапрос старых публикаций: 0 — выключен
+    # дозапрос старых публикаций: 0 - выключен
     _Var("ANTHROPIC_BACKFILL_BATCH", "anthropic_backfill_batch", "int", 0, 100),
     _Var("ANTHROPIC_BACKFILL_INTERVAL_MIN", "anthropic_backfill_interval_min", "int", 1, 1440),
-    # tiny | base | small | medium | large-v3 … (имя модели faster-whisper); off — распознавание речи выключено
+    # tiny | base | small | medium | large-v3 … (имя модели faster-whisper); off - распознавание речи выключено
     _Var("SAQ_ASR_MODEL", "asr_model", "model"),
     _Var("SAQ_ASR_MODEL_DIR", "asr_model_dir", "path"),
     _Var("SAQ_ASR_MAX_S", "asr_max_s", "int", 5, 3600),
     _Var("SAQ_ASR_TIMEOUT_S", "asr_timeout_s", "int", 10, 3600),
-    # подгрузка фото карточек Homeportal для ЖК реестра без фото: раз в N часов; 0 — выключена
+    # подгрузка фото карточек Homeportal для ЖК реестра без фото: раз в N часов; 0 - выключена
     _Var("SAQ_GALLERY_SYNC_HOURS", "gallery_sync_hours", "int", 0, 720),
 )
 _BY_ENV = {v.env: v for v in VARS}
-# Переменные прежних версий: приложение их не читает, заданное значение — предупреждение при разборе настроек
+# Переменные прежних версий: приложение их не читает, заданное значение - предупреждение при разборе настроек
 RETIRED = {"SAQ_DEMO_DATA": "демо-набора в приложении больше нет — пустая БД получает стартовый набор shared/snapshot "
                             "(README, «Развёртывание со стартовым набором данных»); строку можно удалить из .env"}
-# Все имена, которые читает приложение (SAQ_ENV_FILE — только из реального окружения)
+# Все имена, которые читает приложение(SAQ_ENV_FILE - только из реального окружения)
 ENV_NAMES: tuple[str, ...] = tuple(v.env for v in VARS) + ("SAQ_ENV_FILE",)
 TOKENS = ("SAQ_ADMIN_TOKEN", "INTEGRATION_INGEST_TOKEN", "SERVICE_API_TOKEN")
 
@@ -293,7 +293,7 @@ _FILE_LOCK = threading.Lock()
 
 
 def env_file_path(environ: Mapping[str, str] = os.environ) -> Optional[Path]:
-    """SAQ_ENV_FILE, если задан (пустая строка — файл отключён), иначе .env в корне репозитория."""
+    """SAQ_ENV_FILE, если задан(пустая строка - файл отключён), иначе .env в корне репозитория."""
     if "SAQ_ENV_FILE" in environ:
         raw = (environ.get("SAQ_ENV_FILE") or "").strip()
         return Path(raw).expanduser() if raw else None
@@ -301,9 +301,9 @@ def env_file_path(environ: Mapping[str, str] = os.environ) -> Optional[Path]:
 
 
 def _file_values(path: Optional[Path], warns: Optional[list] = None) -> dict:
-    """Значения из .env буквально (interpolate=False); нет файла или он не читается — пусто (с предупреждением).
-    warns — список для предупреждений: при разборе настроек в лог писать нельзя (маскирование в логах само читает
-    настройки — была бы рекурсия), предупреждения выводятся после заполнения кэша."""
+    """Значения из .env буквально(interpolate=False); нет файла или он не читается - пусто(с предупреждением).
+    warns - список для предупреждений: при разборе настроек в лог писать нельзя(маскирование в логах само читает
+    настройки - была бы рекурсия), предупреждения выводятся после заполнения кэша."""
     say = warns.append if warns is not None else log.warning
     if path is None:
         return {}
@@ -324,7 +324,7 @@ def _file_values(path: Optional[Path], warns: Optional[list] = None) -> dict:
         from dotenv import dotenv_values
 
         values = {k: v for k, v in dotenv_values(path, interpolate=False).items() if k and v is not None}
-    except Exception as e:  # битый файл/кодировка — не повод не стартовать
+    except Exception as e:  # битый файл/кодировка - не повод не стартовать
         say(f"Файл настроек {path} не прочитан ({type(e).__name__}) — используется только окружение")
         values = {}
     with _FILE_LOCK:
@@ -453,7 +453,7 @@ def _parse(environ: Mapping[str, str]) -> tuple[Settings, list[str]]:
                     warns.append("SAQ_USER_AGENT содержит управляющие символы — используется значение по умолчанию")
                 else:
                     v = raw
-        else:  # pragma: no cover — опечатка в VARS
+        else:  # pragma: no cover - опечатка в VARS
             raise ValueError(var.kind)
         values[var.field] = v
     # Токен администратора не может совпадать с токеном клиента приёма или бота: иначе клиент стал бы администратором
@@ -471,7 +471,7 @@ def _parse(environ: Mapping[str, str]) -> tuple[Settings, list[str]]:
 
 
 def load_settings(environ: Mapping[str, str] = os.environ) -> Settings:
-    """Свежие настройки из окружения и .env (без кэша); предупреждения — в лог."""
+    """Свежие настройки из окружения и .env(без кэша); предупреждения - в лог."""
     s, warns = _parse(environ)
     for w in warns:
         log.warning(w)
@@ -483,8 +483,8 @@ _LOCK = threading.RLock()
 
 
 def get_settings() -> Settings:
-    """Настройки процесса (кэш). Предупреждения пишутся после заполнения кэша: маскирование в логах само читает
-    настройки, и повторного разбора (и рекурсии) не возникает."""
+    """Настройки процесса(кэш). Предупреждения пишутся после заполнения кэша: маскирование в логах само читает
+    настройки, и повторного разбора(и рекурсии) не возникает."""
     s = _CACHED
     if s is not None:
         return s
@@ -502,7 +502,7 @@ def _store(s: Settings, warns: list[str]) -> None:
 
 
 def reload_settings() -> Settings:
-    """Перечитать окружение и .env (тесты; после reload — новые значения во всех get_settings())."""
+    """Перечитать окружение и .env(тесты; после reload - новые значения во всех get_settings())."""
     with _LOCK:
         with _FILE_LOCK:
             _FILE_CACHE.clear()
@@ -513,7 +513,7 @@ def reload_settings() -> Settings:
 # ---------- параметры подключений вне Settings ----------
 
 def env_str(name: str, default: str = "") -> str:
-    """Непустое значение окружения → из .env → default (параметры отдельных подключений, не входящие в Settings)."""
+    """Непустое значение окружения → из .env → default(параметры отдельных подключений, не входящие в Settings)."""
     raw = _raw(name, os.environ, _file_values(env_file_path(os.environ)))
     return raw if raw is not None else default
 

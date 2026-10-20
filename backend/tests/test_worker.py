@@ -1,7 +1,7 @@
-"""Задания, воркер, итоги запусков, планировщик и анализ публикаций (integration-spec §8, §9, §16.2 test_worker).
+"""Задания, воркер, итоги запусков, планировщик и анализ публикаций(integration-spec §8, §9, §16.2 test_worker).
 
-Подключения здесь — подменные (Fake…) в реестре под кодами настоящих: итог запуска определяет фундамент, а не модуль
-подключения. Сеть не используется: файлы — из хранилища или через http_mock.
+Подключения здесь - подменные(Fake…) в реестре под кодами настоящих: итог запуска определяет фундамент, а не модуль
+подключения. Сеть не используется: файлы - из хранилища или через http_mock.
 """
 import hashlib
 import logging
@@ -127,7 +127,7 @@ def events(*where) -> list[str]:
 
 
 def source_events() -> list[str]:
-    """События подключений и сборов в журнале (без исходного журнала демо-набора)."""
+    """События подключений и сборов в журнале(без исходного журнала демо-набора)."""
     E = models.AuditEvent
     return events(E.kind == "data", E.what.like("Источник «%") | E.what.like("Сбор «%"))
 
@@ -169,7 +169,7 @@ def test_enqueue_dedupe_and_partial_index(client):
         b, again = jobs.enqueue(db, "collect", dedupe_key="collect:krisha", collector="krisha")
         assert created and not again and a.id == b.id
         db.commit()
-    with SessionLocal() as db:  # второй активный с тем же ключом — запрещён индексом
+    with SessionLocal() as db:  # второй активный с тем же ключом - запрещён индексом
         db.add(models.Job(kind="collect", status="queued", dedupe_key="collect:krisha", run_after=models.utcnow()))
         with pytest.raises(IntegrityError):
             db.commit()
@@ -194,12 +194,12 @@ def test_analyze_claim_releases_dedupe_and_one_per_ad(client):
     with SessionLocal() as db:
         got = jobs.claim(db, "w1", now)
         assert got.id == first.id and got.dedupe_key is None and got.attempts == 1 and got.locked_by == "w1"
-    with SessionLocal() as db:  # новая версия, пока идёт анализ, — новое задание
+    with SessionLocal() as db:  # новая версия, пока идёт анализ, - новое задание
         second, created = jobs.enqueue(db, "analyze", ad_id=ad, dedupe_key=f"analyze:{ad}", content_version=2)
         other, _ = jobs.enqueue(db, "analyze", ad_id="b" * 32, dedupe_key="analyze:" + "b" * 32)
         db.commit()
     assert created and second.id != first.id
-    with SessionLocal() as db:  # второй анализ той же публикации не захватывается, другой публикации — да
+    with SessionLocal() as db:  # второй анализ той же публикации не захватывается, другой публикации - да
         assert jobs.claim(db, "w2", now).id == other.id
         assert jobs.claim(db, "w2", now) is None
         jobs.complete(db, db.get(models.Job, first.id))
@@ -216,7 +216,7 @@ def test_claim_once_and_race(client):
         db.commit()
     with SessionLocal() as db:
         assert [jobs.claim(db, "w1", now).id for _ in range(2)] == [high.id, low.id]  # приоритет, затем срок
-        assert jobs.claim(db, "w1", now) is None  # отложенное — не раньше срока
+        assert jobs.claim(db, "w1", now) is None  # отложенное - не раньше срока
     with SessionLocal() as db:
         db.execute(update(models.Job).where(models.Job.id == late.id).values(run_after=models.as_utc(now)))
         db.commit()
@@ -330,7 +330,7 @@ def test_heartbeat_stops_extending_after_job_max(client, env, caplog):
     assert caplog.text.count(f"Задание №{job.id} выполняется дольше 60 с") == 1
 
 
-# ---------- итоги запусков (§9.4) ----------
+# ---------- итоги запусков(§9.4) ----------
 
 def test_collect_success_working_and_summary(client, run_worker, use):
     use(Fake(collect=lambda ctx: [ctx.ingest(pub(n)) for n in (1, 2)]))
@@ -343,7 +343,7 @@ def test_collect_success_working_and_summary(client, run_worker, use):
     assert r.next_run_at is not None
     assert source_events() == [f"Сбор «Krisha.kz»: новых 2, изменено 0, без изменений 0 (запуск №{run_id})"]
     assert get(models.Job, job_of(run_id).id).status == "done"
-    # повтор без изменений — без записи в журнал
+    # повтор без изменений - без записи в журнал
     second = request()
     run_worker()
     assert get(models.CollectionRun, second).items_unchanged == 2
@@ -392,7 +392,7 @@ def test_partial_run(client, run_worker, use):
 
 
 def test_postpone_never_shortens_interval(client, run_worker, use):
-    """postpone() только откладывает: пауза короче интервала не делает следующий запуск раньше расписания, длиннее —
+    """postpone() только откладывает: пауза короче интервала не делает следующий запуск раньше расписания, длиннее -
     откладывает его."""
     def short(ctx):
         ctx.ingest(pub(1))
@@ -420,7 +420,7 @@ def test_rate_limited(client, run_worker, use):
     assert (run.status, run.error_code, job_of(run_id).status) == ("rate_limited", "rate_limited", "done")
     assert r.status == "rate_limited" and abs((models.as_utc(r.next_run_at) - now).total_seconds() - 120) < 2
     assert r.status_detail.startswith("Ограничение частоты: повтор после ")
-    # пауза: ни расписание, ни «Обновить всё» не запускают сбор до next_run_at
+    # пауза: ни расписание, ни "Обновить всё" не запускают сбор до next_run_at
     set_row(enabled=True)
     with SessionLocal() as db:
         assert worker.schedule_due(db, now + timedelta(seconds=60)) == []
@@ -530,7 +530,7 @@ def test_not_configured_run(client, run_worker, use, env):
     run = get(models.CollectionRun, run_id)
     assert (run.status, run.error_code, run.error) == ("not_configured", "not_configured", "Нет на сервере: APIFY_TOKEN")
     assert client.get("/api/sources/connectors/tiktok").json()["status"] == "not_configured"
-    env(APIFY_TOKEN=APIFY)  # ключ вернули — устаревшего «не настроен» нет
+    env(APIFY_TOKEN=APIFY)  # ключ вернули - устаревшего "не настроен" нет
     c = client.get("/api/sources/connectors/tiktok").json()
     assert (c["status"], c["statusDetail"]) == ("unchecked", None)
 
@@ -550,7 +550,7 @@ def test_paid_stop_and_admin_test_clears(client, run_worker, use, env, admin_hea
     r = row("tiktok")
     assert len(posts) == 1 and r.status == "error" and r.facts["stopped"] is True
     assert r.status_detail.endswith(jobs.PAID_STOP)
-    with SessionLocal() as db:  # следующий такт — ни запуска, ни платного запроса
+    with SessionLocal() as db:  # следующий такт - ни запуска, ни платного запроса
         assert worker.schedule_due(db, now + timedelta(days=5)) == []
         out = service.collect_all(db, AUTHOR, now)
         db.rollback()
@@ -567,7 +567,7 @@ def test_paid_stop_and_admin_test_clears(client, run_worker, use, env, admin_hea
         db.rollback()
 
 
-# ---------- планировщик (§9.5) ----------
+# ---------- планировщик(§9.5) ----------
 
 @pytest.mark.parametrize("values", [
     {"enabled": False, "status": "ready"}, {"enabled": True, "status": "expired"},
@@ -641,7 +641,7 @@ def test_wait_for_schema_and_once(client):
     try:
         assert worker.wait_for_schema(app_db.engine, poll=0.02, max_wait=0.1) is False
         assert worker.main(["--once", "--id", "t-once"]) == 0
-        assert get(models.WorkerLease, "worker:t-once") is None  # схема не та — работы не было
+        assert get(models.WorkerLease, "worker:t-once") is None  # схема не та - работы не было
     finally:
         with SessionLocal() as db:
             db.merge(models.Meta(key="schema_version", value=models.SCHEMA_VERSION))
@@ -662,12 +662,12 @@ def test_report_local_writes_on_change(client):
     assert rep["sessionPresent"] is False and rep["checkedAt"]
     with SessionLocal() as db:
         worker.report_local(db)
-        assert service.row(db, "telegram").state["report"]["checkedAt"] == rep["checkedAt"]  # без изменений — без записи
+        assert service.row(db, "telegram").state["report"]["checkedAt"] == rep["checkedAt"]  # без изменений - без записи
 
 
 def test_no_nested_write_transactions(client, run_worker, use, env, http_mock, monkeypatch):
-    """busy_timeout 1 с: сборщик «как Instagram» (загрузка файла, заметки, состояние) и «как TikTok» (фазы, внешний
-    запуск, Deferred) проходят через воркер без «database is locked» — записи не вложены друг в друга."""
+    """busy_timeout 1 с: сборщик "как Instagram"(загрузка файла, заметки, состояние) и "как TikTok"(фазы, внешний
+    запуск, Deferred) проходят через воркер без "database is locked" - записи не вложены друг в друга."""
     monkeypatch.setattr(app_db, "BUSY_TIMEOUT_MS", 1000)
     app_db.engine.dispose()
     env(APIFY_TOKEN=APIFY)
@@ -717,7 +717,7 @@ def test_key_change_marks_unchecked(client, run_worker, use, env):
     assert META not in client.get("/api/sources/connectors").text
 
 
-# ---------- анализ публикаций (§8) ----------
+# ---------- анализ публикаций(§8) ----------
 
 TEXT = "Старт продаж в ЖК Ульба Ривер! Бронь квартиры за 100 000 ₸, рассрочка до сдачи дома"
 
@@ -754,7 +754,7 @@ def test_analysis_ocr_order_events_no_link(client, run_worker, ocr_stub):
     assert ai_events[0].endswith(". Привязка не назначена автоматически: публикация собрана из внешнего источника")
     assert ai_events[1].startswith("ИИ: найдены условия оплаты — бронь") and "рассрочка" in ai_events[1]
     assert client.get(f"/api/ads/{res.ad_id}").json()["processing"]["status"] == "done"
-    # повтор задания по той же версии — ничего нового
+    # повтор задания по той же версии - ничего нового
     with SessionLocal() as db:
         ingest.enqueue_analysis(db, res.ad_id)
         db.commit()
@@ -811,7 +811,7 @@ def test_analysis_ocr_unavailable_and_empty(client, run_worker, monkeypatch):
 
 def test_analysis_failures_not_silent(client, run_worker, monkeypatch):
     """Регрессия: сбой OCR на всех изображениях и не загрузившееся изображение выглядели в журнале публикации как
-    «текста нет» / «картинок нет»."""
+    "текста нет" / "картинок нет"."""
     monkeypatch.setattr(video, "ffmpeg_available", lambda: False)
     good = png_bytes((7, 7, 70))
 
@@ -879,7 +879,7 @@ def test_analysis_bot_claims_ignored(client, run_worker, ocr_stub):
     first = ad_events(res.ad_id, "ai")[0]
     assert first.startswith("ИИ: ЖК не определён — нужна ручная привязка")
     assert first.endswith(". Аккаунт и ссылка указаны жителем — в гипотезе не учитывались, сверьте вручную")
-    # тот же аккаунт от сборщика — признак (для сравнения)
+    # тот же аккаунт от сборщика - признак(для сравнения)
     same = take(ig_pub(9, account="@ulba.dev", url="https://www.instagram.com/ulba.dev/",
                        text="Продаю квартиру, звоните"))
     run_worker()
@@ -931,7 +931,7 @@ def test_analysis_failure_exhausted(client, run_worker, ocr_stub, monkeypatch):
 # ---------- регрессии ревью: брошенные задания, время итога, ограждение, остановка, проверки ----------
 
 def _claim_and_crash(times: int, worker_id: str = "w-crash") -> None:
-    """Воркер захватывает задание и падает (SIGKILL): при перезапуске requeue_own возвращает его в очередь."""
+    """Воркер захватывает задание и падает(SIGKILL): при перезапуске requeue_own возвращает его в очередь."""
     for _ in range(times):
         with SessionLocal() as db:
             assert jobs.claim(db, worker_id, models.utcnow() + timedelta(seconds=1)) is not None
@@ -941,8 +941,8 @@ def _claim_and_crash(times: int, worker_id: str = "w-crash") -> None:
 
 
 def test_abandoned_paid_collect_stops_paid_schedule(client, use, env, accept):
-    """Регрессия: задание, брошенное после исчерпания попыток (падения воркера), оставляло подключение «работает», а
-    платный сбор — не остановленным: расписание сразу начинало новый платный запуск."""
+    """Регрессия: задание, брошенное после исчерпания попыток(падения воркера), оставляло подключение "работает", а
+    платный сбор - не остановленным: расписание сразу начинало новый платный запуск."""
     env(APIFY_TOKEN=APIFY)
     use(PaidFake())
     now = models.utcnow()
@@ -964,7 +964,7 @@ def test_abandoned_paid_collect_stops_paid_schedule(client, use, env, accept):
 
 
 def test_abandoned_stale_collect_and_test_are_errors(client, use):
-    """recover_stale на последней попытке: сбор и проверка — итог «ошибка» у подключения (не «работает»)."""
+    """recover_stale на последней попытке: сбор и проверка - итог "ошибка" у подключения(не "работает")."""
     use(Fake(max_attempts=1))
     set_row(status="working")
     run_id = request()
@@ -977,7 +977,7 @@ def test_abandoned_stale_collect_and_test_are_errors(client, use):
     r = row()
     assert (job_of(run_id).status, get(models.CollectionRun, run_id).status) == ("failed", "failed")
     assert (r.status, r.failures, r.last_error) == ("error", 1, "Задание прервано: воркер перестал отвечать")
-    assert "stopped" not in (r.facts or {})  # не платный — не остановлен, только пауза
+    assert "stopped" not in (r.facts or {})  # не платный - не остановлен, только пауза
     test_run = request(trigger="test")
     _claim_and_crash(1)  # проверка: одна попытка
     assert get(models.CollectionRun, test_run).status == "failed" and row().status == "error"
@@ -997,7 +997,7 @@ def test_abandoned_analysis_writes_event(client):
 
 @pytest.mark.parametrize("outcome", ["retry", "defer", "rate"])
 def test_outcome_time_counts_from_outcome_not_claim(client, run_worker, use, monkeypatch, outcome):
-    """Регрессия: повтор, отсрочка и пауза частоты считались от времени захвата — после долгого запуска срок оказывался
+    """Регрессия: повтор, отсрочка и пауза частоты считались от времени захвата - после долгого запуска срок оказывался
     уже прошедшим, повтор шёл сразу, Retry-After источника не соблюдался."""
     clock = [1000.0]
     monkeypatch.setattr(jobs, "MONOTONIC", lambda: clock[0])
@@ -1017,7 +1017,7 @@ def test_outcome_time_counts_from_outcome_not_claim(client, run_worker, use, mon
     end = now + timedelta(seconds=1800)
     if outcome == "rate":
         assert abs((models.as_utc(row().next_run_at) - end).total_seconds() - 120) < 1
-        with SessionLocal() as db:  # до конца паузы — ни сбора по расписанию
+        with SessionLocal() as db:  # до конца паузы - ни сбора по расписанию
             set_row(enabled=True)
             assert worker.schedule_due(db, end + timedelta(seconds=60)) == []
             db.rollback()
@@ -1028,7 +1028,7 @@ def test_outcome_time_counts_from_outcome_not_claim(client, run_worker, use, mon
 
 
 def test_analysis_media_retry_time_from_failure(client, run_worker, ocr_stub, http_mock, monkeypatch):
-    """Срок повтора загрузки файла приёма — от момента неудачи, а не от захвата задания."""
+    """Срок повтора загрузки файла приёма - от момента неудачи, а не от захвата задания."""
     clock = [5000.0]
     monkeypatch.setattr(analysis, "MONOTONIC", lambda: clock[0])
 
@@ -1045,13 +1045,13 @@ def test_analysis_media_retry_time_from_failure(client, run_worker, ocr_stub, ht
     with SessionLocal() as db:
         a = db.scalars(select(models.MediaAsset).where(models.MediaAsset.ad_id == res.ad_id)).one()
         retry_at = models.as_utc(datetime.fromisoformat(a.meta["retryAt"]))
-    assert a.status == "pending" and retry_at >= now + timedelta(seconds=3600 + 119)  # retryAt — с точностью до секунды
+    assert a.status == "pending" and retry_at >= now + timedelta(seconds=3600 + 119)  # retryAt - с точностью до секунды
 
 
 @pytest.mark.parametrize("same_id", [False, True])
 def test_late_outcome_of_reclaimed_job_not_written(client, run_worker, use, caplog, same_id):
-    """Регрессия: задание, которое recover_stale (или requeue_own при том же SAQ_WORKER_ID) отдали другому захвату,
-    прежний исполнитель перезаписывал: «выполнено», запуск завершён дважды, сводка дважды, фазы — поверх новых."""
+    """Регрессия: задание, которое recover_stale(или requeue_own при том же SAQ_WORKER_ID) отдали другому захвату,
+    прежний исполнитель перезаписывал: "выполнено", запуск завершён дважды, сводка дважды, фазы - поверх новых."""
     taker = "test" if same_id else "w2"
 
     def collect(ctx):
@@ -1079,7 +1079,7 @@ def test_late_outcome_of_reclaimed_job_not_written(client, run_worker, use, capl
 
 def test_stopped_connector_not_health_checked(client, run_worker, use, env, admin_headers):
     """Регрессия: плановая проверка шла и у остановленного подключения и снимала остановку bad_config без изменения
-    настроек — каждый день сбор с теми же настройками, ошибка, остановка, записи в журнале."""
+    настроек - каждый день сбор с теми же настройками, ошибка, остановка, записи в журнале."""
     env(META_USER_ACCESS_TOKEN=META)
     collects = []
 
@@ -1108,7 +1108,7 @@ def test_stopped_connector_not_health_checked(client, run_worker, use, env, admi
     r = row("instagram")
     assert get(models.CollectionRun, run.id).status == "succeeded"
     assert (r.status, r.facts.get("stopped"), r.facts.get("stoppedCode")) == ("error", True, "bad_config")
-    # проверка администратором — снимает
+    # проверка администратором - снимает
     assert client.post("/api/sources/instagram/test", headers=admin_headers, json={"author": AUTHOR}).status_code == 202
     run_worker()
     r = row("instagram")
@@ -1124,18 +1124,18 @@ def test_clean_stop_marks_worker_not_alive(client):
     with SessionLocal() as db:
         info = service.worker_info(db)
         assert (info["alive"], info["id"]) == (False, "w-stop") and info["last_seen_at"] is not None
-    worker.beat("w-other")  # другой воркер жив — он и показывается
+    worker.beat("w-other")  # другой воркер жив - он и показывается
     with SessionLocal() as db:
         assert (service.worker_info(db)["alive"], service.worker_info(db)["id"]) == (True, "w-other")
-    worker.beat("w-stop")  # перезапуск: пульс снова «жив»
+    worker.beat("w-stop")  # перезапуск: пульс снова "жив"
     with SessionLocal() as db:
         assert "stoppedAt" not in get(models.WorkerLease, "worker:w-stop").info
 
 
 @pytest.mark.skipif(not app_db.DATABASE_URL.startswith("postgresql"), reason="гонка захвата — только PostgreSQL")
 def test_pg_analyze_claim_one_per_ad_under_race(client):
-    """Регрессия (PostgreSQL, READ COMMITTED): два воркера одновременно захватывали два задания анализа одной
-    публикации — условие «анализ не идёт» не видело незафиксированный захват другого."""
+    """Регрессия(PostgreSQL, READ COMMITTED): два воркера одновременно захватывали два задания анализа одной
+    публикации - условие "анализ не идёт" не видело незафиксированный захват другого."""
     ad = "d" * 32
     with SessionLocal() as db:
         first, _ = jobs.enqueue(db, "analyze", ad_id=ad, dedupe_key=f"analyze:{ad}", content_version=1)
@@ -1147,7 +1147,7 @@ def test_pg_analyze_claim_one_per_ad_under_race(client):
         db.commit()
         assert created
         job = db.get(models.Job, first.id)
-        assert jobs.retry(db, job, "сеть", now=now - timedelta(hours=1))  # первое — снова в очереди рядом со вторым
+        assert jobs.retry(db, job, "сеть", now=now - timedelta(hours=1))  # первое - снова в очереди рядом со вторым
         job.run_after = models.as_utc(now - timedelta(minutes=1))
         db.commit()
     a = SessionLocal()
@@ -1166,7 +1166,7 @@ def test_pg_analyze_claim_one_per_ad_under_race(client):
         t = threading.Thread(target=other)
         t.start()
         t.join(1.0)
-        assert t.is_alive()  # B ждёт блокировку «анализ этой публикации»
+        assert t.is_alive()  # B ждёт блокировку "анализ этой публикации"
         a.commit()
         t.join(10)
     finally:

@@ -1,5 +1,5 @@
-"""Открытые данные (T-26…T-31): импортёр xlsx/csv, провенанс записей, объекты, источники, импорт через API,
-отсутствие риска и сигналов у записей источников, разделение с вымышленным демо-набором (ТЗ §7)."""
+"""Открытые данные(T-26…T-31): импортёр xlsx/csv, провенанс записей, объекты, источники, импорт через API,
+отсутствие риска и сигналов у записей источников, разделение с вымышленным демо-набором(ТЗ §7)."""
 import csv
 import io
 import json
@@ -63,12 +63,12 @@ def test_parse_counts_and_objects(parsed):
     objs = importer.group(p.records)
     assert len(objs) == 15 and sum(o["records"] for o in objs) == 103
     assert sorted(o["key"] for o in objs if o["lat"] is None) == ["ab-residence-2", "diamond", "prestizh-sparkle-diamond"]
-    zh = next(o for o in objs if o["key"] == "zhanym")  # блоки и очереди одного ЖК — один объект
+    zh = next(o for o in objs if o["key"] == "zhanym")  # блоки и очереди одного ЖК - один объект
     assert (zh["name"], zh["records"], zh["sources"], zh["fundingMethods"]) == (
         'ЖК "Жаным"', 32, ["homeportal", "ashyq"], ["guarantee"])
     assert (zh["lat"], zh["lng"], zh["developerBin"]) == (49.921112, 82.617788, "171240023488")
     assert {o["key"] for o in objs} >= {"zolotoi-kvadrat", "tumar-towers-oskemen", "asyltas", "asylym", "orda", "park-line"}
-    # координаты источника далеко от города — оставлены как есть, но помечены
+    # координаты источника далеко от города - оставлены как есть, но помечены
     assert next(o for o in objs if o["key"] == "renesans")["flags"] == {"coordsFarKm": 188}
     assert any("Строка 8: координаты" in w and "оставлены как в источнике" in w for w in p.warnings)
 
@@ -77,16 +77,16 @@ def test_parse_counts_and_objects(parsed):
 def test_parse_values(parsed):
     by = {r["sourceRecordId"]: r for r in parsed.records}
     hp, kz = by["1505"], by["4828"]
-    # оба формата дат → ISO; время сбора — UTC; дата загрузки у поставщика — как у поставщика, без пояса
+    # оба формата дат → ISO; время сбора - UTC; дата загрузки у поставщика - как у поставщика, без пояса
     assert (hp["docDate"], hp["start"], hp["plannedEnd"]) == ("2026-10-07", "2026-09-18", "2027-11-18")
     assert (kz["start"], kz["plannedEnd"]) == ("2024-06-19", "2025-06-19")
     assert hp["collectedAt"] == "2026-10-15T11:18:00+00:00" and kz["collectedAt"] == "2026-10-15T11:17:00+00:00"
     assert (hp["providerLoadedAt"], kz["providerLoadedAt"]) == (None, "2026-06-15T17:35:09")
-    # БИН — 12 цифр строкой (с ведущим нулём), у Казреестра — нет
+    # БИН - 12 цифр строкой(с ведущим нулём), у Казреестра - нет
     assert (hp["developerBin"], hp["agentBin"], by["1487"]["developerBin"]) == ("220740026935", "190740008285",
                                                                                  "050640012251")
     assert kz["developerBin"] is None and sum(r["developerBin"] is not None for r in parsed.records) == 17
-    # «0» в координатах — нет координат; координаты есть у 15 записей
+    # "0" в координатах - нет координат; координаты есть у 15 записей
     assert (by["1487"]["lat"], by["1487"]["lng"]) == (None, None) and (hp["lat"], hp["lng"]) == (49.917561, 82.619097)
     assert sum(r["lat"] is not None for r in parsed.records) == 15
     # способы привлечения: код + исходный текст
@@ -97,11 +97,11 @@ def test_parse_values(parsed):
     assert {(r["sourceName"], r["source"]) for r in parsed.records} == {
         ("Homeportal — карточка ЖК", "homeportal"), ("Казреестр — CSV Ashyq Data", "ashyq"),
         ("Homeportal — отдельный раздел", "homeportal_section")}
-    # пустые ячейки — null, готовность и период отчёта — числом и «ГГГГ-ММ»
+    # пустые ячейки - null, готовность и период отчёта - числом и "ГГГГ-ММ"
     assert (hp["actNumber"], hp["actDate"], hp["readiness"], hp["site"][:8]) == (None, None, None, "https://")
     rep = [r for r in parsed.records if r["readiness"] is not None]
     assert sorted(r["readiness"] for r in rep) == [42.41, 62.39] and {r["reportPeriod"] for r in rep} == {"2026-08"}
-    # провенанс — у каждой записи
+    # провенанс - у каждой записи
     assert all(r.get(f) for r in parsed.records for f in PROVENANCE) and all(r["row"] >= 5 for r in parsed.records)
     assert len({(r["source"], r["sourceRecordId"]) for r in parsed.records}) == 103
 
@@ -148,7 +148,7 @@ def test_registry_json_matches_xlsx(parsed):
 
 
 def test_registry_json_objects_match_api(client):
-    """Готовые объекты в JSON реестра (офлайн-режим фронтенда) — ровно то, что отдаёт GET /api/registry после сида."""
+    """Готовые объекты в JSON реестра(офлайн-режим фронтенда) - ровно то, что отдаёт GET /api/registry после сида."""
     data = importer.load_registry()
     assert (len(data["objects"]), len(data["withoutCoords"])) == (12, 3)
     assert {"objects": data["objects"], "withoutCoords": data["withoutCoords"]} == client.get("/api/registry").json()
@@ -166,7 +166,7 @@ def test_cli_dry_run(capsys, tmp_path):
     built = json.loads(out.read_text(encoding="utf-8"))
     assert built["meta"]["report"]["accepted"] == 103 and (len(built["objects"]), len(built["withoutCoords"])) == (12, 3)
     assert {k: built[k] for k in ("records", "objects", "withoutCoords")} == {
-        k: importer.load_registry()[k] for k in ("records", "objects", "withoutCoords")}  # файл в shared/ — актуальный
+        k: importer.load_registry()[k] for k in ("records", "objects", "withoutCoords")}  # файл в shared/ - актуальный
     assert importer.main([str(XLSX), "--dry-run", "--out", str(tmp_path / "none.json")]) == 0
     assert not (tmp_path / "none.json").exists() and "объектов 15, из них без координат 3" in capsys.readouterr().out
     bad = tmp_path / "x.txt"
@@ -201,7 +201,7 @@ def test_registry_list_and_item(client):
         assert set(o) == keys and o["origin"] == "source" and o["collectedAt"].endswith("+00:00")
     assert client.get("/api/registry", params={"withCoords": "true"}).json()["withoutCoords"] == []
     assert client.get("/api/registry", params={"withCoords": "false"}).json()["objects"] == []
-    # поиск: название (в т. ч. латиницей ↔ кириллицей), адрес, застройщик, БИН, номер документа
+    # поиск: название(в т. ч. латиницей ↔ кириллицей), адрес, застройщик, БИН, номер документа
     q = lambda s: sorted(o["key"] for part in client.get("/api/registry", params={"q": s}).json().values()  # noqa: E731
                          for o in part)
     assert q("жаным") == q("Zhanym") == q("«ЖАНЫМ»") == ["zhanym"]
@@ -222,7 +222,7 @@ def test_registry_list_and_item(client):
 
 
 def test_no_risk_for_source_records(client):
-    """T-31: у записей источников нет риска, зоны, «нужна проверка»; сигнал и риск по ключу реестра — 404."""
+    """T-31: у записей источников нет риска, зоны, "нужна проверка"; сигнал и риск по ключу реестра - 404."""
     d = client.get("/api/registry").json()
     for o in d["objects"] + d["withoutCoords"]:
         assert not RISK_KEYS & set(o) and not RISK_KEYS & set(o["flags"])
@@ -243,7 +243,7 @@ def test_no_risk_for_source_records(client):
 
 
 def test_source_section_is_attributed_fact(client):
-    """Запись из раздела Homeportal — только факт источника: раздел, ссылка, дата сбора; без оценочных слов."""
+    """Запись из раздела Homeportal - только факт источника: раздел, ссылка, дата сбора; без оценочных слов."""
     item = client.get("/api/registry/ab-residence-2").json()
     o, (rec,) = item["object"], item["records"]
     assert o["flags"] == {"sourceSection": "Без разрешения на дольщиков"} and o["sources"] == ["homeportal_section"]
@@ -256,7 +256,7 @@ def test_source_section_is_attributed_fact(client):
 
 
 def test_demo_does_not_match_open_data(client):
-    """T-31 (ТЗ §7 «Безопасность»): вымышленные ЖК и застройщики не совпадают с записями открытых данных —
+    """T-31(ТЗ §7 "Безопасность"): вымышленные ЖК и застройщики не совпадают с записями открытых данных -
     сценарии нарушений не могут быть прочитаны как обвинение реальной компании."""
     data = importer.load_registry()
     recs = data["records"]
@@ -304,10 +304,10 @@ def test_import_same_file_dedup_and_journal(client):
     e = next(x for x in log if x["id"] == rep["eventId"])
     assert (e["who"], e["kind"], e["complexId"]) == (AUTHOR, "data", None)
     assert e["what"] == f"Импорт: 0 новых, 0 обновлено, 103 без изменений, 0 пропущено — {XLSX.name}"
-    # исходная загрузка из сида — тоже в журнале
+    # исходная загрузка из сида - тоже в журнале
     assert any(x["who"] == "Система" and x["what"].startswith("Загружены сведения открытых источников: 103 записи")
                for x in log)
-    # без автора — «Система»; автор параметром запроса
+    # без автора - "Система"; автор параметром запроса
     assert client.get("/api/audit", params={"kind": "data"}).json()[-1]["who"] == AUTHOR
     _import(client, XLSX.read_bytes(), XLSX.name)
     assert client.get("/api/audit", params={"kind": "data"}).json()[-1]["who"] == "Система"
@@ -334,7 +334,7 @@ def test_import_csv(client, delimiter, bom):
     assert [x["sourceRecordId"] for x in new] == ["1505", "999001"] and new[1]["importFile"] == "part.csv"
     prestizh = client.get("/api/registry/prestizh-sparkle-diamond").json()["records"][0]
     assert prestizh["address"] == "г. Усть-Каменогорск, новый адрес, 1" and prestizh["lat"] is None
-    # те же значения из CSV (строки, «0» в координатах) нормализуются так же, как из xlsx
+    # те же значения из CSV(строки, "0" в координатах) нормализуются так же, как из xlsx
     assert new[0]["lat"] == 49.917561 and new[0]["docDate"] == "2026-10-07" and new[0]["developerBin"] == "220740026935"
     r = _import(client, _csv(data, delimiter, bom), "part.csv", "text/csv")
     assert (r.json()["created"], r.json()["updated"], r.json()["unchanged"]) == (0, 0, 10)
@@ -374,7 +374,7 @@ def test_import_errors(client, monkeypatch):
     for data, name, word in cases:
         r = _import(client, data, name)
         assert r.status_code == 422 and word in r.json()["detail"], (name, r.text)
-    # CSV без расширения, но с типом text/csv — тоже CSV; zip-бомба — 422
+    # CSV без расширения, но с типом text/csv - тоже CSV; zip-бомба - 422
     assert _import(client, b"a;b\n", "noext", "text/csv").status_code == 422
     monkeypatch.setattr(importer, "MAX_UNZIPPED", 10)
     r = _import(client, _xlsx([["a"]]), "bomb.xlsx")
@@ -384,7 +384,7 @@ def test_import_errors(client, monkeypatch):
 
 
 def test_import_limit_before_reading_body():
-    """Content-Length больше предела — 413 до чтения тела (как у OCR)."""
+    """Content-Length больше предела - 413 до чтения тела(как у OCR)."""
     import asyncio
 
     from app.main import UploadLimit
@@ -409,7 +409,7 @@ def test_import_limit_before_reading_body():
 
 
 def test_seed_without_registry_file(client, monkeypatch, tmp_path):
-    """Нет файла реестра (например, в другой сборке) — демо-набор работает, открытых данных просто нет."""
+    """Нет файла реестра(например, в другой сборке) - демо-набор работает, открытых данных просто нет."""
     from app import seed
 
     monkeypatch.setattr(importer, "REGISTRY", tmp_path / "none.json")
@@ -420,6 +420,6 @@ def test_seed_without_registry_file(client, monkeypatch, tmp_path):
 
 
 def test_registry_file_is_in_shared():
-    """Docker-образ видит только shared/ — реестр должен лежать там (seed грузит его в source_records)."""
+    """Docker-образ видит только shared/ - реестр должен лежать там(seed грузит его в source_records)."""
     assert importer.REGISTRY.parent == SHARED and importer.REGISTRY.is_file()
     assert Path(importer.REGISTRY).name == "registry_ust_kamenogorsk.json"

@@ -1,6 +1,6 @@
-"""Сигнальная карточка (модуль 05): снимок доказательств при создании, решение аналитика, журнал, PDF.
+"""Сигнальная карточка(модуль 05): снимок доказательств при создании, решение аналитика, журнал, PDF.
 
-Снимок (score, factors, evidence…) строится один раз в момент создания и дальше не пересчитывается:
+Снимок(score, factors, evidence…) строится один раз в момент создания и дальше не пересчитывается:
 карточка показывает, на каком основании сигнал был сформирован, даже если данные по ЖК потом изменились.
 """
 from typing import Annotated, Any, Dict, List, Optional
@@ -20,7 +20,7 @@ from .world import audit, iso, load_complex
 router = APIRouter(prefix="/api/signals", tags=["signals"])
 
 Obj = Dict[str, Any]
-# id сигнала в пути: в пределах INTEGER, иначе огромный id ронял запрос к БД (500) вместо 422/404
+# id сигнала в пути: в пределах INTEGER, иначе огромный id ронял запрос к БД(500) вместо 422/404
 SignalId = Annotated[int, Path(ge=1, le=2_147_483_647, description="id сигнала")]
 ZONE_NAMES = {z["zone"]: z["name"].lower() for z in MODEL["zones"]["items"]}
 SIGNAL_AD_FIELDS = ("id", "platform", "account", "url", "date", "status", "matchConfidence", "linkConfirmedBy", "linkConfirmedAt",
@@ -34,14 +34,14 @@ def _by_date_desc(xs: List[Obj]) -> List[Obj]:
 # ---------- снимок ----------
 
 def snapshot(db: Session, cid: str) -> Optional[Obj]:
-    """Риск и доказательства по ЖК на текущий момент (T-11)."""
+    """Риск и доказательства по ЖК на текущий момент(T-11)."""
     w = load_complex(db, cid)
     if w is None:
         return None
     c = w.complexes[0]
     risk = w.risk(c)
     docs = next(f["items"] for f in risk["factors"] if f["code"] == "R1")
-    if not docs:  # у введённого объекта R1 не применяется — документы-основания берём тем же движком
+    if not docs:  # у введённого объекта R1 не применяется - документы-основания берём тем же движком
         docs = factor_r1({**c, "stage": None})["items"]
     ads = [{**{k: a.get(k) for k in SIGNAL_AD_FIELDS}, "signals": ad_signals(a)}
            for a in _by_date_desc([a for a in w.ads if a["status"] != "dismissed"])]
@@ -111,7 +111,7 @@ def counts(db: Session) -> Dict[str, int]:
              responses={422: {"description": "Риск по ЖК не оценивается — нет проверенных данных"}})
 def create_signal(body: schemas.SignalCreateIn, db: Session = Depends(get_db)):
     snap = snapshot(db, body.complex_id)
-    if snap is None:  # в т. ч. ключ объекта открытых данных: сигналы — только по карточкам ЖК (T-31)
+    if snap is None:  # в т. ч. ключ объекта открытых данных: сигналы - только по карточкам ЖК(T-31)
         raise registry.not_found(db, body.complex_id)
     if not snap["risk"].get("assessed", True):  # карточка из открытого реестра без проверенных сведений
         raise HTTPException(422, f"{MODEL['notAssessed']['label']}: сигнал по ЖК «{snap['complex']['name']}» не создаётся. "
@@ -193,7 +193,7 @@ def signal_audit(sid: SignalId, db: Session = Depends(get_db)):
 @router.get("/{sid}/pdf", response_class=Response,
             responses={200: {"content": {"application/pdf": {}}, "description": "Сигнальная карточка A4"}})
 def signal_pdf(sid: SignalId, author: Optional[str] = Query(None, max_length=128), db: Session = Depends(get_db)):
-    """PDF сигнальной карточки; отмечает выгрузку (exportedAt) и пишет её в журнал. ?author= — кто выгрузил."""
+    """PDF сигнальной карточки; отмечает выгрузку(exportedAt) и пишет её в журнал. ?author= - кто выгрузил."""
     s = _get(db, sid)
     s.exported_at = models.utcnow()
     s.file_name = s.file_name or f"signal-{s.code}.pdf"

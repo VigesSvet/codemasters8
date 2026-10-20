@@ -1,7 +1,7 @@
-"""Сверка сведений аналитиком (app.verification): основание по документам, перечень ГАСК, готовность, обращения и
-«обращений нет — сверено», снимки площадки. Проверяются проверка входа (по-русски), автор («Система» — 422), события
-журнала, влияние на риск (assessed, R1, R4, R5, R6) и на «Проверку по рекламе» (permit: сверка аналитика важнее открытых
-данных), пределы загрузки снимков; демо-набор без действий аналитика считается как прежде (эталон сида)."""
+"""Сверка сведений аналитиком(app.verification): основание по документам, перечень ГАСК, готовность, обращения и
+"обращений нет - сверено", снимки площадки. Проверяются проверка входа(по-русски), автор("Система" - 422), события
+журнала, влияние на риск(assessed, R1, R4, R5, R6) и на "Проверку по рекламе"(permit: сверка аналитика важнее открытых
+данных), пределы загрузки снимков; демо-набор без действий аналитика считается как прежде(эталон сида)."""
 import json
 from datetime import date, timedelta
 
@@ -18,13 +18,13 @@ from app.schemas import today_local
 
 AUTHOR = "Омарова Ж."
 ORDA = "r-orda"  # Homeportal: разрешение МИО № 1383/МҚЗТ-С-331 от 13.10.2025
-ASYLYM = "r-asylym"  # Homeportal: гарантия ЕО; срока сдачи у карточки нет (R6 — только по снимкам)
-AB = "r-ab-residence-2"  # Homeportal, раздел «Без разрешения на дольщиков»
+ASYLYM = "r-asylym"  # Homeportal: гарантия ЕО; срока сдачи у карточки нет(R6 - только по снимкам)
+AB = "r-ab-residence-2"  # Homeportal, раздел "Без разрешения на дольщиков"
 TODAY = today_local()
 
 
 def live(env) -> None:
-    """Боевой режим: аналитики, открытый реестр и карточки ЖК из него, без демо-набора (demo_seed.live_start)."""
+    """Боевой режим: аналитики, открытый реестр и карточки ЖК из него, без демо-набора(demo_seed.live_start)."""
     env()
     demo_seed.live()
 
@@ -72,7 +72,7 @@ def test_basis_suggestion_and_one_click_confirmation(client, env):
     assert sg == {"ref": "№ 1383/МҚЗТ-С-331 от 13.10.2025", "source": "Homeportal", "sourceName": "Homeportal — карточки ЖК",
                   "url": "https://homeportal.kz/ru/projects/1329", "records": 1}
     assert set(c["basisSuggest"]) == {"mio"} and "Аналитиком не проверено" in c["basis"]["mioRef"]
-    assert cx(client, "r-diamond")["basisSuggest"] is None  # запись Казреестра — без вида документа, подсказки нет
+    assert cx(client, "r-diamond")["basisSuggest"] is None  # запись Казреестра - без вида документа, подсказки нет
     view = client.get(f"/api/complexes/{ORDA}/basis").json()
     assert (view["checked"], view["total"]) == (0, 4)
     assert [d["suggestion"] is not None for d in view["documents"]] == [False, True, False]
@@ -85,7 +85,7 @@ def test_basis_suggestion_and_one_click_confirmation(client, env):
     assert b["mio"] == "yes" and b["mioRef"] == sg["ref"]  # справка реестра заменена номером от аналитика
     assert b["sources"]["mio"] == {"ref": sg["ref"], "source": "Homeportal", "url": sg["url"],
                                    "checkedAt": TODAY.isoformat(), "checkedBy": AUTHOR}
-    assert (b["source"], b["checkedAt"]) == ("Homeportal", TODAY.isoformat())  # общая сверка — последняя
+    assert (b["source"], b["checkedAt"]) == ("Homeportal", TODAY.isoformat())  # общая сверка - последняя
     assert got["permit"] == {"status": "permitted", "source": "analyst", "url": sg["url"], "verified": True,
                              "registryKey": "orda", "registryStage": "under_construction",
                              "text": f"Основание сверено: разрешение МИО — есть (Homeportal, {TODAY:%d.%m.%Y})"}
@@ -93,7 +93,7 @@ def test_basis_suggestion_and_one_click_confirmation(client, env):
     assert journal(ORDA)[-1] == ("data", AUTHOR, f"Основание сверено: разрешение МИО — есть (№ 1383/МҚЗТ-С-331 от 13.10.2025), "
                                                  f"источник: Homeportal (https://homeportal.kz/ru/projects/1329), сверено "
                                                  f"{TODAY:%d.%m.%Y}")
-    # риск карточки реестра оценивается: документ «есть» с источником и датой — проверенные сведения
+    # риск карточки реестра оценивается: документ "есть" с источником и датой - проверенные сведения
     r = risk(client, ORDA)
     assert r["assessed"] is True and (fac(r, "R1")["state"], fac(r, "R1")["reason"]) == ("unknown", "mio_without_bank")
     item = next(i for i in fac(r, "R1")["items"] if i["ref"] == "mio")
@@ -109,7 +109,7 @@ def test_basis_suggestion_and_one_click_confirmation(client, env):
     r = basis(client, ORDA, doc="guarantee", value="no", source="ЕГКН", checkedAt="2026-10-18")
     assert r.json()["basis"]["source"] == "ЕГКН"
     assert r.json()["permit"]["text"] == f"Основание сверено: разрешение МИО — есть (Homeportal, {TODAY:%d.%m.%Y})"
-    # повторный импорт реестра справку «Аналитиком не проверено» не возвращает
+    # повторный импорт реестра справку "Аналитиком не проверено" не возвращает
     with SessionLocal() as db:
         demo.import_registry(db)
         db.commit()
@@ -134,10 +134,10 @@ def test_basis_validation_and_author(client, env):
         "author": "Field required"}
     assert errors(basis(client, ORDA, doc="mio", value="yes", source="X\x00")) == {"source": "недопустимый символ NUL (\\0)"}
     assert basis(client, "nope", doc="mio", value="unknown").status_code == 404
-    # ключ объекта открытых данных — не ЖК: 404 с объяснением
+    # ключ объекта открытых данных - не ЖК: 404 с объяснением
     r = basis(client, "orda", doc="mio", value="unknown")
     assert r.status_code == 404 and r.json()["detail"] != "ЖК не найден"
-    # пустая дата — сегодня; явная прошлая — как указана
+    # пустая дата - сегодня; явная прошлая - как указана
     r = basis(client, ORDA, doc="guarantee", value="no", source="Ответ уполномоченного органа", checkedAt="",
               comment="Гарантии нет")
     assert r.json()["basis"]["sources"]["guarantee"]["checkedAt"] == TODAY.isoformat()
@@ -150,8 +150,8 @@ def test_basis_validation_and_author(client, env):
 
 def test_basis_no_sets_r1_and_overrides_open_data(client, env):
     live(env)
-    # «нет» только по МИО: документ Homeportal того же вида больше не основание; гарантия не сверена — основание не
-    # установлено (у Park Line других записей нет), у Orda остаётся запись Казреестра
+    # "нет" только по МИО: документ Homeportal того же вида больше не основание; гарантия не сверена - основание не
+    # установлено(у Park Line других записей нет), у Orda остаётся запись Казреестра
     r = basis(client, "r-park-line", doc="mio", value="no", source="Казреестр (Ashyq)", checkedAt="2026-10-18")
     p = r.json()["permit"]
     assert (p["status"], p["source"], p["verified"]) == ("unknown", None, False)
@@ -161,7 +161,7 @@ def test_basis_no_sets_r1_and_overrides_open_data(client, env):
     assert (r.json()["permit"]["status"], r.json()["permit"]["source"]) == ("permitted", "ashyq")
     r1 = fac(risk(client, ORDA), "R1")
     assert (r1["state"], r1["reason"]) == ("unknown", "unknown")
-    # «нет» по гарантии ЕО и разрешению МИО — R1 и not_permitted (сверка аналитика важнее записей реестра)
+    # "нет" по гарантии ЕО и разрешению МИО - R1 и not_permitted(сверка аналитика важнее записей реестра)
     r = basis(client, ORDA, doc="guarantee", value="no", source="Homeportal", sourceUrl="https://homeportal.kz/x",
               checkedAt="2026-10-18")
     p = r.json()["permit"]
@@ -172,11 +172,11 @@ def test_basis_no_sets_r1_and_overrides_open_data(client, env):
     assert rk["assessed"] is True and fac(rk, "R1")["state"] == "hit"
     assert fac(rk, "R1")["evidence"] == ("Проверкой установлено: гарантии ЕО нет (Homeportal, 18.10.2026); разрешения МИО "
                                          "нет (Казреестр (Ashyq), 18.10.2026)")
-    # раздел «Без разрешения на дольщиков» уступает сверенному «есть»
+    # раздел "Без разрешения на дольщиков" уступает сверенному "есть"
     assert cx(client, AB)["permit"]["source"] == "homeportal_section"
     r = basis(client, AB, doc="guarantee", value="yes", ref="ДПГ-1", source="Homeportal")
     assert (r.json()["permit"]["status"], r.json()["permit"]["source"]) == ("permitted", "analyst")
-    # «нет сведений» снимает сверку: документ снова без источника, риск снова не оценивается
+    # "нет сведений" снимает сверку: документ снова без источника, риск снова не оценивается
     r = basis(client, AB, doc="guarantee", value="unknown")
     b = r.json()["basis"]
     assert b["guarantee"] == "unknown" and "guarantee" not in b["sources"]
@@ -225,7 +225,7 @@ def test_readiness(client, env):
     assert r.status_code == 200
     d = r.json()["readiness"]["declared"]
     assert (d["value"], d["source"], d["date"], d["by"]) == (55, "Сайт застройщика", "2026-10-10", AUTHOR)
-    assert risk(client, ASYLYM)["assessed"] is False  # заявленная готовность — слова застройщика, не проверка
+    assert risk(client, ASYLYM)["assessed"] is False  # заявленная готовность - слова застройщика, не проверка
     r = client.post(url, json={"author": AUTHOR, "kind": "confirmed", "value": 31.5, "source": "Выезд на площадку",
                                "date": "2026-10-12", "comment": "Акт осмотра № 7"})
     got = r.json()
@@ -243,7 +243,7 @@ def test_readiness(client, env):
 def test_appeals_r4_unknown_until_checked(client, env):
     live(env)
     r4 = fac(risk(client, ASYLYM), "R4")
-    assert (r4["state"], r4["reason"]) == ("unknown", "unchecked")  # обращения не сверены — не «обращений нет»
+    assert (r4["state"], r4["reason"]) == ("unknown", "unchecked")  # обращения не сверены - не "обращений нет"
     assert "не означает, что обращений нет" in r4["evidence"]
     url = f"/api/complexes/{ASYLYM}/appeals-check"
     assert errors(client.post(url, json={"author": AUTHOR, "source": " "})) == {
@@ -253,7 +253,7 @@ def test_appeals_r4_unknown_until_checked(client, env):
     assert r.json()["appealsCheck"] == {"source": "ДЭР ВКО, ответ на запрос", "checkedAt": "2026-10-16", "checkedBy": AUTHOR}
     r4 = fac(risk(client, ASYLYM), "R4")
     assert (r4["state"], r4["evidence"]) == ("clear", "Коллективных обращений нет — сверено (ДЭР ВКО, ответ на запрос, 16.10.2026)")
-    assert risk(client, ASYLYM)["assessed"] is False  # «обращений нет» само по себе риск не открывает
+    assert risk(client, ASYLYM)["assessed"] is False  # "обращений нет" само по себе риск не открывает
     assert journal(ASYLYM)[-1] == ("data", AUTHOR, "Обращений по объекту нет — сверено: источник: ДЭР ВКО, ответ на запрос, "
                                                    "сверено 16.10.2026")
     n = len(journal(ASYLYM))
@@ -281,7 +281,7 @@ def test_appeals_add_verify_reject(client, env):
     assert client.get("/api/appeals", params={"complexId": ASYLYM}).json()[0]["id"] == ap["id"]
     r4 = fac(risk(client, ASYLYM), "R4")
     assert (r4["state"], r4["reason"]) == ("unknown", "pending") and risk(client, ASYLYM)["assessed"] is False
-    # подтверждено — R4 и проверенные сведения
+    # подтверждено - R4 и проверенные сведения
     v = client.post(f"/api/appeals/{ap['id']}/verify", json={"author": AUTHOR, "comment": "Сверено с ДЭР"})
     assert v.status_code == 200
     assert (v.json()["status"], v.json()["verifiedAt"], v.json()["decidedBy"], v.json()["decisionComment"]) == (
@@ -291,8 +291,8 @@ def test_appeals_add_verify_reject(client, env):
     assert journal(ASYLYM)[-1] == ("data", AUTHOR, "Обращение проверено: подтверждено — Взносы без ДДУ. Комментарий: Сверено с ДЭР")
     n = len(journal(ASYLYM))
     assert client.post(f"/api/appeals/{ap['id']}/verify", json={"author": AUTHOR}).status_code == 200
-    assert len(journal(ASYLYM)) == n  # повтор без комментария — без события
-    # отклонено (решение изменено) — R4 больше не hit
+    assert len(journal(ASYLYM)) == n  # повтор без комментария - без события
+    # отклонено(решение изменено) - R4 больше не hit
     j = client.post(f"/api/appeals/{ap['id']}/reject", json={"author": "Нестерова А."})
     assert j.json()["status"] == "rejected"
     assert fac(risk(client, ASYLYM), "R4")["state"] == "unknown"  # обращения так и не сверены
@@ -302,7 +302,7 @@ def test_appeals_add_verify_reject(client, env):
 
 
 def test_demo_r4_unchanged(client):
-    """Демо-ЖК: пустой список обращений — «обращений нет», как прежде; сверка обращений на них тоже работает."""
+    """Демо-ЖК: пустой список обращений - "обращений нет", как прежде; сверка обращений на них тоже работает."""
     r4 = fac(risk(client, "c1"), "R4")
     assert (r4["state"], r4["reason"]) == ("clear", "none")
     r = client.post("/api/complexes/c1/appeals-check", json={"author": AUTHOR, "source": "ДЭР ВКО"})
@@ -329,15 +329,15 @@ def test_site_photo_upload(client, env):
     assert got.status_code == 200 and got.content == data and got.headers["content-type"] == "image/png"
     assert journal(ASYLYM)[-1] == ("data", AUTHOR, "Снимок площадки от 01.06.2026 (дрон): активность — нет. Кран стоит")
     rk = risk(client, ASYLYM)
-    assert rk["assessed"] is True  # датированный снимок с источником — проверенные сведения
+    assert rk["assessed"] is True  # датированный снимок с источником - проверенные сведения
     assert fac(rk, "R6")["reason"] == "active"
-    # второй снимок без активности через 100 дней — простой подтверждён снимками (R6)
+    # второй снимок без активности через 100 дней - простой подтверждён снимками(R6)
     r = photo(client, ASYLYM, png_bytes((4, 5, 6)), activity="idle", date="2026-09-09", source="дрон")
     assert r.json()["idleDays"] == 100 and [x["date"] for x in r.json()["photos"]] == ["2026-06-01", "2026-09-09"]
     assert journal(ASYLYM)[-1][2] == "Снимок площадки от 09.09.2026 (дрон): активность — нет; простой по снимкам — 100 дн."
     r6 = fac(risk(client, ASYLYM), "R6")
     assert (r6["state"], r6["evidence"]) == ("hit", "Нет активности 100 дн. по снимкам 01.06.2026 — 09.09.2026")
-    # снимок «нет сведений» серию не прерывает, снимок с активностью — снимает простой
+    # снимок "нет сведений" серию не прерывает, снимок с активностью - снимает простой
     assert photo(client, ASYLYM, png_bytes((7, 8, 9)), activity="unknown", date="2026-09-20").json()["idleDays"] == 100
     r = photo(client, ASYLYM, png_bytes((9, 9, 9)), activity="active", date="2026-10-02")
     assert r.json()["idleDays"] == 0 and fac(risk(client, ASYLYM), "R6")["reason"] == "active"
@@ -360,7 +360,7 @@ def test_site_photo_validation_and_limits(client, env):
     assert (r.status_code, r.json()["detail"]) == (413, "Файл больше 10 МБ")
     assert photo(client, "nope").status_code == 404
     assert cx(client, ASYLYM)["photos"] == []  # ни один отказ снимок не записал
-    # часовой лимит ручных загрузок — общий со скриншотами формы (POST /api/media)
+    # часовой лимит ручных загрузок - общий со скриншотами формы(POST /api/media)
     for i in range(media.UPLOAD_HOURLY_FILES - 1):
         assert client.post("/api/media", files={"file": ("s.png", png_bytes((i, 1, 1)), "image/png")}).status_code == 201
     assert photo(client, ASYLYM, png_bytes((250, 1, 1))).status_code == 201
@@ -369,7 +369,7 @@ def test_site_photo_validation_and_limits(client, env):
 
 
 def test_photo_upload_limit_by_content_length(client):
-    """Тело больше предела по Content-Length — 413 до разбора формы (как у POST /api/media)."""
+    """Тело больше предела по Content-Length - 413 до разбора формы(как у POST /api/media)."""
     r = client.post("/api/complexes/c1/photos", content=b"x", headers={
         "content-type": "multipart/form-data; boundary=x", "content-length": str(media.UPLOAD_MAX + 70 * 1024)})
     assert (r.status_code, r.json()["detail"]) == (413, "Файл больше 10 МБ")
@@ -378,8 +378,8 @@ def test_photo_upload_limit_by_content_length(client):
 # ---------- демо-набор без действий аналитика ----------
 
 def test_demo_risk_and_screening_unchanged(client):
-    """Риск демо-ЖК по API совпадает с эталоном сида (shared/testdata/risk_golden.json); «Проверка по рекламе» демо-ЖК — прежняя
-    (c4: «нет» по гарантии ЕО и МИО с источником теперь not_permitted — как и R1, статус оценки тот же)."""
+    """Риск демо-ЖК по API совпадает с эталоном сида(shared/testdata/risk_golden.json); "Проверка по рекламе" демо-ЖК - прежняя
+    (c4: "нет" по гарантии ЕО и МИО с источником теперь not_permitted - как и R1, статус оценки тот же)."""
     stored = json.loads(golden.GOLDEN.read_text(encoding="utf-8"))
     api = {r["complexId"]: {k: v for k, v in r.items() if k != "complexId"}
            for r in client.get("/api/risk", params={"asOf": stored["asOf"]}).json()}
@@ -392,7 +392,7 @@ def test_demo_risk_and_screening_unchanged(client):
                for c in cxs.values())
     c4 = cxs["c4"]["permit"]
     assert (c4["status"], c4["source"]) == ("not_permitted", "analyst")
-    # при прежнем «нет сведений» оценка c4 была бы той же
+    # при прежнем "нет сведений" оценка c4 была бы той же
     with SessionLocal() as db:
         r = screening.compute(db)
         facts = screening.load_facts(db)

@@ -1,4 +1,4 @@
-"""Кто продаёт (T-73), аномальная цена (T-74), связи застройщика (T-75): извлечение контактов (телефоны, WhatsApp, БИН,
+"""Кто продаёт(T-73), аномальная цена(T-74), связи застройщика(T-75): извлечение контактов(телефоны, WhatsApp, БИН,
 @упоминания), группы продавцов, dHash картинок, разбор цены за м² и медиана, маршруты API на демо-наборе."""
 from pathlib import Path
 
@@ -75,7 +75,7 @@ def test_groups_by_phone_bin_handle_and_mention():
     ]
     groups = sellers.build(ads, developers=[{"id": "d9", "name": "ТОО «Гамма»", "bin": "201040022748"}])
     big = groups[0]
-    # по одной публикации у каждого — порядок по ключу; ключ группы — первый аккаунт
+    # по одной публикации у каждого - порядок по ключу; ключ группы - первый аккаунт
     assert [a["key"] for a in big["accounts"]] == ["instagram:@agency.uka", "instagram:@alpha", "instagram:@beta", "tiktok:@alpha"]
     assert big["key"] == "instagram-agency.uka" and big["linked"] and big["hypothesis"]
     assert {ln["kind"] for ln in big["links"]} == {"phone", "handle", "mention"}
@@ -128,7 +128,7 @@ def test_dhash_same_picture_links_accounts(tmp_path):
         im.resize((640, 480)).save(tmp_path / "b.jpg", "JPEG", quality=60)
     b = sellers.dhash(tmp_path / "b.jpg")
     c = sellers.dhash(_picture(tmp_path / "c.jpg", shift=90))
-    assert sellers.dhash(_picture(tmp_path / "w.jpg", plain=True)) is None  # однотонная — не сравнивается
+    assert sellers.dhash(_picture(tmp_path / "w.jpg", plain=True)) is None  # однотонная - не сравнивается
     assert (a ^ b).bit_count() <= sellers.IMAGE_MAX_DISTANCE < (a ^ c).bit_count()
     groups = sellers.build([ad("a1", "@one"), ad("a2", "@two"), ad("a3", "@three")],
                            {"a1": [(a, "s1")], "a2": [(b, "s2")], "a3": [(c, "s3")]})
@@ -212,7 +212,7 @@ def test_anomaly_below_median():
 def test_room_median_used_when_enough():
     ads = [ad(f"o{i}", "@m", f"1-комнатная, 40 м², цена 24 млн") for i in range(5)]  # 600 000
     ads += [ad(f"t{i}", "@m", f"3-комнатная, 100 м², цена 40 млн") for i in range(5)]  # 400 000
-    ads.append(ad("x", "@x", "1-комнатная, 40 м², цена 16,4 млн"))  # 410 000 — дёшево для однокомнатных
+    ads.append(ad("x", "@x", "1-комнатная, 40 м², цена 16,4 млн"))  # 410 000 - дёшево для однокомнатных
     rows = {r["adId"]: r for r in prices.analyze(ads)["rows"]}
     assert rows["x"]["medianBasis"] == "rooms" and rows["x"]["median"] == 600_000 and rows["x"]["anomaly"]
 

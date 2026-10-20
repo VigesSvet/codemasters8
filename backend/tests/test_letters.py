@@ -1,4 +1,4 @@
-"""Проект запроса сведений в ЖАО (МИО) / Единому оператору / ГАСК (T-78): факты ЖК, нормы закона, PDF, DOCX, журнал."""
+"""Проект запроса сведений в ЖАО(МИО) / Единому оператору / ГАСК(T-78): факты ЖК, нормы закона, PDF, DOCX, журнал."""
 import io
 import re
 import zipfile
@@ -7,7 +7,7 @@ from reportlab.platypus import Paragraph, Table
 
 from app import letters
 
-LEAD = "Омарова Ж."  # an2 демо-набора — «Ведущий аналитик · ДЭР ВКО»
+LEAD = "Омарова Ж."  # an2 демо-набора - "Ведущий аналитик · ДЭР ВКО"
 
 
 def _body(**kw):
@@ -43,15 +43,15 @@ def test_preview_has_complex_facts_ads_and_law(client):
     assert L["addressee"] == "mio" and L["addresseeName"] == "ЖАО (МИО) ВКО" and L["complexName"] == "Алтай Резиденс"
     assert L["subject"].startswith("О предоставлении сведений по ЖК «Алтай Резиденс»")
     assert f"Застройщик: {dev['name']}, БИН {dev['bin']}" in t and cx["address"] in t
-    # документы основания с источником и датой сверки, публикация — цитата, ссылка, время фиксации
+    # документы основания с источником и датой сверки, публикация - цитата, ссылка, время фиксации
     assert "Гарантия ЕО" in t and "Разрешение МИО" in t and "сверено" in t
     assert ad["url"] in t and "опубликовано" in t and "«" in t
-    # нормы: ст. 7, 8, 18, 23 — дословно, с адресом закона
+    # нормы: ст. 7, 8, 18, 23 - дословно, с адресом закона
     assert L["lawRefs"] == ["ст. 7 п. 1, 2", "ст. 8 п. 6", "ст. 18 п. 1, 8", "ст. 23"]
     for ref in ("ст. 7 п. 1", "ст. 7 п. 2", "ст. 8 п. 6", "ст. 18 п. 1", "ст. 23 ч. 1", "adilet.zan.kz", "№ 486-V"):
         assert ref in t, ref
     assert "Запрещается привлечение денег" in t  # дословная выдержка ст. 7 п. 2
-    # запрос: разрешение МИО по адресату, исходящий номер, подпись — должность без имени, пометка «черновик»
+    # запрос: разрешение МИО по адресату, исходящий номер, подпись - должность без имени, пометка "черновик"
     assert "разрешения на привлечение денег дольщиков" in t and "Исх. № ____" in t
     assert L["signature"] == "Ведущий аналитик ДЭР ВКО" and "Омарова" not in t
     assert letters.DRAFT_NOTE in t and L["note"] == letters.DRAFT_NOTE
@@ -88,7 +88,7 @@ def test_pdf_file_and_journal(client):
     assert ev[0]["what"].startswith("Сформирован проект запроса в ЖАО (МИО) ВКО (PDF): основание привлечения средств, "
                                     "подтверждённая готовность. Черновик для внутреннего маршрута, автоматической отправки нет")
     assert ev[0]["what"].endswith("Комментарий: Срочно")
-    # текст PDF — те же блоки письма
+    # текст PDF - те же блоки письма
     L = _preview(client)
     t = _text(letters.story(L))
     for s in ("ЖК «Алтай Резиденс»", "ст. 8 п. 6", "ст. 23 ч. 1", "Ведущий аналитик ДЭР ВКО", "Исх. №", letters.DRAFT_NOTE):
@@ -113,7 +113,7 @@ def test_validation(client):
     url = "/api/complexes/c2/request-letter"
     assert client.post(url, json=_body(addressee="akimat")).status_code == 422
     assert client.post(url, json=_body(topics=[])).status_code == 422
-    assert client.post(url, json=_body(topics=["other"])).status_code == 422  # «другое» — только с комментарием
+    assert client.post(url, json=_body(topics=["other"])).status_code == 422  # "другое" - только с комментарием
     assert client.post(url, json=_body(author="Система")).status_code == 422
     assert client.post(url + "?format=odt", json=_body()).status_code == 422
     assert client.post("/api/complexes/nope/request-letter", json=_body()).status_code == 404

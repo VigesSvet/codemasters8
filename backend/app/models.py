@@ -8,13 +8,13 @@ from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from .db import Base
 
-# Версия схемы БД. Меняется только добавлением шага в migrate.STEPS (последний шаг = SCHEMA_VERSION): база известной
-# прошлой версии обновляется на месте с резервной копией, неизвестной — пересоздаётся, только если в ней нет собранных и
-# внесённых данных (см. seed.init_db, migrate).
+# Версия схемы БД. Меняется только добавлением шага в migrate.STEPS(последний шаг = SCHEMA_VERSION): база известной
+# прошлой версии обновляется на месте с резервной копией, неизвестной - пересоздаётся, только если в ней нет собранных и
+# внесённых данных(см. seed.init_db, migrate).
 SCHEMA_VERSION = "2026.10-alerts-1"
 
-# JSON со слежением за изменениями верхнего уровня (row.state["x"] = 1 сохраняется при commit). Код всё равно
-# переприсваивает (row.state = {**row.state, **patch}) и не меняет словари, полученные из другой сессии.
+# JSON со слежением за изменениями верхнего уровня(row.state["x"] = 1 сохраняется при commit). Код всё равно
+# переприсваивает(row.state = {**row.state, **patch}) и не меняет словари, полученные из другой сессии.
 MutableJSONDict = MutableDict.as_mutable(JSON)
 MutableJSONList = MutableList.as_mutable(JSON)
 
@@ -24,8 +24,8 @@ def utcnow() -> datetime:
 
 
 def as_utc(dt: Optional[datetime]) -> Optional[datetime]:
-    """Наивное (SQLite) → UTC-aware; aware с любым смещением → .astimezone(timezone.utc).
-    Каждое время, попадающее в SQL (WHERE, UPDATE, INSERT), проходит через as_utc: SQLite отбрасывает пояс связанного
+    """Наивное(SQLite) → UTC-aware; aware с любым смещением → .astimezone(timezone.utc).
+    Каждое время, попадающее в SQL(WHERE, UPDATE, INSERT), проходит через as_utc: SQLite отбрасывает пояс связанного
     значения, и 12:00+05:00 сравнивалось бы как 12:00 UTC."""
     if dt is None:
         return None
@@ -33,24 +33,24 @@ def as_utc(dt: Optional[datetime]) -> Optional[datetime]:
 
 
 def insert_ignore(db: Session, model, values: dict, conflict_cols: Iterable[str], where=None) -> bool:
-    """INSERT … ON CONFLICT DO NOTHING (SQLite и PostgreSQL) — гонка двух вставок без SAVEPOINT (в pysqlite ранний
-    SAVEPOINT становится внешней транзакцией). True — строка вставлена, False — такая уже есть (её перечитывают).
-    where — условие частичного уникального индекса (index_where). Время приводится к UTC (as_utc)."""
+    """INSERT … ON CONFLICT DO NOTHING(SQLite и PostgreSQL) - гонка двух вставок без SAVEPOINT(в pysqlite ранний
+    SAVEPOINT становится внешней транзакцией). True - строка вставлена, False - такая уже есть(её перечитывают).
+    where - условие частичного уникального индекса(index_where). Время приводится к UTC(as_utc)."""
     dialect = db.get_bind().dialect.name
     if dialect == "postgresql":
         from sqlalchemy.dialects.postgresql import insert
     elif dialect == "sqlite":
         from sqlalchemy.dialects.sqlite import insert
-    else:  # pragma: no cover — приложение работает только с SQLite и PostgreSQL
+    else:  # pragma: no cover - приложение работает только с SQLite и PostgreSQL
         raise NotImplementedError(f"insert_ignore: диалект {dialect} не поддерживается")
     data = {k: as_utc(v) if isinstance(v, datetime) else v for k, v in values.items()}
     stmt = insert(model).values(**data).on_conflict_do_nothing(index_elements=list(conflict_cols), index_where=where)
-    # preserve_rowcount: для INSERT SQLAlchemy 2.x иначе не сохраняет rowcount (на psycopg он был бы -1)
+    # preserve_rowcount: для INSERT SQLAlchemy 2.x иначе не сохраняет rowcount(на psycopg он был бы -1)
     return db.execute(stmt, execution_options={"preserve_rowcount": True}).rowcount == 1
 
 
 def iso(dt: Optional[datetime]) -> Optional[str]:
-    """ISO 8601 с UTC-смещением; наивные значения (SQLite) считаются UTC."""
+    """ISO 8601 с UTC-смещением; наивные значения(SQLite) считаются UTC."""
     if dt is None:
         return None
     dt = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
@@ -65,7 +65,7 @@ class Meta(Base):
 
 
 class Analyst(Base):
-    """Демо-аналитик: вход без пароля, имя (name) пишется автором в журнал."""
+    """Демо-аналитик: вход без пароля, имя(name) пишется автором в журнал."""
 
     __tablename__ = "analysts"
 
@@ -88,9 +88,9 @@ class Developer(Base):
     unfinished: Mapped[int] = mapped_column(Integer, default=0)
     site: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     instagram: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    phones: Mapped[list] = mapped_column(JSON, default=list)  # телефоны отдела продаж — признак для сопоставления (ИИ)
-    # demo — вымышленная организация демо-набора, registry — застройщик из открытого реестра (app.demo): только название и БИН,
-    # advertised — застройщик, названный в рекламе ЖК, которого нет в открытом реестре (app.discovery): сведения рекламы
+    phones: Mapped[list] = mapped_column(JSON, default=list)  # телефоны отдела продаж - признак для сопоставления(ИИ)
+    # demo - вымышленная организация демо-набора, registry - застройщик из открытого реестра(app.demo): только название и БИН,
+    # advertised - застройщик, названный в рекламе ЖК, которого нет в открытом реестре(app.discovery): сведения рекламы
     origin: Mapped[str] = mapped_column(String(16), default="demo")
 
     complexes: Mapped[list["Complex"]] = relationship(back_populates="developer")
@@ -104,7 +104,7 @@ class Complex(Base):
     developer_id: Mapped[str] = mapped_column(ForeignKey("developers.id"))
     address: Mapped[str] = mapped_column(String(255))
     district: Mapped[str] = mapped_column(String(64))
-    # координат может не быть (объект реестра без координат, ЖК по рекламе): None — «нет координат», сверка — 2ГИС
+    # координат может не быть(объект реестра без координат, ЖК по рекламе): None - "нет координат", сверка - 2ГИС
     lng: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     stage: Mapped[str] = mapped_column(String(32))
@@ -114,23 +114,23 @@ class Complex(Base):
     start: Mapped[str] = mapped_column(String(10))
     planned_end: Mapped[str] = mapped_column(String(10))
     # {"guarantee": "yes|no|unknown", "guaranteeRef", "mio", "mioRef", "bvu", "bank", "source", "checkedAt",
-    #  "sources": {документ: {"source", "url", "checkedAt", "checkedBy"?, "ref"?, "comment"?}}} — сверка по документам
-    #  (app.verification пишет checkedBy — кто сверил; общие source/checkedAt — последняя сверка)
+    #  "sources": {документ: {"source", "url", "checkedAt", "checkedBy"?, "ref"?, "comment"?}}} - сверка по документам
+    #  (app.verification пишет checkedBy - кто сверил; общие source/checkedAt - последняя сверка)
     basis: Mapped[dict] = mapped_column(JSON)
-    # {"declared": {"value", "source", "date", "by"?, "at"?} | null, "confirmed": ... | null} — для R5
+    # {"declared": {"value", "source", "date", "by"?, "at"?} | null, "confirmed": ... | null} - для R5
     readiness: Mapped[dict] = mapped_column(JSON, default=lambda: {"declared": None, "confirmed": None})
     in_published_list: Mapped[str] = mapped_column(String(8), default="unknown")
     cover: Mapped[str] = mapped_column(String(255))
-    # [{"date", "src", "source", "activity", "note"?, …}]; снимок аналитика — ещё "mediaId", "by", "at" (app.verification)
+    # [{"date", "src", "source", "activity", "note"?, …}]; снимок аналитика - ещё "mediaId", "by", "at"(app.verification)
     photos: Mapped[list] = mapped_column(JSON, default=list)
     idle_days: Mapped[int] = mapped_column(Integer, default=0)
-    # demo — вымышленный ЖК демо-набора, registry — карточка из открытого реестра (app.demo): сведения источника, не проверены;
-    # advertised — ЖК, известный только по рекламе: в открытом реестре его нет, карточку создал аналитик или импорт
-    # (app.discovery) — сведения рекламы, не проверены
+    # demo - вымышленный ЖК демо-набора, registry - карточка из открытого реестра(app.demo): сведения источника, не проверены;
+    # advertised - ЖК, известный только по рекламе: в открытом реестре его нет, карточку создал аналитик или импорт
+    # (app.discovery) - сведения рекламы, не проверены
     origin: Mapped[str] = mapped_column(String(16), default="demo")
-    # Сверка аналитиком (app.verification): перечень ГАСК (O1) — {"value", "source", "url", "checkedAt", "checkedBy",
-    # "comment"?}; «обращений нет — сверено» (R4 карточек реестра и рекламы) — {"source", "checkedAt", "checkedBy",
-    # "comment"?}. None — не сверялось
+    # Сверка аналитиком(app.verification): перечень ГАСК(O1) - {"value", "source", "url", "checkedAt", "checkedBy",
+    # "comment"?}; "обращений нет - сверено"(R4 карточек реестра и рекламы) - {"source", "checkedAt", "checkedBy",
+    # "comment"?}. None - не сверялось
     published_list_check: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     appeals_check: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
@@ -149,56 +149,56 @@ class Ad(Base):
     ocr: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     image: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     complex_id: Mapped[Optional[str]] = mapped_column(ForeignKey("complexes.id"), nullable=True)
-    # уверенность ИИ в привязке к ЖК (информативно); фактом привязку делает подтверждение аналитика (link_confirmed_*)
+    # уверенность ИИ в привязке к ЖК(информативно); фактом привязку делает подтверждение аналитика(link_confirmed_*)
     match_confidence: Mapped[float] = mapped_column(Float, default=0)
     link_confirmed_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     link_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     rejected_links: Mapped[list] = mapped_column(JSON, default=list)  # ЖК, гипотезы о которых аналитик отклонил
-    # решение аналитика по условиям оплаты, найденным ИИ: accepted | rejected («это не предложение внести деньги» — вето R2)
+    # решение аналитика по условиям оплаты, найденным ИИ: accepted | rejected("это не предложение внести деньги" - вето R2)
     terms_review: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     terms_review_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     terms_review_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    # номер версии решений аналитика по публикации (привязка, гипотезы ИИ, условия оплаты): решение пишется условным UPDATE
-    # по прочитанному номеру — два одновременных решения не смешиваются в одно противоречивое состояние (main._decide)
+    # номер версии решений аналитика по публикации(привязка, гипотезы ИИ, условия оплаты): решение пишется условным UPDATE
+    # по прочитанному номеру - два одновременных решения не смешиваются в одно противоречивое состояние(main._decide)
     decision_rev: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     price: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     source: Mapped[str] = mapped_column(String(16), default="manual")
     status: Mapped[str] = mapped_column(String(16), default="new", index=True)
     assignee: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     reach: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    # demo — из демо-набора, analyst — добавил аналитик, collected — собрано сборщиком или прислано через бота
+    # demo - из демо-набора, analyst - добавил аналитик, collected - собрано сборщиком или прислано через бота
     origin: Mapped[str] = mapped_column(String(16), default="demo")
-    collected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # время получения (UTC)
+    collected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # время получения(UTC)
 
-    # Файлы публикации (без FK — новые таблицы не ссылаются на старые, см. migrate): только загруженные изображения и
+    # Файлы публикации(без FK - новые таблицы не ссылаются на старые, см. migrate): только загруженные изображения и
     # видео текущей версии, по порядку в публикации
     media: Mapped[list["MediaAsset"]] = relationship(
         primaryjoin="and_(foreign(MediaAsset.ad_id) == Ad.id, MediaAsset.status == 'downloaded', "
                     "MediaAsset.current == True, MediaAsset.kind.in_(('image', 'video')))",
         order_by="MediaAsset.position", lazy="selectin", viewonly=True)
-    # Запись приёма (собранная публикация): версия содержимого и состояние анализа
+    # Запись приёма(собранная публикация): версия содержимого и состояние анализа
     ingest: Mapped[Optional["IngestItem"]] = relationship(
         primaryjoin="foreign(IngestItem.ad_id) == Ad.id", uselist=False, lazy="selectin", viewonly=True)
-    # Анализы ИИ (Claude) публикации: последний — по времени последнего использования результата
+    # Анализы ИИ(Claude) публикации: последний - по времени последнего использования результата
     llm_analyses: Mapped[list["LlmAnalysis"]] = relationship(
         primaryjoin="foreign(LlmAnalysis.ad_id) == Ad.id",
         order_by="(LlmAnalysis.updated_at.desc(), LlmAnalysis.id.desc())", lazy="selectin", viewonly=True)
 
     @property
     def processing(self) -> Optional[dict]:
-        """Состояние анализа собранной публикации (AdOut.processing); None — публикация не из приёма."""
+        """Состояние анализа собранной публикации(AdOut.processing); None - публикация не из приёма."""
         item = self.ingest
         return item.processing_view() if item is not None else None
 
     @property
     def llm(self) -> Optional[dict]:
-        """Последний анализ ИИ — гипотезы для аналитика (AdOut.llm); None — анализа не было."""
+        """Последний анализ ИИ - гипотезы для аналитика(AdOut.llm); None - анализа не было."""
         rows = self.llm_analyses
         return rows[0].view() if rows else None
 
 
 class Appeal(Base):
-    """Обращение граждан по объекту — данные для R4."""
+    """Обращение граждан по объекту - данные для R4."""
 
     __tablename__ = "appeals"
 
@@ -212,7 +212,7 @@ class Appeal(Base):
     subject: Mapped[str] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(255))
     origin: Mapped[str] = mapped_column(String(16), default="demo")
-    # Внесено и проверено аналитиком (app.verification): кто и когда внёс, комментарий; кто решил и с каким основанием
+    # Внесено и проверено аналитиком(app.verification): кто и когда внёс, комментарий; кто решил и с каким основанием
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -221,10 +221,10 @@ class Appeal(Base):
 
 
 class Signal(Base):
-    """Сигнальная карточка (модуль 05): снимок риска и доказательств на момент создания + решение аналитика."""
+    """Сигнальная карточка(модуль 05): снимок риска и доказательств на момент создания + решение аналитика."""
 
     __tablename__ = "signals"
-    # Не больше одного нерассмотренного сигнала по ЖК — защита от гонки двух одновременных «Создать сигнал»
+    # Не больше одного нерассмотренного сигнала по ЖК - защита от гонки двух одновременных "Создать сигнал"
     __table_args__ = (Index("uq_signals_open_complex", "complex_id", unique=True,
                             sqlite_where=text("status = 'new'"), postgresql_where=text("status = 'new'")),)
 
@@ -255,7 +255,7 @@ class Signal(Base):
 
 
 class AuditEvent(Base):
-    """Журнал: кто, что и когда сделал (ТЗ §7 «Контроль решений») и когда зафиксированы сведения из источников (§4)."""
+    """Журнал: кто, что и когда сделал(ТЗ §7 "Контроль решений") и когда зафиксированы сведения из источников(§4)."""
 
     __tablename__ = "audit_events"
 
@@ -263,9 +263,9 @@ class AuditEvent(Base):
     ad_id: Mapped[Optional[str]] = mapped_column(ForeignKey("ads.id"), nullable=True, index=True)
     complex_id: Mapped[Optional[str]] = mapped_column(ForeignKey("complexes.id"), nullable=True, index=True)
     signal_id: Mapped[Optional[int]] = mapped_column(ForeignKey("signals.id"), nullable=True, index=True)
-    # system — автоматическое, data — сведения из источника, status/link/comment — работа с публикацией,
-    # request — запрос сведений по ЖК, signal/export — сигнальная карточка и её выгрузка, ai — гипотеза ИИ и решения
-    # аналитика по ней, alert — предупреждение жителям: подготовка, согласование, итог отправки (schemas.AuditKind)
+    # system - автоматическое, data - сведения из источника, status/link/comment - работа с публикацией,
+    # request - запрос сведений по ЖК, signal/export - сигнальная карточка и её выгрузка, ai - гипотеза ИИ и решения
+    # аналитика по ней, alert - предупреждение жителям: подготовка, согласование, итог отправки(schemas.AuditKind)
     kind: Mapped[str] = mapped_column(String(16), default="system", index=True)
     who: Mapped[str] = mapped_column(String(128))
     what: Mapped[str] = mapped_column(Text)
@@ -273,9 +273,9 @@ class AuditEvent(Base):
 
 
 class SourceRecord(Base):
-    """Запись открытого источника (T-26): нормализованные поля строки файла и провенанс — источник, раздел, ссылка, ID
+    """Запись открытого источника(T-26): нормализованные поля строки файла и провенанс - источник, раздел, ссылка, ID
     в источнике, время сбора, дата загрузки у поставщика, когда и из какого файла загружена. Это сведения источника, а не
-    выводы системы: риск, зоны и сигналы для них не рассчитываются (T-31). Объект — группа записей по ключу (key)."""
+    выводы системы: риск, зоны и сигналы для них не рассчитываются(T-31). Объект - группа записей по ключу(key)."""
 
     __tablename__ = "source_records"
     __table_args__ = (UniqueConstraint("source", "source_record_id", name="uq_source_records_source_id"),)
@@ -285,7 +285,7 @@ class SourceRecord(Base):
     origin: Mapped[str] = mapped_column(String(16), default="source")
     # провенанс
     source: Mapped[str] = mapped_column(String(32), index=True)  # homeportal | homeportal_section | ashyq
-    source_name: Mapped[str] = mapped_column(Text)  # «Источник» как в файле
+    source_name: Mapped[str] = mapped_column(Text)  # "Источник" как в файле
     source_section: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     source_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     source_record_id: Mapped[str] = mapped_column(String(64))
@@ -319,12 +319,12 @@ class SourceRecord(Base):
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
-# ---------- сбор публикаций (подключения, запуски, приём, файлы, задания воркера) ----------
-# Новые таблицы не ссылаются на старые (ads, complexes, …) внешними ключами: публикация — по индексированному ads.id
-# (String(32)), целостность — в сервисном слое. Так старые пути пересоздания схемы продолжают работать.
+# ---------- сбор публикаций(подключения, запуски, приём, файлы, задания воркера) ----------
+# Новые таблицы не ссылаются на старые(ads, complexes, …) внешними ключами: публикация - по индексированному ads.id
+# (String(32)), целостность - в сервисном слое. Так старые пути пересоздания схемы продолжают работать.
 
 class Collector(Base):
-    """Подключение (план: Source): одна строка на код подключения, создаётся лениво. Только ссылки на секреты, не они."""
+    """Подключение(план: Source): одна строка на код подключения, создаётся лениво. Только ссылки на секреты, не они."""
 
     __tablename__ = "collectors"
 
@@ -332,12 +332,12 @@ class Collector(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)  # сбор по расписанию
     # {accounts, channels, profiles, searchUrls, cardUrls, resultsPerPage, downloadVideos}
     config: Mapped[dict] = mapped_column(MutableJSONDict, default=dict)
-    interval_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # None — период подключения по умолчанию
-    status: Mapped[str] = mapped_column(String(24), default="unchecked")  # хранимый статус (integration-spec §10.4)
+    interval_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # None - период подключения по умолчанию
+    status: Mapped[str] = mapped_column(String(24), default="unchecked")  # хранимый статус(integration-spec §10.4)
     status_detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # несекретные сведения: account, expiresAt, scopes, keyFp, partial, stopped, stoppedCode, …
     facts: Mapped[dict] = mapped_column(MutableJSONDict, default=dict)
-    # курсоры и отчёты: каналы TG, IG seeding, кэш robots Krisha, report (от воркера), rejects
+    # курсоры и отчёты: каналы TG, IG seeding, кэш robots Krisha, report(от воркера), rejects
     state: Mapped[dict] = mapped_column(MutableJSONDict, default=dict)
     failures: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # подряд неудачных запусков
     next_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -346,12 +346,12 @@ class Collector(Base):
     checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    updated_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)  # задано — строка невосстановима
+    updated_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)  # задано - строка невосстановима
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class CollectionRun(Base):
-    """Запуск сбора или проверки подключения («запуск №N»). Счётчики — атомарным UPDATE … SET x = x + :n."""
+    """Запуск сбора или проверки подключения("запуск №N"). Счётчики - атомарным UPDATE … SET x = x + :n."""
 
     __tablename__ = "collection_runs"
     __table_args__ = (Index("ix_collection_runs_collector_created", "collector", "created_at"),)
@@ -360,7 +360,7 @@ class CollectionRun(Base):
     collector: Mapped[str] = mapped_column(String(32), index=True)
     trigger: Mapped[str] = mapped_column(String(16))  # schedule | manual | test
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)  # integration-spec §10.5
-    requested_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)  # администратор или «Система»
+    requested_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)  # администратор или "Система"
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -380,18 +380,18 @@ class CollectionRun(Base):
 
 
 class IngestItem(Base):
-    """Принятая публикация (план: IngestItem): внешний ID в пространстве площадки, владелец-подключение, хеш и версия
-    содержимого, снимок ответа источника (без секретов) и состояние анализа (план: AnalysisJob)."""
+    """Принятая публикация(план: IngestItem): внешний ID в пространстве площадки, владелец-подключение, хеш и версия
+    содержимого, снимок ответа источника(без секретов) и состояние анализа(план: AnalysisJob)."""
 
     __tablename__ = "ingest_items"
     __table_args__ = (UniqueConstraint("platform", "external_id", name="uq_ingest_items_platform_external"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    platform: Mapped[str] = mapped_column(String(16))  # пространство дедупликации: площадка; «tgbot» — заявки бота
-    # TG «{channel_id}:{first_msg_id}»; IG — ID медиа; TikTok — ID поста; Krisha — ID объявления; бот — ID заявки
+    platform: Mapped[str] = mapped_column(String(16))  # пространство дедупликации: площадка; "tgbot" - заявки бота
+    # TG "{channel_id}:{first_msg_id}"; IG - ID медиа; TikTok - ID поста; Krisha - ID объявления; бот - ID заявки
     external_id: Mapped[str] = mapped_column(String(128))
-    collector: Mapped[str] = mapped_column(String(32), index=True)  # подключение-владелец; «intake» — приём через API
-    ad_id: Mapped[str] = mapped_column(String(32), index=True)  # публикация (без FK)
+    collector: Mapped[str] = mapped_column(String(32), index=True)  # подключение-владелец; "intake" - приём через API
+    ad_id: Mapped[str] = mapped_column(String(32), index=True)  # публикация(без FK)
     account: Mapped[str] = mapped_column(String(255), default="")
     url: Mapped[str] = mapped_column(String(512), default="")
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # время источника
@@ -406,12 +406,12 @@ class IngestItem(Base):
     analyzed_engine: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     analyzed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     analysis_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # queued | running | done | failed
-    # media | frames | speech | ocr | rules | llm | events — пока идёт; после сбоя — этап, на котором он случился
+    # media | frames | speech | ocr | rules | llm | events - пока идёт; после сбоя - этап, на котором он случился
     analysis_stage: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     analysis_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # замаскировано
 
     def processing_view(self) -> Optional[dict]:
-        """Состояние анализа для карточки публикации (AdOut.processing)."""
+        """Состояние анализа для карточки публикации(AdOut.processing)."""
         if self.analysis_status not in ("queued", "running", "done", "failed"):
             return None
         return {"status": self.analysis_status, "version": self.version, "analyzed_version": self.analyzed_version,
@@ -440,14 +440,14 @@ class IngestVersion(Base):
 
 
 class MediaAsset(Base):
-    """Файл публикации (план: MediaAsset): изображение, видео или кадр видео. Байты — в хранилище по SHA-256
-    (media.py), здесь — ключ хранилища, MIME по сигнатуре, размер, хеш, источник загрузки и состояние."""
+    """Файл публикации(план: MediaAsset): изображение, видео или кадр видео. Байты - в хранилище по SHA-256
+    (media.py), здесь - ключ хранилища, MIME по сигнатуре, размер, хеш, источник загрузки и состояние."""
 
     __tablename__ = "media_assets"
     __table_args__ = (UniqueConstraint("item_id", "source_key", name="uq_media_assets_item_key"),)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)  # uuid4 hex; адрес /api/media/{id}
-    ad_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)  # без FK; None — не привязан
+    ad_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)  # без FK; None - не привязан
     item_id: Mapped[Optional[int]] = mapped_column(ForeignKey("ingest_items.id"), nullable=True, index=True)
     parent_id: Mapped[Optional[str]] = mapped_column(ForeignKey("media_assets.id"), nullable=True)  # кадр → видео
     position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # порядок в публикации
@@ -467,8 +467,8 @@ class MediaAsset(Base):
     sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     storage_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # ab/cd/<sha256>.<ext>
     frame_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    # width/height/duration; src — адрес ожидающей загрузки из приёма (не выводится и не пишется в лог); retryAt;
-    # speech — расшифровка речи видео (app.speech: status, text, engine, model, language, audioS, durationMs, detail)
+    # width/height/duration; src - адрес ожидающей загрузки из приёма(не выводится и не пишется в лог); retryAt;
+    # speech - расшифровка речи видео(app.speech: status, text, engine, model, language, audioS, durationMs, detail)
     meta: Mapped[dict] = mapped_column(MutableJSONDict, default=dict)
     ocr_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # done|empty|unavailable|failed|skipped
     ocr_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -483,7 +483,7 @@ class MediaAsset(Base):
 
     @property
     def speech(self) -> Optional[dict]:
-        """Расшифровка речи видео (meta.speech, app.speech) для MediaRefOut; у изображений и кадров — None."""
+        """Расшифровка речи видео(meta.speech, app.speech) для MediaRefOut; у изображений и кадров - None."""
         sp = (self.meta or {}).get("speech") if self.kind == "video" else None
         return sp if isinstance(sp, dict) and sp.get("status") else None
 
@@ -492,8 +492,8 @@ ACTIVE_JOB = "status IN ('queued', 'running')"
 
 
 class Job(Base):
-    """Задание воркера: collect (сбор), test (проверка подключения), analyze (анализ публикации, план: AnalysisJob).
-    Не больше одного активного задания на dedupe_key (частичный уникальный индекс)."""
+    """Задание воркера: collect(сбор), test(проверка подключения), analyze(анализ публикации, план: AnalysisJob).
+    Не больше одного активного задания на dedupe_key(частичный уникальный индекс)."""
 
     __tablename__ = "jobs"
     __table_args__ = (Index("ix_jobs_status_run_after", "status", "run_after"),
@@ -503,13 +503,13 @@ class Job(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     kind: Mapped[str] = mapped_column(String(16), index=True)  # collect | test | analyze
     status: Mapped[str] = mapped_column(String(16), default="queued")  # queued | running | done | failed | cancelled
-    # test 10, collect 5, analyze 0 (повторный анализ ИИ 1, дозапрос Claude −1 — app.llm)
+    # test 10, collect 5, analyze 0(повторный анализ ИИ 1, дозапрос Claude −1 - app.llm)
     priority: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     collector: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("collection_runs.id"), nullable=True, index=True)
     ad_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
     content_version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # analyze: версия при постановке
-    # collect:{code}, test:{code}, analyze:{ad_id}; у analyze обнуляется при захвате (новая версия ставит новое задание)
+    # collect:{code}, test:{code}, analyze:{ad_id}; у analyze обнуляется при захвате(новая версия ставит новое задание)
     dedupe_key: Mapped[Optional[str]] = mapped_column(String(96), nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # +1 при захвате
     max_attempts: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
@@ -525,7 +525,7 @@ class Job(Base):
 
 
 class WorkerLease(Base):
-    """«scheduler» — лидерство планировщика; «worker:{id}» — пульс воркера; «dgis-check:{hash}» — короткая блокировка
+    """"scheduler" - лидерство планировщика; "worker:{id}" - пульс воркера; "dgis-check:{hash}" - короткая блокировка
     сверки адреса 2ГИС."""
 
     __tablename__ = "worker_leases"
@@ -538,7 +538,7 @@ class WorkerLease(Base):
 
 
 class OAuthState(Base):
-    """Одноразовый state OAuth (OLX): хранится только SHA-256, привязан к отпечатку токена администратора."""
+    """Одноразовый state OAuth(OLX): хранится только SHA-256, привязан к отпечатку токена администратора."""
 
     __tablename__ = "oauth_states"
 
@@ -552,7 +552,7 @@ class OAuthState(Base):
 
 
 class IntegrationToken(Base):
-    """Токены OAuth-подключения (OLX). Хранятся без шифрования (см. документацию); ни одна схема *Out их не выводит."""
+    """Токены OAuth-подключения(OLX). Хранятся без шифрования(см. документацию); ни одна схема *Out их не выводит."""
 
     __tablename__ = "integration_tokens"
 
@@ -570,14 +570,14 @@ class IntegrationToken(Base):
 
 
 class GeoCheck(Base):
-    """Проверка адреса через геосервис (2ГИС): кандидаты (временный кэш) и решение аналитика. Сведения открытых
-    данных не меняются; координаты ЖК — только явным выбором с записью «было → стало» в журнал."""
+    """Проверка адреса через геосервис(2ГИС): кандидаты(временный кэш) и решение аналитика. Сведения открытых
+    данных не меняются; координаты ЖК - только явным выбором с записью "было → стало" в журнал."""
 
     __tablename__ = "geo_checks"
     __table_args__ = (Index("ix_geo_checks_target", "target_kind", "target_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    target_kind: Mapped[str] = mapped_column(String(16))  # complex | registry | discovered (объект из рекламы)
+    target_kind: Mapped[str] = mapped_column(String(16))  # complex | registry | discovered(объект из рекламы)
     target_id: Mapped[str] = mapped_column(String(96))
     provider: Mapped[str] = mapped_column(String(16), default="2gis")
     query: Mapped[str] = mapped_column(Text)
@@ -612,27 +612,27 @@ class BotSubmission(Base):
 
 
 class LlmAnalysis(Base):
-    """Анализ публикации языковой моделью (Claude, этап «llm» задания анализа, app.llm). Одна строка на (публикация,
-    хеш отправленного материала, модель, версия промпта): тот же материал повторно не отправляется. Результат —
-    проверенные гипотезы (цитаты сверены с отправленным текстом, ЖК — из отправленного списка); решений аналитика
+    """Анализ публикации языковой моделью(Claude, этап "llm" задания анализа, app.llm). Одна строка на(публикация,
+    хеш отправленного материала, модель, версия промпта): тот же материал повторно не отправляется. Результат -
+    проверенные гипотезы(цитаты сверены с отправленным текстом, ЖК - из отправленного списка); решений аналитика
     (статус, привязка, подтверждение, вердикт) он не содержит и не задаёт.
 
-    status: done — результат есть; refused — модель отказалась (это не «риск отсутствует»); failed — не выполнен
-    (retry_at задан — ждёт повтора); skipped — не отправлялся (бюджет, ключ отклонён, нечего анализировать).
+    status: done - результат есть; refused - модель отказалась(это не "риск отсутствует"); failed - не выполнен
+    (retry_at задан - ждёт повтора); skipped - не отправлялся(бюджет, ключ отклонён, нечего анализировать).
 
-    История: после «Проанализировать ещё раз» прежний ответ остаётся строкой с производным content_hash
-    (llm.archived_hash), исходный хеш материала — в meta.materialHash, время замены — meta.supersededAt."""
+    История: после "Проанализировать ещё раз" прежний ответ остаётся строкой с производным content_hash
+    (llm.archived_hash), исходный хеш материала - в meta.materialHash, время замены - meta.supersededAt."""
 
     __tablename__ = "llm_analyses"
     __table_args__ = (UniqueConstraint("ad_id", "content_hash", "model", "prompt_version", name="uq_llm_analyses_key"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    ad_id: Mapped[str] = mapped_column(String(32), index=True)  # публикация (без FK)
-    item_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # запись приёма (без FK)
+    ad_id: Mapped[str] = mapped_column(String(32), index=True)  # публикация(без FK)
+    item_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # запись приёма(без FK)
     content_version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # версия публикации в источнике
     content_hash: Mapped[str] = mapped_column(String(64))  # SHA-256 отправленного материала
     model: Mapped[str] = mapped_column(String(64))  # запрошенная модель
-    served_model: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # ответила (резервная — при отказе)
+    served_model: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # ответила(резервная - при отказе)
     prompt_version: Mapped[str] = mapped_column(String(32))
     status: Mapped[str] = mapped_column(String(16))  # done | refused | failed | skipped
     result: Mapped[Optional[dict]] = mapped_column(MutableJSONDict, nullable=True)
@@ -645,8 +645,8 @@ class LlmAnalysis(Base):
     cache_creation_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     cost_usd: Mapped[float] = mapped_column(Float, default=0, server_default="0")
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # по-русски, замаскировано
-    request_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # request-id Anthropic (в API нет)
-    # stopReason, refusalCategory, fallback, effort, catalogSize, skipCode; у строки истории — materialHash, supersededAt
+    request_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # request-id Anthropic(в API нет)
+    # stopReason, refusalCategory, fallback, effort, catalogSize, skipCode; у строки истории - materialHash, supersededAt
     meta: Mapped[dict] = mapped_column(MutableJSONDict, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -671,8 +671,8 @@ class LlmAnalysis(Base):
 
 
 class QuotaCounter(Base):
-    """Атомарные счётчики расхода квот (dgis:{keyFp}:{periodStart|all}, dgis-day:{keyFp}:{YYYY-MM-DD}) и дневного
-    бюджета анализа ИИ (anthropic-usd:{YYYY-MM-DD} — в микродолларах, день по Усть-Каменогорску)."""
+    """Атомарные счётчики расхода квот(dgis:{keyFp}:{periodStart|all}, dgis-day:{keyFp}:{YYYY-MM-DD}) и дневного
+    бюджета анализа ИИ(anthropic-usd:{YYYY-MM-DD} - в микродолларах, день по Усть-Каменогорску)."""
 
     __tablename__ = "quota_counters"
 
@@ -684,13 +684,13 @@ class QuotaCounter(Base):
 
 
 class DiscoveredObject(Base):
-    """Объект из рекламы (app.discovery): ЖК, проект или очередь, которые реклама называет, а в справочнике ЖК и в открытом
-    реестре их нет. Появляется по ответу Claude (mentionedComplexes) или импортом; решение — за аналитиком: создать
-    карточку ЖК (origin «advertised»), привязать к существующему ЖК (название — его другое написание) или отклонить.
+    """Объект из рекламы(app.discovery): ЖК, проект или очередь, которые реклама называет, а в справочнике ЖК и в открытом
+    реестре их нет. Появляется по ответу Claude(mentionedComplexes) или импортом; решение - за аналитиком: создать
+    карточку ЖК(origin "advertised"), привязать к существующему ЖК(название - его другое написание) или отклонить.
 
-    norm_key — ключ сравнения названия (без «ЖК», кавычек и регистра, латиница ≈ кириллица: discovery.name_key).
-    status: new — ждёт решения; linked — привязан к ЖК complex_id (его упоминания — реклама этого ЖК); dismissed —
-    отклонён (note — причина). Счётчики (ads_count, accounts, first_seen, last_seen) пересчитываются по упоминаниям."""
+    norm_key - ключ сравнения названия(без "ЖК", кавычек и регистра, латиница ≈ кириллица: discovery.name_key).
+    status: new - ждёт решения; linked - привязан к ЖК complex_id(его упоминания - реклама этого ЖК); dismissed -
+    отклонён(note - причина). Счётчики(ads_count, accounts, first_seen, last_seen) пересчитываются по упоминаниям."""
 
     __tablename__ = "discovered_objects"
 
@@ -700,12 +700,12 @@ class DiscoveredObject(Base):
     aliases: Mapped[list] = mapped_column(MutableJSONList, default=list)  # другие написания из рекламы и импорта
     address_hint: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # адрес дословно из рекламы
     status: Mapped[str] = mapped_column(String(16), default="new", index=True)  # new | linked | dismissed
-    complex_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)  # ЖК (без FK)
-    origin: Mapped[str] = mapped_column(String(16), default="ads", server_default="ads")  # ads (Claude) | import
+    complex_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)  # ЖК(без FK)
+    origin: Mapped[str] = mapped_column(String(16), default="ads", server_default="ads")  # ads(Claude) | import
     first_seen: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     ads_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    accounts: Mapped[list] = mapped_column(MutableJSONList, default=list)  # аккаунты рекламы (без заявок жителей)
+    accounts: Mapped[list] = mapped_column(MutableJSONList, default=list)  # аккаунты рекламы(без заявок жителей)
     source_urls: Mapped[list] = mapped_column(MutableJSONList, default=list)  # ссылки на рекламу из импорта
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # причина отклонения или примечание импорта
     decided_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
@@ -714,16 +714,16 @@ class DiscoveredObject(Base):
 
 
 class DiscoveredMention(Base):
-    """Упоминание объекта из рекламы в публикации: дословная цитата и адрес из проверенного ответа Claude (одна строка на
-    объект и публикацию — повторный анализ её обновляет), источник публикации (parser | bot | manual) и стадия объекта
-    по этой публикации (objectStage)."""
+    """Упоминание объекта из рекламы в публикации: дословная цитата и адрес из проверенного ответа Claude(одна строка на
+    объект и публикацию - повторный анализ её обновляет), источник публикации(parser | bot | manual) и стадия объекта
+    по этой публикации(objectStage)."""
 
     __tablename__ = "discovered_mentions"
     __table_args__ = (UniqueConstraint("object_id", "ad_id", name="uq_discovered_mentions_object_ad"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     object_id: Mapped[int] = mapped_column(ForeignKey("discovered_objects.id"), index=True)
-    ad_id: Mapped[str] = mapped_column(String(32), index=True)  # публикация (без FK)
+    ad_id: Mapped[str] = mapped_column(String(32), index=True)  # публикация(без FK)
     name: Mapped[str] = mapped_column(String(255), default="")  # название, как его записал ответ модели
     quote: Mapped[str] = mapped_column(Text, default="")
     address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -735,28 +735,28 @@ class DiscoveredMention(Base):
 
 
 class ScreeningDecision(Base):
-    """Решение аналитика по «Проверке по рекламе» (app.decisions): «Объект сдан» — ввод в эксплуатацию подтверждён (акт,
-    дата акта, источник) — или «Проверено — замечаний нет» (причина, источник). Пока решение действует, оценка ЖК —
-    «без замечаний» с этим основанием (app.screening); новая реклама после решения с признаком приёма денег снимает его
-    автоматически (это вычисляется при чтении и не хранится — reopened в ответе API).
+    """Решение аналитика по "Проверке по рекламе"(app.decisions): "Объект сдан" - ввод в эксплуатацию подтверждён(акт,
+    дата акта, источник) - или "Проверено - замечаний нет"(причина, источник). Пока решение действует, оценка ЖК -
+    "без замечаний" с этим основанием(app.screening); новая реклама после решения с признаком приёма денег снимает его
+    автоматически(это вычисляется при чтении и не хранится - reopened в ответе API).
 
-    status: active — действует (не больше одного на ЖК: частичный уникальный индекс); cancelled — отменено аналитиком
-    (closed_* — кто, когда, причина); superseded — заменено новым решением. Отменённые и заменённые остаются историей.
-    prev_stage — стадия карточки до отметки «сдан» (отметка ставит «введён»; отмена и замена её возвращают)."""
+    status: active - действует(не больше одного на ЖК: частичный уникальный индекс); cancelled - отменено аналитиком
+    (closed_* - кто, когда, причина); superseded - заменено новым решением. Отменённые и заменённые остаются историей.
+    prev_stage - стадия карточки до отметки "сдан"(отметка ставит "введён"; отмена и замена её возвращают)."""
 
     __tablename__ = "screening_decisions"
     __table_args__ = (Index("uq_screening_decisions_active_complex", "complex_id", unique=True,
                             sqlite_where=text("status = 'active'"), postgresql_where=text("status = 'active'")),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    complex_id: Mapped[str] = mapped_column(String(32), index=True)  # ЖК (без FK — новые таблицы не ссылаются на старые)
+    complex_id: Mapped[str] = mapped_column(String(32), index=True)  # ЖК(без FK - новые таблицы не ссылаются на старые)
     kind: Mapped[str] = mapped_column(String(16))  # commissioned | no_issues
     status: Mapped[str] = mapped_column(String(16), default="active", index=True)  # active | cancelled | superseded
-    act_number: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)  # номер акта ввода (необязателен)
+    act_number: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)  # номер акта ввода(необязателен)
     act_date: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # дата акта, YYYY-MM-DD
     source: Mapped[str] = mapped_column(String(255))  # где подтверждено: ЕГКН, акт приёмки, 2ГИС, ответ акимата / ГАСК…
     source_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
-    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # «проверено — замечаний нет»: что проверено
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # "проверено - замечаний нет": что проверено
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     prev_stage: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     created_by: Mapped[str] = mapped_column(String(128))
@@ -767,22 +767,22 @@ class ScreeningDecision(Base):
 
 
 class ResidentAlert(Base):
-    """Предупреждение жителям (app.alerts, страница «Жителям»): текст по данным ЖК готовит аналитик, согласует другой
-    сотрудник в режиме администратора, отправляет воркер — в канал ГАСК и подписчикам района в Telegram-боте.
+    """Предупреждение жителям(app.alerts, страница "Жителям"): текст по данным ЖК готовит аналитик, согласует другой
+    сотрудник в режиме администратора, отправляет воркер - в канал ГАСК и подписчикам района в Telegram-боте.
 
-    status: pending — на согласовании (не больше одного на ЖК: частичный уникальный индекс); rejected — отклонено;
-    sending — согласовано, идёт отправка; sent — доставлено всем; partial — части получателей не доставлено; failed — не
-    доставлено никому (last_error — почему). Получатели фиксируются при согласовании (alert_deliveries)."""
+    status: pending - на согласовании(не больше одного на ЖК: частичный уникальный индекс); rejected - отклонено;
+    sending - согласовано, идёт отправка; sent - доставлено всем; partial - части получателей не доставлено; failed - не
+    доставлено никому(last_error - почему). Получатели фиксируются при согласовании(alert_deliveries)."""
 
     __tablename__ = "resident_alerts"
     __table_args__ = (Index("uq_resident_alerts_pending_complex", "complex_id", unique=True,
                             sqlite_where=text("status = 'pending'"), postgresql_where=text("status = 'pending'")),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    complex_id: Mapped[str] = mapped_column(String(32), index=True)  # ЖК (без FK — новые таблицы не ссылаются на старые)
+    complex_id: Mapped[str] = mapped_column(String(32), index=True)  # ЖК(без FK - новые таблицы не ссылаются на старые)
     complex_name: Mapped[str] = mapped_column(String(255))
     district: Mapped[str] = mapped_column(String(64), default="")  # район ЖК на момент создания: кому из подписчиков
-    template: Mapped[str] = mapped_column(String(16))  # basis | idle | ok — шаблон, с которого начат текст
+    template: Mapped[str] = mapped_column(String(16))  # basis | idle | ok - шаблон, с которого начат текст
     title: Mapped[str] = mapped_column(String(128))
     text: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
@@ -800,11 +800,11 @@ class ResidentAlert(Base):
 
 
 class AlertDelivery(Base):
-    """Доставка предупреждения одному получателю: канал ГАСК (kind = channel, target — @имя или ID канала) или подписчик
-    (kind = subscriber, target — chat_id; после итога стирается — остаётся только счётчик).
+    """Доставка предупреждения одному получателю: канал ГАСК(kind = channel, target - @имя или ID канала) или подписчик
+    (kind = subscriber, target - chat_id; после итога стирается - остаётся только счётчик).
 
-    status: pending — ждёт отправки; sending — отправляется (осталось после сбоя воркера — результат неизвестен,
-    повторно не отправляется); sent; failed (error — почему); skipped — житель отписался до отправки."""
+    status: pending - ждёт отправки; sending - отправляется(осталось после сбоя воркера - результат неизвестен,
+    повторно не отправляется); sent; failed(error - почему); skipped - житель отписался до отправки."""
 
     __tablename__ = "alert_deliveries"
     __table_args__ = (Index("ix_alert_deliveries_alert_status", "alert_id", "status"),)
@@ -816,14 +816,14 @@ class AlertDelivery(Base):
     status: Mapped[str] = mapped_column(String(16), default="pending")
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    message_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # сообщение в Telegram (у канала — ссылка)
+    message_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # сообщение в Telegram(у канала - ссылка)
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class AlertSubscription(Base):
-    """Подписка жителя на предупреждения района — её регистрирует бот заявок (saq-telegram-bot) по сервисному токену.
-    Только chat_id и район ЖК (district = «*» — все районы): ни имени, ни username, ни телефона."""
+    """Подписка жителя на предупреждения района - её регистрирует бот заявок(saq-telegram-bot) по сервисному токену.
+    Только chat_id и район ЖК(district = "*" - все районы): ни имени, ни username, ни телефона."""
 
     __tablename__ = "alert_subscriptions"
     __table_args__ = (UniqueConstraint("chat_id", "district", name="uq_alert_subscriptions_chat_district"),)

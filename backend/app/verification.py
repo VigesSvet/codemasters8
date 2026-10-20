@@ -1,26 +1,26 @@
-"""Сверка сведений аналитиком по карточке ЖК: основание привлечения средств (гарантия ЕО / разрешение МИО / БВУ),
-опубликованный перечень ГАСК (O1), готовность (R5), обращения граждан (R4) и «обращений нет — сверено», снимки площадки
-(R6). Это действия аналитика, а не администратора: автор — имя вошедшего сотрудника (HumanName, «Система» — 422),
-каждая запись — событие журнала объекта вида «данные» от его имени (кто, что, когда, источник). Риск (app.risk) и
-«Проверка по рекламе» (app.screening) пересчитываются из этих фактов при следующем чтении — ответ маршрута уже их несёт.
+"""Сверка сведений аналитиком по карточке ЖК: основание привлечения средств(гарантия ЕО / разрешение МИО / БВУ),
+опубликованный перечень ГАСК(O1), готовность(R5), обращения граждан(R4) и "обращений нет - сверено", снимки площадки
+(R6). Это действия аналитика, а не администратора: автор - имя вошедшего сотрудника(HumanName, "Система" - 422),
+каждая запись - событие журнала объекта вида "данные" от его имени(кто, что, когда, источник). Риск(app.risk) и
+"Проверка по рекламе"(app.screening) пересчитываются из этих фактов при следующем чтении - ответ маршрута уже их несёт.
 
-Где хранится (поля ЖК, JSON):
-- basis[документ] — «yes» / «no» / «unknown»; basis[guaranteeRef|mioRef|bank] — номер и дата документа (или банк) от
-  аналитика, вместо справки реестра «… Аналитиком не проверено»; basis.sources[документ] — {source, url, checkedAt,
-  checkedBy, ref?, comment?}; общие basis.source / basis.checkedAt — последняя сверка (их читают интерфейс, журнал сида,
-  PDF). «Нет сведений» снимает сверку документа (sources[документ] удаляется);
+Где хранится(поля ЖК, JSON):
+- basis[документ] - "yes" / "no" / "unknown"; basis[guaranteeRef|mioRef|bank] - номер и дата документа(или банк) от
+  аналитика, вместо справки реестра "… Аналитиком не проверено"; basis.sources[документ] - {source, url, checkedAt,
+  checkedBy, ref?, comment?}; общие basis.source / basis.checkedAt - последняя сверка(их читают интерфейс, журнал сида,
+  PDF). "Нет сведений" снимает сверку документа(sources[документ] удаляется);
 - in_published_list + published_list_check {value, source, url, checkedAt, checkedBy, comment?};
-- readiness[declared|confirmed] — {value, source, date, by, at, comment?}; подтверждённая — и progress (готовность, %);
-- appeals (таблица) — status pending (внесено, ждёт проверки) → verified | rejected; appeals_check {source, checkedAt,
-  checkedBy, comment?} — «обращений нет — сверено» (R4 у карточек реестра и рекламы: без неё пустой список — «нужна
-  проверка», а не «обращений нет»);
-- photos — {date, src: /api/media/{id}, source, activity: есть | нет | нет сведений, note?, mediaId, by, at}; файл — в
-  хранилище (app.media) записью MediaAsset (origin_ref «site», без публикации; ручные загрузки «upload» уборка не
-  трогает), те же пределы, что у скриншота (10 МБ, только изображения, 50 файлов / 200 МБ в час на все ручные загрузки).
+- readiness[declared|confirmed] - {value, source, date, by, at, comment?}; подтверждённая - и progress(готовность, %);
+- appeals(таблица) - status pending(внесено, ждёт проверки) → verified | rejected; appeals_check {source, checkedAt,
+  checkedBy, comment?} - "обращений нет - сверено"(R4 у карточек реестра и рекламы: без неё пустой список - "нужна
+  проверка", а не "обращений нет");
+- photos - {date, src: /api/media/{id}, source, activity: есть | нет | нет сведений, note?, mediaId, by, at}; файл - в
+  хранилище(app.media) записью MediaAsset(origin_ref "site", без публикации; ручные загрузки "upload" уборка не
+  трогает), те же пределы, что у скриншота(10 МБ, только изображения, 50 файлов / 200 МБ в час на все ручные загрузки).
   У ЖК не из демо-набора idle_days пересчитывается по снимкам: от первого до последнего снимка хвостовой серии без
-  активности или с низкой (снимки «нет сведений» серию не прерывают); последний снимок с активностью — 0.
+  активности или с низкой(снимки "нет сведений" серию не прерывают); последний снимок с активностью - 0.
 
-Запись ЖК — под блокировкой строки (SELECT … FOR UPDATE на PostgreSQL): две одновременные сверки разных документов не
+Запись ЖК - под блокировкой строки(SELECT … FOR UPDATE на PostgreSQL): две одновременные сверки разных документов не
 теряют друг друга. Повтор той же сверки без комментария журнал не засоряет.
 """
 import math
@@ -66,7 +66,7 @@ def _then(text: str, comment: Optional[str]) -> str:
 
 
 def _complex(db: Session, cid: str, *, lock: bool = False) -> models.Complex:
-    """ЖК (для записи — под блокировкой строки и с перечитанными полями); ключ объекта открытых данных — 404 с
+    """ЖК(для записи - под блокировкой строки и с перечитанными полями); ключ объекта открытых данных - 404 с
     объяснением, как у остальных маршрутов ЖК."""
     c = db.get(models.Complex, cid, with_for_update=lock or None, populate_existing=lock)
     if c is None:
@@ -81,7 +81,7 @@ def _event(db: Session, who: str, what: str, cid: str) -> models.AuditEvent:
 
 
 def _row(db: Session, c: models.Complex) -> Obj:
-    """ЖК в форме GET /api/complexes/{id}: с основанием по открытым данным, «Проверкой по рекламе» и подсказками."""
+    """ЖК в форме GET /api/complexes/{id}: с основанием по открытым данным, "Проверкой по рекламе" и подсказками."""
     return screening.complex_rows(db, [c], screening.compute(db))[0]
 
 
@@ -104,7 +104,7 @@ def _src_text(source: str, url: Optional[str]) -> str:
 # ---------- основание ----------
 
 def doc_view(c: models.Complex, suggest: Optional[Obj]) -> List[Obj]:
-    """Документы основания: значение, сверка (кто, когда, где), подсказка открытого реестра."""
+    """Документы основания: значение, сверка(кто, когда, где), подсказка открытого реестра."""
     b = c.basis or {}
     own = b.get("sources") or {}
     out = []
@@ -122,8 +122,8 @@ def doc_view(c: models.Complex, suggest: Optional[Obj]) -> List[Obj]:
 
 @router.get("/api/complexes/{cid}/basis", response_model=schemas.BasisViewOut, response_model_by_alias=True)
 def basis_view(cid: str, db: Session = Depends(get_db)):
-    """Основание ЖК по документам и перечень ГАСК: что сверено (кто, когда, где) и что называет открытый реестр
-    (suggestion — номер и дата документа, источник, ссылка: «Подтвердить — совпадает с источником» в один клик)."""
+    """Основание ЖК по документам и перечень ГАСК: что сверено(кто, когда, где) и что называет открытый реестр
+    (suggestion - номер и дата документа, источник, ссылка: "Подтвердить - совпадает с источником" в один клик)."""
     c = _complex(db, cid)
     key, rs = screening.registry_groups(db, [c])[c.id]
     docs = doc_view(c, screening.suggestions(rs) if rs else None)
@@ -136,10 +136,10 @@ def basis_view(cid: str, db: Session = Depends(get_db)):
 
 @router.post("/api/complexes/{cid}/basis", response_model=schemas.ComplexListOut, response_model_by_alias=True)
 def verify_basis(cid: str, body: schemas.BasisCheckIn, db: Session = Depends(get_db)):
-    """Сверка документа основания аналитиком: «есть» / «нет» с источником (обязателен), ссылкой, номером и датой документа
-    (или банком), датой сверки (по умолчанию сегодня, не позже сегодня); «нет сведений» — снять сверку. «Есть» по любому
-    документу — основание в «Проверке по рекламе» (permitted, сверка аналитика); «нет» по гарантии ЕО и разрешению МИО —
-    not_permitted и R1. Риск карточки реестра начинает оцениваться (assessed) с первого сверенного документа."""
+    """Сверка документа основания аналитиком: "есть" / "нет" с источником(обязателен), ссылкой, номером и датой документа
+    (или банком), датой сверки(по умолчанию сегодня, не позже сегодня); "нет сведений" - снять сверку. "Есть" по любому
+    документу - основание в "Проверке по рекламе"(permitted, сверка аналитика); "нет" по гарантии ЕО и разрешению МИО -
+    not_permitted и R1. Риск карточки реестра начинает оцениваться(assessed) с первого сверенного документа."""
     c = _complex(db, cid, lock=True)
     before = dict(c.basis or {})
     b = {**before, "sources": dict(before.get("sources") or {})}
@@ -157,7 +157,7 @@ def verify_basis(cid: str, body: schemas.BasisCheckIn, db: Session = Depends(get
         extra = {"ref": body.ref} if body.ref else {}
         b[key] = body.value
         b["sources"][key] = _check(body.source, body.source_url, when, body.author, body.comment, **extra)
-        # номер документа от аналитика заменяет справку реестра «… Аналитиком не проверено» (пусто — номера нет);
+        # номер документа от аналитика заменяет справку реестра "… Аналитиком не проверено"(пусто - номера нет);
         # повторный импорт реестра дополняет только отсутствующие поля и эту запись не вернёт
         b[ref_field] = body.ref or ""
         b["source"], b["checkedAt"] = body.source, when
@@ -172,7 +172,7 @@ def verify_basis(cid: str, body: schemas.BasisCheckIn, db: Session = Depends(get
 
 @router.post("/api/complexes/{cid}/published-list", response_model=schemas.ComplexListOut, response_model_by_alias=True)
 def verify_published_list(cid: str, body: schemas.PublishedListIn, db: Session = Depends(get_db)):
-    """Сверка с опубликованным перечнем ГАСК (наблюдение O1, вне балла): есть / нет с источником; «нет сведений» — снять."""
+    """Сверка с опубликованным перечнем ГАСК(наблюдение O1, вне балла): есть / нет с источником; "нет сведений" - снять."""
     c = _complex(db, cid, lock=True)
     before = (c.in_published_list, c.published_list_check)
     when = (body.checked_at or schemas.today_local()).isoformat()
@@ -194,9 +194,9 @@ def verify_published_list(cid: str, body: schemas.PublishedListIn, db: Session =
 
 @router.post("/api/complexes/{cid}/readiness", response_model=schemas.ComplexListOut, response_model_by_alias=True)
 def set_readiness(cid: str, body: schemas.ReadinessIn, db: Session = Depends(get_db)):
-    """Готовность (R5): заявленная (сайт, реклама застройщика) или подтверждённая (акт осмотра, фото-мониторинг), 0–100 %,
-    с источником и датой. Подтверждённая с источником и датой — проверенные сведения (риск карточки реестра оценивается)
-    и готовность ЖК (progress)."""
+    """Готовность(R5): заявленная(сайт, реклама застройщика) или подтверждённая(акт осмотра, фото-мониторинг), 0-100 %,
+    с источником и датой. Подтверждённая с источником и датой - проверенные сведения(риск карточки реестра оценивается)
+    и готовность ЖК(progress)."""
     c = _complex(db, cid, lock=True)
     r = {"declared": None, "confirmed": None, **(c.readiness or {})}
     value = _num(body.value)
@@ -228,8 +228,8 @@ def _applicants(n: int) -> str:
 @router.post("/api/complexes/{cid}/appeals", response_model=schemas.AppealOut, response_model_by_alias=True,
              status_code=201)
 def add_appeal(cid: str, body: schemas.AppealIn, db: Session = Depends(get_db)):
-    """Обращение граждан, внесённое аналитиком: ждёт проверки (status pending — «на проверке»). Коллективное
-    непроверенное — R4 «нужна проверка»; проверенное (POST /api/appeals/{id}/verify) — R4."""
+    """Обращение граждан, внесённое аналитиком: ждёт проверки(status pending - "на проверке"). Коллективное
+    непроверенное - R4 "нужна проверка"; проверенное(POST /api/appeals/{id}/verify) - R4."""
     c = _complex(db, cid)
     a = models.Appeal(id=f"ap{uuid.uuid4().hex[:12]}", complex_id=c.id, date=body.date.isoformat(),
                       collective=body.collective, applicants=body.applicants, status="pending", verified_at=None,
@@ -275,7 +275,7 @@ def _decide_appeal(aid: str, status: str, body: schemas.AppealDecisionIn, db: Se
 @router.post("/api/appeals/{aid}/verify", response_model=schemas.AppealOut, response_model_by_alias=True,
              responses={404: {"description": APPEAL_NOT_FOUND}, 409: {"description": "Решение уже принял другой аналитик"}})
 def verify_appeal(aid: str, body: schemas.AppealDecisionIn, db: Session = Depends(get_db)):
-    """Обращение проверено и подтверждено: коллективное даёт R4; любое проверенное — проверенные сведения (риск
+    """Обращение проверено и подтверждено: коллективное даёт R4; любое проверенное - проверенные сведения(риск
     карточки реестра оценивается)."""
     return _decide_appeal(aid, "verified", body, db)
 
@@ -289,8 +289,8 @@ def reject_appeal(aid: str, body: schemas.AppealDecisionIn, db: Session = Depend
 
 @router.post("/api/complexes/{cid}/appeals-check", response_model=schemas.ComplexListOut, response_model_by_alias=True)
 def appeals_check(cid: str, body: schemas.AppealsCheckIn, db: Session = Depends(get_db)):
-    """«Обращений нет — сверено»: где проверено (ДЭР, ГАСК, eOtinish) и когда. У карточки реестра и рекламы R4 без неё —
-    «нужна проверка», с ней — «коллективных обращений нет» (если внесённых непроверенных или проверенных нет)."""
+    """"Обращений нет - сверено": где проверено(ДЭР, ГАСК, eOtinish) и когда. У карточки реестра и рекламы R4 без неё -
+    "нужна проверка", с ней - "коллективных обращений нет"(если внесённых непроверенных или проверенных нет)."""
     c = _complex(db, cid, lock=True)
     when = (body.checked_at or schemas.today_local()).isoformat()
     check = {"source": body.source, "checkedAt": when, "checkedBy": body.author}
@@ -308,8 +308,8 @@ def appeals_check(cid: str, body: schemas.AppealsCheckIn, db: Session = Depends(
 # ---------- снимки площадки ----------
 
 def idle_days(photos: List[Obj]) -> int:
-    """Простой по снимкам: от первого до последнего снимка хвостовой серии (по дате) без активности или с низкой;
-    снимки «нет сведений» серию не прерывают; последний информативный снимок с активностью — 0."""
+    """Простой по снимкам: от первого до последнего снимка хвостовой серии(по дате) без активности или с низкой;
+    снимки "нет сведений" серию не прерывают; последний информативный снимок с активностью - 0."""
     run: List[str] = []
     for p in sorted((p for p in photos if p.get("date")), key=lambda p: p["date"], reverse=True):
         act = p.get("activity")
@@ -333,12 +333,12 @@ def _form_errors(e: ValidationError) -> RequestValidationError:
 def add_photo(cid: str, file: UploadFile = File(...), author: Optional[str] = Form(None),
               date_: Optional[str] = Form(None, alias="date"), source: Optional[str] = Form(None),
               activity: Optional[str] = Form(None), note: Optional[str] = Form(None), db: Session = Depends(get_db)):
-    """Снимок площадки (multipart: file, author, date, source, activity: active | idle | unknown, note): файл — в
-    хранилище (те же пределы, что у скриншота: 10 МБ, JPEG / PNG / WEBP / GIF по сигнатуре, часовой лимит ручных
-    загрузок), запись — в снимках ЖК (src /api/media/{id}). Датированный снимок с источником — проверенные сведения (риск
-    карточки реестра оценивается); серия снимков без активности подтверждает простой (R6)."""
+    """Снимок площадки(multipart: file, author, date, source, activity: active | idle | unknown, note): файл - в
+    хранилище(те же пределы, что у скриншота: 10 МБ, JPEG / PNG / WEBP / GIF по сигнатуре, часовой лимит ручных
+    загрузок), запись - в снимках ЖК(src /api/media/{id}). Датированный снимок с источником - проверенные сведения(риск
+    карточки реестра оценивается); серия снимков без активности подтверждает простой(R6)."""
     fields = {"author": author, "date": date_, "source": source, "activity": activity, "note": note}
-    try:  # поля формы проверяет схема — все ошибки сразу и по-русски, как у JSON-маршрутов; пустое поле — «не указано»
+    try:  # поля формы проверяет схема - все ошибки сразу и по-русски, как у JSON-маршрутов; пустое поле - "не указано"
         body = schemas.SitePhotoIn.model_validate({k: v for k, v in fields.items() if v is not None})
     except ValidationError as e:
         raise _form_errors(e) from None

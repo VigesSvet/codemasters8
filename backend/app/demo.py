@@ -1,32 +1,32 @@
-"""Демо-набор прежних версий (удаление из БД) и карточки ЖК из открытого реестра.
+"""Демо-набор прежних версий(удаление из БД) и карточки ЖК из открытого реестра.
 
-Демо-набора в приложении больше нет: новая БД получает стартовый набор реальных данных (app.snapshot, shared/snapshot),
-вымышленные данные — только у тестов (shared/testdata). purge нужен базам прежних версий, засеянным демо-набором.
+Демо-набора в приложении больше нет: новая БД получает стартовый набор реальных данных(app.snapshot, shared/snapshot),
+вымышленные данные - только у тестов(shared/testdata). purge нужен базам прежних версий, засеянным демо-набором.
 
-    python -m app.demo purge --dry-run     # что будет удалено и что останется — без изменений
-    python -m app.demo purge --yes         # удалить демо-данные (SQLite — сначала резервная копия)
+    python -m app.demo purge --dry-run     # что будет удалено и что останется - без изменений
+    python -m app.demo purge --yes         # удалить демо-данные(SQLite - сначала резервная копия)
     python -m app.demo import-registry     # создать или дополнить карточки ЖК и застройщиков по открытому реестру
-    python -m app.demo add-advertised --file x.json [--author ИМЯ] [--note ТЕКСТ]   # ЖК по рекламе (нет в реестре)
+    python -m app.demo add-advertised --file x.json [--author ИМЯ] [--note ТЕКСТ]   # ЖК по рекламе(нет в реестре)
 
-Удаляется только демо-набор (origin «demo»): публикации и всё, что на них висит (журнал, анализы ИИ, записи приёма, файлы,
+Удаляется только демо-набор(origin "demo"): публикации и всё, что на них висит(журнал, анализы ИИ, записи приёма, файлы,
 задания), обращения, сигналы и события журнала по демо-ЖК, явные события журнала из сида, сами демо-ЖК и демо-застройщики.
 Собранные и внесённые аналитиком публикации не удаляются: привязка к демо-ЖК снимается с записью в журнал. Остаются
-аналитики (для входа), записи открытого реестра, карточки ЖК из реестра, подключения и запуски сбора, файлы, задания,
-анализы ИИ собранных публикаций и счётчики квот. В той же транзакции ставится флаг meta «demo_data» = «purged» (его же
-ставит загрузка стартового набора, app.snapshot); повторный purge ничего не удаляет. Вернуть демо-набор нельзя — его в
+аналитики(для входа), записи открытого реестра, карточки ЖК из реестра, подключения и запуски сбора, файлы, задания,
+анализы ИИ собранных публикаций и счётчики квот. В той же транзакции ставится флаг meta "demo_data" = "purged"(его же
+ставит загрузка стартового набора, app.snapshot); повторный purge ничего не удаляет. Вернуть демо-набор нельзя - его в
 приложении нет.
 
-Карточки ЖК из открытого реестра (origin «registry»): по всем объектам (группы записей source_records, как
-importer.group), в том числе без координат (координаты — после сверки 2ГИС) — застройщик «rd-<БИН>» (название и БИН
-источника) и ЖК «r-<ключ объекта>»: название без «ЖК "…"», адрес, координаты (если есть), застройщик; начало и плановое завершение — только если записи объекта согласны между собой (завершение — только
-у строящегося по источнику объекта). Стадия, готовность, основание (гарантия ЕО / МИО / БВУ) остаются «нет сведений»:
-«Завершён»/«В строительстве» источника — фильтр, а не стадия, а документ источника требует проверки применимости; его номер —
-справкой в guaranteeRef / mioRef / bank. Повторный импорт идемпотентен и только дополняет пустые поля (и координаты, если
-их не было) — правки аналитика (например, координаты из 2ГИС) не перезаписываются. Риск по такой карточке не оценивается до
-проверенных сведений (risk.assessed). Основание по открытым данным (раздел «Без разрешения на дольщиков», документ
-Homeportal, запись Казреестра) карточка получает в «Проверке по рекламе» (app.screening.permits).
+Карточки ЖК из открытого реестра(origin "registry"): по всем объектам(группы записей source_records, как
+importer.group), в том числе без координат(координаты - после сверки 2ГИС) - застройщик "rd-<БИН>"(название и БИН
+источника) и ЖК "r-<ключ объекта>": название без "ЖК "…"", адрес, координаты(если есть), застройщик; начало и плановое завершение - только если записи объекта согласны между собой(завершение - только
+у строящегося по источнику объекта). Стадия, готовность, основание(гарантия ЕО / МИО / БВУ) остаются "нет сведений":
+"Завершён"/"В строительстве" источника - фильтр, а не стадия, а документ источника требует проверки применимости; его номер -
+справкой в guaranteeRef / mioRef / bank. Повторный импорт идемпотентен и только дополняет пустые поля(и координаты, если
+их не было) - правки аналитика(например, координаты из 2ГИС) не перезаписываются. Риск по такой карточке не оценивается до
+проверенных сведений(risk.assessed). Основание по открытым данным(раздел "Без разрешения на дольщиков", документ
+Homeportal, запись Казреестра) карточка получает в "Проверке по рекламе"(app.screening.permits).
 
-ЖК по рекламе (origin «advertised», add-advertised): JSON-файл — список [{name, aliases[], address, lat?, lng?,
+ЖК по рекламе(origin "advertised", add-advertised): JSON-файл - список [{name, aliases[], address, lat?, lng?,
 developerName?, developerBin?, accounts[], sourceUrls[], note?}] или {"note", "items": [...]}; повтор идемпотентен
 (app.discovery.import_advertised).
 """
@@ -53,12 +53,12 @@ SYSTEM = "Система"
 FLAG = "demo_data"  # ключ флага в meta
 PURGED = "purged"
 REGISTRY = "registry"  # origin карточек ЖК и застройщиков из открытого реестра
-ID_MAX = 32  # длина id ЖК и застройщика (String(32))
+ID_MAX = 32  # длина id ЖК и застройщика(String(32))
 PG_DUMP = "docker compose exec -T db pg_dump -U saq saq > backup.sql"
 UNLINKED = "Привязка снята: демо-ЖК «{name}» удалён"
 
 
-# ---------- флаг «демо удалены» ----------
+# ---------- флаг "демо удалены" ----------
 
 def purged(db: Session) -> bool:
     m = db.get(models.Meta, FLAG)
@@ -77,13 +77,13 @@ REF_DOCS_MAX = 3
 
 
 def complex_id(key: str) -> str:
-    """«r-<ключ объекта>»; ключ длиннее 30 символов — «rh-<sha1[:16]>» (id ЖК — String(32))."""
+    """"r-<ключ объекта>"; ключ длиннее 30 символов - "rh-<sha1[:16]>"(id ЖК - String(32))."""
     cid = f"r-{key}"
     return cid if len(cid) <= ID_MAX else "rh-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
 
 
 def developer_id(bin_: Optional[str], name: Optional[str]) -> Optional[str]:
-    """«rd-<БИН>»; без БИН — «rd-<sha1 названия организации>»; без застройщика — None."""
+    """"rd-<БИН>"; без БИН - "rd-<sha1 названия организации>"; без застройщика - None."""
     if bin_:
         return f"rd-{bin_}"
     org = importer.org_name(name)
@@ -91,8 +91,8 @@ def developer_id(bin_: Optional[str], name: Optional[str]) -> Optional[str]:
 
 
 def display_name(name: str) -> str:
-    """«ЖК "Orda"» → «Orda», «МЖК "PARK LINE"» → «PARK LINE», «ЖК «Престиж» (Sparkle Diamond)» → «Престиж (Sparkle
-    Diamond)»; без обёртки — как у источника."""
+    """"ЖК "Orda"" → "Orda", "МЖК "PARK LINE"" → "PARK LINE", "ЖК "Престиж"(Sparkle Diamond)" → "Престиж(Sparkle
+    Diamond)"; без обёртки - как у источника."""
     m = _WRAP.match(name or "")
     if m:
         return " ".join((m["n"] + m["rest"]).split())
@@ -100,18 +100,18 @@ def display_name(name: str) -> str:
 
 
 def _address(addr: Optional[str]) -> str:
-    """Адрес без «г. Усть-Каменогорск,» — как у карточек ЖК (город добавляет интерфейс; ИИ сравнивает улицу и дом)."""
+    """Адрес без "г. Усть-Каменогорск," - как у карточек ЖК(город добавляет интерфейс; ИИ сравнивает улицу и дом)."""
     return _CITY.sub("", addr or "").strip()
 
 
 def _single(rs: List[Obj], f: str) -> str:
-    """Значение поля, если все записи объекта, где оно есть, согласны; иначе (разные очереди, блоки) — «» (нет сведений)."""
+    """Значение поля, если все записи объекта, где оно есть, согласны; иначе(разные очереди, блоки) - ""(нет сведений)."""
     vals = {r.get(f) for r in rs if r.get(f)}
     return vals.pop() if len(vals) == 1 else ""
 
 
 def _building(stage: Optional[str]) -> bool:
-    """Источник относит объект к строящимся («В строительстве (фильтр источника)»), а не к завершённым."""
+    """Источник относит объект к строящимся("В строительстве(фильтр источника)"), а не к завершённым."""
     t = (stage or "").lower()
     return "строительств" in t and "заверш" not in t
 
@@ -126,7 +126,7 @@ def _ordered(rs: List[Obj]) -> List[Obj]:
 
 
 def _refs(rs: List[Obj]) -> Obj:
-    """Документы основания, которые называет источник, — справкой (guaranteeRef / mioRef / bank), без статуса «есть»."""
+    """Документы основания, которые называет источник, - справкой(guaranteeRef / mioRef / bank), без статуса "есть"."""
     out: Obj = {}
     for method, (ref, label, tail) in FUNDING_REF.items():
         by_src: Dict[str, List[str]] = {}
@@ -150,7 +150,7 @@ def _refs(rs: List[Obj]) -> Obj:
 
 
 def complex_values(o: Obj, rs: List[Obj]) -> Obj:
-    """Поля карточки ЖК по объекту реестра (o — importer.group, rs — его записи). Неизвестное — пусто/0/«unknown»."""
+    """Поля карточки ЖК по объекту реестра(o - importer.group, rs - его записи). Неизвестное - пусто/0/"unknown"."""
     return {
         "name": display_name(o["name"])[:255],
         "address": _address(o.get("address"))[:255],
@@ -173,7 +173,7 @@ class ImportReport:
     created: List[str] = field(default_factory=list)
     updated: List[str] = field(default_factory=list)
     unchanged: List[str] = field(default_factory=list)
-    skipped: List[str] = field(default_factory=list)  # «название: причина»
+    skipped: List[str] = field(default_factory=list)  # "название: причина"
     developers_created: List[str] = field(default_factory=list)
     developers_updated: List[str] = field(default_factory=list)
 
@@ -188,7 +188,7 @@ class ImportReport:
 
 
 def _objects(db: Session) -> List[Tuple[Obj, List[Obj]]]:
-    """Объекты реестра (сначала с координатами, затем без — как «objects» и «withoutCoords» в
+    """Объекты реестра(сначала с координатами, затем без - как "objects" и "withoutCoords" в
     shared/registry_ust_kamenogorsk.json) и их записи."""
     rs = registry.records(db)
     by: Dict[str, List[Obj]] = {}
@@ -205,9 +205,9 @@ def _sources_line(o: Obj, rs: List[Obj]) -> str:
 
 
 def import_registry(db: Session, *, dry_run: bool = False, at: Optional[datetime] = None) -> ImportReport:
-    """Создать недостающие и дополнить пустые поля карточек ЖК и застройщиков из открытого реестра (в сессии db, без
-    commit). Записей реестра нет — сначала загружается shared/registry_ust_kamenogorsk.json (registry.seed).
-    Повторный вызов ничего не меняет. События журнала — по каждой созданной и дополненной карточке."""
+    """Создать недостающие и дополнить пустые поля карточек ЖК и застройщиков из открытого реестра(в сессии db, без
+    commit). Записей реестра нет - сначала загружается shared/registry_ust_kamenogorsk.json(registry.seed).
+    Повторный вызов ничего не меняет. События журнала - по каждой созданной и дополненной карточке."""
     rep = ImportReport()
     now = at or models.utcnow()
     if not dry_run and db.scalar(select(models.SourceRecord.id).limit(1)) is None:
@@ -286,9 +286,9 @@ def import_registry(db: Session, *, dry_run: bool = False, at: Optional[datetime
 
 @dataclass
 class Plan:
-    """Что удаляет purge: id строк по таблицам; unlink — собранные/внесённые публикации, привязанные к демо-ЖК."""
+    """Что удаляет purge: id строк по таблицам; unlink - собранные/внесённые публикации, привязанные к демо-ЖК."""
     ads: List[str] = field(default_factory=list)
-    complexes: Dict[str, str] = field(default_factory=dict)  # id → название (для событий о снятой привязке)
+    complexes: Dict[str, str] = field(default_factory=dict)  # id → название(для событий о снятой привязке)
     developers: List[str] = field(default_factory=list)
     appeals: List[str] = field(default_factory=list)
     signals: List[int] = field(default_factory=list)
@@ -303,9 +303,9 @@ class Plan:
     jobs: List[int] = field(default_factory=list)
     geo: List[int] = field(default_factory=list)
     mentions: List[int] = field(default_factory=list)  # упоминания объектов из рекламы в демо-публикациях
-    relink: List[int] = field(default_factory=list)  # объекты из рекламы, привязанные к демо-ЖК: снова «new»
-    kept_developers: List[str] = field(default_factory=list)  # демо-застройщик у не демо-ЖК — не удаляется
-    blocked: List[str] = field(default_factory=list)  # почему удалить нельзя (ничего не удаляется)
+    relink: List[int] = field(default_factory=list)  # объекты из рекламы, привязанные к демо-ЖК: снова "new"
+    kept_developers: List[str] = field(default_factory=list)  # демо-застройщик у не демо-ЖК - не удаляется
+    blocked: List[str] = field(default_factory=list)  # почему удалить нельзя(ничего не удаляется)
 
     def rows(self) -> List[Tuple[str, int]]:
         return [("публикации демо-набора", len(self.ads)), ("ЖК демо-набора", len(self.complexes)),
@@ -321,8 +321,8 @@ class Plan:
         return not any(n for _, n in self.rows()) and not self.unlink and not self.detach and not self.relink
 
 
-# Явные события журнала прежнего демо-набора (seed.audit): кто, что, когда (UTC). Сам набор в приложении больше не
-# хранится (shared/testdata — только для тестов), поэтому его события для purge перечислены здесь
+# Явные события журнала прежнего демо-набора(seed.audit): кто, что, когда(UTC). Сам набор в приложении больше не
+# хранится(shared/testdata - только для тестов), поэтому его события для purge перечислены здесь
 SEED_AUDIT = (
     ("Нестерова А.", "Статус: «Новая» → «На проверке» · ответственный: Нестерова А.", "2026-10-12T04:30"),
     ("Нестерова А.", "Статус: «На проверке» → «Нарушение подтверждено». Основание: сверено с картотекой ГАСК ВКО — "
@@ -380,7 +380,7 @@ def plan(db: Session) -> Plan:
         if e.signal_id in sigs or e.ad_id in ads:
             p.events.append(e.id)
         elif e.complex_id in p.complexes:
-            # событие собранной/внесённой публикации о демо-ЖК — остаётся в её истории, без ссылки на удалённый ЖК
+            # событие собранной/внесённой публикации о демо-ЖК - остаётся в её истории, без ссылки на удалённый ЖК
             (p.detach if foreign_ad else p.events).append(e.id)
         elif not foreign_ad and (e.who, e.what, models.as_utc(e.at)) in seed_audit:
             p.events.append(e.id)
@@ -412,7 +412,7 @@ def _delete(db: Session, model, col, ids: Iterable[Any]) -> None:
 
 
 def apply(db: Session, p: Plan, *, at: Optional[datetime] = None) -> ImportReport:
-    """Удаление по плану, флаг demo_data = purged, карточки ЖК из реестра и событие журнала — в сессии db (без commit)."""
+    """Удаление по плану, флаг demo_data = purged, карточки ЖК из реестра и событие журнала - в сессии db(без commit)."""
     if p.blocked:
         raise RuntimeError("; ".join(p.blocked))
     now = at or models.utcnow()
@@ -432,7 +432,7 @@ def apply(db: Session, p: Plan, *, at: Optional[datetime] = None) -> ImportRepor
     _delete(db, models.Job, models.Job.id, p.jobs)
     _delete(db, models.BotSubmission, models.BotSubmission.id, p.bot)
     M = models.MediaAsset
-    if p.media:  # кадры видео ссылаются на видео (parent_id) — сначала они
+    if p.media:  # кадры видео ссылаются на видео(parent_id) - сначала они
         db.execute(update(M).where(M.parent_id.in_(p.media)).values(parent_id=None).execution_options(synchronize_session=False))
     _delete(db, M, M.id, p.media)
     _delete(db, models.IngestVersion, models.IngestVersion.id, p.versions)
@@ -472,7 +472,7 @@ def apply(db: Session, p: Plan, *, at: Optional[datetime] = None) -> ImportRepor
 def _version(db: Session) -> Optional[str]:
     try:
         m = db.get(models.Meta, "schema_version")
-    except Exception:  # нет таблицы meta — БД пустая или чужая
+    except Exception:  # нет таблицы meta - БД пустая или чужая
         db.rollback()
         return None
     return m.value if m else None
@@ -516,7 +516,7 @@ def _print_plan(db: Session, p: Plan, eng: Engine) -> None:
 
 
 def purge(eng: Engine, *, dry_run: bool = False, yes: bool = False) -> int:
-    """CLI purge: 0 — выполнено (или --dry-run), 1 — нужен --yes, 2 — ошибка (схема не текущая, блокировка)."""
+    """CLI purge: 0 - выполнено(или --dry-run), 1 - нужен --yes, 2 - ошибка(схема не текущая, блокировка)."""
     from .db import SessionLocal
 
     with SessionLocal(bind=eng) as db:
@@ -543,8 +543,8 @@ def purge(eng: Engine, *, dry_run: bool = False, yes: bool = False) -> int:
         if not yes:
             print("Ничего не удалено: проверьте список и повторите с --yes")
             return 1
-        db.rollback()  # отпустить чтение (и блокировку PostgreSQL) — копия SQLite делается без открытой транзакции
-    migrate.backup_sqlite(eng, "demo-purge", reason="перед удалением демо-данных")  # путь — в журнал (stderr)
+        db.rollback()  # отпустить чтение(и блокировку PostgreSQL) - копия SQLite делается без открытой транзакции
+    migrate.backup_sqlite(eng, "demo-purge", reason="перед удалением демо-данных")  # путь - в журнал(stderr)
     with SessionLocal(bind=eng) as db:
         if eng.dialect.name == "postgresql":
             db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": migrate.ADVISORY_LOCK})
@@ -576,7 +576,7 @@ def import_cli(eng: Engine) -> int:
 
 
 def add_advertised_cli(eng: Engine, path: str, *, author: Optional[str], note: Optional[str]) -> int:
-    """CLI add-advertised: 0 — выполнено, 2 — схема не текущая, файл не читается или не в формате."""
+    """CLI add-advertised: 0 - выполнено, 2 - схема не текущая, файл не читается или не в формате."""
     from pydantic import ValidationError
 
     from . import discovery

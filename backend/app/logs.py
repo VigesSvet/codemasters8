@@ -1,9 +1,9 @@
 """Маскирование секретов в логах и текстах ошибок.
 
-Два уровня: фабрика записей (logging.setLogRecordFactory) маскирует msg, args, текст исключения и stack_info каждой
-записи сразу при создании — это видят и обработчики, добавленные позже (pytest caplog); форматтер-обёртка
-RedactingFormatter маскирует уже отформатированную строку у обработчиков root и uvicorn — на случай, когда секрет
-собирается только при форматировании. Секреты — значения из Settings.secrets() и зарегистрированные во время работы
+Два уровня: фабрика записей(logging.setLogRecordFactory) маскирует msg, args, текст исключения и stack_info каждой
+записи сразу при создании - это видят и обработчики, добавленные позже(pytest caplog); форматтер-обёртка
+RedactingFormatter маскирует уже отформатированную строку у обработчиков root и uvicorn - на случай, когда секрет
+собирается только при форматировании. Секреты - значения из Settings.secrets() и зарегистрированные во время работы
 (register_secret: токены OLX, StringSession, phone_code_hash, OAuth code/state, appsecret_proof).
 """
 import logging
@@ -19,26 +19,26 @@ from . import settings as _settings
 
 MASK = "***"
 FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
-NOISY = ("httpx", "httpcore", "httpx2", "httpcore2", "anthropic", "telethon")  # SDK anthropic 1.x — на httpx2
+NOISY = ("httpx", "httpcore", "httpx2", "httpcore2", "anthropic", "telethon")  # SDK anthropic 1.x - на httpx2
 WRAPPED = ("", "uvicorn", "uvicorn.access", "uvicorn.error")
-REGISTER_MIN = 8  # короче — не регистрируется (маскировались бы случайные совпадения в обычном тексте)
+REGISTER_MIN = 8  # короче - не регистрируется(маскировались бы случайные совпадения в обычном тексте)
 SETTINGS_MIN = 4
-# Аргумент записи журнала длиннее — обрезается (путь запроса в журнале доступа, ответ источника): маскирование и вывод
-# не тратят время и место на мегабайты. Маскируется окно с запасом CLIP_WINDOW — секрет на границе обрезки не остаётся
+# Аргумент записи журнала длиннее - обрезается(путь запроса в журнале доступа, ответ источника): маскирование и вывод
+# не тратят время и место на мегабайты. Маскируется окно с запасом CLIP_WINDOW - секрет на границе обрезки не остаётся
 # видимым наполовину.
 LOG_ARG_MAX = 16 * 1024
 CLIP_WINDOW = 4096
 
-# Имена параметров запроса, значения которых не выводятся: «name=***»
+# Имена параметров запроса, значения которых не выводятся: "name=***"
 SECRET_PARAMS = ("access_token", "refresh_token", "token", "key", "api_key", "apikey", "code", "state", "signature",
                  "client_secret", "password", "hash", "appsecret_proof", "oh", "oe", "sig")
 _QUERY = re.compile(r"(?:(?<=[?&;\s,(\"'])|^)((?:%s|x-amz-[a-z0-9-]+)=)[^&#\s\"'<>]+" % "|".join(SECRET_PARAMS),
                     re.I | re.M)
 _JSON_KEYS = re.compile(r"([\"'](?:access_token|refresh_token|client_secret|password|token|api_key|apikey|secret|"
                         r"phone_code_hash|session|authorization)[\"']\s*:\s*[\"'])[^\"']+", re.I)
-# Шаблоны линейные: длинная строка вида «x-x-x-…» или «a.a.a.…» (путь запроса в журнале доступа uvicorn) не должна
-# вызывать квадратичный перебор — маскирование идёт в цикле событий API. Отсюда «x-(сегмент-){1,8}token» вместо
-# «x-[a-z0-9-]*-token» и схема URL, проверяемая ретроспективой фиксированной длины вместо «\b[a-z][a-z0-9+.-]*://».
+# Шаблоны линейные: длинная строка вида "x-x-x-…" или "a.a.a.…"(путь запроса в журнале доступа uvicorn) не должна
+# вызывать квадратичный перебор - маскирование идёт в цикле событий API. Отсюда "x-(сегмент-){1,8}token" вместо
+# "x-[a-z0-9-]*-token" и схема URL, проверяемая ретроспективой фиксированной длины вместо "\b[a-z][a-z0-9+.-]*://".
 _HEADERS = re.compile(r"\b(x-admin-token|x-api-key|x-(?:[a-z0-9]++-){1,8}token|cookie|set-cookie|authorization)"
                       r"([\"']?\s*[:=]\s*[\"']?)(?!(?:Bearer|Basic)\b)[^\s\"',;]+", re.I)
 _BOT_PATH = re.compile(r"/bot\d+:[A-Za-z0-9_-]+")
@@ -46,12 +46,12 @@ _BOT_TOKEN = re.compile(r"\b\d{6,12}:[A-Za-z0-9_-]{30,}")
 _BEARER = re.compile(r"\b(Bearer)\s+[^\s\"',;<>]+", re.I)
 _BASIC = re.compile(r"\b(Basic)\s+[A-Za-z0-9+/=]{8,}", re.I)
 _USERINFO = re.compile(r"(?<=[a-z0-9+.-]://)[^/\s@?#]++@", re.I)
-# %-заполнители формата logging: при наличии args маскируется только текст между ними («key=%s» остаётся форматом)
+# %-заполнители формата logging: при наличии args маскируется только текст между ними("key=%s" остаётся форматом)
 _PLACEHOLDER = re.compile(r"(%(?:\([^)]{0,128}\))?[#0 +-]*(?:\*|\d+)?(?:\.(?:\*|\d+))?[hlL]?[diouxXeEfFgGcrsa%])")
 
 _REGISTERED: set[str] = set()
 _LOCK = threading.Lock()
-_CACHE: list = [(None, None)]  # [(набор секретов, regex)] — одна ячейка: замена атомарна
+_CACHE: list = [(None, None)]  # [(набор секретов, regex)] - одна ячейка: замена атомарна
 _installed = False
 
 
@@ -60,7 +60,7 @@ def _variants(value: str) -> set[str]:
 
 
 def register_secret(value: Optional[str]) -> None:
-    """Секрет, появившийся во время работы (токены OLX, StringSession, phone_code_hash, OAuth code/state,
+    """Секрет, появившийся во время работы(токены OLX, StringSession, phone_code_hash, OAuth code/state,
     appsecret_proof). Значения короче 8 символов не регистрируются. Маскируются value, quote(value, safe=""),
     quote_plus(value)."""
     if not value or not isinstance(value, str) or len(value) < REGISTER_MIN:
@@ -89,10 +89,10 @@ def _secret_re() -> Optional[re.Pattern]:
 
 
 def redact(text: Optional[str], limit: Optional[int] = 500) -> Optional[str]:
-    """Секреты Settings.secrets() + зарегистрированные (длинные первыми) → «***»; query-параметры access_token,
+    """Секреты Settings.secrets() + зарегистрированные(длинные первыми) → "***"; query-параметры access_token,
     refresh_token, token, key, code, state, signature, client_secret, password, hash, appsecret_proof, oh, oe, sig, X-Amz-*
-    → «name=***»; «/bot<digits>:<token>/» → «/bot***/»; «Bearer <x>» → «Bearer ***»; userinfo в URL → удалить.
-    limit=None — без обрезки."""
+    → "name=***"; "/bot<digits>:<token>/" → "/bot***/"; "Bearer <x>" → "Bearer ***"; userinfo в URL → удалить.
+    limit=None - без обрезки."""
     if text is None:
         return None
     if not isinstance(text, str):
@@ -115,8 +115,8 @@ def redact(text: Optional[str], limit: Optional[int] = 500) -> Optional[str]:
 
 
 def _clipped(text: str) -> str:
-    """redact без обрезки для обычных строк; длиннее LOG_ARG_MAX — маскируется только начало (с запасом CLIP_WINDOW)
-    и обрезается до LOG_ARG_MAX с «…»."""
+    """redact без обрезки для обычных строк; длиннее LOG_ARG_MAX - маскируется только начало(с запасом CLIP_WINDOW)
+    и обрезается до LOG_ARG_MAX с "…"."""
     if len(text) <= LOG_ARG_MAX:
         return redact(text, limit=None)
     return redact(text[:LOG_ARG_MAX + CLIP_WINDOW], limit=None)[:LOG_ARG_MAX] + "…"
@@ -125,7 +125,7 @@ def _clipped(text: str) -> str:
 def _redact_msg(msg: str, has_args: bool) -> str:
     if not has_args:
         return _clipped(msg)
-    parts = _PLACEHOLDER.split(msg)  # формат с заполнителями не обрезается — иначе запись не отформатируется
+    parts = _PLACEHOLDER.split(msg)  # формат с заполнителями не обрезается - иначе запись не отформатируется
     return "".join(p if i % 2 else redact(p, limit=None) for i, p in enumerate(parts))
 
 
@@ -157,7 +157,7 @@ def _factory(prev):
         record = prev(*args, **kwargs)
         try:
             _scrub(record)
-        except Exception:  # pragma: no cover — запись в лог важнее маскирования одной записи
+        except Exception:  # pragma: no cover - запись в лог важнее маскирования одной записи
             pass
         return record
 
@@ -167,8 +167,8 @@ def _factory(prev):
 
 
 class RedactingFormatter(logging.Formatter):
-    """Обёртка над чужим форматтером: format(r) = redact(inner.format(r), limit=None) — покрывает msg, args, exc_text,
-    stack_info после форматирования (uvicorn AccessFormatter продолжает получать свой кортеж args)."""
+    """Обёртка над чужим форматтером: format(r) = redact(inner.format(r), limit=None) - покрывает msg, args, exc_text,
+    stack_info после форматирования(uvicorn AccessFormatter продолжает получать свой кортеж args)."""
 
     def __init__(self, inner: Optional[logging.Formatter] = None):
         super().__init__()
@@ -177,7 +177,7 @@ class RedactingFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         return redact(self.inner.format(record), limit=None)
 
-    def formatTime(self, record, datefmt=None):  # noqa: N802 — имя из logging
+    def formatTime(self, record, datefmt=None):  # noqa: N802 - имя из logging
         return self.inner.formatTime(record, datefmt)
 
     def formatException(self, ei):  # noqa: N802
@@ -190,16 +190,16 @@ def _wrap(handler: logging.Handler) -> None:
 
 
 def install(level=logging.INFO, *, stream=None, handler: bool = True, force: bool = False) -> None:
-    """Идемпотентно (force — для тестов):
-    1) фабрика записей (logging.setLogRecordFactory, обёртка над прежней): msg (str) → redact; args — кортеж той же длины,
-       str-элементы → redact, int/float/bool/None как есть, прочие → redact(str(a)); mapping-args — так же по значениям;
+    """Идемпотентно(force - для тестов):
+    1) фабрика записей(logging.setLogRecordFactory, обёртка над прежней): msg(str) → redact; args - кортеж той же длины,
+       str-элементы → redact, int/float/bool/None как есть, прочие → redact(str(a)); mapping-args - так же по значениям;
        exc_info есть → record.exc_text = redact(Formatter().formatException(exc_info), limit=None), exc_info сохраняется;
        stack_info → redact;
     2) handler=True и у root нет обработчиков → StreamHandler(stream or sys.stderr) с форматом
-       «%(asctime)s %(levelname)s %(name)s: %(message)s», root.setLevel(level);
-    3) у каждого обработчика root, «uvicorn», «uvicorn.access», «uvicorn.error» форматтер оборачивается в
-       RedactingFormatter (повторно не оборачивать);
-    4) httpx, httpcore, httpx2, httpcore2, anthropic, telethon → WARNING. Логгер «saq» не трогается (без своих обработчиков, propagate=True)."""
+       "%(asctime)s %(levelname)s %(name)s: %(message)s", root.setLevel(level);
+    3) у каждого обработчика root, "uvicorn", "uvicorn.access", "uvicorn.error" форматтер оборачивается в
+       RedactingFormatter(повторно не оборачивать);
+    4) httpx, httpcore, httpx2, httpcore2, anthropic, telethon → WARNING. Логгер "saq" не трогается(без своих обработчиков, propagate=True)."""
     global _installed
     if _installed and not force:
         return

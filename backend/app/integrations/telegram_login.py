@@ -1,21 +1,21 @@
-"""Вход в Telegram для сборщика каналов: python -m app.integrations.telegram_login (integration-spec §12.2,
+"""Вход в Telegram для сборщика каналов: python -m app.integrations.telegram_login(integration-spec §12.2,
 план §7.1.2).
 
-Режимы (один за запуск):
-  без аргументов        — вход в одном процессе: код из Telegram через input(), пароль 2FA через getpass;
-  --send-code [--force] — запросить код; ожидание кода — в «<TG_SESSION_PATH>.pending.json» (0600, 15 минут);
-  --code КОД            — войти по коду («-» — прочитать код из stdin);
-  --password            — пароль двухфакторной защиты (запрос через getpass; работает в docker compose run --rm);
-  --password-stdin      — пароль из stdin (для автоматизации);
-  --status              — есть ли сессия: «Сессии нет» / «Сессия есть: @имя» / «Сессия недействительна»;
-  --logout              — выйти из аккаунта и удалить файл сессии.
+Режимы(один за запуск):
+  без аргументов        - вход в одном процессе: код из Telegram через input(), пароль 2FA через getpass;
+  --send-code [--force] - запросить код; ожидание кода - в "<TG_SESSION_PATH>.pending.json"(0600, 15 минут);
+  --code КОД            - войти по коду("-" - прочитать код из stdin);
+  --password            - пароль двухфакторной защиты(запрос через getpass; работает в docker compose run --rm);
+  --password-stdin      - пароль из stdin(для автоматизации);
+  --status              - есть ли сессия: "Сессии нет" / "Сессия есть: @имя" / "Сессия недействительна";
+  --logout              - выйти из аккаунта и удалить файл сессии.
 
 Читает TG_API_ID, TG_API_HASH, TG_PHONE, TG_SESSION_PATH из настроек сервера. Номер, phone_code_hash и сессия не
-печатаются и регистрируются для маскирования в логах. Каждый запуск берёт блокировку сессии — воркер на время входа
-нужно остановить (docker compose stop worker).
+печатаются и регистрируются для маскирования в логах. Каждый запуск берёт блокировку сессии - воркер на время входа
+нужно остановить(docker compose stop worker).
 
-Коды выхода: 0 — готово; 1 — ошибка (нет кода, нет связи, нет сессии для --status); 2 — не заданы ключи;
-3 — нужен пароль 2FA; 4 — неверный код или пароль; 5 — код устарел; 6 — Telegram просит подождать; 7 — сессия занята.
+Коды выхода: 0 - готово; 1 - ошибка(нет кода, нет связи, нет сессии для --status); 2 - не заданы ключи;
+3 - нужен пароль 2FA; 4 - неверный код или пароль; 5 - код устарел; 6 - Telegram просит подождать; 7 - сессия занята.
 """
 import argparse
 import asyncio
@@ -49,7 +49,7 @@ CODE_TYPES = {"SentCodeTypeApp": "в приложение Telegram", "SentCodeTy
 
 
 class Exit(Exception):
-    """Завершение с кодом и сообщением (stdout при code == 0, иначе stderr)."""
+    """Завершение с кодом и сообщением(stdout при code == 0, иначе stderr)."""
 
     def __init__(self, code: int, message: str = ""):
         super().__init__(message)
@@ -71,7 +71,7 @@ def pending_path(s: Settings) -> Path:
 # ---------- файл ожидания кода ----------
 
 def _pending_age(data: dict) -> float:
-    """Сколько секунд назад запрошен код; нечитаемое время — «давно» (ожидание устарело)."""
+    """Сколько секунд назад запрошен код; нечитаемое время - "давно"(ожидание устарело)."""
     try:
         sent = models.as_utc(datetime.fromisoformat(str(data.get("sentAt"))))
     except (TypeError, ValueError):
@@ -80,7 +80,7 @@ def _pending_age(data: dict) -> float:
 
 
 def _load_pending(s: Settings) -> Optional[dict]:
-    """Ожидание кода или None (нет файла). Нечитаемый файл удаляется."""
+    """Ожидание кода или None(нет файла). Нечитаемый файл удаляется."""
     path = pending_path(s)
     try:
         text = tg.read_private(path)
@@ -109,7 +109,7 @@ def _drop_pending(s: Settings) -> None:
 
 
 def _drop_stale(s: Settings) -> bool:
-    """Удалить ожидание кода старше 15 минут. True — такое было (код устарел)."""
+    """Удалить ожидание кода старше 15 минут. True - такое было(код устарел)."""
     path = pending_path(s)
     if not path.exists():
         return False
@@ -161,14 +161,14 @@ def _save_session(client) -> str:
 
 
 async def _who(client) -> Optional[str]:
-    """«@username» авторизованной сессии или None."""
+    """"@username" авторизованной сессии или None."""
     if not await client.is_user_authorized():
         return None
     return tg._me_label(await client.get_me())
 
 
 async def _existing(s: Settings) -> Optional[str]:
-    """Авторизованная сессия в файле: «@username» или None (нет файла или сессия недействительна)."""
+    """Авторизованная сессия в файле: "@username" или None(нет файла или сессия недействительна)."""
     session = tg.read_session(s.tg_session_path)
     if not session:
         return None
@@ -180,7 +180,7 @@ async def _existing(s: Settings) -> Optional[str]:
 
 
 async def _send_code(s: Settings, force: bool) -> tuple:
-    """Запросить код. Возвращает (клиент, отправленный код) — клиент остаётся подключённым."""
+    """Запросить код. Возвращает(клиент, отправленный код) - клиент остаётся подключённым."""
     if not force:
         who = await _existing(s)
         if who:
@@ -202,7 +202,7 @@ def _code_type(sent) -> str:
 
 
 async def _finish(client, s: Settings, user=None) -> str:
-    """Вход выполнен: сессия — в файл (0600), ожидание кода удаляется."""
+    """Вход выполнен: сессия - в файл(0600), ожидание кода удаляется."""
     me = user if user is not None and getattr(user, "id", None) is not None else await client.get_me()
     tg.write_session(s.tg_session_path, _save_session(client))
     _drop_pending(s)
@@ -213,7 +213,7 @@ def _pending_or_exit(s: Settings, stale: bool) -> dict:
     data = _load_pending(s)
     if data is None:
         raise Exit(EXPIRED if stale else ERROR, MSG_EXPIRED if stale else MSG_NO_PENDING)
-    if data.get("phoneFp") != _fp(_phone(s)):  # номер в настройках сменился — код не к нему
+    if data.get("phoneFp") != _fp(_phone(s)):  # номер в настройках сменился - код не к нему
         _drop_pending(s)
         raise Exit(EXPIRED, MSG_EXPIRED)
     return data
@@ -260,7 +260,7 @@ async def _with_password(s: Settings, password: str, stale: bool) -> str:
 
 
 async def _interactive(s: Settings, force: bool) -> str:
-    """Вход в одном процессе: код через input(), пароль 2FA через getpass (до трёх попыток каждого)."""
+    """Вход в одном процессе: код через input(), пароль 2FA через getpass(до трёх попыток каждого)."""
     from telethon import errors
 
     client, sent = await _send_code(s, force)
@@ -393,7 +393,7 @@ def main(argv: Optional[list] = None) -> int:
     s = get_settings()
     path = Path(s.tg_session_path)
     if (args.status or args.logout) and not path.parent.exists():
-        _say("Сессии нет")  # каталога сессии нет — нет ни сессии, ни ожидания кода; каталог не создаётся
+        _say("Сессии нет")  # каталога сессии нет - нет ни сессии, ни ожидания кода; каталог не создаётся
         return ERROR if args.status else OK
     try:
         with tg.session_lock(path):
@@ -407,7 +407,7 @@ def main(argv: Optional[list] = None) -> int:
         code, message = ERROR, e.detail
     except PermissionError as e:
         code, message = ERROR, f"Нет доступа к каталогу сессии Telegram ({type(e).__name__})"
-    except Exception as e:  # noqa: BLE001 — ошибки Telegram → понятное сообщение и код выхода
+    except Exception as e:  # noqa: BLE001 - ошибки Telegram → понятное сообщение и код выхода
         mapped = _telegram_error(e)
         if mapped is None:
             raise

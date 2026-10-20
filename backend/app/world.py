@@ -1,6 +1,6 @@
-"""«Мир» для движка риска: ORM → camelCase-словари в форме API (как frontend/src/data/types.ts).
+""""Мир" для движка риска: ORM → camelCase-словари в форме API(как frontend/src/data/types.ts).
 
-Движок (app.risk) работает только со словарями; здесь — загрузка данных из БД и вызовы score_complex / score_ad.
+Движок(app.risk) работает только со словарями; здесь - загрузка данных из БД и вызовы score_complex / score_ad.
 """
 from dataclasses import dataclass
 from datetime import date
@@ -18,7 +18,7 @@ Obj = Dict[str, Any]
 
 
 def by_id(rows):
-    """Естественный порядок id: c1, c2, …, c10 (как в сиде), а не c1, c10, c11."""
+    """Естественный порядок id: c1, c2, …, c10(как в сиде), а не c1, c10, c11."""
     return sorted(rows, key=lambda r: (len(r.id), r.id))
 
 
@@ -63,7 +63,7 @@ def load(db: Session) -> World:
 
 
 def load_complex(db: Session, cid: str) -> Optional[World]:
-    """Мир одного ЖК: сам объект, застройщик, его публикации и обращения (движок всё равно фильтрует по complexId)."""
+    """Мир одного ЖК: сам объект, застройщик, его публикации и обращения(движок всё равно фильтрует по complexId)."""
     c = db.get(models.Complex, cid)
     if c is None:
         return None
@@ -83,13 +83,13 @@ def risk_for(db: Session, cid: str, as_of: Optional[date] = None) -> Optional[Ob
 
 
 def risk_all(db: Session, as_of: Optional[date] = None) -> List[Obj]:
-    """[{complexId, ...RiskResult}] по всем ЖК — одним запросом для списков на фронте."""
+    """[{complexId, ...RiskResult}] по всем ЖК - одним запросом для списков на фронте."""
     w = load(db)
     return [{"complexId": c["id"], **w.risk(c, as_of)} for c in w.complexes]
 
 
 def catalog(db: Session, exclude_ad: Optional[str] = None) -> Catalog:
-    """Справочник для ИИ-сопоставления из БД: ЖК, застройщики, история аккаунтов (подтверждённые привязки, кроме exclude_ad)."""
+    """Справочник для ИИ-сопоставления из БД: ЖК, застройщики, история аккаунтов(подтверждённые привязки, кроме exclude_ad)."""
     w = load(db)
     return build_catalog(w.complexes, w.developers.values(), w.ads, exclude_ad)
 
@@ -108,7 +108,7 @@ def audit_dict(e: models.AuditEvent) -> Obj:
 
 
 def audit(db: Session, *where, limit: Optional[int] = None) -> List[Obj]:
-    """События журнала по возрастанию времени (at, id); limit — последние N, отданные тоже по возрастанию."""
+    """События журнала по возрастанию времени(at, id); limit - последние N, отданные тоже по возрастанию."""
     E = models.AuditEvent
     q = select(E).where(*where)
     if limit is None:

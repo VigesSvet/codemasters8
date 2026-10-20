@@ -1,16 +1,16 @@
 """HTTP для подключений и безопасная загрузка файлов публикаций.
 
-client() — клиент API источника: честный ASCII User-Agent из настроек, без cookie, без прокси из окружения; с base_url
-клиент «привязан» к хосту: запрос на другой хост или не по https (абсолютная ссылка paging.next, CDN) отклоняется до
-отправки — токен из заголовков клиента не уходит чужому серверу.
+client() - клиент API источника: честный ASCII User-Agent из настроек, без cookie, без прокси из окружения; с base_url
+клиент "привязан" к хосту: запрос на другой хост или не по https(абсолютная ссылка paging.next, CDN) отклоняется до
+отправки - токен из заголовков клиента не уходит чужому серверу.
 
-fetch_to_temp() — загрузка файла по ссылке источника во временный файл хранилища: только https (http — лишь для явно
-разрешённых хостов и без учётных данных), без логина/пароля в ссылке, порты 80/443, адреса только публичные — на каждом
-перенаправлении и ещё раз при подключении (PublicOnlyBackend подключается к уже проверенному IP: подмена DNS между
+fetch_to_temp() - загрузка файла по ссылке источника во временный файл хранилища: только https(http - лишь для явно
+разрешённых хостов и без учётных данных), без логина/пароля в ссылке, порты 80/443, адреса только публичные - на каждом
+перенаправлении и ещё раз при подключении(PublicOnlyBackend подключается к уже проверенному IP: подмена DNS между
 проверкой и подключением не проходит), не больше max_redirects перенаправлений, https→http не выполняется, учётные
-данные — только нужным хостам и только по https, общий срок загрузки, без сжатия, размер и тип файла по сигнатуре.
+данные - только нужным хостам и только по https, общий срок загрузки, без сжатия, размер и тип файла по сигнатуре.
 
-Тесты подменяют TRANSPORT (httpx.MockTransport), RESOLVER, SLEEP и MONOTONIC. Обход защиты сайтов (подмена браузера,
+Тесты подменяют TRANSPORT(httpx.MockTransport), RESOLVER, SLEEP и MONOTONIC. Обход защиты сайтов(подмена браузера,
 cookie, решение проверок) здесь не выполняется и не допускается.
 """
 import hashlib
@@ -50,7 +50,7 @@ TRANSPORT: Optional[httpx.BaseTransport] = None  # тесты: httpx.MockTranspo
 RESOLVER: Callable[[str, int], list[str]] = _system_resolve
 SLEEP: Callable[[float], None] = time.sleep
 MONOTONIC: Callable[[], float] = time.monotonic
-# Учётные данные в обычных заголовках загрузки запрещены: только auth_headers (уходят лишь auth_hosts по https)
+# Учётные данные в обычных заголовках загрузки запрещены: только auth_headers(уходят лишь auth_hosts по https)
 FORBIDDEN_HEADERS = re.compile(r"^(authorization|cookie|x-api-key|x-.*-token)$", re.I)
 REDIRECTS = (301, 302, 303, 307, 308)
 _RETRYABLE = {"network", "timeout"}
@@ -63,8 +63,8 @@ _CHUNK = 64 * 1024
 
 class DownloadError(Exception):
     """Файл не загружен. code: bad_scheme | bad_url | blocked_address | too_many_redirects | http_<status> | timeout |
-    network | too_large | bad_type | host_not_allowed | cancelled; detail — по-русски, ссылка только в замаскированном
-    виде; retryable — сеть, тайм-аут, HTTP 5xx и 429, прерванная остановкой воркера загрузка (повтор имеет смысл)."""
+    network | too_large | bad_type | host_not_allowed | cancelled; detail - по-русски, ссылка только в замаскированном
+    виде; retryable - сеть, тайм-аут, HTTP 5xx и 429, прерванная остановкой воркера загрузка(повтор имеет смысл)."""
 
     def __init__(self, code: str, detail: str, *, retryable: Optional[bool] = None):
         detail = logs.redact(detail) or ""
@@ -78,7 +78,7 @@ class DownloadError(Exception):
 # ---------- адреса ----------
 
 def _embedded(addr) -> list:
-    """Сам адрес и IPv4, вложенные в IPv6: ::ffff:a.b.c.d, NAT64 (64:ff9b::/96, 64:ff9b:1::/48), 6to4, Teredo."""
+    """Сам адрес и IPv4, вложенные в IPv6: ::ffff:a.b.c.d, NAT64(64:ff9b::/96, 64:ff9b:1::/48), 6to4, Teredo."""
     out = [addr]
     if addr.version == 6:
         if addr.ipv4_mapped is not None:
@@ -86,24 +86,24 @@ def _embedded(addr) -> list:
         v = int(addr)
         if addr in _NAT64:
             out.append(ipaddress.IPv4Address(v & 0xFFFFFFFF))
-        if addr in _NAT64_LOCAL:  # RFC 6052, префикс /48: IPv4 в битах 48–63 и 72–87
+        if addr in _NAT64_LOCAL:  # RFC 6052, префикс /48: IPv4 в битах 48-63 и 72-87
             out.append(ipaddress.IPv4Address((((v >> 64) & 0xFFFF) << 16) | ((v >> 40) & 0xFFFF)))
         if addr.sixtofour is not None:
             out.append(addr.sixtofour)
         if addr.teredo is not None:
-            out.extend(addr.teredo)  # (сервер, клиент) — клиентский адрес уже раскрыт ipaddress
+            out.extend(addr.teredo)  # (сервер, клиент) - клиентский адрес уже раскрыт ipaddress
     return out
 
 
 def _public(a) -> bool:
-    # site-local fec0::/10 (RFC 3879, устаревший) ipaddress считает глобальным — проверяется отдельно
+    # site-local fec0::/10(RFC 3879, устаревший) ipaddress считает глобальным - проверяется отдельно
     return a.is_global and not a.is_multicast and not a.is_reserved and not (a.version == 6 and a.is_site_local)
 
 
 def is_public_ip(ip: str) -> bool:
-    """Адрес публичный: он сам и каждый вложенный в него IPv4 — глобальные, не multicast и не зарезервированные.
-    Loopback, частные сети, link-local (169.254.x — метаданные облака), CGNAT 100.64/10, ULA fc00::/7, site-local
-    fec0::/10 — не публичные."""
+    """Адрес публичный: он сам и каждый вложенный в него IPv4 - глобальные, не multicast и не зарезервированные.
+    Loopback, частные сети, link-local(169.254.x - метаданные облака), CGNAT 100.64/10, ULA fc00::/7, site-local
+    fec0::/10 - не публичные."""
     try:
         addr = ipaddress.ip_address(str(ip).strip("[]").split("%", 1)[0])
     except ValueError:
@@ -121,7 +121,7 @@ def _literal(host: str) -> Optional[str]:
 
 
 def _resolve(host: str, port: int) -> list[str]:
-    """IP-адреса хоста, все публичные; иначе DownloadError(blocked_address). Ошибка DNS — network (повторяемая)."""
+    """IP-адреса хоста, все публичные; иначе DownloadError(blocked_address). Ошибка DNS - network(повторяемая)."""
     literal = _literal(host)
     if literal is not None:
         ips = [literal]
@@ -140,14 +140,14 @@ def _resolve(host: str, port: int) -> list[str]:
 
 class PublicOnlyBackend(httpcore.SyncBackend):
     """Сетевой слой загрузчика: имя разрешается здесь же, при подключении, и соединение идёт на проверенный публичный IP
-    (TLS: SNI и проверка сертификата — по исходному имени, httpcore передаёт его сам). Так проверка адреса и
-    подключение не расходятся (DNS rebinding), и это повторяется на каждом перенаправлении."""
+    (TLS: SNI и проверка сертификата - по исходному имени, httpcore передаёт его сам). Так проверка адреса и
+    подключение не расходятся(DNS rebinding), и это повторяется на каждом перенаправлении."""
 
     def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
         ips = _resolve(host, port)
         return super().connect_tcp(ips[0], port, timeout, local_address, socket_options)
 
-    def connect_unix_socket(self, path, timeout=None, socket_options=None):  # pragma: no cover — не используется
+    def connect_unix_socket(self, path, timeout=None, socket_options=None):  # pragma: no cover - не используется
         raise DownloadError("blocked_address", "Загрузка через локальный сокет запрещена")
 
 
@@ -161,7 +161,7 @@ class _NoCookies(http.cookiejar.CookieJar):
 # ---------- ссылки ----------
 
 def redact_url(url: str) -> str:
-    """scheme://host[:port]/path — без логина/пароля, query и fragment; «/bot<id>:<token>» → «/bot***»; секреты
+    """scheme://host[:port]/path - без логина/пароля, query и fragment; "/bot<id>:<token>" → "/bot***"; секреты
     маскируются. Для журналов, ошибок и MediaAsset.origin_url."""
     try:
         p = urlsplit(str(url))
@@ -188,8 +188,8 @@ def _norm_host(host: str) -> Optional[str]:
 
 
 def host_allowed(host: str, allowed: Iterable[str]) -> bool:
-    """Хост совпадает с разрешённым или является его поддоменом: «scontent-x.cdninstagram.com» ⊂ «cdninstagram.com»,
-    «evilcdninstagram.com» — нет. Сравнение после IDNA-кодирования, без регистра и конечной точки."""
+    """Хост совпадает с разрешённым или является его поддоменом: "scontent-x.cdninstagram.com" ⊂ "cdninstagram.com",
+    "evilcdninstagram.com" - нет. Сравнение после IDNA-кодирования, без регистра и конечной точки."""
     h = _norm_host(host)
     if h is None:
         return False
@@ -209,7 +209,7 @@ def _parts(url: str):
 
 
 def check_public(url: str, *, allow_http: bool = False) -> None:
-    """Ранняя проверка ссылки перед каждым запросом: https (http — только allow_http), без логина/пароля, корректный
+    """Ранняя проверка ссылки перед каждым запросом: https(http - только allow_http), без логина/пароля, корректный
     хост, порт не указан или 80/443, все адреса хоста публичные. При подключении PublicOnlyBackend проверяет адрес
     ещё раз."""
     p, port = _parts(url)
@@ -244,8 +244,8 @@ def _pinned(base_url: str):
 
 def client(*, timeout: float = 20.0, headers: Optional[dict] = None, base_url: str = "",
            follow_redirects: bool = False) -> httpx.Client:
-    """Клиент API источника: без прокси из окружения и без cookie; User-Agent — SAQ_USER_AGENT. С base_url запросы
-    допускаются только на этот хост по https (event hook на каждый запрос, включая перенаправления)."""
+    """Клиент API источника: без прокси из окружения и без cookie; User-Agent - SAQ_USER_AGENT. С base_url запросы
+    допускаются только на этот хост по https(event hook на каждый запрос, включая перенаправления)."""
     h = {"User-Agent": get_settings().user_agent, **(headers or {})}
     kw: dict = {}
     if base_url:
@@ -256,8 +256,8 @@ def client(*, timeout: float = 20.0, headers: Optional[dict] = None, base_url: s
 
 
 def download_transport() -> httpx.BaseTransport:
-    """Транспорт загрузчика: TRANSPORT (тесты) или HTTPTransport без повторов с PublicOnlyBackend.
-    _pool._network_backend — внутреннее поле httpx 0.28 / httpcore 1.0 (тест проверяет, что оно есть)."""
+    """Транспорт загрузчика: TRANSPORT(тесты) или HTTPTransport без повторов с PublicOnlyBackend.
+    _pool._network_backend - внутреннее поле httpx 0.28 / httpcore 1.0(тест проверяет, что оно есть)."""
     if TRANSPORT is not None:
         return TRANSPORT
     t = httpx.HTTPTransport(retries=0)
@@ -287,16 +287,16 @@ def _cancelled(url: str) -> DownloadError:
 
 
 def _blocks(resp: httpx.Response):
-    """Тело ответа по мере поступления: каждый сетевой блок отдаётся сразу (iter_bytes без chunk_size — без буфера до
-    64 КБ), длинный блок (тело, уже прочитанное транспортом) режется по _CHUNK. Так срок загрузки, размер и остановка
-    воркера проверяются на каждом блоке — сервер, отдающий по байту, не растягивает загрузку за общий срок."""
+    """Тело ответа по мере поступления: каждый сетевой блок отдаётся сразу(iter_bytes без chunk_size - без буфера до
+    64 КБ), длинный блок(тело, уже прочитанное транспортом) режется по _CHUNK. Так срок загрузки, размер и остановка
+    воркера проверяются на каждом блоке - сервер, отдающий по байту, не растягивает загрузку за общий срок."""
     for piece in resp.iter_bytes():
         for i in range(0, len(piece), _CHUNK):
             yield piece[i:i + _CHUNK]
 
 
 def _limits(timeout: float, left: float) -> httpx.Timeout:
-    """Тайм-ауты запроса не дольше остатка общего срока (left, с): одно медленное чтение не уводит загрузку далеко
+    """Тайм-ауты запроса не дольше остатка общего срока(left, с): одно медленное чтение не уводит загрузку далеко
     за срок."""
     left = max(left, 0.001)
     return httpx.Timeout(connect=min(10.0, left), read=min(float(timeout), left), write=min(10.0, left),
@@ -311,8 +311,8 @@ def _save(resp: httpx.Response, url: str, max_bytes: int, allowed_mime: set, dea
         h, size, head = hashlib.sha256(), 0, b""
         with os.fdopen(fd, "wb") as f:
             try:
-                # кодирование, кроме identity, отклонено до чтения: iter_bytes отдаёт байты как есть (и тело,
-                # уже прочитанное транспортом, — iter_raw его не отдал бы)
+                # кодирование, кроме identity, отклонено до чтения: iter_bytes отдаёт байты как есть(и тело,
+                # уже прочитанное транспортом, - iter_raw его не отдал бы)
                 for chunk in _blocks(resp):
                     size += len(chunk)
                     if size > max_bytes:
@@ -346,9 +346,9 @@ def fetch_to_temp(url: str, *, max_bytes: int, allowed_mime: Iterable[str],
                   auth_hosts: Iterable[str] = (), timeout: float = 30.0, total_timeout: Optional[float] = None,
                   max_redirects: int = 3, headers: Optional[dict] = None,
                   cancel: Optional[Callable[[], bool]] = None) -> Fetched:
-    """Файл по ссылке → временный файл в media.tmp_dir() (дальше — media.store_file). Ошибки — DownloadError;
-    временный файл при ошибке удаляется. Учётные данные заголовками в headers — ValueError (только auth_headers).
-    cancel() → True — загрузка прерывается перед запросом или на следующем блоке (DownloadError «cancelled»):
+    """Файл по ссылке → временный файл в media.tmp_dir()(дальше - media.store_file). Ошибки - DownloadError;
+    временный файл при ошибке удаляется. Учётные данные заголовками в headers - ValueError(только auth_headers).
+    cancel() → True - загрузка прерывается перед запросом или на следующем блоке(DownloadError "cancelled"):
     остановка воркера не ждёт большой файл до SIGKILL."""
     extra = dict(headers or {})
     bad = sorted(k for k in extra if FORBIDDEN_HEADERS.match(str(k)))
@@ -362,7 +362,7 @@ def fetch_to_temp(url: str, *, max_bytes: int, allowed_mime: Iterable[str],
     p, _ = _parts(url)
     if allowed is not None and not host_allowed(p.hostname or "", allowed):
         raise DownloadError("host_not_allowed", f"Хост {p.hostname or '?'} не входит в разрешённые для загрузки")
-    http_ok = allowed is not None and not auth_headers  # http — только разрешённым хостам и без учётных данных
+    http_ok = allowed is not None and not auth_headers  # http - только разрешённым хостам и без учётных данных
     base = {"User-Agent": get_settings().user_agent, "Accept-Encoding": "identity", **extra}
     current, hops = str(url), 0
     with httpx.Client(transport=download_transport(), trust_env=False, cookies=_NoCookies(),
@@ -420,7 +420,7 @@ def fetch_to_temp(url: str, *, max_bytes: int, allowed_mime: Iterable[str],
 
 
 def retry_after(headers, default: float) -> float:
-    """Retry-After (секунды или HTTP-дата) в секундах, в пределах 1…86400; нет или не разобрать — default."""
+    """Retry-After(секунды или HTTP-дата) в секундах, в пределах 1…86400; нет или не разобрать - default."""
     raw = None
     if headers is not None:
         raw = headers.get("retry-after") if hasattr(headers, "get") else None

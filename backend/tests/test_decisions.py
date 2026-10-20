@@ -1,8 +1,8 @@
-"""Решение аналитика по «Проверке по рекламе» (app.decisions, app.screening): «Объект сдан» и «Проверено — замечаний нет».
-Проверяются маршруты (проверка входа по-русски, автор — «Система» 422, 404/409, журнал), замена статуса автоматической
-оценки (check / suspect / ok → ok с вариантом и сведениями решения), автоматическое снятие новой рекламой (признак приёма
-денег после решения; у «сдан» — только строящийся объект или новая очередь, обычная продажа — нет), отмена и замена
-решения (стадия карточки возвращается), история, застройщик и /api/stats, риск «введён», стартовый набор (выгрузка и
+"""Решение аналитика по "Проверке по рекламе"(app.decisions, app.screening): "Объект сдан" и "Проверено - замечаний нет".
+Проверяются маршруты(проверка входа по-русски, автор - "Система" 422, 404/409, журнал), замена статуса автоматической
+оценки(check / suspect / ok → ok с вариантом и сведениями решения), автоматическое снятие новой рекламой(признак приёма
+денег после решения; у "сдан" - только строящийся объект или новая очередь, обычная продажа - нет), отмена и замена
+решения(стадия карточки возвращается), история, застройщик и /api/stats, риск "введён", стартовый набор(выгрузка и
 загрузка с решениями, набор прежней версии без таблицы) и правила как чистые функции."""
 import json
 from datetime import date, timedelta
@@ -22,10 +22,10 @@ from app.schemas import today_local
 
 AUTHOR = "Омарова Ж."
 OTHER = "Нестерова А."
-AB = "r-ab-residence-2"  # Homeportal, раздел «Без разрешения на дольщиков»: без рекламы — «Требует проверки»
-AB_DEV = "rd-191040019288"  # застройщик AB-Residence 2 (единственный его ЖК)
-ORDA = "r-orda"  # основание есть (Homeportal, разрешение МИО) — «В реестре — замечаний нет»
-NOMAD = "a-nomad-t"  # ЖК по рекламе (создаётся в тесте)
+AB = "r-ab-residence-2"  # Homeportal, раздел "Без разрешения на дольщиков": без рекламы - "Требует проверки"
+AB_DEV = "rd-191040019288"  # застройщик AB-Residence 2(единственный его ЖК)
+ORDA = "r-orda"  # основание есть(Homeportal, разрешение МИО) - "В реестре - замечаний нет"
+NOMAD = "a-nomad-t"  # ЖК по рекламе(создаётся в тесте)
 TODAY = today_local()
 DMY = f"{TODAY:%d.%m.%Y}"
 COMMISSIONED = {"author": AUTHOR, "actNumber": "12", "actDate": "2026-09-01", "source": "ЕГКН",
@@ -78,7 +78,7 @@ def rows(cid: str) -> list:
 
 
 def backdate(cid: str, days: int) -> None:
-    """Решение записано days дней назад: реклама «после решения» и «до него» различается по дате публикации."""
+    """Решение записано days дней назад: реклама "после решения" и "до него" различается по дате публикации."""
     with SessionLocal() as db:
         D = models.ScreeningDecision
         row = db.scalar(select(D).where(D.complex_id == cid, D.status == "active"))
@@ -87,7 +87,7 @@ def backdate(cid: str, days: int) -> None:
 
 
 def advertised(cid: str = NOMAD, name: str = "Nomad Test") -> str:
-    """ЖК, известный только по рекламе (как Nomad, Көктем, Riverside): основания нет, стадия неизвестна."""
+    """ЖК, известный только по рекламе(как Nomad, Көктем, Riverside): основания нет, стадия неизвестна."""
     with SessionLocal() as db:
         if db.get(models.Developer, "ad-test") is None:
             db.add(models.Developer(id="ad-test", name="ТОО «Реклама»", bin="", director="", registered="", objects=0,
@@ -101,7 +101,7 @@ def advertised(cid: str = NOMAD, name: str = "Nomad Test") -> str:
 
 
 def rule_ad(client, cid: str, text: str, when: str) -> str:
-    """Публикация аналитика с подтверждённой привязкой и датой when, без ответа Claude — признаки по словарю правил."""
+    """Публикация аналитика с подтверждённой привязкой и датой when, без ответа Claude - признаки по словарю правил."""
     r = client.post("/api/ads", json={"platform": "instagram", "account": "@seller", "text": text, "date": when,
                                       "complexId": cid, "linkConfirmed": True, "author": AUTHOR})
     assert r.status_code == 201, r.text
@@ -133,7 +133,7 @@ def test_routes_validation_author_and_errors(client, env):
     assert set(errors(no_issues(client, AB, decision="commissioned"))) == {"decision"}
     assert set(errors(no_issues(client, AB, source=""))) == {"source"}
     assert errors(cancel(client, AB, reason="нет")) == {"reason": "укажите причину отмены — не короче 5 символов"}
-    # ЖК нет — 404; ключ объекта открытых данных — 404 с объяснением
+    # ЖК нет - 404; ключ объекта открытых данных - 404 с объяснением
     assert commission(client, "nope").status_code == 404
     r = no_issues(client, "orda")
     assert r.status_code == 404 and r.json()["detail"] != "ЖК не найден"
@@ -142,7 +142,7 @@ def test_routes_validation_author_and_errors(client, env):
     assert r.status_code == 404 and r.json()["detail"] == "Решения аналитика по этому ЖК нет — оценка и так автоматическая"
     assert client.get(f"/api/complexes/{AB}/screening-decisions").json() == []
     assert rows(AB) == [] and not [x for x in journal(AB) if x[1] != "Система"]  # ничего не записано
-    # пустые необязательные поля — «не указано»
+    # пустые необязательные поля - "не указано"
     r = commission(client, AB, actNumber=" ", sourceUrl="", comment="")
     assert r.status_code == 200, r.text
     d = r.json()["decision"]
@@ -150,7 +150,7 @@ def test_routes_validation_author_and_errors(client, env):
     assert r.json()["screening"]["reasons"][0]["text"].startswith("Сдан: акт от 01.09.2026, источник ЕГКН;")
 
 
-# ---------- «Объект сдан» ----------
+# ---------- "Объект сдан" ----------
 
 def test_commissioned_overrides_check_and_sets_stage(client, env):
     live(env)
@@ -180,7 +180,7 @@ def test_commissioned_overrides_check_and_sets_stage(client, env):
                                                "источник: ЕГКН (https://egkn.kz/obj/1); стадия карточки: не указана → "
                                                "«введён». Комментарий: Акт приёмки в деле объекта")
     assert rows(AB) == [("commissioned", "active", "")]
-    # то же решение повторно без комментария — без новой записи; номер с «№» не удваивается
+    # то же решение повторно без комментария - без новой записи; номер с "№" не удваивается
     n = len(journal(AB))
     assert commission(client, AB).status_code == 200 and len(journal(AB)) == n and len(rows(AB)) == 1
     r = commission(client, AB, actNumber="№ 12/2026")
@@ -192,7 +192,7 @@ def test_commissioned_overrides_check_and_sets_stage(client, env):
 
 
 def test_commissioned_risk_built_factors(client, env):
-    """«Сдан» ставит стадию «введён»: факторы R1, R2, R3, R5, R6 — «объект введён» (как у любого введённого ЖК, модель
+    """"Сдан" ставит стадию "введён": факторы R1, R2, R3, R5, R6 - "объект введён"(как у любого введённого ЖК, модель
     риска не меняется); отмена возвращает прежнюю стадию и прежний риск."""
     live(env)
     assert client.post(f"/api/complexes/{AB}/basis", json={"author": AUTHOR, "doc": "guarantee", "value": "no",
@@ -207,7 +207,7 @@ def test_commissioned_risk_built_factors(client, env):
     assert client.get(f"/api/complexes/{AB}/risk").json() == risk0
 
 
-# ---------- «Проверено — замечаний нет» ----------
+# ---------- "Проверено - замечаний нет" ----------
 
 def test_no_issues_overrides_suspect_and_ok(client, env):
     live(env)
@@ -222,13 +222,13 @@ def test_no_issues_overrides_suspect_and_ok(client, env):
                                        f"акимата / ГАСК; проверил: {AUTHOR}, {DMY}",
                                "adId": None, "quote": None, "signal": None, "kind": "decision"}
     assert s["reasons"][2]["text"] == "Без решения аналитика оценка — «Подозрение: продажа без разрешения»"
-    assert s["counts"]["concerning"] == 1  # счётчики рекламы — как у автоматической оценки
+    assert s["counts"]["concerning"] == 1  # счётчики рекламы - как у автоматической оценки
     assert (d["kind"], d["status"], d["reason"], d["actDate"]) == ("no_issues", "active", NO_ISSUES["reason"], None)
-    assert cx(client, AB)["stage"] == ""  # стадию «проверено» не меняет
+    assert cx(client, AB)["stage"] == ""  # стадию "проверено" не меняет
     assert journal(AB)[-1] == ("data", AUTHOR, "Проверка по рекламе: проверено — замечаний нет. Что проверено: Сверено с "
                                                "ГАСК: продажи ведутся по разрешению МИО; источник: Ответ акимата / ГАСК "
                                                "(https://gask.kz/answer/7). Комментарий: Вх. № 15-02/311")
-    # у ЖК в реестре (ok) решение тоже можно записать — вариант «проверено»
+    # у ЖК в реестре(ok) решение тоже можно записать - вариант "проверено"
     r = no_issues(client, ORDA)
     assert r.json()["screening"]["variant"] == "analyst" and r.json()["screening"]["inRegistry"] is True
 
@@ -239,16 +239,16 @@ def test_no_issues_reopened_by_new_concerning_ad(client, env):
     live(env)
     no_issues(client, AB)
     backdate(AB, 5)
-    # реклама до решения — не снимает
+    # реклама до решения - не снимает
     claude_ad("AB-Residence 2 — бронь", result(signals=[("booking", "бронь")], candidates=[(AB, "high")]), days_ago=7)
     assert cx(client, AB)["decision"]["status"] == "active"
-    # после решения, но без признака приёма денег (продажа, цена) — не снимает
+    # после решения, но без признака приёма денег(продажа, цена) - не снимает
     claude_ad("AB-Residence 2 — продажа квартир от 250 000 ₸/м²",
               result(signals=[("sale", "продажа квартир"), ("price", "от 250 000 ₸/м²")], candidates=[(AB, "high")]),
               days_ago=2)
     got = cx(client, AB)
     assert got["decision"]["status"] == "active" and got["screening"]["variant"] == "analyst"
-    # после решения с бронью — решение снято, оценка автоматическая (подозрение), первая причина — новая реклама
+    # после решения с бронью - решение снято, оценка автоматическая(подозрение), первая причина - новая реклама
     aid = claude_ad("AB-Residence 2: бронь квартиры 100 000 ₸, сдача в 2028",
                     result(signals=[("booking", "бронь квартиры 100 000 ₸")], candidates=[(AB, "high")],
                            stage=("under_construction", "сдача в 2028")), days_ago=1)
@@ -266,10 +266,10 @@ def test_no_issues_reopened_by_new_concerning_ad(client, env):
     assert s["reasons"][1]["text"] == got["permit"]["text"]
     assert d["status"] == "reopened" and d["reopenedBy"] == {"adId": aid, "date": ad_date, "signal": "booking",
                                                              "quote": "бронь квартиры 100 000 ₸"}
-    assert rows(AB) == [("no_issues", "active", None)]  # в БД решение остаётся — это история
+    assert rows(AB) == [("no_issues", "active", None)]  # в БД решение остаётся - это история
     st = client.get("/api/stats").json()["screening"]
     assert st["decisions"] == {"commissioned": 0, "analyst": 0, "reopened": 1} and st["complexes"]["suspect"] == 1
-    # аналитик решил по публикации: «это не предложение внести деньги» — решение снова действует
+    # аналитик решил по публикации: "это не предложение внести деньги" - решение снова действует
     r = client.post(f"/api/ads/{aid}/terms-review", json={"decision": "rejected", "author": AUTHOR})
     assert r.status_code == 200, r.text
     assert cx(client, AB)["decision"]["status"] == "active"
@@ -283,15 +283,15 @@ def test_no_issues_reopened_by_new_concerning_ad(client, env):
     aid3 = claude_ad("AB-Residence 2 — первоначальный взнос 10%", result(signals=[("down_payment", "взнос 10%")],
                                                                         candidates=[(AB, "high")]), days_ago=1)
     assert cx(client, AB)["decision"]["reopenedBy"]["adId"] == aid3
-    r = no_issues(client, AB)  # то же решение, но прежнее снято рекламой — записывается заново
+    r = no_issues(client, AB)  # то же решение, но прежнее снято рекламой - записывается заново
     got = r.json()
     assert got["decision"]["status"] == "active" and got["screening"]["variant"] == "analyst"
     assert rows(AB) == [("no_issues", "superseded", None), ("no_issues", "active", None)]
 
 
 def test_commissioned_reopens_only_for_construction_or_new_queue(client, env):
-    """Сданный дом: продажа квартир (в том числе с рассрочкой) решение не снимает; старт продаж, «строится» или новая
-    очередь в новой рекламе с признаком приёма денег — снимает."""
+    """Сданный дом: продажа квартир(в том числе с рассрочкой) решение не снимает; старт продаж, "строится" или новая
+    очередь в новой рекламе с признаком приёма денег - снимает."""
     live(env)
     cid = advertised()
     claude_ad("Nomad Test — дом сдан, ключи сразу! Рассрочка 0%",
@@ -302,7 +302,7 @@ def test_commissioned_reopens_only_for_construction_or_new_queue(client, env):
     r = commission(client, cid, actNumber="", source="2ГИС — жилой дом")
     assert r.json()["screening"]["label"] == "Дом сдан — замечаний нет"
     backdate(cid, 5)
-    # после решения: рассрочка в сданном доме, обычная продажа — решение действует
+    # после решения: рассрочка в сданном доме, обычная продажа - решение действует
     claude_ad("Nomad Test: квартиры в сданном доме, рассрочка 0% на 12 месяцев",
               result(signals=[("installment", "рассрочка 0% на 12 месяцев")], candidates=[(cid, "high")],
                      stage=("completed", "квартиры в сданном доме")), days_ago=2)
@@ -311,19 +311,19 @@ def test_commissioned_reopens_only_for_construction_or_new_queue(client, env):
     rule_ad(client, cid, "Продажа квартир в ЖК Nomad Test. Рассрочка без переплат", local_minutes(-1))
     got = cx(client, cid)
     assert got["decision"]["status"] == "active" and got["screening"]["variant"] == "commissioned"
-    # «строится» по словам рекламы (без ответа Claude — признаки по словарю правил): бронь в строящейся очереди — снимает
+    # "строится" по словам рекламы(без ответа Claude - признаки по словарю правил): бронь в строящейся очереди - снимает
     aid = rule_ad(client, cid, "Nomad Test: строится новая очередь! Бронь квартиры 50 000 ₸", local_minutes(-0.5))
     got = cx(client, cid)
     s, d = got["screening"], got["decision"]
     assert d["status"] == "reopened" and d["reopenedBy"]["adId"] == aid and d["reopenedBy"]["signal"] == "booking"
-    # карточка «введён» — продажа без основания не подозрение, а «требует проверки»; причина — новая реклама
+    # карточка "введён" - продажа без основания не подозрение, а "требует проверки"; причина - новая реклама
     assert (s["status"], s["variant"]) == ("check", None)
     assert s["reasons"][0]["kind"] == "decision" and "Новая реклама после решения аналитика" in s["reasons"][0]["text"]
     assert "строится — «Nomad Test: строится новая очередь!»" in s["reasons"][0]["text"]
     assert got["stage"] == BUILT  # стадия остаётся: акт ввода не отменён
     client.patch(f"/api/ads/{aid}/status", json={"status": "dismissed", "author": AUTHOR})
     assert cx(client, cid)["decision"]["status"] == "active"
-    # старт продаж (Claude) — снимает, даже если стадия по рекламе не указана
+    # старт продаж(Claude) - снимает, даже если стадия по рекламе не указана
     aid = claude_ad("Nomad Test — старт продаж! Первоначальный взнос 20%",
                     result(signals=[("presale", "старт продаж"), ("down_payment", "Первоначальный взнос 20%")],
                            candidates=[(cid, "high")]), days_ago=0)
@@ -337,9 +337,9 @@ def test_commissioned_reopens_only_for_construction_or_new_queue(client, env):
 def test_cancel_supersede_history_and_conflicts(client, env):
     live(env)
     commission(client, AB)
-    # отмена «проверено» через маршрут «сдан» невозможна — и наоборот любое решение отменяет общий маршрут
+    # отмена "проверено" через маршрут "сдан" невозможна - и наоборот любое решение отменяет общий маршрут
     r = no_issues(client, AB)
-    assert r.status_code == 200 and r.json()["stage"] == ""  # «проверено» вместо «сдан» — стадия прежняя
+    assert r.status_code == 200 and r.json()["stage"] == ""  # "проверено" вместо "сдан" - стадия прежняя
     assert rows(AB) == [("commissioned", "superseded", ""), ("no_issues", "active", None)]
     assert "прежнее решение «Дом сдан — замечаний нет» от" in journal(AB)[-1][2]
     assert "стадия карточки: «введён» → не указана" in journal(AB)[-1][2]
@@ -353,7 +353,7 @@ def test_cancel_supersede_history_and_conflicts(client, env):
     assert journal(AB)[-1] == ("data", OTHER, f"Решение аналитика отменено: «Проверено — замечаний нет» от {DMY} "
                                               f"({AUTHOR}). Причина: Сведения ГАСК устарели. Оценка — автоматическая")
     assert cancel(client, AB).status_code == 404
-    # «сдан» → отмена через свой маршрут: стадия возвращается
+    # "сдан" → отмена через свой маршрут: стадия возвращается
     commission(client, AB)
     r = cancel(client, AB, path="commissioned", reason="Акт относится к другой очереди")
     assert r.status_code == 200 and r.json()["stage"] == "" and r.json()["decision"] is None
@@ -364,14 +364,14 @@ def test_cancel_supersede_history_and_conflicts(client, env):
     assert (hist[0]["closedBy"], hist[0]["closeReason"], hist[0]["createdBy"]) == (
         AUTHOR, "Акт относится к другой очереди", AUTHOR)
     assert hist[0]["closedAt"].endswith("+00:00") and hist[0]["actDate"] == "2026-09-01"
-    # ЖК, который уже был «введён» до отметки: отмена оставляет «введён»
+    # ЖК, который уже был "введён" до отметки: отмена оставляет "введён"
     with SessionLocal() as db:
         db.get(models.Complex, ORDA).stage = BUILT
         db.commit()
     commission(client, ORDA)
     assert rows(ORDA) == [("commissioned", "active", BUILT)]
     assert cancel(client, ORDA).json()["stage"] == BUILT
-    # снятое рекламой решение тоже отменяется — в журнале это видно
+    # снятое рекламой решение тоже отменяется - в журнале это видно
     no_issues(client, AB)
     claude_ad("AB-Residence 2 — бронь", result(signals=[("booking", "бронь")], candidates=[(AB, "high")]), days_ago=0)
     assert cx(client, AB)["decision"]["status"] == "reopened"
@@ -380,7 +380,7 @@ def test_cancel_supersede_history_and_conflicts(client, env):
 
 
 def test_one_active_decision_per_complex(client):
-    """Действующее решение — одно на ЖК: вторая строка active — ошибка БД (частичный уникальный индекс)."""
+    """Действующее решение - одно на ЖК: вторая строка active - ошибка БД(частичный уникальный индекс)."""
     with SessionLocal() as db:
         for _ in range(2):
             db.add(models.ScreeningDecision(complex_id="c2", kind="no_issues", status="active", source="X",
@@ -412,7 +412,7 @@ def test_developer_rollup_and_stats(client, env):
     assert st["complexes"] == {"ok": 15, "check": 0, "suspect": 0, "unknown": 0}
     assert st["developers"]["ok"] == st0["developers"]["ok"] + 1 and st["developers"]["check"] == 0
     assert st["decisions"] == {"commissioned": 1, "analyst": 0, "reopened": 0}
-    # застройщик без решений — прежняя подпись
+    # застройщик без решений - прежняя подпись
     orda_dev = cx(client, ORDA)["developerId"]
     assert dev(orda_dev)["label"] == "Все ЖК в реестре — замечаний нет"
     no_issues(client, ORDA)
@@ -444,7 +444,7 @@ def test_snapshot_export_import_keeps_decisions(client, monkeypatch, tmp_path):
     # новые решения после загрузки получают id за максимальным
     assert no_issues(client, "c6").status_code == 200
     assert client.get("/api/complexes/c6/screening-decisions").json()[0]["id"] == 3
-    # набор прежней версии схемы (без таблицы решений) загружается: решений нет
+    # набор прежней версии схемы(без таблицы решений) загружается: решений нет
     man = json.loads((out / snapshot.MANIFEST).read_text(encoding="utf-8"))
     man["schemaVersion"] = "2026.10-verification-1"
     del man["tables"]["screening_decisions"]
@@ -452,7 +452,7 @@ def test_snapshot_export_import_keeps_decisions(client, monkeypatch, tmp_path):
     (out / snapshot.MANIFEST).write_text(snapshot.dump(man), encoding="utf-8")
     seed.reset()
     assert cx(client, "c2")["decision"] is None
-    # а набор текущей версии без таблицы — неполный: отказ
+    # а набор текущей версии без таблицы - неполный: отказ
     man["schemaVersion"] = models.SCHEMA_VERSION
     (out / snapshot.MANIFEST).write_text(snapshot.dump(man), encoding="utf-8")
     seed._drop_app_tables(engine)
@@ -463,7 +463,7 @@ def test_snapshot_export_import_keeps_decisions(client, monkeypatch, tmp_path):
     seed.reset()
 
 
-# ---------- правила (чистые функции) ----------
+# ---------- правила(чистые функции) ----------
 
 def _facts(aid: str, day: str, *, concerning=(), stage=None, stage_quote="", building=()):
     return screening.AdFacts(id=aid, date=day, day=date.fromisoformat(day[:10]), platform="instagram", account="@x",
@@ -473,9 +473,9 @@ def _facts(aid: str, day: str, *, concerning=(), stage=None, stage_quote="", bui
 
 
 def test_rules_pure_functions():
-    assert screening.after("2026-10-19T10:05", "2026-10-19T10:05") is True  # та же минута — после
+    assert screening.after("2026-10-19T10:05", "2026-10-19T10:05") is True  # та же минута - после
     assert screening.after("2026-10-19T10:04", "2026-10-19T10:05") is False
-    assert screening.after("2026-10-19", "2026-10-19T10:05") is False  # дата без времени — со следующего дня
+    assert screening.after("2026-10-19", "2026-10-19T10:05") is False  # дата без времени - со следующего дня
     assert screening.after("2026-10-20", "2026-10-19T10:05") is True
     assert screening.after("", "2026-10-19T10:05") is False
     assert screening.act_text("12", "2026-09-01") == "акт № 12 от 01.09.2026"

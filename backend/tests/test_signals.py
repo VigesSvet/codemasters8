@@ -1,4 +1,4 @@
-"""Сигнальная карточка (модуль 05): создание со снимком, решение аналитика, журнал, реестр, PDF."""
+"""Сигнальная карточка(модуль 05): создание со снимком, решение аналитика, журнал, реестр, PDF."""
 
 AUTHOR = "Нестерова А."
 
@@ -73,7 +73,7 @@ def test_concurrent_create_hits_unique_index(client, monkeypatch):
     first = _create(client, "c11").json()
     real, calls = signals._open_signal, []
 
-    def racing(db, cid):  # первая проверка «не видит» открытый сигнал — как при двух одновременных запросах
+    def racing(db, cid):  # первая проверка "не видит" открытый сигнал - как при двух одновременных запросах
         calls.append(cid)
         return None if len(calls) == 1 else real(db, cid)
 
@@ -97,7 +97,7 @@ def test_decisions(client):
                                                  "Возвращён на доработку. Нет скриншота публикации"]
     assert (s["journal"][1]["who"], s["journal"][1]["kind"]) == ("Тест", "signal")
 
-    # повторное решение — только из «new»
+    # повторное решение - только из "new"
     r = client.post(f"/api/signals/{sid}/confirm", json={"author": "Тест", "comment": "передумал"})
     assert r.status_code == 409 and r.json()["detail"]["signalId"] == sid
     assert client.get(f"/api/signals/{sid}").json()["status"] == "returned"
@@ -170,7 +170,7 @@ def test_not_found(client):
     assert client.post("/api/signals/999/confirm", json=body).status_code == 404
     assert client.post("/api/signals/999/return", json=body).status_code == 404
     assert client.get("/api/signals/abc").status_code == 422
-    # id за пределами INTEGER — 422, а не 500 из драйвера БД; граница диапазона — обычный 404
+    # id за пределами INTEGER - 422, а не 500 из драйвера БД; граница диапазона - обычный 404
     for bad in ("0", "-1", "2147483648", "99999999999999999999999"):
         assert client.get(f"/api/signals/{bad}").status_code == 422, bad
         assert client.get(f"/api/signals/{bad}/audit").status_code == 422, bad

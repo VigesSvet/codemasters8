@@ -1,30 +1,30 @@
-"""Анализ собранной публикации — задание analyze воркера (integration-spec §8; план: AnalysisJob).
+"""Анализ собранной публикации - задание analyze воркера(integration-spec §8; план: AnalysisJob).
 
-Этапы: media (файлы по ссылкам приёма через API) → frames (кадры видео, ffmpeg) → speech (речь в роликах, app.speech —
-faster-whisper, если установлен) → ocr (Tesseract по изображениям и кадрам) → rules (правила saq-ai-1: условия оплаты, гипотезы ЖК) → llm (Claude, app.llm — только если задан
-ANTHROPIC_API_KEY) → events (журнал). Начало каждого этапа пишется в ingest_items.analysis_stage и jobs.payload.stage —
-при сбое видно, на каком этапе он случился. Сбой этапа llm анализ не роняет: «анализ ИИ не выполнен» — в журнале,
-повтор при сетевой ошибке, 429 и 5xx — новым заданием к сроку повтора (как повтор загрузки файла).
+Этапы: media(файлы по ссылкам приёма через API) → frames(кадры видео, ffmpeg) → speech(речь в роликах, app.speech -
+faster-whisper, если установлен) → ocr(Tesseract по изображениям и кадрам) → rules(правила saq-ai-1: условия оплаты, гипотезы ЖК) → llm(Claude, app.llm - только если задан
+ANTHROPIC_API_KEY) → events(журнал). Начало каждого этапа пишется в ingest_items.analysis_stage и jobs.payload.stage -
+при сбое видно, на каком этапе он случился. Сбой этапа llm анализ не роняет: "анализ ИИ не выполнен" - в журнале,
+повтор при сетевой ошибке, 429 и 5xx - новым заданием к сроку повтора(как повтор загрузки файла).
 
-Расшифровка речи ролика хранится у видео (media_assets.meta.speech — без новой колонки) и попадает в ads.ocr абзацем
-«Речь в ролике: …» после текста OCR: правила и Claude читают её вместе с OCR, а версия содержимого и снимок данных
-(ads.ocr) — те же, что у OCR. Аналитик видит расшифровку отдельно (AdOut.media[].speech).
+Расшифровка речи ролика хранится у видео(media_assets.meta.speech - без новой колонки) и попадает в ads.ocr абзацем
+"Речь в ролике: …" после текста OCR: правила и Claude читают её вместе с OCR, а версия содержимого и снимок данных
+(ads.ocr) - те же, что у OCR. Аналитик видит расшифровку отдельно(AdOut.media[].speech).
 
 Транзакции короткие: загрузка, OCR, распознавание речи и ffmpeg выполняются между фиксациями, без открытой транзакции записи; состояние
-каждого файла фиксируется сразу. Проблемы отдельных файлов (не скачался, нет Tesseract или ffmpeg) задание не роняют —
-они видны у файла и в журнале. Версия содержимого фиксируется в начале (v): если во время анализа пришла новая версия,
+каждого файла фиксируется сразу. Проблемы отдельных файлов(не скачался, нет Tesseract или ffmpeg) задание не роняют -
+они видны у файла и в журнале. Версия содержимого фиксируется в начале(v): если во время анализа пришла новая версия,
 этот анализ отметит только v, а новая версия получит своё задание.
 
-Привязку к ЖК анализ собранной публикации не назначает (гипотеза ≠ факт, D5); SAQ_COLLECTED_AUTOLINK=1 включает правило
-ручного ввода (лучшая гипотеза от порога — привязка-гипотеза, не подтверждённая). app.main не импортируется.
+Привязку к ЖК анализ собранной публикации не назначает(гипотеза ≠ факт, D5); SAQ_COLLECTED_AUTOLINK=1 включает правило
+ручного ввода(лучшая гипотеза от порога - привязка-гипотеза, не подтверждённая). app.main не импортируется.
 
-Повторный запуск по той же версии (повтор загрузки или запроса к Claude, дозапрос Claude, «Проанализировать ещё раз» —
-force) журнал не дублирует: события OCR — если изменился текст OCR, файлов — по новым неудачам, гипотезы правил — если
-назначена привязка, событие Claude — только по новому итогу этапа llm.
+Повторный запуск по той же версии(повтор загрузки или запроса к Claude, дозапрос Claude, "Проанализировать ещё раз" -
+force) журнал не дублирует: события OCR - если изменился текст OCR, файлов - по новым неудачам, гипотезы правил - если
+назначена привязка, событие Claude - только по новому итогу этапа llm.
 
-Пересчёт правил (rules_only, задание с payload rulesOnly — после создания карточки ЖК по рекламе, app.discovery): только
-этап rules по уже проанализированной версии — без файлов, OCR и без запроса к Claude (справочник ЖК изменился, значит, и
-ключ материала, — новый запрос был бы лишним расходом). Событие гипотезы — если лучшая гипотеза правил сменилась. Новая
+Пересчёт правил(rules_only, задание с payload rulesOnly - после создания карточки ЖК по рекламе, app.discovery): только
+этап rules по уже проанализированной версии - без файлов, OCR и без запроса к Claude(справочник ЖК изменился, значит, и
+ключ материала, - новый запрос был бы лишним расходом). Событие гипотезы - если лучшая гипотеза правил сменилась. Новая
 версия, ещё не проанализированная, получает обычный анализ.
 """
 import logging
@@ -48,10 +48,10 @@ log = logging.getLogger("saq.analysis")
 
 TERM_LABELS = {"booking": "бронь", "deposit": "депозит", "down_payment": "первоначальный взнос",
                "installment": "рассрочка", "ddu": "ДДУ", "direct_payment": "оплата напрямую застройщику",
-               "investment": "инвестиции"}  # «price» — не условие оплаты
+               "investment": "инвестиции"}  # "price" - не условие оплаты
 STAGES = ("media", "frames", "speech", "ocr", "rules", "llm", "events")
-SPEECH_MARK = "Речь в ролике:"  # начало абзаца расшифровки в ads.ocr (фронтенд показывает его отдельным блоком)
-_SPEECH_RETRY = ("unavailable", "failed", "skipped")  # «Проанализировать ещё раз» распознаёт такие ролики заново
+SPEECH_MARK = "Речь в ролике:"  # начало абзаца расшифровки в ads.ocr(фронтенд показывает его отдельным блоком)
+_SPEECH_RETRY = ("unavailable", "failed", "skipped")  # "Проанализировать ещё раз" распознаёт такие ролики заново
 FETCH_ATTEMPTS = 3
 RETRY_BASE_S = 60
 SYSTEM = ads_service.SYSTEM
@@ -61,7 +61,7 @@ FRAMES_FAILED = "Кадры видео не извлечены (ffmpeg заве�
 NO_SOURCE = "Ссылка на файл не сохранена"
 _UNAVAILABLE = ("http_403", "http_404", "http_410")
 _OCR_FAILED = ("Tesseract завершился", "не уложилось")
-MONOTONIC: Callable[[], float] = time.monotonic  # время выполнения анализа (тесты подменяют)
+MONOTONIC: Callable[[], float] = time.monotonic  # время выполнения анализа(тесты подменяют)
 
 
 def _plural(n: int, one: str, few: str, many: str) -> str:
@@ -103,13 +103,13 @@ def _has_work(assets: list[models.MediaAsset], now: datetime) -> bool:
             return True
         if a.current and a.status == "downloaded" and a.ocr_status is None and a.kind in ("image", "frame", "video"):
             return True
-        if _speech_due(a, False):  # ролик, проанализированный до распознавания речи (T-60)
+        if _speech_due(a, False):  # ролик, проанализированный до распознавания речи(T-60)
             return True
     return False
 
 
 def _speech_due(a: models.MediaAsset, force: bool) -> bool:
-    """Загруженное видео текущей версии без расшифровки речи; force — и с неудачной (движок, тайм-аут, длина)."""
+    """Загруженное видео текущей версии без расшифровки речи; force - и с неудачной(движок, тайм-аут, длина)."""
     if a.kind != "video" or a.parent_id is not None or not a.current or a.status != "downloaded":
         return False
     sp = (a.meta or {}).get("speech")
@@ -121,7 +121,7 @@ def _speech_due(a: models.MediaAsset, force: bool) -> bool:
 
 
 def _stage(job_id: Optional[int], item_id: int, stage: str) -> None:
-    """Начало этапа: ingest_items.analysis_stage и jobs.payload.stage (своя короткая сессия)."""
+    """Начало этапа: ingest_items.analysis_stage и jobs.payload.stage(своя короткая сессия)."""
     with SessionLocal() as db:
         db.execute(update(models.IngestItem).where(models.IngestItem.id == item_id).values(analysis_stage=stage)
                    .execution_options(synchronize_session=False))
@@ -143,7 +143,7 @@ def _cover(assets) -> Optional[str]:
 def _download(asset_id: str, kind: str, src: Optional[str], attempts: int, remaining: int,
               clock: Callable[[], datetime]) -> tuple[dict, int]:
     """Сеть, без сессии: файл по ссылке приёма → хранилище. (новые значения полей файла, сохранено байт). Срок
-    повтора — от момента неудачной загрузки (clock()), а не от захвата задания."""
+    повтора - от момента неудачной загрузки(clock()), а не от захвата задания."""
     allowed = media.VIDEO_TYPES if kind == "video" else media.IMAGE_TYPES
     limit = media.limit_for(kind)
     drop = {"meta_drop": True}
@@ -167,7 +167,7 @@ def _download(asset_id: str, kind: str, src: Optional[str], attempts: int, remai
         return {"status": status, "error": e.detail, "attempts": attempts + 1, **drop}, 0
     except media.MediaRejected as e:
         return {"status": "failed", "error": e.detail, "attempts": attempts + 1, **drop}, 0
-    except Exception as e:  # noqa: BLE001 — сбой одного файла не роняет анализ
+    except Exception as e:  # noqa: BLE001 - сбой одного файла не роняет анализ
         log.warning("Файл %s не загружен: %s", asset_id, type(e).__name__)
         return {"status": "failed", "error": f"Файл не загружен ({type(e).__name__})", "attempts": attempts + 1,
                 **drop}, 0
@@ -204,7 +204,7 @@ def _media_stage(item_id: int, now: datetime, changed: set, clock: Callable[[], 
                 a.downloaded_at = models.as_utc(clock())
             a.meta = meta
             if a.status in ("failed", "unavailable", "skipped"):
-                changed.add(a.id)  # событие «не загружено» — и для новой неудачи после первого анализа
+                changed.add(a.id)  # событие "не загружено" - и для новой неудачи после первого анализа
             db.commit()
     with SessionLocal() as db:
         item = db.get(models.IngestItem, item_id)
@@ -262,8 +262,8 @@ def _frames_stage(item_id: int, now: datetime, changed: set) -> None:
 
 
 def _speech_stage(item_id: int, force: bool, heard: set) -> None:
-    """Речь в роликах → meta.speech видео. Тот же файл (sha256), уже расшифрованный у другой публикации, не
-    распознаётся заново. heard — видео, расшифровка которых получена в этом анализе (событие журнала)."""
+    """Речь в роликах → meta.speech видео. Тот же файл(sha256), уже расшифрованный у другой публикации, не
+    распознаётся заново. heard - видео, расшифровка которых получена в этом анализе(событие журнала)."""
     A = models.MediaAsset
     with SessionLocal() as db:
         videos = [(a.id, a.storage_key, a.mime, a.sha256) for a in _assets(db, item_id) if _speech_due(a, force)]
@@ -333,7 +333,7 @@ def _ocr_stage(item_id: int) -> None:
             status, text, engine, detail = _ocr_result(ocr_engine.recognize(data, mime))
         except ocr_engine.OcrError as e:
             status, text, engine, detail = "failed", "", None, e.detail
-        except Exception as e:  # noqa: BLE001 — сбой распознавания одного файла не роняет анализ
+        except Exception as e:  # noqa: BLE001 - сбой распознавания одного файла не роняет анализ
             log.warning("OCR файла %s не выполнен: %s", aid, type(e).__name__)
             status, text, engine, detail = "failed", "", None, f"Ошибка распознавания ({type(e).__name__})"
         with SessionLocal() as db:
@@ -345,7 +345,7 @@ def _ocr_stage(item_id: int) -> None:
 
 
 def compose_ocr(texts: list[str], said: list[str]) -> Optional[str]:
-    """ads.ocr: тексты OCR, затем абзацы «Речь в ролике: …». Предел AD_TEXT_MAX: обрезается OCR, а не расшифровка
+    """ads.ocr: тексты OCR, затем абзацы "Речь в ролике: …". Предел AD_TEXT_MAX: обрезается OCR, а не расшифровка
     (её у ролика не больше speech.TEXT_MAX)."""
     tail = "\n\n".join(f"{SPEECH_MARK} {t}" for t in said)
     room = max(AD_TEXT_MAX - len(tail) - 2, AD_TEXT_MAX // 2) if tail else AD_TEXT_MAX
@@ -355,8 +355,8 @@ def compose_ocr(texts: list[str], said: list[str]) -> Optional[str]:
 
 
 def _ocr_text(item_id: int, ad_id: str) -> bool:
-    """Текст OCR публикации — распознанное по изображениям и кадрам в порядке публикации, без повторов, и расшифровки
-    речи роликов. True — ad.ocr изменился (UPDATE без decision_rev: это не решение аналитика)."""
+    """Текст OCR публикации - распознанное по изображениям и кадрам в порядке публикации, без повторов, и расшифровки
+    речи роликов. True - ad.ocr изменился(UPDATE без decision_rev: это не решение аналитика)."""
     with SessionLocal() as db:
         texts: list[str] = []
         said: list[str] = []
@@ -383,7 +383,7 @@ def _ocr_text(item_id: int, ad_id: str) -> bool:
 
 
 def _rules(ad_id: str) -> tuple[dict, bool, Optional[str], str]:
-    """Правила saq-ai-1 по тексту и OCR; при SAQ_COLLECTED_AUTOLINK — привязка-гипотеза условным UPDATE.
+    """Правила saq-ai-1 по тексту и OCR; при SAQ_COLLECTED_AUTOLINK - привязка-гипотеза условным UPDATE.
     (результат анализа, привязка назначена, почему не назначена, источник публикации)."""
     s = get_settings()
     A = models.Ad
@@ -410,8 +410,8 @@ def _rules(ad_id: str) -> tuple[dict, bool, Optional[str], str]:
 
 
 def _ocr_event(cur: list[models.MediaAsset]) -> Optional[str]:
-    """Событие OCR по изображениям и кадрам. Сбой распознавания (Tesseract упал, не уложился, файл не разобран) не
-    выглядит как «текста нет»: ничего не распознано — «OCR не выполнен: …», часть — счёт нераспознанных."""
+    """Событие OCR по изображениям и кадрам. Сбой распознавания(Tesseract упал, не уложился, файл не разобран) не
+    выглядит как "текста нет": ничего не распознано - "OCR не выполнен: …", часть - счёт нераспознанных."""
     imgs = [a for a in cur if a.kind in ("image", "frame") and a.status == "downloaded"]
     if not imgs:
         return None
@@ -437,8 +437,8 @@ def _ocr_event(cur: list[models.MediaAsset]) -> Optional[str]:
 
 
 def _image_event(cur: list[models.MediaAsset], only: Optional[set]) -> Optional[str]:
-    """Изображения публикации, которые не загрузились (ошибка, недоступно, превышен объём): сбой не выглядит как
-    публикация без картинок. only — только эти файлы (новая неудача после первого анализа)."""
+    """Изображения публикации, которые не загрузились(ошибка, недоступно, превышен объём): сбой не выглядит как
+    публикация без картинок. only - только эти файлы(новая неудача после первого анализа)."""
     bad = [a for a in cur if a.kind == "image" and a.parent_id is None
            and a.status in ("failed", "unavailable", "skipped") and (only is None or a.id in only)]
     if not bad:
@@ -464,8 +464,8 @@ def _video_event(cur: list[models.MediaAsset], only: Optional[set]) -> Optional[
 
 
 def _speech_event(cur: list[models.MediaAsset], heard: set) -> Optional[str]:
-    """Событие распознавания речи по роликам этого анализа. Нет звука или речи и выключенный этап — без события; сбой
-    движка, тайм-аут и слишком длинный ролик не выглядят как «в ролике молчат»."""
+    """Событие распознавания речи по роликам этого анализа. Нет звука или речи и выключенный этап - без события; сбой
+    движка, тайм-аут и слишком длинный ролик не выглядят как "в ролике молчат"."""
     sps = [(a.meta or {}).get("speech") or {} for a in cur if a.id in heard and a.kind == "video"]
     done = [s for s in sps if s.get("status") == "done"]
     bad = [s for s in sps if s.get("status") in _SPEECH_RETRY and s.get("detail") != speech.DISABLED]
@@ -510,7 +510,7 @@ def _terms_event(res: dict) -> Optional[str]:
 # ---------- задание ----------
 
 def last_rules_hypothesis(db, ad_id: str) -> tuple[bool, Optional[str]]:
-    """(было ли событие гипотезы правил, её ЖК) — последнее «Гипотеза ИИ: ЖК …» / «ИИ: ЖК не определён» от «Системы»."""
+    """(было ли событие гипотезы правил, её ЖК) - последнее "Гипотеза ИИ: ЖК …" / "ИИ: ЖК не определён" от "Системы"."""
     from .screening import rules_hypotheses
 
     got = rules_hypotheses(db, [ad_id])
@@ -519,7 +519,7 @@ def last_rules_hypothesis(db, ad_id: str) -> tuple[bool, Optional[str]]:
 
 def _rules_only(job_id: Optional[int], ad_id: str, item_id: int, v: int, reason: str,
                 clock: Callable[[], datetime]) -> dict:
-    """Пересчёт правил сопоставления по проанализированной версии (без файлов, OCR и Claude)."""
+    """Пересчёт правил сопоставления по проанализированной версии(без файлов, OCR и Claude)."""
     I = models.IngestItem
     _stage(job_id, item_id, "rules")
     res, linked, why_not, source = _rules(ad_id)
@@ -546,10 +546,10 @@ def _rules_only(job_id: Optional[int], ad_id: str, item_id: int, v: int, reason:
 
 def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: bool = False,
                  rules_only: bool = False, reason: Optional[str] = None) -> dict:
-    """Анализ публикации ad_id (задание job_id): этапы media → frames → speech → ocr → rules → llm → events. Итог — jobs.result.
-    now — время захвата задания; сроки повтора загрузок и время событий — от текущего момента (clock). force —
-    «Проанализировать ещё раз»: анализ идёт и по уже проанализированной версии, Claude запрашивается снова. rules_only —
-    только пересчёт правил по проанализированной версии (без Claude); force его отменяет."""
+    """Анализ публикации ad_id(задание job_id): этапы media → frames → speech → ocr → rules → llm → events. Итог - jobs.result.
+    now - время захвата задания; сроки повтора загрузок и время событий - от текущего момента(clock). force -
+    "Проанализировать ещё раз": анализ идёт и по уже проанализированной версии, Claude запрашивается снова. rules_only -
+    только пересчёт правил по проанализированной версии(без Claude); force его отменяет."""
     now = models.as_utc(now) or models.utcnow()
     t0 = MONOTONIC()
 
@@ -565,7 +565,7 @@ def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: boo
         if item is None:
             return {"skipped": "no ingest item"}
         v, item_id, prev = item.version, item.id, item.analyzed_version
-        rules_only = rules_only and not force and prev == v  # новая версия — обычный анализ
+        rules_only = rules_only and not force and prev == v  # новая версия - обычный анализ
         if rules_only:
             item.analysis_status, item.analysis_error = "running", None
             db.commit()
@@ -585,7 +585,7 @@ def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: boo
     _media_stage(item_id, now, changed, clock)
     _stage(job_id, item_id, "frames")
     _frames_stage(item_id, now, changed)
-    heard: set = set()  # видео, речь которых распознана (или не распознана) в этом анализе
+    heard: set = set()  # видео, речь которых распознана(или не распознана) в этом анализе
     _stage(job_id, item_id, "speech")
     _speech_stage(item_id, force, heard)
     _stage(job_id, item_id, "ocr")
@@ -623,7 +623,7 @@ def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: boo
             if terms:
                 events.append(("ai", terms + suffix, None))
         if claude is not None and claude.event is not None and (claude.fresh or first):
-            events.append((claude.event[0], claude.event[1] + suffix, None))  # гипотезы Claude — без привязки к ЖК
+            events.append((claude.event[0], claude.event[1] + suffix, None))  # гипотезы Claude - без привязки к ЖК
         at = clock()
         for kind, what, cid in events:
             ads_service._event(db, kind, SYSTEM, what, at=at, ad_id=ad_id, complex_id=cid)
@@ -639,12 +639,12 @@ def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: boo
         db.execute(update(I).where(I.id == item_id, I.version == v, I.analysis_status == "running")
                    .values(analysis_status="done", analysis_stage=None, analysis_error=None)
                    .execution_options(synchronize_session=False))
-        if retry_times or llm_retry:  # файлы или запрос к Claude ждут повтора — новое задание к сроку первого повтора
+        if retry_times or llm_retry:  # файлы или запрос к Claude ждут повтора - новое задание к сроку первого повтора
             from . import jobs
 
             jobs.enqueue(db, "analyze", ad_id=ad_id, content_version=v, dedupe_key=f"analyze:{ad_id}",
                          run_after=min(retry_times + ([llm_retry] if llm_retry else [])), priority=0)
-            if retry_times:  # повтор только запроса к Claude — правила и OCR готовы, анализ не «в очереди»
+            if retry_times:  # повтор только запроса к Claude - правила и OCR готовы, анализ не "в очереди"
                 db.execute(update(I).where(I.id == item_id).values(analysis_status="queued")
                            .execution_options(synchronize_session=False))
         db.commit()

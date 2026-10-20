@@ -1,20 +1,20 @@
 """Риск-скоринг ЖК и публикаций по ТЗ §5.
 
 Чистые функции над данными в форме API: camelCase-словари, как в frontend/src/data/types.ts.
-Веса, пороги, словари и тексты — в shared/risk_model.json. Тот же алгоритм исполняет фронтенд (frontend/src/lib/risk.ts)
+Веса, пороги, словари и тексты - в shared/risk_model.json. Тот же алгоритм исполняет фронтенд(frontend/src/lib/risk.ts)
 как офлайн-фоллбэк; совпадение результатов проверяется на shared/testdata/risk_golden.json.
 
 Правила:
 - балл = min(100, сумма весов подтверждённых факторов);
-- неизвестные сведения → 0 баллов и «Нужна проверка» (state = "unknown");
-- привязка публикации к ЖК — факт только после подтверждения аналитиком; уверенность ИИ — гипотеза, а не факт;
-- решение аналитика «это не предложение внести деньги» снимает R2 по публикации (R3 не затрагивается);
-- при действующей гарантии ЕО отсутствие отдельного разрешения МИО — не R1;
+- неизвестные сведения → 0 баллов и "Нужна проверка"(state = "unknown");
+- привязка публикации к ЖК - факт только после подтверждения аналитиком; уверенность ИИ - гипотеза, а не факт;
+- решение аналитика "это не предложение внести деньги" снимает R2 по публикации(R3 не затрагивается);
+- при действующей гарантии ЕО отсутствие отдельного разрешения МИО - не R1;
 - красная зона только при score ≥ 60 и подтверждённых R1 + R2;
-- карточка ЖК из открытого реестра (origin «registry») без проверенных сведений не оценивается (assessed = False):
-  балл 0 не выдаётся за «низкий риск» — UI показывает «риск не оценивается», сигнал не создаётся;
-- у карточки из реестра или по рекламе пустой список обращений — R4 «нужна проверка» (unchecked), пока аналитик не
-  отметит «Обращений нет — сверено» с источником и датой (appealsCheck); у демо-ЖК пустой список — «нет» (как прежде).
+- карточка ЖК из открытого реестра(origin "registry") без проверенных сведений не оценивается(assessed = False):
+  балл 0 не выдаётся за "низкий риск" - UI показывает "риск не оценивается", сигнал не создаётся;
+- у карточки из реестра или по рекламе пустой список обращений - R4 "нужна проверка"(unchecked), пока аналитик не
+  отметит "Обращений нет - сверено" с источником и датой(appealsCheck); у демо-ЖК пустой список - "нет"(как прежде).
 """
 import math
 import re
@@ -32,7 +32,7 @@ _SENTENCE = re.compile(r"(?<=[.!?…])\s+|\n+")
 # ---------- текст публикации ----------
 
 def hits(text: str, words: List[str]) -> List[str]:
-    """Маркеры из словаря, найденные в тексте; вложенные («взнос» внутри «первый взнос») убираются."""
+    """Маркеры из словаря, найденные в тексте; вложенные("взнос" внутри "первый взнос") убираются."""
     t = text.lower()
     found = [w for w in words if w.lower() in t]
     return [w for w in found if not any(o != w and w.lower() in o.lower() for o in found)]
@@ -44,7 +44,7 @@ def ad_signals(ad: Obj) -> Dict[str, List[str]]:
 
 
 def quote(text: Optional[str], marker: str) -> Optional[str]:
-    """Фрагмент-основание: предложение с маркером; длинное — обрезается по словам вокруг маркера."""
+    """Фрагмент-основание: предложение с маркером; длинное - обрезается по словам вокруг маркера."""
     if not text:
         return None
     m = marker.lower()
@@ -63,13 +63,13 @@ def quote(text: Optional[str], marker: str) -> Optional[str]:
 
 
 def link_confirmed(ad: Obj) -> bool:
-    """Привязка к ЖК — факт только после решения аналитика: он подтвердил привязку или саму публикацию.
-    Уверенность сопоставления (matchConfidence) — оценка ИИ: сколь угодно высокая, она остаётся гипотезой."""
+    """Привязка к ЖК - факт только после решения аналитика: он подтвердил привязку или саму публикацию.
+    Уверенность сопоставления(matchConfidence) - оценка ИИ: сколь угодно высокая, она остаётся гипотезой."""
     return ad.get("status") == "confirmed" or bool((ad.get("linkConfirmedBy") or "").strip())
 
 
 def terms_rejected(ad: Obj) -> bool:
-    """Аналитик отклонил условия оплаты: «это не предложение внести деньги» — публикация не даёт R2."""
+    """Аналитик отклонил условия оплаты: "это не предложение внести деньги" - публикация не даёт R2."""
     return ad.get("termsReview") == "rejected"
 
 
@@ -102,7 +102,7 @@ def _factor(code: str, state: str, reason: str, values: Optional[Obj] = None, it
 
 
 def _ad_item(ad: Obj, marker: str) -> Obj:
-    # цитата — из текста публикации, иначе из распознанного скриншота; quoteFrom говорит, откуда она взята
+    # цитата - из текста публикации, иначе из распознанного скриншота; quoteFrom говорит, откуда она взята
     in_text = quote(ad.get("text"), marker)
     q = in_text or quote(ad.get("ocr"), marker)
     return _item(kind="ad", ref=ad["id"], label=ad.get("account"), source=ad.get("platform"), date=ad.get("date"),
@@ -114,7 +114,7 @@ def _by_date_desc(xs: List[Obj]) -> List[Obj]:
 
 
 def _as_date(as_of: Any) -> date:
-    if as_of is None:  # «сегодня» по Усть-Каменогорску, а не по поясу процесса (как today() во фронтенде)
+    if as_of is None:  # "сегодня" по Усть-Каменогорску, а не по поясу процесса(как today() во фронтенде)
         return datetime.now(ALMATY).date()
     if isinstance(as_of, datetime):
         return as_of.date()
@@ -126,8 +126,8 @@ def _as_date(as_of: Any) -> date:
 # ---------- факторы ----------
 
 def doc_source(b: Obj, key: str) -> Obj:
-    """Провенанс документа основания: своя запись basis.sources[key] целиком (чужую дату не занимает),
-    иначе — общая сверка basis.source / basis.checkedAt (ссылки у неё нет). Документ «нет данных» (не yes/no) не сверялся —
+    """Провенанс документа основания: своя запись basis.sources[key] целиком(чужую дату не занимает),
+    иначе - общая сверка basis.source / basis.checkedAt(ссылки у неё нет). Документ "нет данных"(не yes/no) не сверялся -
     у него нет ни источника, ни даты, даже при общей сверке."""
     if b.get(key, "unknown") not in ("yes", "no"):
         return {"source": None, "checkedAt": None, "url": None}
@@ -151,12 +151,12 @@ def factor_r1(c: Obj) -> Obj:
                    source=src[d["key"]]["source"], date=src[d["key"]]["checkedAt"], url=src[d["key"]]["url"])
              for d in MODEL["documents"]]
     if g == "yes":
-        # «отсутствие МИО не является R1» — только когда отсутствие МИО установлено; «нет данных» так не называем
+        # "отсутствие МИО не является R1" - только когда отсутствие МИО установлено; "нет данных" так не называем
         return _factor("R1", "clear", "ok_guarantee_no_mio" if m == "no" else "ok_guarantee", items=items)
     if m == "yes" and k == "yes":
         return _factor("R1", "clear", "ok_mio", items=items)
     if g == "no" and m == "no":
-        # отсутствие установлено, только если у каждого из двух документов есть источник и дата сверки (свои или общие)
+        # отсутствие установлено, только если у каждого из двух документов есть источник и дата сверки(свои или общие)
         pg, pm = src["guarantee"], src["mio"]
         if _sourced(pg) and _sourced(pm):
             v = {"guaranteeSource": pg["source"], "guaranteeCheckedAt": fmt_date(pg["checkedAt"]),
@@ -174,9 +174,9 @@ def factor_r1(c: Obj) -> Obj:
 
 def _ads_factor(code: str, built: bool, linked: List[Obj], pick) -> Obj:
     """R2/R3: подтверждённая привязка → hit, только гипотеза привязки → unknown.
-    R2 не дают публикации, по которым аналитик отклонил условия оплаты («это не предложение внести деньги»).
-    В доказательства «отклонено аналитиком» идут только публикации, привязанные к ЖК фактом: отклонённая публикация
-    с привязкой-гипотезой к этому объекту не относится (она и так R2 не даёт) — её не показываем и не считаем."""
+    R2 не дают публикации, по которым аналитик отклонил условия оплаты("это не предложение внести деньги").
+    В доказательства "отклонено аналитиком" идут только публикации, привязанные к ЖК фактом: отклонённая публикация
+    с привязкой-гипотезой к этому объекту не относится(она и так R2 не даёт) - её не показываем и не считаем."""
     if built:
         return _factor(code, "clear", "built")
     hit_reason, unlinked_reason = ("offer", "offer_unlinked") if code == "R2" else ("ads", "ads_unlinked")
@@ -218,8 +218,8 @@ def factor_r4(c: Obj, appeals: List[Obj]) -> Obj:
     if pending:
         return _factor("R4", "unknown", "pending", items=[item(a) for a in pending])
     if c.get("origin") in NOT_ASSESSED["origins"]:
-        # карточка реестра или рекламы: обращения сюда никто не заносил — пустой список не значит «обращений нет»;
-        # «нет» — только после сверки аналитиком с источником и датой (POST /api/complexes/{id}/appeals-check)
+        # карточка реестра или рекламы: обращения сюда никто не заносил - пустой список не значит "обращений нет";
+        # "нет" - только после сверки аналитиком с источником и датой(POST /api/complexes/{id}/appeals-check)
         chk = c.get("appealsCheck") or {}
         if chk.get("source") and chk.get("checkedAt"):
             return _factor("R4", "clear", "none_checked", {"source": chk["source"], "checkedAt": fmt_date(chk["checkedAt"])})
@@ -237,7 +237,7 @@ def factor_r5(c: Obj) -> Obj:
     ok = lambda x: bool(x) and isinstance(x.get("value"), (int, float)) and bool(x.get("source")) and bool(x.get("date"))
     if not (ok(d) and ok(k)):
         return _factor("R5", "unknown", "incomplete", items=items)
-    # округление до сотых до сравнения и вывода — одинаково с TS (round() в Python — банковское, не годится)
+    # округление до сотых до сравнения и вывода - одинаково с TS(round() в Python - банковское, не годится)
     diff = _num(math.floor(abs(d["value"] - k["value"]) * 100 + 0.5) / 100)
     values = {"declared": _num(d["value"]), "confirmed": _num(k["value"]), "diff": diff, "threshold": T["readinessGap"]}
     return _factor("R5", "hit" if diff >= T["readinessGap"] else "clear", "mismatch" if diff >= T["readinessGap"] else "match",
@@ -258,7 +258,7 @@ def factor_r6(c: Obj, as_of: date) -> Obj:
     items = [_item(kind="photo", ref=p.get("src"), label=p.get("note") or p.get("activity"), source=p.get("source"),
                    date=p.get("date"), value=p.get("activity")) for p in photos]
     if idle >= T["idleDays"]:
-        # простой подтверждают только датированные снимки без активности или с низкой; в items — вся серия
+        # простой подтверждают только датированные снимки без активности или с низкой; в items - вся серия
         dates = [p["date"] for p in photos if p.get("date") and p.get("activity") in T["idleActivities"]]
         if len(dates) >= T["idlePhotosMin"]:
             return _factor("R6", "hit", "idle", {"idleDays": idle, "from": fmt_date(min(dates)), "to": fmt_date(max(dates))}, items)
@@ -275,7 +275,7 @@ def observations(c: Obj, dev: Optional[Obj]) -> List[Obj]:
 
     lst = c.get("inPublishedList", "unknown")
     out = [obs("O1", {"yes": "ok", "no": "flag"}.get(lst, "unknown"))]
-    # застройщик из открытого реестра: портфель (объектов, незавершённых) не получен — профиль неизвестен, а не «в порядке»
+    # застройщик из открытого реестра: портфель(объектов, незавершённых) не получен - профиль неизвестен, а не "в порядке"
     if dev is None or dev.get("origin") in NOT_ASSESSED["origins"]:
         out.append(obs("O2", "unknown"))
     else:
@@ -297,9 +297,9 @@ def _total(factors: List[Obj]) -> Obj:
 
 
 def assessed(c: Obj, ads: List[Obj], appeals: List[Obj]) -> bool:
-    """Оценивается ли риск ЖК. ЖК не из открытого реестра — всегда. Карточка из реестра (сведения источника, аналитиком не
-    проверены) — только когда по ней есть проверенные сведения: подтверждённая аналитиком привязка публикации, документ
-    основания «есть/нет» с источником и датой сверки, проверенное обращение, подтверждённая готовность с источником и датой
+    """Оценивается ли риск ЖК. ЖК не из открытого реестра - всегда. Карточка из реестра(сведения источника, аналитиком не
+    проверены) - только когда по ней есть проверенные сведения: подтверждённая аналитиком привязка публикации, документ
+    основания "есть/нет" с источником и датой сверки, проверенное обращение, подтверждённая готовность с источником и датой
     или датированный снимок площадки с источником."""
     if c.get("origin") not in NOT_ASSESSED["origins"]:
         return True
@@ -317,8 +317,8 @@ def assessed(c: Obj, ads: List[Obj], appeals: List[Obj]) -> bool:
 
 
 def score_complex(c: Obj, dev: Optional[Obj], ads: List[Obj], appeals: List[Obj], as_of: Any = None) -> Obj:
-    """Риск ЖК: шесть факторов §5, балл, зона, «Нужна проверка», наблюдения вне балла. Карточка из открытого реестра без
-    проверенных сведений — assessed False, балл 0 и пояснение «риск не оценивается» (факторы — как есть, для справки)."""
+    """Риск ЖК: шесть факторов §5, балл, зона, "Нужна проверка", наблюдения вне балла. Карточка из открытого реестра без
+    проверенных сведений - assessed False, балл 0 и пояснение "риск не оценивается"(факторы - как есть, для справки)."""
     d = _as_date(as_of)
     built = c.get("stage") == BUILT
     linked = _by_date_desc([a for a in ads if a.get("complexId") == c["id"] and a.get("status") != "dismissed"])
@@ -345,9 +345,9 @@ def score_complex(c: Obj, dev: Optional[Obj], ads: List[Obj], appeals: List[Obj]
 
 
 def score_ad(ad: Obj, c: Optional[Obj]) -> Obj:
-    """Оценка одной публикации: основание объекта (R1) + её собственные R2 и R3, те же веса и зоны."""
+    """Оценка одной публикации: основание объекта(R1) + её собственные R2 и R3, те же веса и зоны."""
     s = ad_signals(ad)
-    # «введён» учитываем, только если привязка к ЖК — факт, а не гипотеза
+    # "введён" учитываем, только если привязка к ЖК - факт, а не гипотеза
     built = bool(c) and c.get("stage") == BUILT and link_confirmed(ad)
     money, adv = _money_marker(s), _adv_marker(s)
     r = MODEL["ad"]["reasons"]

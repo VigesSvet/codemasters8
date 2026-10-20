@@ -1,5 +1,5 @@
-"""Приём публикаций (integration-spec §5, §7.3, §7.4, §16.2 test_intake, §16.5 столбец A): доступ по токенам, единый
-приём ingest, маршрут POST /api/intake/publications (422, 413, 409, статус подключения), загрузка файлов по ссылкам
+"""Приём публикаций(integration-spec §5, §7.3, §7.4, §16.2 test_intake, §16.5 столбец A): доступ по токенам, единый
+приём ingest, маршрут POST /api/intake/publications(422, 413, 409, статус подключения), загрузка файлов по ссылкам
 заданием анализа и приёмка по §14 плана."""
 import hashlib
 import json
@@ -48,7 +48,7 @@ def guarded():
 
 @pytest.fixture
 def rejects(monkeypatch):
-    """Подменный service.record_reject: список (code, status, detail)."""
+    """Подменный service.record_reject: список(code, status, detail)."""
     import app.integrations as pkg
 
     got = []
@@ -64,13 +64,13 @@ def test_auth_not_configured_is_503(guarded, env, rejects):
     for path, detail in (("/admin", auth.ADMIN_UNSET), ("/ingest", auth.INGEST_UNSET), ("/service", auth.SERVICE_UNSET)):
         r = guarded.get(path, headers={"Authorization": "Bearer whatever-token-value-123456"})
         assert (r.status_code, r.json()["detail"]) == (503, detail), path
-    # слабый токен на сервере — то же, что не задан
+    # слабый токен на сервере - то же, что не задан
     env(INTEGRATION_INGEST_TOKEN="short")
     assert guarded.get("/ingest", headers={"Authorization": "Bearer short"}).status_code == 503
     # токен администратора, совпадающий с сервисным, не действует
     env(SAQ_ADMIN_TOKEN=SERVICE_TOKEN, SERVICE_API_TOKEN=SERVICE_TOKEN)
     assert guarded.get("/admin", headers={"X-Admin-Token": SERVICE_TOKEN}).status_code == 503
-    assert rejects == []  # «не настроено» — не отказ клиента
+    assert rejects == []  # "не настроено" - не отказ клиента
 
 
 def test_auth_matrix(guarded, env, rejects):
@@ -97,7 +97,7 @@ def test_auth_matrix(guarded, env, rejects):
     r = guarded.get("/service", headers={"X-API-Key": "nope"})
     assert (r.status_code, r.json()["detail"]) == (403, auth.SERVICE_WRONG)
     assert guarded.get("/service").json()["detail"] == auth.SERVICE_MISSING
-    # отказы клиента приёма и бота записываются (без токена); отказы администратору — нет
+    # отказы клиента приёма и бота записываются(без токена); отказы администратору - нет
     assert rejects == [("intake", 401, auth.INGEST_MISSING), ("intake", 401, auth.INGEST_MISSING),
                        ("intake", 403, auth.INGEST_WRONG), ("intake", 403, auth.INGEST_WRONG),
                        ("telegram_bot", 403, auth.SERVICE_WRONG), ("telegram_bot", 401, auth.SERVICE_MISSING)]
@@ -196,7 +196,7 @@ def test_repeat_is_unchanged(client):
     with SessionLocal() as db:
         item = db.get(models.IngestItem, first.item_id)
         assert models.as_utc(item.collected_at) == later and models.as_utc(item.first_collected_at) < later
-    # текст с другими переводами строк и пробелами по краям — тот же
+    # текст с другими переводами строк и пробелами по краям - тот же
     assert run(pub(text="  Старт продаж ЖК Ульба Ривер, бронь\r\n")).status == "unchanged"
 
 
@@ -222,7 +222,7 @@ def test_changed_publication_new_version(client):
     with SessionLocal() as db:
         ad = db.get(models.Ad, first.ad_id)
         assert ad.text == "Старт продаж ЖК Ульба Ривер — цены снижены" and ad.price == "58 194 600 ₸"
-        assert ad.decision_rev == rev0 + 2  # решение аналитика (+1) и новая версия (+1)
+        assert ad.decision_rev == rev0 + 2  # решение аналитика(+1) и новая версия(+1)
         assert (ad.terms_review, ad.terms_review_by, ad.status) == ("accepted", AUTHOR, "new")  # решения сохранены
         assert ad.image == f"/api/media/{k['k1']}"  # прежнее изображение больше не в публикации
         cur = {a.source_key: a.current for a in db.scalars(select(models.MediaAsset))}
@@ -231,7 +231,7 @@ def test_changed_publication_new_version(client):
                                                                models.AuditEvent.kind == "system")).all()
         assert what[-1] == ("Публикация изменилась в источнике (TikTok): версия 2. Решения аналитика сохранены — "
                             "проверьте их по новой версии")
-        job = db.scalars(select(models.Job)).one()  # задание ещё в очереди — то же, версия поднята
+        job = db.scalars(select(models.Job)).one()  # задание ещё в очереди - то же, версия поднята
         assert (job.content_version, db.get(models.IngestItem, res.item_id).analysis_status) == (2, "queued")
     versions = client.get("/api/ads").json()
     assert [m["id"] for m in next(a for a in versions if a["id"] == first.ad_id)["media"]] == [k["k1"]]
@@ -278,7 +278,7 @@ def test_intake_media_url_pending(client):
         assert (a.status, a.kind, a.origin_ref, a.meta["src"]) == ("pending", "video", "intake", url)
         assert a.origin_url == "https://cdn.example.com/v/a.mp4" and db.get(models.Ad, res.ad_id).image is None
     assert "media" not in api_ad(client, res.ad_id) and "SECRETSIG" not in client.get("/api/ads").text
-    # повтор с новой подписанной ссылкой того же файла — без новой версии, ссылка ожидающей загрузки обновлена
+    # повтор с новой подписанной ссылкой того же файла - без новой версии, ссылка ожидающей загрузки обновлена
     again = run(pub(media=[MediaIn(key=f"{EID}:video", kind="video", url=url.replace("SECRETSIG", "NEWSIG"))]))
     assert (again.status, again.media_pending) == ("unchanged", 1)
     with SessionLocal() as db:
@@ -341,7 +341,7 @@ def test_bot_namespace(client):
             "tgbot", "telegram_bot", "instagram", "bot", "collected")
         assert db.scalars(select(models.AuditEvent.what).where(models.AuditEvent.ad_id == ad.id)).one() == \
             "Публикация прислана жителем через Telegram-бота (Instagram) · заявка жителя"
-    # то же внешнее ID в пространстве площадки — другая запись
+    # то же внешнее ID в пространстве площадки - другая запись
     assert run(pub(platform="instagram", external_id="555:77"), collector="instagram").status == "created"
 
 
@@ -364,8 +364,8 @@ def test_video_and_cover_choice(client):
                          stored((7, 7, 7), "cover", role="cover")]))
     with SessionLocal() as db:
         a = {x.source_key: x for x in db.scalars(select(models.MediaAsset))}
-        assert (a["v"].kind, a["v"].mime) == ("video", "video/mp4")  # вид — по сигнатуре сохранённого файла
-        assert db.get(models.Ad, res.ad_id).image == f"/api/media/{a['cover'].id}"  # единственное изображение — обложка
+        assert (a["v"].kind, a["v"].mime) == ("video", "video/mp4")  # вид - по сигнатуре сохранённого файла
+        assert db.get(models.Ad, res.ad_id).image == f"/api/media/{a['cover'].id}"  # единственное изображение - обложка
     kinds = [m["kind"] for m in api_ad(client, res.ad_id)["media"]]
     assert kinds == ["video", "image"]
 
@@ -386,7 +386,7 @@ def test_scrub_raw(env):
     assert (out["when"], out["nan"], out["blob"]) == (PUBLISHED.isoformat(), None, "<2 байт>")
     big = ingest.scrub({"a": "x" * (ingest.RAW_MAX + 10), "b": 1})
     assert big == {"truncated": True, "keys": ["a", "b"]}
-    # маскирование не зависит от размера тела: строка обрезается до RAW_MAX до маскирования (регрессия: 2 МБ «x-x-…»
+    # маскирование не зависит от размера тела: строка обрезается до RAW_MAX до маскирования(регрессия: 2 МБ "x-x-…"
     # маскировались часами и занимали поток пула)
     import time
 
@@ -431,7 +431,7 @@ def test_collector_actor_default(client):
         assert v.extra == {"title": "3-комнатная квартира"}
 
 
-# ---------- маршрут POST /api/intake/publications (§7.4) ----------
+# ---------- маршрут POST /api/intake/publications(§7.4) ----------
 
 INTAKE = "/api/intake/publications"
 BEARER = {"Authorization": f"Bearer {INGEST_TOKEN}"}
@@ -493,7 +493,7 @@ def test_intake_create_repeat_update(client, intake_on):
     assert client.post(INTAKE, json=body(), headers=BEARER).json()["status"] == "unchanged"
     again = client.post(INTAKE, json=body(), headers=BEARER)
     assert (again.status_code, again.json()["adId"], again.json()["analysisQueued"]) == (200, ad_id, False)
-    # решение аналитика по прежней версии сохраняется, новая версия — история и событие
+    # решение аналитика по прежней версии сохраняется, новая версия - история и событие
     assert client.post(f"/api/ads/{ad_id}/terms-review", json={"author": AUTHOR, "decision": "accepted"}).status_code \
         == 200
     rev = client.get(f"/api/ads/{ad_id}").json()
@@ -522,8 +522,8 @@ def test_intake_foreign_owner_409(client, intake_on):
 
 
 def test_intake_reject_after_success_recorded_at_once(client, intake_on):
-    """Отказ, успех, снова отказ в пределах 5 с: последний отказ записан (успех снимает ограничение частоты записи),
-    статус — «ошибка», а не «принимает публикации»."""
+    """Отказ, успех, снова отказ в пределах 5 с: последний отказ записан(успех снимает ограничение частоты записи),
+    статус - "ошибка", а не "принимает публикации"."""
     assert client.post(INTAKE, json=body(publishedAt="2026-10-09T11:10:23"), headers=BEARER).status_code == 422
     assert intake_status(client)["status"] == "error"
     assert client.post(INTAKE, json=body(), headers=BEARER).status_code == 201
@@ -536,11 +536,11 @@ def test_intake_reject_after_success_recorded_at_once(client, intake_on):
 
 
 def test_bot_reject_after_success_recorded_at_once(client, env):
-    """То же у бота заявок (/api/intake/telegram): принятая заявка снимает ограничение частоты записи отказов."""
+    """То же у бота заявок(/api/intake/telegram): принятая заявка снимает ограничение частоты записи отказов."""
     env(SERVICE_API_TOKEN=SERVICE_TOKEN)
     key = {"X-API-Key": SERVICE_TOKEN}
     good = {"externalId": "123456789:77", "platform": "instagram", "text": "Старт продаж ЖК Ульба Ривер, бронь"}
-    bad = {**good, "status": "confirmed"}  # решения аналитика в заявке — 422
+    bad = {**good, "status": "confirmed"}  # решения аналитика в заявке - 422
 
     def status() -> str:
         return client.get("/api/sources/connectors/telegram_bot").json()["status"]
@@ -554,7 +554,7 @@ def test_bot_reject_after_success_recorded_at_once(client, env):
 
 
 def test_intake_conflict_and_server_failure_visible(client, intake_on, monkeypatch):
-    """409 (публикация другого источника) и сбой сервера при приёме видны в статусе подключения, а не «ожидает»."""
+    """409(публикация другого источника) и сбой сервера при приёме видны в статусе подключения, а не "ожидает"."""
     run(pub(platform="instagram", external_id="17900000000000002"), collector="instagram")
     r = client.post(INTAKE, json=body(platform="instagram", externalId="17900000000000002"), headers=BEARER)
     assert r.status_code == 409
@@ -578,7 +578,7 @@ def test_intake_conflict_and_server_failure_visible(client, intake_on, monkeypat
 
 
 def test_intake_auth_runs_off_event_loop(client, intake_on, monkeypatch):
-    """Проверка токена приёма (и запись отказа в БД) — в пуле потоков, не в цикле событий."""
+    """Проверка токена приёма(и запись отказа в БД) - в пуле потоков, не в цикле событий."""
     import asyncio
 
     real, where = auth.require_ingest, []
@@ -623,7 +623,7 @@ def test_intake_validation(client, intake_on):
     with SessionLocal() as db:
         rej = db.get(models.Collector, "intake").state["rejects"]
     assert (rej["lastCode"], rej["lastDetail"]) == (413, "Тело запроса больше 2 МБ")
-    # Telegram в форме Bot API → положительный ID канала; заявленное время — в raw, collectedAt — время приёма
+    # Telegram в форме Bot API → положительный ID канала; заявленное время - в raw, collectedAt - время приёма
     claimed = (models.utcnow() - timedelta(days=2)).replace(microsecond=0)
     r = post(platform="telegram", externalId="-1001234567890:5", url="https://t.me/channel/5",
              collectedAt=claimed.isoformat())
@@ -652,7 +652,7 @@ def test_intake_media_downloaded_by_worker(client, intake_on, run_worker, http_m
     assert [m["kind"] for m in ad["media"]] == ["image", "image"] and ad["image"] == ad["media"][0]["url"]
     assert ad["processing"]["status"] == "done" and "SECRETSIG" not in client.get("/api/ads").text
     assert client.get(ad["media"][1]["url"]).content == b
-    # новая версия без файла «a» — он больше не в публикации
+    # новая версия без файла "a" - он больше не в публикации
     r = client.post(INTAKE, headers=BEARER, json=body(text="Новый текст", media=[
         {"key": "b", "url": "https://cdn.example.com/b.png"}]))
     assert r.json()["status"] == "updated"
@@ -681,7 +681,7 @@ def test_intake_media_retry_unavailable_and_budget(client, intake_on, run_worker
         got = db.scalars(select(models.MediaAsset).where(models.MediaAsset.source_key == "r")).one()
         assert (got.status, got.attempts, "src" in got.meta) == ("downloaded", 2, False)
     assert client.get(f"/api/ads/{ad_id}").json()["processing"]["status"] == "done"
-    # объём файлов публикации исчерпан — остальные «пропущены»
+    # объём файлов публикации исчерпан - остальные "пропущены"
     monkeypatch.setattr(media, "PUBLICATION_BYTES_MAX", len(png) + 10)
     http_mock.on("GET", "https://cdn.example.com/c.png", content=png_bytes((42, 0, 0)))
     http_mock.on("GET", "https://cdn.example.com/d.png", content=png_bytes((43, 0, 0)))
@@ -696,9 +696,9 @@ def test_intake_media_retry_unavailable_and_budget(client, intake_on, run_worker
 
 
 def test_intake_resend_heals_failed_media(client, intake_on, run_worker, http_mock, ocr_stub):
-    """Регрессия: файл, не загрузившийся по ссылке приёма (например, истёкшая подписанная ссылка → 404), повторная
-    отправка с рабочей ссылкой не чинила — новая ссылка отбрасывалась, анализ не ставился. Теперь файл снова ждёт
-    загрузки (всего не больше ATTEMPTS_MAX попыток)."""
+    """Регрессия: файл, не загрузившийся по ссылке приёма(например, истёкшая подписанная ссылка → 404), повторная
+    отправка с рабочей ссылкой не чинила - новая ссылка отбрасывалась, анализ не ставился. Теперь файл снова ждёт
+    загрузки(всего не больше ATTEMPTS_MAX попыток)."""
     png = png_bytes((51, 0, 0))
     http_mock.on("GET", "https://cdn.example.com/old.png", status=404)
     http_mock.on("GET", "https://cdn.example.com/new.png", content=png)
@@ -718,7 +718,7 @@ def test_intake_resend_heals_failed_media(client, intake_on, run_worker, http_mo
         assert (a.status, a.attempts, a.error, "src" in a.meta) == ("downloaded", 2, None, False)
     ad = client.get(f"/api/ads/{first['adId']}").json()
     assert ad["image"] == f"/api/media/{a.id}" and client.get(ad["image"]).content == png
-    # попытки исчерпаны — повторная отправка файл больше не загружает
+    # попытки исчерпаны - повторная отправка файл больше не загружает
     with SessionLocal() as db:
         db.execute(update(models.MediaAsset).where(models.MediaAsset.id == a.id)
                    .values(status="failed", attempts=ingest.ATTEMPTS_MAX, storage_key=None))
@@ -734,7 +734,7 @@ def get_asset(asset_id: str) -> models.MediaAsset:
         return db.get(models.MediaAsset, asset_id)
 
 
-# ---------- приёмка по §14 плана (integration-spec §16.5, столбец A) ----------
+# ---------- приёмка по §14 плана(integration-spec §16.5, столбец A) ----------
 
 def test_acceptance_repeat_no_duplicate(client, intake_on, run_worker, http_mock, accept, ocr_stub):
     http_mock.on("GET", "https://cdn.example.com/a.png", content=png_bytes((51, 0, 0)))
@@ -768,7 +768,7 @@ def test_acceptance_media_survives_source(client, intake_on, run_worker, http_mo
 
 
 def test_acceptance_not_confirmed_automatically(client, intake_on, run_worker, accept, ocr_stub):
-    ad_id = client.post(INTAKE, headers=BEARER, json=body()).json()["adId"]  # текст называет демо-ЖК «Ульба Ривер»
+    ad_id = client.post(INTAKE, headers=BEARER, json=body()).json()["adId"]  # текст называет демо-ЖК "Ульба Ривер"
     run_worker()
     accept.assert_not_confirmed(ad_id)
     r = client.post(f"/api/ads/{ad_id}/hypotheses/accept", json={"author": AUTHOR, "complexId": "c3"})

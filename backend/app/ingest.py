@@ -1,17 +1,17 @@
-"""Единый приём публикаций (план §5): Publication → IngestItem + Ad + IngestVersion + MediaAsset.
+"""Единый приём публикаций(план §5): Publication → IngestItem + Ad + IngestVersion + MediaAsset.
 
-Им пользуются все сборщики (RunContext.ingest), приём через API (POST /api/intake/publications) и бот заявок.
-Дедупликация — по (пространство площадки, внешний ID): сначала INSERT … ON CONFLICT DO NOTHING (гонка двух сборщиков
+Им пользуются все сборщики(RunContext.ingest), приём через API(POST /api/intake/publications) и бот заявок.
+Дедупликация - по(пространство площадки, внешний ID): сначала INSERT … ON CONFLICT DO NOTHING(гонка двух сборщиков
 без SAVEPOINT), затем:
-- новая — публикация (статус «new», без привязки к ЖК), версия 1, файлы, задание анализа — в одной транзакции;
-- та же (хеш содержимого не изменился) — только время «последний раз видели» и дозагрузка файлов, которые раньше не
-  скачались; анализ — только если появились новые файлы;
-- изменилась — новая версия (история хранится), текст публикации обновляется условным UPDATE, решения аналитика не
-  трогаются (в журнале — «Решения аналитика сохранены — проверьте их по новой версии»), анализ — заново;
-- принадлежит другому источнику — ничего не пишется (status «foreign»).
+- новая - публикация(статус "new", без привязки к ЖК), версия 1, файлы, задание анализа - в одной транзакции;
+- та же(хеш содержимого не изменился) - только время "последний раз видели" и дозагрузка файлов, которые раньше не
+  скачались; анализ - только если появились новые файлы;
+- изменилась - новая версия(история хранится), текст публикации обновляется условным UPDATE, решения аналитика не
+  трогаются(в журнале - "Решения аналитика сохранены - проверьте их по новой версии"), анализ - заново;
+- принадлежит другому источнику - ничего не пишется(status "foreign").
 
-ingest_publication работает только с БД (без сети): загрузки файлов — заранее, в resolve_media. Фиксирует транзакцию
-вызывающий. Снимок ответа источника (raw) очищается от секретов и подписанных ссылок (scrub).
+ingest_publication работает только с БД(без сети): загрузки файлов - заранее, в resolve_media. Фиксирует транзакцию
+вызывающий. Снимок ответа источника(raw) очищается от секретов и подписанных ссылок(scrub).
 """
 import dataclasses
 import hashlib
@@ -39,13 +39,13 @@ from .pdf import PLATFORMS
 log = logging.getLogger("saq.ingest")
 
 RAW_MAX = 64 * 1024
-# Ключи снимка источника, которые не сохраняются (сравнение — по ключу без регистра и не-букв:
+# Ключи снимка источника, которые не сохраняются(сравнение - по ключу без регистра и не-букв:
 # accessToken → accesstoken)
 SCRUB_EXACT = {"auth", "authorization", "bearer", "jwt", "user", "ipinfo", "config", "phone", "email", "cookie",
                "cookies"}
 SCRUB_PARTS = ("token", "secret", "passw", "session", "apikey", "appkey", "signature", "csrf", "credential",
                "privatekey")
-ATTEMPTS_MAX = 3  # попыток загрузки файла сборщиком; дальше файл остаётся «не загружен»
+ATTEMPTS_MAX = 3  # попыток загрузки файла сборщиком; дальше файл остаётся "не загружен"
 KEY_MAX = 255
 _DEPTH = 40
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
@@ -56,14 +56,14 @@ _ERRORS = {"failed": "Файл не загружен", "unavailable": "Исто�
 @dataclass
 class Known:
     """Что уже принято по внешнему ID: владелец, хеш и версия, какие файлы загружены и сколько было попыток у остальных,
-    последняя версия содержимого (текст, цена, extra, ключи файлов)."""
+    последняя версия содержимого(текст, цена, extra, ключи файлов)."""
     item_id: int
     ad_id: str
     collector: str
     content_hash: str
     version: int
     downloaded_keys: set[str]
-    failed_keys: dict[str, int]  # ключ → попыток (failed / pending / unavailable / skipped)
+    failed_keys: dict[str, int]  # ключ → попыток(failed / pending / unavailable / skipped)
     text: str
     price: Optional[str]
     extra: dict
@@ -81,17 +81,17 @@ class IngestResult:
     item_id: int
     version: int
     media_new: int  # файлов сохранено сейчас
-    media_failed: int  # не загружено (failed / unavailable)
+    media_failed: int  # не загружено(failed / unavailable)
     analysis_queued: bool
     owner: Optional[str] = None  # foreign: подключение-владелец
-    media_pending: int = 0  # ждут загрузки заданием анализа (ссылки приёма через API)
+    media_pending: int = 0  # ждут загрузки заданием анализа(ссылки приёма через API)
 
 
 # ---------- нормализация ----------
 
 def normalize_text(s: Any) -> str:
     """Текст публикации: переводы строк \\n, без NUL и управляющих символов, без пробелов по краям, до предела
-    публикации (schemas.AD_TEXT_MAX, по границе строки/слова)."""
+    публикации(schemas.AD_TEXT_MAX, по границе строки/слова)."""
     if s is None:
         return ""
     t = str(s).replace("\r\n", "\n").replace("\r", "\n")
@@ -99,14 +99,14 @@ def normalize_text(s: Any) -> str:
 
 
 def _line(s: Any, limit: int) -> str:
-    """Однострочное поле (аккаунт, цена): пробелы схлопнуты, без управляющих символов, не длиннее limit."""
+    """Однострочное поле(аккаунт, цена): пробелы схлопнуты, без управляющих символов, не длиннее limit."""
     if s is None:
         return ""
     return re.sub(r"\s+", " ", _CTRL.sub("", str(s))).strip()[:limit]
 
 
 def _walk(v: Any, depth: int, redacting: bool) -> Any:
-    """Значение → JSON-совместимое (datetime → ISO, NaN → None, bytes → «<N байт>»); redacting — ещё и очистка: ключи
+    """Значение → JSON-совместимое(datetime → ISO, NaN → None, bytes → "<N байт>"); redacting - ещё и очистка: ключи
     секретов отбрасываются, строки маскируются, у ссылок убираются query и fragment."""
     if depth > _DEPTH:
         return "…"
@@ -118,8 +118,8 @@ def _walk(v: Any, depth: int, redacting: bool) -> Any:
     if isinstance(v, str):
         if not redacting:
             return v
-        # строка длиннее RAW_MAX всё равно приведёт к {"truncated": …} — маскируется только её начало, чтобы цена
-        # маскирования не зависела от размера присланного тела (до 2 МБ)
+        # строка длиннее RAW_MAX всё равно приведёт к {"truncated": …} - маскируется только её начало, чтобы цена
+        # маскирования не зависела от размера присланного тела(до 2 МБ)
         v = v[:RAW_MAX + 1]
         s = v.strip()
         return redact_url(s) if _URL.match(s) else redact(v, limit=None)
@@ -146,8 +146,8 @@ def _secret_key(k: Any) -> bool:
 
 def scrub(raw: Any) -> dict:
     """Снимок ответа источника без секретов: ключи токенов, сессий, подписей, телефонов, e-mail, cookie, user/config
-    (рекурсивно) отбрасываются, строки маскируются (logs.redact), ссылки — без query и fragment (подписанные ссылки
-    CDN). Больше RAW_MAX (64 КБ JSON) — только {"truncated": true, "keys": [...]}."""
+    (рекурсивно) отбрасываются, строки маскируются(logs.redact), ссылки - без query и fragment(подписанные ссылки
+    CDN). Больше RAW_MAX(64 КБ JSON) - только {"truncated": true, "keys": [...]}."""
     if raw is None:
         return {}
     out = _walk(raw, 0, True)
@@ -159,7 +159,7 @@ def scrub(raw: Any) -> dict:
 
 
 def _unique_media(items: list[MediaIn]) -> list[MediaIn]:
-    """Файлы публикации с ключом не длиннее KEY_MAX, без повторов ключа (первый — в силе)."""
+    """Файлы публикации с ключом не длиннее KEY_MAX, без повторов ключа(первый - в силе)."""
     out, seen = [], set()
     for m in items or []:
         key = str(m.key or "").strip()[:KEY_MAX]
@@ -171,7 +171,7 @@ def _unique_media(items: list[MediaIn]) -> list[MediaIn]:
 
 
 def content_hash(pub: Publication) -> str:
-    """SHA-256 содержимого: текст, аккаунт, ссылка, цена, ключи файлов (без порядка), extra. Время и raw не входят."""
+    """SHA-256 содержимого: текст, аккаунт, ссылка, цена, ключи файлов(без порядка), extra. Время и raw не входят."""
     payload = {"text": normalize_text(pub.text), "account": _line(pub.account, 255), "url": safe_url(pub.url),
                "price": _line(pub.price, 64) or None, "media": sorted(m.key for m in _unique_media(pub.media)),
                "extra": _dict(pub.extra, False)}
@@ -201,8 +201,8 @@ def known(db: Session, namespace: str, external_id: str) -> Optional[Known]:
 
 
 def resolve_media(pub: Publication, k: Optional[Known]) -> Publication:
-    """Сеть, без БД: ленивые загрузки (MediaIn.fetch) вызываются только для файлов, которые ещё нужны (новая публикация
-    или k.needs(key)); исключение загрузчика — файл «failed» с причиной, публикация принимается без него."""
+    """Сеть, без БД: ленивые загрузки(MediaIn.fetch) вызываются только для файлов, которые ещё нужны(новая публикация
+    или k.needs(key)); исключение загрузчика - файл "failed" с причиной, публикация принимается без него."""
     out = []
     for m in pub.media:
         if m.fetch is None or m.stored is not None or (k is not None and not k.needs(m.key)):
@@ -212,7 +212,7 @@ def resolve_media(pub: Publication, k: Optional[Known]) -> Publication:
             got = m.fetch()
             if not isinstance(got, MediaIn):
                 raise TypeError("загрузчик не вернул файл")
-        except Exception as e:  # noqa: BLE001 — сбой одного файла не останавливает приём публикации
+        except Exception as e:  # noqa: BLE001 - сбой одного файла не останавливает приём публикации
             log.warning("Файл %s публикации %s не загружен: %s", m.key, pub.external_id, type(e).__name__)
             got = MediaIn(key=m.key, kind=m.kind, role=m.role, status="failed",
                           error=redact(str(e) or type(e).__name__) or "Файл не загружен")
@@ -232,13 +232,13 @@ def _new_asset(item: models.IngestItem, m: MediaIn, pos: int, now: datetime) -> 
                           source_key=m.key, current=True, origin_ref=(m.origin_ref or None) and m.origin_ref[:255],
                           origin_url=redact_url(origin) if origin else None, meta=_dict(m.meta, True),
                           attempts=0, status="pending", created_at=now)
-    if _apply(a, m, now) == "none":  # ни байтов, ни ссылки, ни причины — загрузку пропустили (сеть не вызывалась)
+    if _apply(a, m, now) == "none":  # ни байтов, ни ссылки, ни причины - загрузку пропустили(сеть не вызывалась)
         a.status, a.error = "failed", "Файл не загружен при сборе"
     return a
 
 
 def _apply(a: models.MediaAsset, m: MediaIn, now: datetime) -> str:
-    """Состояние файла по MediaIn: downloaded | failed | unavailable | skipped | pending (ссылка приёма) | none."""
+    """Состояние файла по MediaIn: downloaded | failed | unavailable | skipped | pending(ссылка приёма) | none."""
     if m.stored is not None:
         s = m.stored
         a.status, a.error = "downloaded", None
@@ -254,8 +254,8 @@ def _apply(a: models.MediaAsset, m: MediaIn, now: datetime) -> str:
             a.attempts = (a.attempts or 0) + 1
         return m.status
     if m.url and a.status in ("failed", "unavailable") and (a.attempts or 0) < ATTEMPTS_MAX:
-        # приём через API прислал ссылку снова (например, свежую подписанную вместо истёкшей): файл, который не
-        # загрузился, загружается ещё раз — всего не больше ATTEMPTS_MAX попыток, как у сборщиков (§7.3 п. 3)
+        # приём через API прислал ссылку снова(например, свежую подписанную вместо истёкшей): файл, который не
+        # загрузился, загружается ещё раз - всего не больше ATTEMPTS_MAX попыток, как у сборщиков(§7.3 п. 3)
         a.status, a.error = "pending", None
         a.meta = {k: v for k, v in (a.meta or {}).items() if k != "retryAt"}
     if m.url and a.status == "pending":  # приём через API: файл загрузит анализ; meta.src не выводится и не логируется
@@ -295,10 +295,10 @@ def has_decisions(ad: models.Ad) -> bool:
 
 def enqueue_analysis(db: Session, ad_id: str, item: Optional[models.IngestItem] = None, *,
                      payload: Optional[dict] = None, priority: int = 0) -> bool:
-    """Задание анализа публикации (одно активное на публикацию) и состояние «в очереди» у записи приёма. payload и
-    priority — у нового задания (дозапрос Claude, повторный анализ, пересчёт правил); активное задание остаётся как
-    есть, но ждущий пересчёт правил (rulesOnly) становится полным анализом, если ставится обычный."""
-    from . import jobs  # jobs импортирует обработчики, которые сами импортируют приём, — только здесь
+    """Задание анализа публикации(одно активное на публикацию) и состояние "в очереди" у записи приёма. payload и
+    priority - у нового задания(дозапрос Claude, повторный анализ, пересчёт правил); активное задание остаётся как
+    есть, но ждущий пересчёт правил(rulesOnly) становится полным анализом, если ставится обычный."""
+    from . import jobs  # jobs импортирует обработчики, которые сами импортируют приём, - только здесь
 
     if item is None:
         item = db.scalar(select(models.IngestItem).where(models.IngestItem.ad_id == ad_id))
@@ -311,7 +311,7 @@ def enqueue_analysis(db: Session, ad_id: str, item: Optional[models.IngestItem] 
         job.priority = max(job.priority or 0, priority)
     now = models.utcnow()
     if not created and job.status == "queued" and models.as_utc(job.run_after) > now:
-        job.run_after = now  # ждущий повтора загрузки анализ: новое содержимое или файлы — анализировать сейчас
+        job.run_after = now  # ждущий повтора загрузки анализ: новое содержимое или файлы - анализировать сейчас
     if item is not None:
         item.analysis_status, item.analysis_stage, item.analysis_error = "queued", None, None
     return True
@@ -320,14 +320,14 @@ def enqueue_analysis(db: Session, ad_id: str, item: Optional[models.IngestItem] 
 def _ensure_ad(db: Session, item: models.IngestItem, fields: dict, actor: Actor, at: datetime,
                note: Optional[str]) -> models.Ad:
     ad = db.get(models.Ad, item.ad_id)
-    if ad is None:  # публикацию удалили вне приёма — создаётся заново с тем же id
+    if ad is None:  # публикацию удалили вне приёма - создаётся заново с тем же id
         ad = ads_service.create_ad(db, fields, actor=actor, at=at, note=note, ad_id=item.ad_id)
     return ad
 
 
 def _update_ad(db: Session, ad: models.Ad, values: dict) -> None:
-    """Содержимое публикации из новой версии — условным UPDATE по прочитанному номеру версии решений (решение аналитика,
-    принятое по прежней версии, получит 409). Поля решений не пишутся. Гонка — одно перечитывание."""
+    """Содержимое публикации из новой версии - условным UPDATE по прочитанному номеру версии решений(решение аналитика,
+    принятое по прежней версии, получит 409). Поля решений не пишутся. Гонка - одно перечитывание."""
     A = models.Ad
     rev = ad.decision_rev or 0
     for _ in range(2):
@@ -344,7 +344,7 @@ def _update_ad(db: Session, ad: models.Ad, values: dict) -> None:
 def ingest_publication(db: Session, pub: Publication, *, collector: str, run_id: Optional[int] = None,
                        actor: Actor = COLLECTOR, note: Optional[str] = None, external_run_id: Optional[str] = None,
                        raw_extra: Optional[dict] = None) -> IngestResult:
-    """Публикация → БД в сессии db (без сети, без commit). Ошибка — исключение: вызывающий откатывает транзакцию,
+    """Публикация → БД в сессии db(без сети, без commit). Ошибка - исключение: вызывающий откатывает транзакцию,
     и публикация, запись приёма, версия и файлы не остаются наполовину."""
     I = models.IngestItem
     eid = str(pub.external_id or "").strip()
@@ -380,7 +380,7 @@ def ingest_publication(db: Session, pub: Publication, *, collector: str, run_id:
         return models.IngestVersion(item_id=item.id, version=n, content_hash=h, text=text, account=account, url=url,
                                     price=price, extra=extra, media_keys=keys, raw=raw, collected_at=now, run_id=run_id)
 
-    if inserted:  # новая публикация: всё — в этой транзакции
+    if inserted:  # новая публикация: всё - в этой транзакции
         ad = ads_service.create_ad(db, ad_fields, actor=actor, at=now, note=note, ad_id=item.ad_id)
         db.add(version_row(1))
         assets = [_new_asset(item, m, pos, now) for pos, m in enumerate(items)]
@@ -402,7 +402,7 @@ def ingest_publication(db: Session, pub: Publication, *, collector: str, run_id:
     ad = _ensure_ad(db, item, ad_fields, actor, now, note)
     assets = _top_assets(db, item.id)
     outcomes: list[str] = []
-    retried = 0  # не загрузившиеся файлы, снова ждущие загрузки (приём через API прислал ссылку)
+    retried = 0  # не загрузившиеся файлы, снова ждущие загрузки(приём через API прислал ссылку)
     for pos, m in enumerate(items):
         a = assets.get(m.key)
         if a is None:
@@ -416,7 +416,7 @@ def ingest_publication(db: Session, pub: Publication, *, collector: str, run_id:
             outcomes.append(_apply(a, m, now))
             retried += before in ("failed", "unavailable") and a.status == "pending"
 
-    if item.content_hash == h:  # без изменений: только «последний раз видели» и дозагрузка файлов
+    if item.content_hash == h:  # без изменений: только "последний раз видели" и дозагрузка файлов
         new, failed, pending = _count(outcomes)
         if ad.image is None and new:
             ad.image = _cover(assets.values())
@@ -424,7 +424,7 @@ def ingest_publication(db: Session, pub: Publication, *, collector: str, run_id:
         db.flush()
         return IngestResult("unchanged", ad.id, item.id, item.version, new, failed, queued, media_pending=pending)
 
-    # изменилась: новая версия, история сохраняется, решения аналитика — нет
+    # изменилась: новая версия, история сохраняется, решения аналитика - нет
     decisions = has_decisions(ad)
     complex_id = ad.complex_id
     item.version += 1

@@ -1,9 +1,9 @@
-"""Живая проверка подключений из командной строки: python -m app.integrations.smoke [коды…] (integration-spec §16.4).
+"""Живая проверка подключений из командной строки: python -m app.integrations.smoke [коды…](integration-spec §16.4).
 
-Для каждого подключения: ключей нет — «{code}: не настроен — нет {имена}» (без сети); иначе — connector.check(…) в
-эфемерном контексте (без БД: публикации не сохраняются, квота не учитывается) → «{code}: {статус} — {пояснение}» и
-несекретные сведения. Значения ключей не печатаются (вывод проходит маскирование). Код выхода — 0 (это отчёт, не тест);
-2 — неизвестный код подключения.
+Для каждого подключения: ключей нет - "{code}: не настроен - нет {имена}"(без сети); иначе - connector.check(…) в
+эфемерном контексте(без БД: публикации не сохраняются, квота не учитывается) → "{code}: {статус} - {пояснение}" и
+несекретные сведения. Значения ключей не печатаются(вывод проходит маскирование). Код выхода - 0(это отчёт, не тест);
+2 - неизвестный код подключения.
 """
 import argparse
 import json
@@ -21,7 +21,7 @@ def _line(text: str) -> None:
 
 
 def check_one(code: str) -> str:
-    """Проверка одного подключения → строка отчёта (маскированная)."""
+    """Проверка одного подключения → строка отчёта(маскированная)."""
     from .context import RunContext
 
     conn = registry.get(code)
@@ -33,7 +33,7 @@ def check_one(code: str) -> str:
         env = [n for n in missing if n in tuple(conn.required_env or ())]
         if env:
             return f"{code}: не настроен — нет {', '.join(env)}"
-        # переменные заданы, не хватает условия (сессия Telegram) — пояснение самого подключения
+        # переменные заданы, не хватает условия(сессия Telegram) - пояснение самого подключения
         return f"{code}: не настроен — {conn.missing_detail(s, None) or ', '.join(missing)}"
     computed = None
     if not (conn.capabilities or {}).get("test"):
@@ -52,7 +52,7 @@ def check_one(code: str) -> str:
         status = {"not_configured": "not_configured", "auth_expired": "expired", "access_denied": "denied",
                   "access_check": "access_check"}.get(e.code, "error")
         return f"{code}: {conn.status_label(status)} — {e.detail}"
-    except Exception as e:  # noqa: BLE001 — отчёт, а не падение
+    except Exception as e:  # noqa: BLE001 - отчёт, а не падение
         return f"{code}: ошибка — {type(e).__name__}: {logs.redact(str(e))}"
     status = "ready" if res.ok else "error"
     out = f"{code}: {conn.status_label(status)} — {res.detail}"

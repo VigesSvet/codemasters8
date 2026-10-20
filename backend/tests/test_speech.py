@@ -1,8 +1,8 @@
-"""Распознавание речи в роликах (T-60, app.speech): движок подменён — модель не скачивается и не загружается.
+"""Распознавание речи в роликах(T-60, app.speech): движок подменён - модель не скачивается и не загружается.
 
 Проверяется: этап пропускается с пояснением без пакета и при SAQ_ASR_MODEL=off; расшифровка хранится у видео
-(meta.speech), попадает в ads.ocr абзацем «Речь в ролике: …», в правила saq-ai-1, материал Claude и в API; слишком
-длинный ролик и тайм-аут — skipped с пояснением, текст не сохраняется; галлюцинации Whisper отбрасываются.
+(meta.speech), попадает в ads.ocr абзацем "Речь в ролике: …", в правила saq-ai-1, материал Claude и в API; слишком
+длинный ролик и тайм-аут - skipped с пояснением, текст не сохраняется; галлюцинации Whisper отбрасываются.
 """
 import shutil
 from types import SimpleNamespace
@@ -23,7 +23,7 @@ SAID = "Старт продаж в ЖК Ульба Ривер, бронь все
 
 
 class FakeModel:
-    """WhisperModel: язык — по вероятностям probs, сегменты — по текстам; calls — вызовы transcribe."""
+    """WhisperModel: язык - по вероятностям probs, сегменты - по текстам; calls - вызовы transcribe."""
 
     def __init__(self, texts=(SAID,), probs=(("uk", 0.5), ("ru", 0.3), ("kk", 0.2))):
         self.texts, self.probs, self.calls = list(texts), list(probs), []
@@ -39,7 +39,7 @@ class FakeModel:
 
 @pytest.fixture
 def asr(monkeypatch):
-    """Движок «установлен»: ffmpeg и модель подменены. set(seconds=…, model=…) — длина звука и модель."""
+    """Движок "установлен": ffmpeg и модель подменены. set(seconds=…, model=…) - длина звука и модель."""
     state = {"seconds": 20.0, "model": FakeModel()}
     monkeypatch.setattr(speech, "available", lambda: True)
     monkeypatch.setattr(video, "ffmpeg_available", lambda: True)
@@ -86,11 +86,11 @@ def test_off_and_no_ffmpeg(client, run_worker, ocr_stub, env, monkeypatch):
     run_worker()
     assert the_video(off.ad_id).meta["speech"] == {"status": "skipped", "engine": None, "model": None,
                                                    "detail": speech.DISABLED}
-    assert not [e for e in ad_events(off.ad_id) if e.startswith("Речь")]  # выключено — без события
+    assert not [e for e in ad_events(off.ad_id) if e.startswith("Речь")]  # выключено - без события
     env(SAQ_ASR_MODEL=None)
-    with SessionLocal() as db:  # включили снова — ролик снова «есть работа»
+    with SessionLocal() as db:  # включили снова - ролик снова "есть работа"
         assert analysis._has_work(analysis._assets(db, off.item_id), models.utcnow())
-    nf = video_ad(2)  # ocr_stub: ffmpeg «не установлен»
+    nf = video_ad(2)  # ocr_stub: ffmpeg "не установлен"
     run_worker()
     assert the_video(nf.ad_id).meta["speech"]["detail"] == speech.FFMPEG_MISSING
 
@@ -103,7 +103,7 @@ def test_transcript_stored_fed_to_rules_llm_and_api(client, run_worker, ocr_stub
     sp = v.meta["speech"]
     assert (sp["status"], sp["text"], sp["language"], sp["engine"], sp["audioS"]) == (
         "done", SAID, "ru", "faster-whisper", 20.0)
-    # язык — из двух (ru/kk), хотя Whisper счёл речь украинской; VAD включён, без опоры на предыдущий текст
+    # язык - из двух(ru/kk), хотя Whisper счёл речь украинской; VAD включён, без опоры на предыдущий текст
     assert model.calls == [{"language": "ru", "beam_size": 1, "vad_filter": True, "condition_on_previous_text": False}]
     with SessionLocal() as db:
         ad = db.get(models.Ad, res.ad_id)
@@ -113,7 +113,7 @@ def test_transcript_stored_fed_to_rules_llm_and_api(client, run_worker, ocr_stub
         assert "Речь в ролике:" in llm.SYSTEM_PROMPT  # модель знает, что это речь, а не надпись
         job = db.scalars(select(models.Job).where(models.Job.ad_id == res.ad_id)).one()
         assert job.result["speech"] == {"done": 1}
-    # правила saq-ai-1 нашли ЖК и условия оплаты только по речи (в тексте публикации их нет)
+    # правила saq-ai-1 нашли ЖК и условия оплаты только по речи(в тексте публикации их нет)
     ai_events = ad_events(res.ad_id, "ai")
     assert ai_events[0].startswith("Гипотеза ИИ: ЖК «Ульба Ривер»")
     assert any(e.startswith("ИИ: найдены условия оплаты — бронь") for e in ai_events)
@@ -123,7 +123,7 @@ def test_transcript_stored_fed_to_rules_llm_and_api(client, run_worker, ocr_stub
     assert item["media"][0]["speech"] == {"status": "done", "text": SAID, "engine": "faster-whisper",
                                           "model": get_settings().asr_model, "language": "ru", "audioS": 20.0,
                                           "detail": None}
-    # повтор по той же версии — ролик не распознаётся заново; тот же файл у другой публикации — из готовой расшифровки
+    # повтор по той же версии - ролик не распознаётся заново; тот же файл у другой публикации - из готовой расшифровки
     analysis.run_analysis(None, res.ad_id, now=models.utcnow())
     assert len(model.calls) == 1
     same = take(ig_pub(7, text="Другая", media=[MediaIn(key="v7", stored=media.store_bytes(mp4_bytes(301)),
@@ -140,7 +140,7 @@ def test_kazakh_and_hallucinations(client, run_worker, ocr_stub, asr):
     sp = the_video(res.ad_id).meta["speech"]
     assert (sp["language"], sp["text"]) == ("kk", "Пәтерлер сатылымы басталды")
     assert "Речь в ролике распознана (казахский) — текст добавлен к OCR" in ad_events(res.ad_id, "system")
-    asr(model=FakeModel(texts=["Аааааааа...", "Спасибо за просмотр!"]))  # пение и музыка — «речи нет», без события
+    asr(model=FakeModel(texts=["Аааааааа...", "Спасибо за просмотр!"]))  # пение и музыка - "речи нет", без события
     quiet = video_ad(2)
     run_worker()
     assert (the_video(quiet.ad_id).meta["speech"]["status"], the_video(quiet.ad_id).meta["speech"]["detail"]) == (
@@ -158,7 +158,7 @@ def test_too_long_and_timeout_skipped(client, run_worker, ocr_stub, asr, env, mo
     assert model.calls == [] and "text" not in sp
     assert ("Речь в ролике не распознана: Ролик длиннее 30 с (SAQ_ASR_MAX_S) — речь не распознавалась"
             in ad_events(long.ad_id, "system"))
-    # тайм-аут: часы уходят вперёд на 6 с на каждый сегмент — второй сегмент уже за пределом
+    # тайм-аут: часы уходят вперёд на 6 с на каждый сегмент - второй сегмент уже за пределом
     asr(seconds=20.0, model=FakeModel(texts=["первая фраза", "вторая фраза", "третья"]))
     tick = iter(range(0, 1000, 6))
     monkeypatch.setattr(speech, "MONOTONIC", lambda: float(next(tick)))
@@ -169,7 +169,7 @@ def test_too_long_and_timeout_skipped(client, run_worker, ocr_stub, asr, env, mo
         "skipped", "Распознавание речи не уложилось в 10 с (SAQ_ASR_TIMEOUT_S) — текст не сохранён")
     with SessionLocal() as db:
         assert db.get(models.Ad, slow.ad_id).ocr is None
-    # «Проанализировать ещё раз» распознаёт пропущенный ролик заново
+    # "Проанализировать ещё раз" распознаёт пропущенный ролик заново
     monkeypatch.setattr(speech, "MONOTONIC", lambda: 0.0)
     analysis.run_analysis(None, slow.ad_id, now=models.utcnow(), force=True)
     assert the_video(slow.ad_id).meta["speech"]["text"] == "первая фраза вторая фраза третья"

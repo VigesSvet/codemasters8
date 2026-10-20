@@ -1,12 +1,12 @@
-"""Создание публикации — общее для ручного ввода (POST /api/ads), сборщиков, приёма через API и бота заявок.
+"""Создание публикации - общее для ручного ввода(POST /api/ads), сборщиков, приёма через API и бота заявок.
 
-Ручной ввод аналитика (Actor trusted): прежнее поведение POST /api/ads без изменений — гипотеза ИИ о ЖК при создании,
-подтверждённая аналитиком привязка, события журнала от имени автора. Собранная публикация (COLLECTOR, BOT): поля
-очищаются, решения аналитика из внешнего ввода отбрасываются, статус «new», ЖК не привязан, гипотезы считает задание
-анализа; в журнале — «Система» и откуда пришла публикация, а не «добавлена вручную».
+Ручной ввод аналитика(Actor trusted): прежнее поведение POST /api/ads без изменений - гипотеза ИИ о ЖК при создании,
+подтверждённая аналитиком привязка, события журнала от имени автора. Собранная публикация(COLLECTOR, BOT): поля
+очищаются, решения аналитика из внешнего ввода отбрасываются, статус "new", ЖК не привязан, гипотезы считает задание
+анализа; в журнале - "Система" и откуда пришла публикация, а не "добавлена вручную".
 
-Заявленные жителем аккаунт и ссылка (source = bot) — не доказательство: сопоставление с ЖК их не учитывает (match_obj)
-и в историю аккаунтов они не попадают (ai.matching.build_catalog).
+Заявленные жителем аккаунт и ссылка(source = bot) - не доказательство: сопоставление с ЖК их не учитывает(match_obj)
+и в историю аккаунтов они не попадают(ai.matching.build_catalog).
 """
 import re
 import uuid
@@ -23,7 +23,7 @@ from .pdf import PLATFORMS
 from .risk_model import ALMATY, T
 
 SYSTEM = "Система"
-# Первое событие журнала публикации — откуда она взялась (seed.journal для демо-набора — те же тексты)
+# Первое событие журнала публикации - откуда она взялась(seed.journal для демо-набора - те же тексты)
 AD_SOURCES = {"parser": "Публикация собрана автоматически ({platform})", "manual": "Публикация добавлена вручную",
               "demo": "Демо-запись ({platform})", "bot": "Публикация прислана жителем через Telegram-бота ({platform})"}
 # Поля решений аналитика и происхождения: из внешнего ввода не принимаются
@@ -48,7 +48,7 @@ def _why(h: dict) -> str:
 
 @dataclass(frozen=True)
 class Actor:
-    """Кто создаёт публикацию: who — автор в журнале; origin/source — происхождение; trusted — ручной ввод аналитика."""
+    """Кто создаёт публикацию: who - автор в журнале; origin/source - происхождение; trusted - ручной ввод аналитика."""
     who: str
     origin: str = "analyst"
     source: str = "manual"
@@ -56,7 +56,7 @@ class Actor:
 
 
 def analyst(author: Optional[str]) -> Actor:
-    """Аналитик из формы ручного ввода; без имени — «Система» (как раньше в POST /api/ads)."""
+    """Аналитик из формы ручного ввода; без имени - "Система"(как раньше в POST /api/ads)."""
     return Actor(author or SYSTEM)
 
 
@@ -65,7 +65,7 @@ BOT = Actor(SYSTEM, "collected", "bot", trusted=False)
 
 
 class AdExists(Exception):
-    """Публикация с таким id уже есть (409)."""
+    """Публикация с таким id уже есть(409)."""
 
     def __init__(self, ad_id: str):
         super().__init__(ad_id)
@@ -73,7 +73,7 @@ class AdExists(Exception):
 
 
 class ComplexNotFound(Exception):
-    """Указанного ЖК нет (404, в main — registry.not_found)."""
+    """Указанного ЖК нет(404, в main - registry.not_found)."""
 
     def __init__(self, complex_id: str):
         super().__init__(complex_id)
@@ -85,13 +85,13 @@ def created_text(source: str, platform: str) -> str:
 
 
 def local_minutes(dt: datetime) -> str:
-    """Время → местное время Усть-Каменогорска без смещения «YYYY-MM-DDTHH:MM» (как Ad.date в источниках)."""
+    """Время → местное время Усть-Каменогорска без смещения "YYYY-MM-DDTHH:MM"(как Ad.date в источниках)."""
     return models.as_utc(dt).astimezone(ALMATY).replace(tzinfo=None).isoformat(timespec="minutes")
 
 
 def safe_url(u: Optional[str]) -> str:
-    """Ссылка на публикацию: только http(s)://, без пробелов и управляющих символов, до 512 символов; иначе «»
-    (javascript:, data:, обрезанная ссылка — хуже, чем никакой)."""
+    """Ссылка на публикацию: только http(s)://, без пробелов и управляющих символов, до 512 символов; иначе ""
+    (javascript:, data:, обрезанная ссылка - хуже, чем никакой)."""
     v = (u or "").strip() if isinstance(u, str) else ""
     if not v or not _URL.match(v) or len(v) > URL_MAX or re.search(r"[\s\x00-\x1f\x7f]", v):
         return ""
@@ -103,8 +103,8 @@ def _clean(v: Any) -> Any:
 
 
 def sanitize_collected(fields: dict) -> dict:
-    """Поля собранной публикации: без NUL и управляющих символов, текст и OCR — до предела публикации, длины — как у
-    столбцов БД, ссылка — только http(s); решения аналитика и происхождение (DECISION_FIELDS) отбрасываются."""
+    """Поля собранной публикации: без NUL и управляющих символов, текст и OCR - до предела публикации, длины - как у
+    столбцов БД, ссылка - только http(s); решения аналитика и происхождение(DECISION_FIELDS) отбрасываются."""
     out = {k: _clean(v) for k, v in fields.items() if k not in DECISION_FIELDS}
     for k in ("text", "ocr"):
         if isinstance(out.get(k), str):
@@ -122,8 +122,8 @@ def sanitize_collected(fields: dict) -> dict:
 
 
 def match_obj(ad) -> dict:
-    """Данные публикации для сопоставления с ЖК. У заявки жителя (source = bot) аккаунт и ссылка — его слова, а не
-    признак: не учитываются (D20)."""
+    """Данные публикации для сопоставления с ЖК. У заявки жителя(source = bot) аккаунт и ссылка - его слова, а не
+    признак: не учитываются(D20)."""
     bot = getattr(ad, "source", None) == "bot"
     return {"text": ad.text, "ocr": ad.ocr, "account": None if bot else ad.account, "url": None if bot else ad.url}
 
@@ -135,7 +135,7 @@ def _event(db: Session, kind: str, who: str, what: str, at: Optional[datetime] =
 
 
 def _attach_upload(db: Session, ad: models.Ad) -> None:
-    """Скриншот, загруженный формой (POST /api/media) и указанный в image, привязывается к публикации — условным UPDATE:
+    """Скриншот, загруженный формой(POST /api/media) и указанный в image, привязывается к публикации - условным UPDATE:
     чужую или уже привязанную загрузку так не забрать."""
     m = MEDIA_REF.match(ad.image or "")
     if not m:
@@ -147,8 +147,8 @@ def _attach_upload(db: Session, ad: models.Ad) -> None:
 
 def create_ad(db: Session, fields: dict, *, actor: Actor, at: Optional[datetime] = None, note: Optional[str] = None,
               catalog=None, ad_id: Optional[str] = None) -> models.Ad:
-    """Новая публикация в сессии db (flush, без commit). Ручной ввод: AdExists (такой id есть), ComplexNotFound (нет
-    ЖК); собранная: id — ad_id или UUID hex (32 символа), статус «new», без привязки и гипотез."""
+    """Новая публикация в сессии db(flush, без commit). Ручной ввод: AdExists(такой id есть), ComplexNotFound(нет
+    ЖК); собранная: id - ad_id или UUID hex(32 символа), статус "new", без привязки и гипотез."""
     if actor.trusted:
         return _create_manual(db, dict(fields), actor, catalog, ad_id)
     return _create_collected(db, dict(fields), actor, at, note, ad_id)
@@ -156,7 +156,7 @@ def create_ad(db: Session, fields: dict, *, actor: Actor, at: Optional[datetime]
 
 def _create_manual(db: Session, data: dict, actor: Actor, catalog, ad_id: Optional[str]) -> models.Ad:
     """Ручное добавление публикации. Без complexId ЖК подбирает ИИ: лучшая гипотеза с уверенностью от lowConfidence
-    становится привязкой-гипотезой (в балл ЖК не входит до подтверждения аналитиком). С complexId и linkConfirmed —
+    становится привязкой-гипотезой(в балл ЖК не входит до подтверждения аналитиком). С complexId и linkConfirmed -
     аналитик выбрал ЖК сам: привязка сразу факт."""
     author = data.pop("author", None) or actor.who
     data["origin"] = actor.origin  # добавлена аналитиком, не из демо-набора
@@ -164,7 +164,7 @@ def _create_manual(db: Session, data: dict, actor: Actor, catalog, ad_id: Option
     data["id"] = ad_id or data.get("id") or f"m{uuid.uuid4().hex[:8]}"
     if db.get(models.Ad, data["id"]):
         raise AdExists(data["id"])
-    # дата публикации — местное время без смещения, как в источниках (Усть-Каменогорск, UTC+5)
+    # дата публикации - местное время без смещения, как в источниках(Усть-Каменогорск, UTC+5)
     data["date"] = data.get("date") or datetime.now(ALMATY).replace(tzinfo=None).isoformat(timespec="minutes")
     linked = None
     if data.get("complex_id"):
@@ -177,7 +177,7 @@ def _create_manual(db: Session, data: dict, actor: Actor, catalog, ad_id: Option
     hyp = None
     if confirmed:
         data.update(match_confidence=1.0, link_confirmed_by=author, link_confirmed_at=models.utcnow())
-    elif linked:  # подсказка формы (выбранная гипотеза) — тоже гипотеза; уверенность — из анализа, если её нет в форме
+    elif linked:  # подсказка формы(выбранная гипотеза) - тоже гипотеза; уверенность - из анализа, если её нет в форме
         hyp = next((h for h in hyps if h["complexId"] == linked.id), None)
         if not data.get("match_confidence") and hyp:
             data["match_confidence"] = hyp["confidence"]
@@ -221,7 +221,7 @@ def _create_collected(db: Session, fields: dict, actor: Actor, at: Optional[date
     data["text"] = data.get("text") or ""
     data["url"] = data.get("url") or ""
     data["date"] = data.get("date") or local_minutes(when)
-    # решения — только у аналитика: статус «new», без привязки и уверенности; гипотезы посчитает задание анализа
+    # решения - только у аналитика: статус "new", без привязки и уверенности; гипотезы посчитает задание анализа
     data.update(origin=actor.origin, source=actor.source, status="new", match_confidence=0, complex_id=None,
                 collected_at=when)
     ad = models.Ad(**data)

@@ -1,12 +1,12 @@
-"""Кадры видео для OCR (ffmpeg): недоверенный файл разбирается с ограничениями.
+"""Кадры видео для OCR(ffmpeg): недоверенный файл разбирается с ограничениями.
 
-ffmpeg запускается списком аргументов (без оболочки), читает только локальный файл (-protocol_whitelist file, без
-сетевых протоколов и вложенных плейлистов), формат контейнера задан явно по MIME из сигнатуры, один поток (-threads 1
-до -i — для декодера: иначе декодер H.264 заводит поток на каждое ядро и на 1080p упирается в ограничение адресного
-пространства; -filter_threads 1 и -threads 1 вывода — для фильтра и кодера PNG), кадр не шире 1280 px, не больше
-max_frames кадров, общий тайм-аут. Ресурсы процесса ограничивает prlimit (util-linux: память, CPU,
-размер файла); preexec_fn не используется — у воркера есть поток-пульс, а fork с preexec_fn в многопоточном процессе
-небезопасен. Сбой или тайм-аут — пустой список (причина — в журнал воркера), не исключение.
+ffmpeg запускается списком аргументов(без оболочки), читает только локальный файл(-protocol_whitelist file, без
+сетевых протоколов и вложенных плейлистов), формат контейнера задан явно по MIME из сигнатуры, один поток(-threads 1
+до -i - для декодера: иначе декодер H.264 заводит поток на каждое ядро и на 1080p упирается в ограничение адресного
+пространства; -filter_threads 1 и -threads 1 вывода - для фильтра и кодера PNG), кадр не шире 1280 px, не больше
+max_frames кадров, общий тайм-аут. Ресурсы процесса ограничивает prlimit(util-linux: память, CPU,
+размер файла); preexec_fn не используется - у воркера есть поток-пульс, а fork с preexec_fn в многопоточном процессе
+небезопасен. Сбой или тайм-аут - пустой список(причина - в журнал воркера), не исключение.
 """
 import logging
 import shutil
@@ -38,13 +38,13 @@ def _limits(timeout: int) -> list[str]:
 
 
 def container(mime: str) -> str:
-    """Формат контейнера для -f по MIME из сигнатуры (ffmpeg не угадывает формат недоверенного файла)."""
+    """Формат контейнера для -f по MIME из сигнатуры(ffmpeg не угадывает формат недоверенного файла)."""
     return "mov" if mime in ("video/mp4", "video/quicktime") else "matroska"
 
 
 def command(path: Path, mime: str, out_dir: Path, *, every_s: float = 2.0, max_frames: int = 8,
             timeout: int = 90) -> list[str]:
-    """Команда извлечения кадров (список аргументов)."""
+    """Команда извлечения кадров(список аргументов)."""
     fmt = container(mime)
     return [*_limits(timeout), "ffmpeg", "-nostdin", "-v", "error", "-protocol_whitelist", "file", "-f", fmt,
             "-threads", "1", "-i", f"file:{path}", "-filter_threads", "1", "-threads", "1",
@@ -52,7 +52,7 @@ def command(path: Path, mime: str, out_dir: Path, *, every_s: float = 2.0, max_f
 
 
 def _reason(stderr: bytes) -> str:
-    """Последняя содержательная строка stderr ffmpeg (без «Last message repeated N times»)."""
+    """Последняя содержательная строка stderr ffmpeg(без "Last message repeated N times")."""
     lines = [ln.strip() for ln in (stderr or b"").decode("utf-8", "replace").splitlines()]
     lines = [ln for ln in lines if ln and "Last message repeated" not in ln]
     return lines[-1][:300] if lines else ""
@@ -60,7 +60,7 @@ def _reason(stderr: bytes) -> str:
 
 def extract_frames(path: Path, mime: str, *, every_s: float = 2.0, max_frames: int = 8,
                    timeout: int = 90) -> list[tuple[int, bytes]]:
-    """[(время кадра в мс, PNG)] — кадр раз в every_s секунд, не больше max_frames; сбой/тайм-аут — []."""
+    """[(время кадра в мс, PNG)] - кадр раз в every_s секунд, не больше max_frames; сбой/тайм-аут - []."""
     tmp = Path(tempfile.mkdtemp(dir=media.tmp_dir(), prefix="frames-"))
     try:
         cmd = command(Path(path), mime, tmp, every_s=every_s, max_frames=max_frames, timeout=timeout)

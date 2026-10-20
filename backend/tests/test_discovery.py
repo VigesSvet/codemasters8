@@ -1,9 +1,9 @@
-"""Объекты из рекламы и «Проверка по рекламе»: извлечение Claude v2 (упомянутые ЖК, стадия объекта) и сверка с
+"""Объекты из рекламы и "Проверка по рекламе": извлечение Claude v2(упомянутые ЖК, стадия объекта) и сверка с
 материалом, дозапрос по новой версии промпта с сохранением истории, нормализация названий и сопоставление с ЖК и
-открытым реестром, упоминания и счётчики, сверка 2ГИС, решения аналитика (создать карточку, привязать, отклонить),
+открытым реестром, упоминания и счётчики, сверка 2ГИС, решения аналитика(создать карточку, привязать, отклонить),
 импорт ЖК по рекламе, правила оценки ЖК и застройщиков, сводка /api/stats.
 
-Сети нет: Claude — поддельный Anthropic API (как в test_llm), 2ГИС — http_mock (как в test_integration_dgis)."""
+Сети нет: Claude - поддельный Anthropic API(как в test_llm), 2ГИС - http_mock(как в test_integration_dgis)."""
 import json
 import uuid
 from datetime import date, timedelta
@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 import demo_seed
 from conftest import FAKE_ADMIN_TOKEN
 from test_integration_dgis import EXACT, EXACT_ID, EXACT_LAT, EXACT_LON, NUMBER, body as dgis_body
-from test_llm import KEY, OK, api, key, message, pub, rows, take  # noqa: F401 — фикстуры api, key
+from test_llm import KEY, OK, api, key, message, pub, rows, take  # noqa: F401 - фикстуры api, key
 
 from app import ads_service, demo, discovery, ingest, llm, models, screening
 from app.db import SessionLocal
@@ -29,13 +29,13 @@ NOVA_TEXT = ("Старт продаж в ЖК «Nova Park» на ул. Абая,
 # ---------- помощники ----------
 
 def live(env) -> None:
-    """Боевой режим: аналитики, открытый реестр и 15 карточек ЖК из него, без демо-набора (demo_seed.live_start)."""
+    """Боевой режим: аналитики, открытый реестр и 15 карточек ЖК из него, без демо-набора(demo_seed.live_start)."""
     env()
     demo_seed.live()
 
 
 def result(*, signals=(), candidates=(), mentions=(), stage=None) -> dict:
-    """Проверенный результат Claude (как после llm.verify)."""
+    """Проверенный результат Claude(как после llm.verify)."""
     return {"saleSignals": [{"type": t, "quote": q, "source": "text"} for t, q in signals], "amounts": [],
             "complexCandidates": [{"complexId": c, "complexName": c, "confidence": conf, "quote": c, "source": "text"}
                                   for c, conf in candidates],
@@ -46,7 +46,7 @@ def result(*, signals=(), candidates=(), mentions=(), stage=None) -> dict:
 
 
 def claude_ad(text: str, res: dict, *, account: str = "@seller.uka", days_ago: int = 1, bot: bool = False) -> str:
-    """Собранная публикация с готовым ответом Claude (без воркера) и учётом упоминаний, как после этапа llm."""
+    """Собранная публикация с готовым ответом Claude(без воркера) и учётом упоминаний, как после этапа llm."""
     when = models.utcnow() - timedelta(days=days_ago)
     with SessionLocal() as db:
         ad = ads_service.create_ad(db, {"platform": "instagram", "account": account, "text": text,
@@ -100,7 +100,7 @@ def nova_object() -> models.DiscoveredObject:
 # ---------- извлечение Claude v2 ----------
 
 def test_v2_schema_and_prompt():
-    assert llm.PROMPT_VERSION == "saq-llm-3"  # saq-llm-3: + legalRefs и правовой контекст (test_llm)
+    assert llm.PROMPT_VERSION == "saq-llm-3"  # saq-llm-3: + legalRefs и правовой контекст(test_llm)
     props = llm.SCHEMA["properties"]
     assert list(props) == ["saleSignals", "amounts", "complexCandidates", "mentionedComplexes", "objectStage",
                            "legalRefs", "uncertainties", "summary"] == llm.SCHEMA["required"]
@@ -108,10 +108,10 @@ def test_v2_schema_and_prompt():
     assert props["objectStage"]["properties"]["value"]["enum"] == ["under_construction", "completed", "unknown"]
     assert "mentionedComplexes" in llm.SYSTEM_PROMPT and "objectStage" in llm.SYSTEM_PROMPT
     assert "данные для анализа" in llm.SYSTEM_PROMPT and "игнорируй их" in llm.SYSTEM_PROMPT
-    assert "не придумывай и не" in llm.SYSTEM_PROMPT  # адрес — только из материала
+    assert "не придумывай и не" in llm.SYSTEM_PROMPT  # адрес - только из материала
     _, user = llm.prompt(llm.Material(platform="instagram", account="@x", bot=False, text="т", ocr=""))
     assert "objectStage.value" in user
-    # ответ без полей версии 2 разбирается: «упоминаний нет», «стадия не указана»
+    # ответ без полей версии 2 разбирается: "упоминаний нет", "стадия не указана"
     out = llm.Output.model_validate(OK)
     assert out.mentionedComplexes == [] and out.objectStage is None
 
@@ -142,7 +142,7 @@ def test_v2_verification_and_discovered_object(client, run_worker, ocr_stub, key
     ev = next(e for e in client.get(f"/api/ads/{res.ad_id}/audit").json() if e["what"].startswith("Анализ ИИ:"))
     assert "упомянуты ЖК — «Nova Park», «Ульба Ривер»" in ev["what"]
     assert "стадия объекта — строится «сдача в 2027 году»" in ev["what"]
-    # «Ульба Ривер» — ЖК справочника: объекта из рекламы нет; «Nova Park» — новый объект
+    # "Ульба Ривер" - ЖК справочника: объекта из рекламы нет; "Nova Park" - новый объект
     (o,) = objects()
     assert (o.name, o.norm_key, o.status, o.ads_count, o.accounts, o.address_hint) == (
         "Nova Park", "nova park", "new", 1, ["@someone.kz"], "ул. Абая, 10")
@@ -176,7 +176,7 @@ def test_prompt_v2_backfill_resends_and_keeps_history(client, run_worker, ocr_st
     monkeypatch.setattr(llm, "PROMPT_VERSION", "saq-llm-2")
     now = models.utcnow() + timedelta(minutes=30)
     with SessionLocal() as db:
-        assert llm.due(db, aid, now)  # ответа по новой версии нет — публикация ждёт дозапроса
+        assert llm.due(db, aid, now)  # ответа по новой версии нет - публикация ждёт дозапроса
         picked = llm.backfill(db, now)
         db.commit()
     assert picked == [aid]
@@ -190,7 +190,7 @@ def test_prompt_v2_backfill_resends_and_keeps_history(client, run_worker, ocr_st
     got = client.get(f"/api/ads/{aid}").json()["llm"]
     assert got["promptVersion"] == "saq-llm-2" and got["mentionedComplexes"][0]["name"] == "Ульба Ривер"
     with SessionLocal() as db:
-        assert llm.backfill(db, now + timedelta(days=1)) == []  # по новой версии ответ есть — больше не отправляется
+        assert llm.backfill(db, now + timedelta(days=1)) == []  # по новой версии ответ есть - больше не отправляется
 
 
 # ---------- названия и сопоставление ----------
@@ -223,7 +223,7 @@ def test_mentions_match_registry_and_complexes(client, env):
     names = ["PARK LINE", "Сатти Сити", "Престиж", "AB Residence", "AB-Residence 2", "Diamond", "Sparkle Diamond",
              "Жаным, блок Б", "Nova Park"]
     claude_ad("Подборка новостроек", result(mentions=[(n, "", "Подборка") for n in names]))
-    (o,) = objects()  # всё, кроме Nova Park, есть в открытом реестре (в том числе объекты без координат)
+    (o,) = objects()  # всё, кроме Nova Park, есть в открытом реестре(в том числе объекты без координат)
     assert o.name == "Nova Park"
 
 
@@ -237,12 +237,12 @@ def test_mentions_idempotent_counts_and_bot(client, env):
     a2 = claude_ad("Нова Парк — бронь", result(mentions=[("Нова Парк", "", "Нова Парк")]), account="@resident",
                    bot=True)
     (o,) = objects()
-    assert o.ads_count == 2 and o.accounts == ["@nova.sale"]  # аккаунт из заявки жителя — не аккаунт рекламы
+    assert o.ads_count == 2 and o.accounts == ["@nova.sale"]  # аккаунт из заявки жителя - не аккаунт рекламы
     assert "Нова Парк" in o.aliases
     assert {m.ad_id: m.source for m in mentions(o.id)} == {a1: "parser", a2: "bot"}
     item = client.get("/api/discovered", params={"status": "new"}).json()[0]
     assert item["sources"] == {"parser": 1, "bot": 1} and item["adsCount"] == 2
-    # новый ответ без упоминания — упоминание публикации снимается, счётчик пересчитан
+    # новый ответ без упоминания - упоминание публикации снимается, счётчик пересчитан
     discovery.record_result(a1, result(), models.utcnow())
     (o,) = objects()
     assert o.ads_count == 1 and [m.ad_id for m in mentions(o.id)] == [a2]
@@ -283,13 +283,13 @@ def test_geo_lookup_cache_quota_and_admin(client, env, http_mock):
     assert next(c for c in checks[0]["candidates"] if c["id"] == EXACT_ID)["recommended"] is True  # подсказка
     again = client.post(f"/api/discovered/{o.id}/geo", json={"author": AUTHOR})
     assert again.status_code == 200 and all(c["cached"] for c in again.json()["checks"])
-    assert len(geo_calls(http_mock)) == 2  # кэш — без запроса и без квоты
+    assert len(geo_calls(http_mock)) == 2  # кэш - без запроса и без квоты
     assert client.post(f"/api/discovered/{o.id}/geo", json={"author": AUTHOR, "force": True}).status_code == 401
     forced = client.post(f"/api/discovered/{o.id}/geo", json={"author": AUTHOR, "force": True}, headers=ADMIN)
     assert forced.status_code == 201 and len(geo_calls(http_mock)) == 4
     got = client.get(f"/api/discovered/{o.id}").json()
     assert len(got["geo"]) == 2 and {g["status"] for g in got["geo"]} == {"candidates"}
-    # координаты кандидата в «объект из рекламы» не переносятся — только при создании карточки
+    # координаты кандидата в "объект из рекламы" не переносятся - только при создании карточки
     gid = checks[0]["id"]
     r = client.post(f"/api/geo/checks/{gid}/accept", json={"candidateId": EXACT_ID, "author": AUTHOR, "apply": True})
     assert r.status_code == 422 and "create-complex" in r.json()["detail"]
@@ -356,14 +356,14 @@ def test_create_complex_from_candidate_reruns_rules_without_claude(client, run_w
         G = models.GeoCheck
         checks = list(db.scalars(select(G).where(G.target_kind == "discovered", G.target_id == str(o.id))))
         assert sorted((g.status, g.chosen_id, g.applied, g.decided_by) for g in checks) == [
-            ("accepted", EXACT_ID, True, AUTHOR), ("candidates", None, False, None)]  # выбранная сверка — принята
+            ("accepted", EXACT_ID, True, AUTHOR), ("candidates", None, False, None)]  # выбранная сверка - принята
         job = db.scalars(select(models.Job).where(models.Job.ad_id == aid, models.Job.status == "queued")).one()
         assert job.payload["rulesOnly"] is True
     (ev,) = events("Карточка ЖК создана по рекламе")
     assert ev[0] == "data" and ev[1] == AUTHOR and ev[3] == cid and "нет в открытом реестре" in ev[2]
     assert f"кандидат 2ГИС {EXACT_ID}" in ev[2]
-    assert client.get(f"/api/complexes/{cid}/risk").json()["assessed"] is False  # формальный риск — не оценивается
-    # пересчёт правил: без запроса к Claude, гипотеза — новый ЖК
+    assert client.get(f"/api/complexes/{cid}/risk").json()["assessed"] is False  # формальный риск - не оценивается
+    # пересчёт правил: без запроса к Claude, гипотеза - новый ЖК
     assert run_worker() == 1
     assert len(api.messages) == 1
     with SessionLocal() as db:
@@ -377,7 +377,7 @@ def test_create_complex_from_candidate_reruns_rules_without_claude(client, run_w
                for x in s["reasons"])
     assert any("строится — «сдача в 2027 году»" in x["text"] for x in s["reasons"])
     assert dev(client, c["developerId"])["screening"]["status"] == "suspect"
-    # повтор — объект уже привязан
+    # повтор - объект уже привязан
     r = client.post(f"/api/discovered/{o.id}/create-complex", json={"author": AUTHOR, "name": "Nova Park 2"})
     assert r.status_code == 409
 
@@ -397,7 +397,7 @@ def test_link_and_dismiss(client, env):
         "status"] == "linked"  # повтор
     (ev,) = events("привязан к ЖК «Orda»")
     assert ev[:2] == ("data", AUTHOR) and ev[3] == "r-orda"
-    s = scr(client, "r-orda")  # реклама объекта — реклама этого ЖК (основание отнесения видно)
+    s = scr(client, "r-orda")  # реклама объекта - реклама этого ЖК(основание отнесения видно)
     assert s["status"] == "ok" and s["counts"]["ads"] == 1 and s["counts"]["concerning"] == 1
     assert client.get("/api/complexes/r-orda").json()["advert"]["aliases"] == ["Гранд Орда"]
     assert client.post(f"/api/discovered/{sky.id}/dismiss", json={"author": AUTHOR}).status_code == 422
@@ -444,12 +444,12 @@ def test_import_admin_idempotent_and_screening(client, env, admin_headers, tmp_p
     created = [e for e in events("Карточка ЖК создана по рекламе (импорт: разбор рекламы 18.10)")]
     assert len(created) == 2 and all(e[0] == "data" and e[1] == AUTHOR for e in created)
     assert any("координат нет — сверьте адрес в 2ГИС" in e[2] for e in created)
-    # без рекламы карточка по рекламе — «Требует проверки», застройщик «не установлен» — с пояснением
+    # без рекламы карточка по рекламе - "Требует проверки", застройщик "не установлен" - с пояснением
     s = scr(client, nova)
     assert s["status"] == "check" and any("публикации к ЖК пока не отнесены" in x["text"] for x in s["reasons"])
     placeholder = dev(client, discovery.UNKNOWN_DEV)["screening"]
     assert placeholder["status"] == "check" and "не установлен" in placeholder["reasons"][0]["text"]
-    # повтор — без изменений; новый псевдоним — дополнение
+    # повтор - без изменений; новый псевдоним - дополнение
     again = client.post("/api/discovered/import", json=body, headers=admin_headers).json()
     assert again["created"] == [] and set(again["unchanged"]) == {nova, sky} and len(again["skipped"]) == 1
     more = {**body, "items": [{"name": "Нова Парк", "aliases": ["Nova Park Oskemen"]}]}
@@ -461,7 +461,7 @@ def test_import_admin_idempotent_and_screening(client, env, admin_headers, tmp_p
     s = scr(client, nova)
     assert s["status"] == "suspect" and s["counts"]["ads"] == 1
     assert any(x.get("adId") == aid and "привязано к ЖК аналитиком" in x["text"] for x in s["reasons"])
-    # CLI — тот же импорт из файла
+    # CLI - тот же импорт из файла
     f = tmp_path / "advertised.json"
     f.write_text(json.dumps({"note": "файл", "items": ITEMS + [{"name": "Grand Tower"}]}, ensure_ascii=False),
                  encoding="utf-8")
@@ -521,10 +521,10 @@ def test_screening_suspect_recency_stage_confirmed_and_veto(client, env):
     s = scr(client, ab, asOf=later)
     assert s["status"] == "check" and s["counts"]["concerning"] == 0 and s["counts"]["windowDays"] == 30
     env(SAQ_SCREENING_DAYS=None)
-    # подтверждённая аналитиком привязка — основание «confirmed»
+    # подтверждённая аналитиком привязка - основание "confirmed"
     assert client.patch(f"/api/ads/{aid}/complex", json={"complexId": ab, "author": AUTHOR}).status_code == 200
     assert scr(client, ab)["basis"] == "confirmed"
-    # «это не предложение внести деньги» — признаки публикации не учитываются
+    # "это не предложение внести деньги" - признаки публикации не учитываются
     r = client.post(f"/api/ads/{aid}/terms-review", json={"decision": "rejected", "author": AUTHOR})
     assert r.status_code == 200, r.text
     assert scr(client, ab)["status"] == "check"
@@ -561,12 +561,12 @@ def test_screening_registry_completed_conflict(client, env):
     claude_ad("Жаным — старт продаж новой очереди! Бронь 100 000 ₸",
               result(signals=[("presale", "старт продаж новой очереди"), ("booking", "Бронь 100 000 ₸")],
                      candidates=[("r-zhanym", "high")], stage=("under_construction", "старт продаж новой очереди")))
-    s = scr(client, "r-zhanym")  # источник: «Завершён», реклама — строящаяся очередь
+    s = scr(client, "r-zhanym")  # источник: "Завершён", реклама - строящаяся очередь
     assert s["status"] == "check" and s["inRegistry"] is True
     assert any("основание может не распространяться на новую очередь" in x["text"] for x in s["reasons"])
     claude_ad("Orda — старт продаж! Бронь 100 000 ₸",
               result(signals=[("presale", "старт продаж")], candidates=[("r-orda", "high")]))
-    s = scr(client, "r-orda")  # строится по источнику и есть основание — замечаний нет
+    s = scr(client, "r-orda")  # строится по источнику и есть основание - замечаний нет
     assert s["status"] == "ok" and s["counts"]["concerning"] == 1
 
 
@@ -589,7 +589,7 @@ def test_screening_unknown_and_empty_developer(client, env):
 
 
 def test_screening_demo_rules_fallback(client):
-    """Демо-набор: основание — сверка (basis «есть/нет»), признаки — словарь модели риска (ответов Claude нет)."""
+    """Демо-набор: основание - сверка(basis "есть/нет"), признаки - словарь модели риска(ответов Claude нет)."""
     cxs = {c["id"]: c for c in client.get("/api/complexes").json()}
     assert cxs["c1"]["permit"]["verified"] is True and cxs["c1"]["screening"]["status"] == "ok"
     c2 = cxs["c2"]["screening"]  # основания нет по сверке, реклама с бронью

@@ -1,4 +1,4 @@
-"""Настройки (.env и окружение, секреты, правила токенов) и маскирование секретов в логах."""
+"""Настройки(.env и окружение, секреты, правила токенов) и маскирование секретов в логах."""
 import io
 import logging
 import os
@@ -48,7 +48,7 @@ def test_env_file_disabled_and_custom_path(tmp_path, monkeypatch):
     assert load_settings({"SAQ_ENV_FILE": ""}).anthropic_model == "claude-sonnet-5-5"  # по умолчанию
     assert load_settings({"SAQ_ENV_FILE": ""}).env_file is None
     assert load_settings({"SAQ_ENV_FILE": str(tmp_path / "нет.env")}).env_file is None
-    # без SAQ_ENV_FILE — .env в корне репозитория (его содержимое тест не читает: подменён путь по умолчанию)
+    # без SAQ_ENV_FILE - .env в корне репозитория(его содержимое тест не читает: подменён путь по умолчанию)
     monkeypatch.setattr(settings, "DEFAULT_ENV_FILE", p)
     assert settings.env_file_path({}) == p and load_settings({}).anthropic_model == "custom"
 
@@ -89,7 +89,7 @@ def test_defaults_and_paths():
 
 
 def test_conftest_isolation():
-    """conftest: файл .env репозитория не читается, ключи разработчика убраны, файлы — во временном каталоге."""
+    """conftest: файл .env репозитория не читается, ключи разработчика убраны, файлы - во временном каталоге."""
     s = settings.get_settings()
     assert os.environ["SAQ_ENV_FILE"] == "" and s.env_file is None
     assert s.secrets() == []
@@ -127,7 +127,7 @@ def test_settings_dataclass_and_user_agent(caplog):
         Settings(Path("/x"))  # kw_only
     with pytest.raises(FrozenInstanceError):
         s.user_agent = "x"  # type: ignore[misc]
-    httpx.Request("GET", "https://x", headers={"User-Agent": s.user_agent})  # ASCII — заголовок собирается
+    httpx.Request("GET", "https://x", headers={"User-Agent": s.user_agent})  # ASCII - заголовок собирается
     caplog.set_level(logging.WARNING, logger="saq.settings")
     s = load_settings({"SAQ_ENV_FILE": "", "SAQ_USER_AGENT": "Мониторинг SAQ"})
     assert s.user_agent == DEFAULT_UA
@@ -203,8 +203,8 @@ def test_env_example_lists_every_name_empty():
 
 
 def test_env_labels_cover_every_name():
-    """Интерфейс показывает вместо имён переменных их названия (shared/env_labels.json, frontend/src/lib/plain.ts):
-    у каждой переменной, которую читает приложение, есть понятное название — без имени переменной и не пустое."""
+    """Интерфейс показывает вместо имён переменных их названия(shared/env_labels.json, frontend/src/lib/plain.ts):
+    у каждой переменной, которую читает приложение, есть понятное название - без имени переменной и не пустое."""
     import json
 
     labels = json.loads((REPO / "shared" / "env_labels.json").read_text(encoding="utf-8"))["labels"]
@@ -216,7 +216,7 @@ def test_env_labels_cover_every_name():
 
 @contextmanager
 def bare_root():
-    """Корневой логгер без обработчиков (pytest добавляет свои на время теста); потом всё как было: обработчики, уровни,
+    """Корневой логгер без обработчиков(pytest добавляет свои на время теста); потом всё как было: обработчики, уровни,
     фабрика записей."""
     root = logging.getLogger()
     saved = (root.handlers[:], root.level, logging.getLogRecordFactory(), logs._installed,
@@ -297,11 +297,11 @@ def _fastest(fn, runs: int = 3) -> float:
 
 
 def test_redact_is_linear_on_long_tokens():
-    """Регрессия: «x-x-x-…» и «a.a.a.…» (путь запроса в журнале доступа uvicorn) маскировались за квадратичное время —
+    """Регрессия: "x-x-x-…" и "a.a.a.…"(путь запроса в журнале доступа uvicorn) маскировались за квадратичное время -
     один запрос с длинным путём останавливал цикл событий API на десятки секунд."""
     for text in ("x-" * 50000, "a." * 50000, "x-a-token-" * 10000, "x-a-" * 25000 + "token"):
         assert _fastest(lambda: logs.redact(text, limit=None)) < 0.1, text[:12]
-    r = logs.redact  # маскирование после переписывания шаблонов — прежнее
+    r = logs.redact  # маскирование после переписывания шаблонов - прежнее
     assert r("X-Goog-Api-Token: abc123 x") == "X-Goog-Api-Token: *** x"
     assert r("x-telegram-bot-api-secret-token=abc123") == "x-telegram-bot-api-secret-token=***"
     assert r("x-admin-token: abc123") == "x-admin-token: ***" and r("x-token-count: 5") == "x-token-count: 5"
@@ -328,7 +328,7 @@ def test_redact_settings_and_registered_secrets(env):
     env(APIFY_TOKEN="apify_api_FakeToken0123456789")
     assert logs.redact("token apify_api_FakeToken0123456789 used") == "token *** used"
     logs.register_secret("s3cr3t-value/+=")
-    logs.register_secret("short")  # короче 8 — не регистрируется
+    logs.register_secret("short")  # короче 8 - не регистрируется
     text = "a s3cr3t-value/+= b s3cr3t-value%2F%2B%3D c short"
     assert logs.redact(text) == "a *** b *** c short"
 

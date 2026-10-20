@@ -1,14 +1,14 @@
-"""Воркер сбора и анализа: python -m app.worker [--once] [--id ID] [--schema-wait S] (integration-spec §9.2, §9.5).
+"""Воркер сбора и анализа: python -m app.worker [--once] [--id ID] [--schema-wait S](integration-spec §9.2, §9.5).
 
-Один процесс, цикл по таблице jobs: отчёт о локальных сведениях подключений (например, есть ли сессия Telegram) →
-такт лидера (планировщик сборов и плановых проверок, возврат зависших заданий, дозапрос Claude по старым публикациям раз
+Один процесс, цикл по таблице jobs: отчёт о локальных сведениях подключений(например, есть ли сессия Telegram) →
+такт лидера(планировщик сборов и плановых проверок, возврат зависших заданий, дозапрос Claude по старым публикациям раз
 в ANTHROPIC_BACKFILL_INTERVAL_MIN, уборка раз в час) → захват задания →
-выполнение → пауза SAQ_WORKER_POLL_S. Планирует только держатель аренды «scheduler»; выполнять задания может любой
-воркер. Поток-пульс (раз в 30 с, своя сессия) продлевает пульс воркера, аренду планировщика и блокировку текущего задания
-(не дольше SAQ_JOB_MAX_S — потом зависшее задание сможет забрать recover_stale).
+выполнение → пауза SAQ_WORKER_POLL_S. Планирует только держатель аренды "scheduler"; выполнять задания может любой
+воркер. Поток-пульс(раз в 30 с, своя сессия) продлевает пульс воркера, аренду планировщика и блокировку текущего задания
+(не дольше SAQ_JOB_MAX_S - потом зависшее задание сможет забрать recover_stale).
 
-Схему БД воркер не создаёт и не обновляет (это делает API при старте, init_db): он ждёт нужную версию схемы. SIGTERM /
-SIGINT — текущее задание завершается (подключения проверяют ctx.stopping()), затем выход с кодом 0. Секреты в журнал не
+Схему БД воркер не создаёт и не обновляет(это делает API при старте, init_db): он ждёт нужную версию схемы. SIGTERM /
+SIGINT - текущее задание завершается(подключения проверяют ctx.stopping()), затем выход с кодом 0. Секреты в журнал не
 пишутся: только коды подключений.
 """
 import argparse
@@ -44,17 +44,17 @@ SCHEDULER = "scheduler"
 # ---------- схема ----------
 
 def schema_version(eng: Engine) -> Optional[str]:
-    """Версия схемы в meta (None — таблиц ещё нет или БД недоступна)."""
+    """Версия схемы в meta(None - таблиц ещё нет или БД недоступна)."""
     try:
         with eng.connect() as conn:
             return conn.execute(text("SELECT value FROM meta WHERE key = 'schema_version'")).scalar()
-    except Exception:  # noqa: BLE001 — нет таблицы meta или БД ещё не поднялась
+    except Exception:  # noqa: BLE001 - нет таблицы meta или БД ещё не поднялась
         return None
 
 
 def wait_for_schema(eng: Engine = default_engine, *, poll: float = 2.0, max_wait: Optional[float] = None,
                     stop: Optional[threading.Event] = None) -> bool:
-    """Ждать, пока API создаст или обновит схему до models.SCHEMA_VERSION. False — не дождались (max_wait, остановка)."""
+    """Ждать, пока API создаст или обновит схему до models.SCHEMA_VERSION. False - не дождались(max_wait, остановка)."""
     started = time.monotonic()
     logged = None
     while True:
@@ -79,8 +79,8 @@ def wait_for_schema(eng: Engine = default_engine, *, poll: float = 2.0, max_wait
 
 def acquire_lease(db: Session, name: str, holder: str, ttl_s: int = 60, now: Optional[datetime] = None,
                   info: Optional[dict] = None) -> bool:
-    """Аренда name за holder: продлить свою или забрать истёкшую (условный UPDATE), нет строки — создать. Фиксирует
-    транзакцию. True — аренда у holder."""
+    """Аренда name за holder: продлить свою или забрать истёкшую(условный UPDATE), нет строки - создать. Фиксирует
+    транзакцию. True - аренда у holder."""
     L = models.WorkerLease
     now = models.as_utc(now) or models.utcnow()
     values: dict = {"holder": holder, "expires_at": now + timedelta(seconds=ttl_s), "heartbeat_at": now}
@@ -96,8 +96,8 @@ def acquire_lease(db: Session, name: str, holder: str, ttl_s: int = 60, now: Opt
 
 
 def release_lease(worker_id: str) -> None:
-    """Остановка воркера: аренда планировщика освобождается сразу (другой воркер не ждёт её истечения), пульс
-    worker:{id} отмечается остановленным (info.stoppedAt) — карточка «Подключения» сразу видит, что воркер не запущен,
+    """Остановка воркера: аренда планировщика освобождается сразу(другой воркер не ждёт её истечения), пульс
+    worker:{id} отмечается остановленным(info.stoppedAt) - карточка "Подключения" сразу видит, что воркер не запущен,
     а не через WORKER_ALIVE_S; время последнего пульса сохраняется."""
     L = models.WorkerLease
     now = models.utcnow()
@@ -110,13 +110,13 @@ def release_lease(worker_id: str) -> None:
                 own.info = {**(own.info or {}), "stoppedAt": now.isoformat()}  # с долями секунды, как пульс
                 own.expires_at = now
             db.commit()
-    except Exception:  # noqa: BLE001 — при остановке это не ошибка воркера
+    except Exception:  # noqa: BLE001 - при остановке это не ошибка воркера
         log.warning("Аренда планировщика не освобождена", exc_info=True)
 
 
 @dataclass
 class Current:
-    """Текущее задание воркера — для потока-пульса."""
+    """Текущее задание воркера - для потока-пульса."""
     job_id: Optional[int] = None
     started: float = 0.0
     warned: set = field(default_factory=set)
@@ -132,7 +132,7 @@ class Current:
 
 
 def beat(worker_id: str, current: Optional[Current] = None) -> None:
-    """Один пульс: worker:{id}, аренда планировщика (если у этого воркера), блокировка текущего задания."""
+    """Один пульс: worker:{id}, аренда планировщика(если у этого воркера), блокировка текущего задания."""
     now = models.utcnow()
     job_id, started = current.get() if current is not None else (None, 0.0)
     info = {"id": worker_id, "pid": os.getpid(), "version": models.SCHEMA_VERSION, "jobId": job_id}
@@ -153,7 +153,7 @@ def beat(worker_id: str, current: Optional[Current] = None) -> None:
 
 
 def heartbeat(worker_id: str, job_ref: Current, stop: threading.Event) -> None:
-    """Поток-пульс (daemon): раз в HEARTBEAT_S с — beat(); ошибки БД — предупреждение, поток продолжает."""
+    """Поток-пульс(daemon): раз в HEARTBEAT_S с - beat(); ошибки БД - предупреждение, поток продолжает."""
     while not stop.is_set():
         try:
             beat(worker_id, job_ref)
@@ -169,10 +169,10 @@ def start_heartbeat(worker_id: str, job_ref: Current, stop: threading.Event) -> 
     return t
 
 
-# ---------- планировщик (§9.5) ----------
+# ---------- планировщик(§9.5) ----------
 
 def schedule_due(db: Session, now: datetime) -> list[int]:
-    """Сборы по расписанию и плановые проверки, которым пора (без commit). Возвращает id созданных запусков."""
+    """Сборы по расписанию и плановые проверки, которым пора(без commit). Возвращает id созданных запусков."""
     from .integrations import registry, service
 
     s = get_settings()
@@ -190,7 +190,7 @@ def schedule_due(db: Session, now: datetime) -> list[int]:
             if new:
                 created.append(run.id)
                 log.info("Сбор «%s» по расписанию: запуск №%s", conn.name, run.id)
-        # остановленное подключение (ошибка настроек, платный сбор) плановой проверкой не «оживляется» (§9.5 п. 3):
+        # остановленное подключение(ошибка настроек, платный сбор) плановой проверкой не "оживляется"(§9.5 п. 3):
         # остановку снимают изменение настроек или проверка администратором
         if conn.health_check_min and caps.get("test") and not conn.missing(s, r) \
                 and not (r is not None and (r.facts or {}).get("stopped")) \
@@ -202,7 +202,7 @@ def schedule_due(db: Session, now: datetime) -> list[int]:
     return created
 
 
-# ---------- уборка (§6.4) ----------
+# ---------- уборка(§6.4) ----------
 
 def housekeeping(db: Session, now: datetime) -> None:
     """Раз в час у лидера: непривязанные ручные загрузки старше суток, кандидаты 2ГИС старше срока кэша, истёкшие
@@ -225,7 +225,7 @@ def housekeeping(db: Session, now: datetime) -> None:
 
 
 def _periodic_due(db: Session, worker_id: str, now: datetime, mark: str, every_s: float) -> bool:
-    """Периодическая работа лидера (отметка mark в info аренды планировщика): прошло every_s с — отметка обновляется
+    """Периодическая работа лидера(отметка mark в info аренды планировщика): прошло every_s с - отметка обновляется
     (commit), True."""
     lease = db.get(models.WorkerLease, SCHEDULER)
     if lease is None or lease.holder != worker_id:
@@ -256,8 +256,8 @@ def _backfill_due(db: Session, worker_id: str, now: datetime) -> bool:
 
 
 def backfill(db: Session, now: datetime) -> list[str]:
-    """Задания анализа для старых публикаций без ответа Claude (app.llm.backfill: новые первыми, партия, бюджет).
-    Фиксирует транзакцию; сбой — предупреждение в журнал, такт лидера продолжается."""
+    """Задания анализа для старых публикаций без ответа Claude(app.llm.backfill: новые первыми, партия, бюджет).
+    Фиксирует транзакцию; сбой - предупреждение в журнал, такт лидера продолжается."""
     from . import llm
 
     try:
@@ -280,8 +280,8 @@ def _gallery_due(db: Session, worker_id: str, now: datetime) -> bool:
 
 
 def gallery_sync(db: Session) -> None:
-    """Фото карточек Homeportal для ЖК открытого реестра, у которых их ещё нет (app.gallery.fetch_all, missing_only).
-    Сбой — предупреждение в журнал, такт лидера продолжается."""
+    """Фото карточек Homeportal для ЖК открытого реестра, у которых их ещё нет(app.gallery.fetch_all, missing_only).
+    Сбой - предупреждение в журнал, такт лидера продолжается."""
     from . import gallery
 
     try:
@@ -298,7 +298,7 @@ def gallery_sync(db: Session) -> None:
 # ---------- сведения, видимые только воркеру ----------
 
 def report_local(db: Session) -> None:
-    """Connector.report() → collectors.state.report (только при изменении; время проверки не считается изменением)."""
+    """Connector.report() → collectors.state.report(только при изменении; время проверки не считается изменением)."""
     from .integrations import registry, service
 
     s = get_settings()
@@ -306,7 +306,7 @@ def report_local(db: Session) -> None:
     for code, conn in registry.CONNECTORS.items():
         try:
             rep = conn.report(s)
-        except Exception:  # noqa: BLE001 — отчёт одного подключения не мешает остальным
+        except Exception:  # noqa: BLE001 - отчёт одного подключения не мешает остальным
             log.warning("Отчёт подключения %s не получен", code, exc_info=True)
             continue
         if rep is None:
@@ -330,7 +330,7 @@ def _tick(worker_id: str, now: datetime) -> None:
     with SessionLocal() as db:
         if not acquire_lease(db, SCHEDULER, worker_id, LEASE_TTL_S, now=models.utcnow()):
             return
-        # сначала зависшие задания (своя транзакция): брошенный сбор получает итог «ошибка» до решений расписания,
+        # сначала зависшие задания(своя транзакция): брошенный сбор получает итог "ошибка" до решений расписания,
         # и блокировки строк подключений не пересекаются с итогом, который пишет другой воркер
         jobs.recover_stale(db, now, s.job_lease_s)
         db.commit()
@@ -350,8 +350,8 @@ def _tick(worker_id: str, now: datetime) -> None:
 
 def run_once(*, worker_id: str, now: Optional[datetime] = None, max_jobs: int = 100,
              current: Optional[Current] = None, stop: Optional[threading.Event] = None) -> int:
-    """Один проход: пульс, отчёт, такт лидера, затем задания, пока они есть (не больше max_jobs). Возвращает число
-    выполненных заданий. now — время для расписания и захвата (тесты); по умолчанию — текущее."""
+    """Один проход: пульс, отчёт, такт лидера, затем задания, пока они есть(не больше max_jobs). Возвращает число
+    выполненных заданий. now - время для расписания и захвата(тесты); по умолчанию - текущее."""
     current = current or Current()
     beat(worker_id, current)
     with SessionLocal() as db:
@@ -368,7 +368,7 @@ def run_once(*, worker_id: str, now: Optional[datetime] = None, max_jobs: int = 
         current.set(job_id)
         try:
             jobs.execute(job_id, worker_id=worker_id, now=t, stop=stop)
-        except Exception:  # noqa: BLE001 — ошибка записи итога: задание останется «выполняется» до recover_stale
+        except Exception:  # noqa: BLE001 - ошибка записи итога: задание останется "выполняется" до recover_stale
             log.exception("Задание №%s: итог не записан", job_id)
         finally:
             current.set(None)
@@ -426,7 +426,7 @@ def main(argv: Optional[list] = None) -> int:
         while not stop.is_set():
             try:
                 n = run_once(worker_id=worker_id, current=current, stop=stop)
-            except Exception:  # noqa: BLE001 — сбой БД и т. п.: пауза и следующий проход
+            except Exception:  # noqa: BLE001 - сбой БД и т. п.: пауза и следующий проход
                 log.exception("Проход воркера не выполнен")
                 n = 0
             if not n:

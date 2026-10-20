@@ -1,12 +1,12 @@
 """Серверная проверка доступа к подключениям: администратор, клиент приёма публикаций, бот заявок.
 
-Три отдельных секрета (SAQ_ADMIN_TOKEN, INTEGRATION_INGEST_TOKEN, SERVICE_API_TOKEN), без них — отказ (fail-closed):
-секрет не задан или слабый (settings: короче 24 символов, меньше 12 разных; токен администратора не совпадает с
-другими) — 503, заголовка нет — 401 (WWW-Authenticate: Bearer), токен неверный — 403. Сравнение — hmac.compare_digest.
-Отказы приёма публикаций и бота (401/403) записываются (service.record_reject, без токена) и видны в статусе
-подключения: клиент с неверным токеном выглядит как «нет доступа», а не как «ожидает заявок».
-Чтение состояния подключений токена не требует и секретов не содержит; полные сведения (пояснения, ошибки, настройки,
-факты проверки) — только с токеном администратора (is_admin), посетителю — статусы и счётчики.
+Три отдельных секрета(SAQ_ADMIN_TOKEN, INTEGRATION_INGEST_TOKEN, SERVICE_API_TOKEN), без них - отказ(fail-closed):
+секрет не задан или слабый(settings: короче 24 символов, меньше 12 разных; токен администратора не совпадает с
+другими) - 503, заголовка нет - 401(WWW-Authenticate: Bearer), токен неверный - 403. Сравнение - hmac.compare_digest.
+Отказы приёма публикаций и бота(401/403) записываются(service.record_reject, без токена) и видны в статусе
+подключения: клиент с неверным токеном выглядит как "нет доступа", а не как "ожидает заявок".
+Чтение состояния подключений токена не требует и секретов не содержит; полные сведения(пояснения, ошибки, настройки,
+факты проверки) - только с токеном администратора(is_admin), посетителю - статусы и счётчики.
 """
 import hashlib
 import hmac
@@ -33,7 +33,7 @@ SERVICE_WRONG = "Неверный сервисный токен"
 
 @dataclass(frozen=True)
 class Admin:
-    """Проверенный администратор. fp — отпечаток его токена (sha256[:12]): привязка OAuth state, не секрет."""
+    """Проверенный администратор. fp - отпечаток его токена(sha256[:12]): привязка OAuth state, не секрет."""
     fp: str
 
 
@@ -42,7 +42,7 @@ def token_fp(token: str) -> str:
 
 
 def _bearer(request: Request) -> Optional[str]:
-    """Значение «Authorization: Bearer <токен>» (схема без учёта регистра) или None."""
+    """Значение "Authorization: Bearer <токен>"(схема без учёта регистра) или None."""
     scheme, _, value = (request.headers.get("authorization") or "").strip().partition(" ")
     value = value.strip()
     return value if scheme.lower() == "bearer" and value else None
@@ -53,8 +53,8 @@ def _same(got: str, secret: str) -> bool:
 
 
 def _record(code: str, status: int, detail: str) -> None:
-    """Отказ клиента приёма/бота — в состояние подключения (service.record_reject сам не падает и ограничивает частоту
-    записи). Учёт отказов не должен менять ответ: любая ошибка здесь — только предупреждение в журнал API."""
+    """Отказ клиента приёма/бота - в состояние подключения(service.record_reject сам не падает и ограничивает частоту
+    записи). Учёт отказов не должен менять ответ: любая ошибка здесь - только предупреждение в журнал API."""
     try:
         from .integrations import service
 
@@ -86,19 +86,19 @@ def require_admin(request: Request) -> Admin:
 
 
 def is_admin(request: Request) -> bool:
-    """Чтение состояния подключений: верный токен администратора — полные сведения; без токена, с неверным или при
-    ненастроенном администрировании — сведения для посетителя (чтение открыто, отказа нет)."""
+    """Чтение состояния подключений: верный токен администратора - полные сведения; без токена, с неверным или при
+    ненастроенном администрировании - сведения для посетителя(чтение открыто, отказа нет)."""
     secret = get_settings().admin_token.get()
     got = (request.headers.get("x-admin-token") or _bearer(request) or "").strip()
     return bool(secret and got and _same(got, secret))
 
 
 def require_ingest(request: Request) -> None:
-    """Клиент приёма публикаций (POST /api/intake/publications): только Authorization: Bearer."""
+    """Клиент приёма публикаций(POST /api/intake/publications): только Authorization: Bearer."""
     _check(_bearer(request), get_settings().ingest_token.get(), INGEST_UNSET, INGEST_MISSING, INGEST_WRONG, "intake")
 
 
 def require_service(request: Request) -> None:
-    """Бот заявок (saq-telegram-bot): Authorization: Bearer или X-API-Key."""
+    """Бот заявок(saq-telegram-bot): Authorization: Bearer или X-API-Key."""
     _check(_bearer(request) or request.headers.get("x-api-key"), get_settings().service_token.get(), SERVICE_UNSET,
            SERVICE_MISSING, SERVICE_WRONG, "telegram_bot")

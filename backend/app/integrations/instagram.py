@@ -1,29 +1,29 @@
-"""Instagram — публикации профессиональных аккаунтов через Meta Graph API · Business Discovery (integration-spec §12.1,
+"""Instagram - публикации профессиональных аккаунтов через Meta Graph API · Business Discovery(integration-spec §12.1,
 план §6).
 
-Сервер запросов — graph.facebook.com/{META_GRAPH_VERSION}/ (Instagram API with Facebook Login), не graph.instagram.com.
+Сервер запросов - graph.facebook.com/{META_GRAPH_VERSION}/ (Instagram API with Facebook Login), не graph.instagram.com.
 Токен уходит только заголовком Authorization: Bearer, клиент привязан к хосту Graph API: абсолютная ссылка на другой
-хост (CDN, чужой сервер) отклоняется до отправки, ссылки paging.next не открываются и не пишутся в журнал — следующая
+хост(CDN, чужой сервер) отклоняется до отправки, ссылки paging.next не открываются и не пишутся в журнал - следующая
 страница запрашивается курсором .after(…) в fields. Если задан META_APP_SECRET, к каждому запросу добавляется
-appsecret_proof (HMAC-SHA256 токена) — он зарегистрирован как секрет и маскируется. Параметр input_token запроса
-debug_token Graph API принимает только в адресе — адрес запроса нигде не выводится.
+appsecret_proof(HMAC-SHA256 токена) - он зарегистрирован как секрет и маскируется. Параметр input_token запроса
+debug_token Graph API принимает только в адресе - адрес запроса нигде не выводится.
 
-Проверка: разрешения токена, профессиональный Instagram (META_IG_USER_ID, иначе Страницы токена, иначе Страницы
-бизнес-портфолио META_BUSINESS_ID), срок действия токена (debug_token). Сбор: для каждого аккаунта из настроек —
-business_discovery с публикациями; карусели — со слайдами (children), видео — с обложкой. Файлы скачиваются при сборе
+Проверка: разрешения токена, профессиональный Instagram(META_IG_USER_ID, иначе Страницы токена, иначе Страницы
+бизнес-портфолио META_BUSINESS_ID), срок действия токена(debug_token). Сбор: для каждого аккаунта из настроек -
+business_discovery с публикациями; карусели - со слайдами(children), видео - с обложкой. Файлы скачиваются при сборе
 только с CDN Instagram/Facebook: ссылки на медиа временные.
 
-Обход страниц: пока на странице все публикации новые (или аккаунт ещё не загружен целиком — первичная загрузка/перерыв),
-не больше IG_FIRST_LOAD_MAX за запуск. Business Discovery не присылает paging.next — только курсоры before/after,
-поэтому следующая страница запрашивается всегда, пока есть новый курсор after; конец — пустая страница, нет курсора или
-курсор повторился (на последней странице это один лишний запрос). Курсоры не сохраняются; отметка «загружен»
-(state.accounts[u].seeded) снимается в начале обхода и ставится только после его обычного завершения — прерванный обход
+Обход страниц: пока на странице все публикации новые(или аккаунт ещё не загружен целиком - первичная загрузка/перерыв),
+не больше IG_FIRST_LOAD_MAX за запуск. Business Discovery не присылает paging.next - только курсоры before/after,
+поэтому следующая страница запрашивается всегда, пока есть новый курсор after; конец - пустая страница, нет курсора или
+курсор повторился(на последней странице это один лишний запрос). Курсоры не сохраняются; отметка "загружен"
+(state.accounts[u].seeded) снимается в начале обхода и ставится только после его обычного завершения - прерванный обход
 (лимит, ошибка, время, перезапуск воркера, курсор в неожиданном формате) в следующий раз идёт вглубь снова, без
 пропусков и дублей.
 
-Ошибки — по конверту {"error": {...}}, не по HTTP-статусу: истёкший токен — «истёк доступ», нет разрешения — «нет
-доступа», лимиты Meta — пауза, использование лимита ≥ 80 % — сбор останавливается и следующий откладывается на час.
-Аккаунт, которого нет или который не профессиональный, — ошибка записи; если так со всеми — ошибка настроек.
+Ошибки - по конверту {"error": {...}}, не по HTTP-статусу: истёкший токен - "истёк доступ", нет разрешения - "нет
+доступа", лимиты Meta - пауза, использование лимита ≥ 80 % - сбор останавливается и следующий откладывается на час.
+Аккаунт, которого нет или который не профессиональный, - ошибка записи; если так со всеми - ошибка настроек.
 """
 import hashlib
 import hmac
@@ -62,7 +62,7 @@ SHORT_TOKEN_H = 24
 TIME_RESERVE_S = 60
 PAGE_LIMIT_MAX = 100
 MESSAGE_MAX = 200
-# Необязательные поля Business Discovery: ответ (#100) о таком поле — запрос без него, отметка в state.compat
+# Необязательные поля Business Discovery: ответ(#100) о таком поле - запрос без него, отметка в state.compat
 OPTIONAL_FIELDS = ("children", "name", "thumbnail_url", "media_product_type")
 MEDIA_FIELDS = ("id", "caption", "media_type", "media_product_type", "media_url", "thumbnail_url", "permalink",
                 "timestamp")
@@ -118,7 +118,7 @@ def _num(v: Any) -> float:
 
 
 def graph_error(body: Any, status: int = 200) -> Optional[GraphError]:
-    """GraphError из тела ответа или None (ошибки в конверте нет)."""
+    """GraphError из тела ответа или None(ошибки в конверте нет)."""
     err = body.get("error") if isinstance(body, dict) else None
     if not isinstance(err, dict):
         return None
@@ -128,15 +128,15 @@ def graph_error(body: Any, status: int = 200) -> Optional[GraphError]:
 
 
 def appsecret_proof(token: str, app_secret: str) -> str:
-    """appsecret_proof Graph API: HMAC-SHA256 токена доступа с ключом App Secret (hex)."""
+    """appsecret_proof Graph API: HMAC-SHA256 токена доступа с ключом App Secret(hex)."""
     return hmac.new(app_secret.encode(), token.encode(), hashlib.sha256).hexdigest()
 
 
 def graph_get(client: httpx.Client, path: str, params: dict, s: Settings, *,
               token: Optional[str] = None) -> tuple[dict, httpx.Headers]:
-    """GET {path} относительно базового адреса Graph API. Токен — заголовком клиента (token — другой токен, например
-    токен приложения для debug_token); при META_APP_SECRET — appsecret_proof к этому токену. Ошибки → §10.1
-    (map_error; исходная GraphError — в __cause__). Абсолютные ссылки (paging.next) не открываются."""
+    """GET {path} относительно базового адреса Graph API. Токен - заголовком клиента(token - другой токен, например
+    токен приложения для debug_token); при META_APP_SECRET - appsecret_proof к этому токену. Ошибки → §10.1
+    (map_error; исходная GraphError - в __cause__). Абсолютные ссылки(paging.next) не открываются."""
     path = str(path)
     if "://" in path or path.startswith("//"):
         raise SourceError("Ссылки из ответа Graph API не открываются — только пути от базового адреса",
@@ -192,7 +192,7 @@ def _buc_entries(headers: Any) -> Iterable[dict]:
 
 
 def usage_pct(headers: Any) -> int:
-    """Наибольший процент использования лимита из X-App-Usage и X-Business-Use-Case-Usage (call_count,
+    """Наибольший процент использования лимита из X-App-Usage и X-Business-Use-Case-Usage(call_count,
     total_cputime, total_time)."""
     best = 0.0
     parts = ("call_count", "total_cputime", "total_time")
@@ -205,13 +205,13 @@ def usage_pct(headers: Any) -> int:
 
 
 def regain_seconds(headers: Any) -> Optional[float]:
-    """estimated_time_to_regain_access (минуты) из X-Business-Use-Case-Usage → секунды; нет или 0 — None."""
+    """estimated_time_to_regain_access(минуты) из X-Business-Use-Case-Usage → секунды; нет или 0 - None."""
     mins = max([_num(e.get("estimated_time_to_regain_access")) for e in _buc_entries(headers)] or [0.0])
     return mins * 60 if mins > 0 else None
 
 
 def map_error(err: GraphError, headers: Any = None) -> ConnectorError:
-    """Ошибка Graph API → типизированная ошибка подключения (по коду из конверта, не по HTTP-статусу)."""
+    """Ошибка Graph API → типизированная ошибка подключения(по коду из конверта, не по HTTP-статусу)."""
     c, msg = err.code, err.message or f"код {err.code}"
     if c in AUTH_CODES:
         return AuthExpired(TOKEN_INVALID)
@@ -233,8 +233,8 @@ def _cause(e: BaseException) -> Optional[GraphError]:
 
 
 def _account_missing(g: Optional[GraphError]) -> bool:
-    """Business Discovery не нашёл аккаунт (нет такого или он не профессиональный): 110/2207013 или (#100) «Invalid
-    user id»."""
+    """Business Discovery не нашёл аккаунт(нет такого или он не профессиональный): 110/2207013 или(#100) "Invalid
+    user id"."""
     if g is None:
         return False
     return g.code == 110 or g.subcode == ACCOUNT_MISSING_SUBCODE or (
@@ -253,8 +253,8 @@ def _unsupported_field(g: Optional[GraphError], enabled: Iterable[str]) -> Optio
 
 def bd_fields(username: str, *, limit: int, after: Optional[str] = None, with_children: bool = True,
               with_name: bool = True, without: Iterable[str] = ()) -> str:
-    """fields запроса Business Discovery: профиль и страница публикаций (media.limit(N)[.after(C)]); without —
-    необязательные поля публикации, которые Business Discovery не отдаёт (thumbnail_url, media_product_type)."""
+    """fields запроса Business Discovery: профиль и страница публикаций(media.limit(N)[.after(C)]); without -
+    необязательные поля публикации, которые Business Discovery не отдаёт(thumbnail_url, media_product_type)."""
     drop = set(without)
     media = [f for f in MEDIA_FIELDS if f not in drop]
     if with_children:
@@ -267,7 +267,7 @@ def bd_fields(username: str, *, limit: int, after: Optional[str] = None, with_ch
 # ---------- аккаунты ----------
 
 def normalize_account(s: str) -> str:
-    """«@x», «x», «https://www.instagram.com/x/» → «x» (нижний регистр, ^[a-z0-9._]{1,30}$); иначе ValueError."""
+    """"@x", "x", "https://www.instagram.com/x/" → "x"(нижний регистр, ^[a-z0-9._]{1,30}$); иначе ValueError."""
     raw = str(s or "").strip()
     v = raw
     low = v.lower()
@@ -290,7 +290,7 @@ def normalize_account(s: str) -> str:
 
 
 def _parse_time(v: Any) -> Optional[datetime]:
-    """«2026-10-09T11:10:23+0000» → UTC."""
+    """"2026-10-09T11:10:23+0000" → UTC."""
     if not v:
         return None
     s = str(v).strip()
@@ -337,19 +337,19 @@ def _from_iso(v: Any) -> Optional[datetime]:
 # ---------- публикация ----------
 
 def _fetch(ctx: "RunContext", url: str, key: str, kind: str, role: Optional[str]) -> MediaIn:
-    """Файл с CDN Instagram — лениво: скачивается при приёме, только если ещё не загружен."""
+    """Файл с CDN Instagram - лениво: скачивается при приёме, только если ещё не загружен."""
     def run() -> MediaIn:
         return ctx.download_media(url, key=key, kind=kind, role=role, allowed_hosts=CDN_HOSTS)
     return MediaIn(key=key, kind=kind, role=role, fetch=run, origin_url=http.redact_url(url))
 
 
 def _marker(key: str, kind: str, role: Optional[str], error: str) -> MediaIn:
-    """Файла нет в ответе Instagram: запись «недоступен» с причиной."""
+    """Файла нет в ответе Instagram: запись "недоступен" с причиной."""
     return MediaIn(key=key, kind=kind, role=role, status="unavailable", error=error)
 
 
 def _node_media(ctx: "RunContext", node: dict, key: str, role: Optional[str]) -> list[MediaIn]:
-    """Файлы одной публикации или слайда: изображение; видео + обложка; нет media_url — «недоступен» (+ обложка)."""
+    """Файлы одной публикации или слайда: изображение; видео + обложка; нет media_url - "недоступен"(+ обложка)."""
     ntype = str(node.get("media_type") or "").upper()
     url, thumb = _https(node.get("media_url")), _https(node.get("thumbnail_url"))
     out: list[MediaIn] = []
@@ -375,8 +375,8 @@ def _children(m: dict) -> Optional[list]:
 
 
 def to_publication(m: dict, username: str, ctx: "RunContext") -> Publication:
-    """Публикация Business Discovery → Publication. Файлы — ленивые загрузки с CDN; файлы, которых Instagram не отдал,
-    — записи «недоступен» с причиной (повторно не считаются, если такая запись уже есть)."""
+    """Публикация Business Discovery → Publication. Файлы - ленивые загрузки с CDN; файлы, которых Instagram не отдал,
+    - записи "недоступен" с причиной(повторно не считаются, если такая запись уже есть)."""
     mid = str(m["id"]).strip()
     if not _ID.fullmatch(mid):
         raise ValueError("ID публикации Instagram не из цифр")
@@ -387,7 +387,7 @@ def to_publication(m: dict, username: str, ctx: "RunContext") -> Publication:
         if children:
             for ch in children:
                 media += _node_media(ctx, ch, f"ig:{str(ch['id']).strip()}", "slide")
-        else:  # слайды недоступны (поле children отключено): первое изображение и отметка о недоступных слайдах
+        else:  # слайды недоступны(поле children отключено): первое изображение и отметка о недоступных слайдах
             url = _https(m.get("media_url"))
             if url:
                 kind = "video" if ".mp4" in (urlsplit(url).path or "").lower() else "image"
@@ -396,7 +396,7 @@ def to_publication(m: dict, username: str, ctx: "RunContext") -> Publication:
     else:
         media = _node_media(ctx, m, f"ig:{mid}", None)
     markers = [i for i, x in enumerate(media) if x.status == "unavailable"]
-    if markers:  # уже записанная отметка «недоступен» не учитывается в каждом запуске заново
+    if markers:  # уже записанная отметка "недоступен" не учитывается в каждом запуске заново
         k = ctx.known(mid, namespace="instagram")
         if k is not None:
             for i in markers:
@@ -452,8 +452,8 @@ def _pick_ig(pages: Any, page_id: str) -> Optional[str]:
 
 
 def discover_ig_user(get: Callable[[str, dict], dict], ctx: "RunContext", s: Settings) -> str:
-    """Профессиональный Instagram токена: Страницы токена (me/accounts), иначе Страницы бизнес-портфолио
-    (META_BUSINESS_ID/owned_pages). Нет — BadConfig."""
+    """Профессиональный Instagram токена: Страницы токена(me/accounts), иначе Страницы бизнес-портфолио
+    (META_BUSINESS_ID/owned_pages). Нет - BadConfig."""
     params = {"fields": "id,name,instagram_business_account", "limit": 100}
     pages: Any = []
     try:
@@ -516,7 +516,7 @@ class _Run:
         return found
 
     def discovery(self, username: str, limit: int, after: Optional[str]) -> dict:
-        """Страница business_discovery; (#100) о необязательном поле — запрос без него (совместимость сохраняется)."""
+        """Страница business_discovery; (#100) о необязательном поле - запрос без него(совместимость сохраняется)."""
         for _ in range(len(OPTIONAL_FIELDS) + 1):
             fields = bd_fields(username, limit=limit, after=after, with_children=self.ok("children"),
                                with_name=self.ok("name"),
@@ -559,7 +559,7 @@ class _Run:
         return res.status
 
     def account(self, u: str) -> None:
-        """Обход публикаций одного аккаунта (см. описание модуля)."""
+        """Обход публикаций одного аккаунта(см. описание модуля)."""
         ctx, s = self.ctx, self.s
         state = dict((ctx.state.get("accounts") or {}).get(u) or {})
         was_seeded = bool(state.get("seeded"))
@@ -587,9 +587,9 @@ class _Run:
             paging = media.get("paging") if isinstance(media.get("paging"), dict) else {}
             cursor = (paging.get("cursors") or {}).get("after") if isinstance(paging.get("cursors"), dict) else None
             cursor = str(cursor) if cursor else None
-            # Business Discovery не присылает paging.next (поле media раскрывается в fields): конец списка — пустая
+            # Business Discovery не присылает paging.next(поле media раскрывается в fields): конец списка - пустая
             # страница, нет курсора after или курсор повторился. Ссылка paging.next, если вдруг придёт, не
-            # открывается и не выводится (в ней токен) — следующая страница только по курсору.
+            # открывается и не выводится(в ней токен) - следующая страница только по курсору.
             if not data or not cursor or cursor in cursors:
                 break
             if was_seeded and not all_new:
@@ -603,7 +603,7 @@ class _Run:
             if not _CURSOR.fullmatch(cursor):  # курсор подставляется в fields: чужие символы не отправляются
                 ctx.mark_partial(f"@{username}: курсор следующей страницы в неожиданном формате — обход остановлен, "
                                  "более старые публикации не получены")
-                return  # без отметки «загружен»: следующий запуск снова пройдёт аккаунт вглубь
+                return  # без отметки "загружен": следующий запуск снова пройдёт аккаунт вглубь
             cursors.add(cursor)
             after = cursor
         self.save_account(u, seeded=True, username=username, walkedAt=models.iso(ctx.now()), lastItems=total)
@@ -636,7 +636,7 @@ class InstagramConnector(Connector):
             raise ConfigError(field_name, str(e), value) from None
 
     def can_enable(self, row: Optional["Collector"]) -> Optional[str]:
-        """Краткосрочный токен (истекает в ближайшие сутки по последней проверке) — сбор не включается."""
+        """Краткосрочный токен(истекает в ближайшие сутки по последней проверке) - сбор не включается."""
         facts = (row.facts or {}) if row is not None else {}
         exp = _from_iso(facts.get("expiresAt"))
         if exp is not None and exp <= models.utcnow() + timedelta(hours=SHORT_TOKEN_H):
@@ -682,8 +682,8 @@ class InstagramConnector(Connector):
 
     @staticmethod
     def _expiry(get: Callable[..., dict], ctx: "RunContext", s: Settings, token: str, facts: dict) -> str:
-        """Срок действия токена (debug_token): токеном приложения, если заданы META_APP_ID и META_APP_SECRET, иначе
-        самим токеном (работает для разработчика приложения)."""
+        """Срок действия токена(debug_token): токеном приложения, если заданы META_APP_ID и META_APP_SECRET, иначе
+        самим токеном(работает для разработчика приложения)."""
         app_id, app_secret = (s.meta_app_id or "").strip(), s.meta_app_secret.get()
         app_token = f"{app_id}|{app_secret}" if app_id and app_secret else None
         if app_token:

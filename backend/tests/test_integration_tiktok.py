@@ -1,7 +1,7 @@
-"""TikTok через Apify (integration-spec §12.4, §16.3 test_integration_tiktok, §16.5 столбец K, план §8): проверка без
-платного запуска, фазы сбора через воркер (запуск → опрос → Dataset постранично → стоимость), файлы только из хранилища
+"""TikTok через Apify(integration-spec §12.4, §16.3 test_integration_tiktok, §16.5 столбец K, план §8): проверка без
+платного запуска, фазы сбора через воркер(запуск → опрос → Dataset постранично → стоимость), файлы только из хранилища
 Apify с Bearer-токеном, бюджет и остановка платного сбора после ошибки, продолжение с сохранённой позиции и приёмка по
-§14 плана. Без сети: API Apify — синтетическая заглушка поверх http_mock; токен — поддельный."""
+§14 плана. Без сети: API Apify - синтетическая заглушка поверх http_mock; токен - поддельный."""
 import json
 import logging
 import re
@@ -41,7 +41,7 @@ def kv_url(key: str) -> str:
 
 def item(pid: str, *, text: str = TEXT, name: str = "tumargroup", kv: bool = True, cover: bool = False,
          is_ad: bool = False, pinned: bool = False) -> dict:
-    """Запись Dataset clockworks/tiktok-scraper (поля как в выгрузке владельца; значения синтетические)."""
+    """Запись Dataset clockworks/tiktok-scraper(поля как в выгрузке владельца; значения синтетические)."""
     cdn = f"https://v16-webapp-prime.tiktok.com/video/{pid}?x-expires=1&signature=abc"
     vm = {"duration": 15, "originalDownloadAddr": cdn, "downloadAddr": kv_url(f"video-{name}-{pid}") if kv else cdn,
           "coverUrl": kv_url(f"cover-{pid}") if cover else "https://p16-sign-va.tiktokcdn.com/obj/c.jpeg?x-signature=s"}
@@ -53,8 +53,8 @@ def item(pid: str, *, text: str = TEXT, name: str = "tumargroup", kv: bool = Tru
 
 
 class FakeApify:
-    """Заглушка API Apify (через http_mock): Actor с ценами, запуск, опрос, прерывание, Dataset с пагинацией,
-    записи хранилища. statuses — ответы опроса по порядку (последний повторяется)."""
+    """Заглушка API Apify(через http_mock): Actor с ценами, запуск, опрос, прерывание, Dataset с пагинацией,
+    записи хранилища. statuses - ответы опроса по порядку(последний повторяется)."""
 
     def __init__(self, mock, items=(), *, statuses=("RUNNING", "SUCCEEDED"), usage=0.01, events=None):
         self.mock = mock
@@ -126,7 +126,7 @@ class FakeApify:
 
 @pytest.fixture
 def tk(client, env, admin_headers, http_mock, ocr_stub):
-    """APIFY_TOKEN задан (поддельный); заголовки администратора."""
+    """APIFY_TOKEN задан(поддельный); заголовки администратора."""
     env(APIFY_TOKEN=TOKEN)
     return admin_headers
 
@@ -152,7 +152,7 @@ def start(client, headers, action: str = "collect") -> int:
 
 
 def drive(run_worker, *, steps: int = 6, step: float = 30.0, start_at=None):
-    """Несколько проходов воркера со сдвигом времени (отсрочки Deferred и паузы повторов истекают)."""
+    """Несколько проходов воркера со сдвигом времени(отсрочки Deferred и паузы повторов истекают)."""
     t = start_at or models.utcnow() + timedelta(seconds=1)
     for i in range(steps):
         run_worker(now=t + timedelta(seconds=step * i))
@@ -207,7 +207,7 @@ def test_not_configured(client, env, admin_headers):
     assert c["statusLabel"] == "не настроен"
     r = client.post("/api/sources/tiktok/test", headers=admin_headers, json={"author": AUTHOR})
     assert r.status_code == 409 and "APIFY_TOKEN" in r.json()["detail"]
-    assert smoke.check_one("tiktok") == "tiktok: не настроен — нет APIFY_TOKEN"  # без сети (conftest её запрещает)
+    assert smoke.check_one("tiktok") == "tiktok: не настроен — нет APIFY_TOKEN"  # без сети(conftest её запрещает)
 
 
 def test_check_ok_without_paid_run(tk, client, http_mock, run_worker):
@@ -278,7 +278,7 @@ def test_prices_and_cost():
              "FREE": {"tieredEventPriceUsd": 0.005}, "GOLD": {"tieredEventPriceUsd": 0.003}}}}}},
         {"pricingModel": "PAY_PER_EVENT", "startedAt": "2099-01-01T00:00:00Z", "minimalMaxTotalChargeUsd": 9,
          "pricingPerEvent": {"actorChargeEvents": {"result": {"eventPriceUsd": 1.0}}}}]}
-    assert tiktok.prices(tiered) == {"result": 0.005}  # действующая запись, ступени — по наибольшей цене
+    assert tiktok.prices(tiered) == {"result": 0.005}  # действующая запись, ступени - по наибольшей цене
     assert tiktok.min_charge(tiered) == 0.25
     assert tiktok.min_charge({}) == tiktok.ACTOR_MIN_CHARGE and tiktok.prices({}) == {}
     assert tiktok.estimate_usd(3, True, PRICES) == pytest.approx(0.005 + 3 * 0.004 + 3 * 0.002)
@@ -317,7 +317,7 @@ def test_full_run_through_worker(tk, client, http_mock, run_worker, page2, caplo
     kv = fake.kv_calls()
     assert len(kv) == 3 and all(r.headers.get("authorization") == f"Bearer {TOKEN}" for r in kv)
     (other,) = [r for r in http_mock.calls if r.url.host == "storage.example.net"]
-    assert "authorization" not in other.headers  # перенаправление на другой хост — без токена
+    assert "authorization" not in other.headers  # перенаправление на другой хост - без токена
 
     run = run_of(client, run_id)
     assert run["status"] == "partial", run
@@ -338,7 +338,7 @@ def test_full_run_through_worker(tk, client, http_mock, run_worker, page2, caplo
     with SessionLocal() as db:
         raws = [i.raw for i in db.scalars(select(models.IngestItem).where(models.IngestItem.platform == "tiktok"))]
     assert {r["isAd"] for r in raws} == {True, False}  # isAd=false не отфильтрован
-    assert all("signature=" not in json.dumps(r) for r in raws)  # подписанные ссылки — без query
+    assert all("signature=" not in json.dumps(r) for r in raws)  # подписанные ссылки - без query
     c = conn(client)
     assert c["status"] == "partial" and "записей с ошибкой: 1 из 3" in c["statusDetail"]
     assert collect_job().status == "done"
@@ -528,7 +528,7 @@ def test_input_template_and_build_input(env):
     assert body["profileSorting"] == "latest" and json.loads(raw) == data  # шаблон не меняется
 
 
-# ---------- приёмка по §14 плана (integration-spec §16.5, столбец K) ----------
+# ---------- приёмка по §14 плана(integration-spec §16.5, столбец K) ----------
 
 def test_acceptance_repeat_no_duplicate(tk, client, http_mock, run_worker, accept):
     fake = FakeApify(http_mock, [item(PID1, cover=True)], statuses=("SUCCEEDED",))
@@ -577,13 +577,13 @@ def test_acceptance_media_survives_source(tk, client, http_mock, run_worker, acc
     fake.kv[f"video-tumargroup-{PID1}"] = data
     configure(client, tk)
     full_run(client, tk, run_worker, fake)
-    http_mock.clear()  # исходной ссылки (хранилища Apify) больше нет
+    http_mock.clear()  # исходной ссылки(хранилища Apify) больше нет
     (a,) = assets(source_key=f"apify:{PID1}:video")
     assert accept.media_ok(a.id) == data
 
 
 def test_acceptance_not_confirmed_automatically(tk, client, http_mock, run_worker, accept):
-    fake = FakeApify(http_mock, [item(PID1)], statuses=("SUCCEEDED",))  # текст называет демо-ЖК «Ульба Ривер»
+    fake = FakeApify(http_mock, [item(PID1)], statuses=("SUCCEEDED",))  # текст называет демо-ЖК "Ульба Ривер"
     fake.kv[f"video-tumargroup-{PID1}"] = mp4_bytes(900)
     configure(client, tk)
     full_run(client, tk, run_worker, fake)
@@ -632,7 +632,7 @@ def test_acceptance_limit_no_paid_loop(tk, client, env, http_mock, run_worker):
 # ---------- 10. временные сбои после платного запуска, неподтверждённый запуск, лимит без округления ----------
 
 def enable(client, headers, run_worker) -> None:
-    """Подключение проверено и включено: работает расписание воркера (оно не должно начать второй платный запуск)."""
+    """Подключение проверено и включено: работает расписание воркера(оно не должно начать второй платный запуск)."""
     configure(client, headers)
     make_ready(client, headers, run_worker)
     r = client.patch("/api/sources/tiktok", headers=headers, json={"author": AUTHOR, "enabled": True})
@@ -660,8 +660,8 @@ def three_items(http_mock) -> "FakeApify":
 
 @pytest.mark.parametrize("failure", [ds_429, ds_503, ds_timeout], ids=["429", "503", "timeout"])
 def test_dataset_transient_error_waits_no_second_paid_run(tk, client, http_mock, run_worker, page2, failure):
-    """429 / 5xx / сеть при чтении Dataset уже оплаченного запуска: задание ждёт (Deferred, попытка не расходуется) и
-    продолжает с сохранённого смещения; запуск сбора не завершается «паузой», расписание не начинает второй запуск."""
+    """429 / 5xx / сеть при чтении Dataset уже оплаченного запуска: задание ждёт(Deferred, попытка не расходуется) и
+    продолжает с сохранённого смещения; запуск сбора не завершается "паузой", расписание не начинает второй запуск."""
     fake = three_items(http_mock)
     enable(client, tk, run_worker)
     http_mock.on("GET", re.compile(r"/v2/datasets/DsRun1/items\?.*offset=2"), handler=failure, times=1)
@@ -679,7 +679,7 @@ def test_dataset_transient_error_waits_no_second_paid_run(tk, client, http_mock,
 
 
 def test_dataset_unavailable_too_long_fails_and_stops(tk, client, http_mock, run_worker, page2, monkeypatch):
-    """Apify не отдаёт Dataset дольше DATASET_WAIT_S подряд: сбор — ошибка, платный сбор остановлен; второй платный
+    """Apify не отдаёт Dataset дольше DATASET_WAIT_S подряд: сбор - ошибка, платный сбор остановлен; второй платный
     запуск не начинается, принятые записи остаются."""
     from app.integrations import tiktok
 
@@ -701,8 +701,8 @@ def test_dataset_unavailable_too_long_fails_and_stops(tk, client, http_mock, run
 
 
 def test_dataset_stop_checked_per_item(tk, client, http_mock, run_worker, monkeypatch):
-    """Остановка воркера (и мягкий срок) проверяются перед каждой записью: позиция — на записи, задание откладывается
-    без расхода попытки; продолжение не принимает записи повторно (счётчики не удваиваются)."""
+    """Остановка воркера(и мягкий срок) проверяются перед каждой записью: позиция - на записи, задание откладывается
+    без расхода попытки; продолжение не принимает записи повторно(счётчики не удваиваются)."""
     from app.integrations.context import RunContext
 
     fake = three_items(http_mock)
@@ -731,7 +731,7 @@ def test_dataset_stop_checked_per_item(tk, client, http_mock, run_worker, monkey
 
 
 def _post_lost(fake, mode):
-    """POST запуска дошёл до Apify (запуск создан и оплачивается), но подтверждения нет."""
+    """POST запуска дошёл до Apify(запуск создан и оплачивается), но подтверждения нет."""
     def handler(req):
         fake.runs.append(f"Run{len(fake.runs) + 1}")
         if mode == "timeout":
@@ -744,7 +744,7 @@ def _post_lost(fake, mode):
 
 @pytest.mark.parametrize("mode", ["timeout", "500", "502", "504", "garbled"])
 def test_unconfirmed_start_no_retry_counts_in_budget(tk, client, env, http_mock, run_worker, mode):
-    """Ответ на POST запуска потерян (тайм-аут чтения, 5xx шлюза, 2xx без ID): запуск мог начаться — повтора нет,
+    """Ответ на POST запуска потерян(тайм-аут чтения, 5xx шлюза, 2xx без ID): запуск мог начаться - повтора нет,
     платный сбор остановлен, а в дневном лимите он учтён по лимиту на запуск: после ручной проверки в тот же день
     второй платный запуск не начинается, если лимит исчерпан."""
     env(APIFY_DAILY_BUDGET_USD="0.5")  # = лимит на запуск: один возможный запуск исчерпывает день
@@ -752,13 +752,13 @@ def test_unconfirmed_start_no_retry_counts_in_budget(tk, client, env, http_mock,
     http_mock.on("POST", API + f"actors/{ACTOR}/runs", handler=_post_lost(fake, mode), times=1)
     configure(client, tk)
     run_id = start(client, tk)
-    drive(run_worker, steps=4, step=600)  # пауза повтора (backoff) истекла бы — повтора нет
+    drive(run_worker, steps=4, step=600)  # пауза повтора(backoff) истекла бы - повтора нет
     run = run_of(client, run_id)
     assert run["status"] == "failed" and "запуск мог начаться и оплачиваться" in run["error"], run
     assert fake.runs == ["Run1"] and len(fake.posts()) == 1 and collect_job().attempts == 1
     assert any("в дневном лимите учтён как $0.5" in n["text"] for n in run["notes"])
     assert conn(client)["stopped"] is True
-    make_ready(client, tk, run_worker)  # администратор проверил подключение — остановка снята
+    make_ready(client, tk, run_worker)  # администратор проверил подключение - остановка снята
     run2 = start(client, tk)
     drive(run_worker, steps=2)
     r2 = run_of(client, run2)
@@ -767,7 +767,7 @@ def test_unconfirmed_start_no_retry_counts_in_budget(tk, client, env, http_mock,
 
 
 def test_post_connect_error_retried_without_budget_mark(tk, client, http_mock, run_worker):
-    """Соединение не установлено — запрос точно не ушёл: повтор допустим, в лимите ничего не учитывается."""
+    """Соединение не установлено - запрос точно не ушёл: повтор допустим, в лимите ничего не учитывается."""
     fake = FakeApify(http_mock, [item(PID1)], statuses=("SUCCEEDED",))
     fake.kv[f"video-tumargroup-{PID1}"] = mp4_bytes(990)
 
@@ -803,14 +803,14 @@ def test_cap_sent_exactly_never_rounded(tk, client, env, http_mock, run_worker):
     assert "APIFY_MAX_TOTAL_CHARGE_USD" in conn(client)["lastError"] and len(fake.posts()) == 1
 
 
-# ---------- 11. окно выдачи: пропуск публикаций не выглядит полным сбором (план §14) ----------
+# ---------- 11. окно выдачи: пропуск публикаций не выглядит полным сбором(план §14) ----------
 
 P = [f"75592300000001{i:05d}" for i in range(14)]  # P[1]…P[13]: чем больше номер, тем новее публикация
-U = [f"75592300000002{i:05d}" for i in range(8)]  # публикации второго профиля (ID TikTok общие для всех)
+U = [f"75592300000002{i:05d}" for i in range(8)]  # публикации второго профиля(ID TikTok общие для всех)
 
 
 def feed(fake, pids, *, name: str = "tumargroup", pinned=()) -> list:
-    """Выдача профиля (новые сверху) с видео в хранилище Apify."""
+    """Выдача профиля(новые сверху) с видео в хранилище Apify."""
     out = []
     for pid in pids:
         fake.kv[f"video-{name}-{pid}"] = mp4_bytes(1000 + int(pid[-5:]))
@@ -834,9 +834,9 @@ GAP = ("@tumargroup: все последние публикации в выда�
 
 
 def test_window_all_new_marks_partial(tk, client, http_mock, run_worker):
-    """Профиль собран прежде, а вся выдача (resultsPerPage последних) — новые публикации: более ранние новые могли
-    выпасть из окна — сбор «частично» с причиной, а не «работает». Первый сбор профиля — только заметка; выдача,
-    пересекающаяся с уже собранным, — обычный успешный сбор."""
+    """Профиль собран прежде, а вся выдача(resultsPerPage последних) - новые публикации: более ранние новые могли
+    выпасть из окна - сбор "частично" с причиной, а не "работает". Первый сбор профиля - только заметка; выдача,
+    пересекающаяся с уже собранным, - обычный успешный сбор."""
     fake = FakeApify(http_mock, statuses=("SUCCEEDED",))
     configure(client, tk, resultsPerPage=3)
     fake.items = feed(fake, [P[3], P[2], P[1]])
@@ -865,7 +865,7 @@ def test_window_all_new_marks_partial(tk, client, http_mock, run_worker):
 
 def test_window_pinned_posts_do_not_prove_continuity(tk, client, http_mock, run_worker):
     """Закреплённая публикация стоит в выдаче вне хронологии: уже собранная закреплённая не доказывает, что окно
-    дошло до прошлого сбора; выдача из одних закреплённых — тоже возможный пропуск."""
+    дошло до прошлого сбора; выдача из одних закреплённых - тоже возможный пропуск."""
     fake = FakeApify(http_mock, statuses=("SUCCEEDED",))
     configure(client, tk, resultsPerPage=3)
     fake.items = feed(fake, [P[3], P[2], P[1]])
@@ -875,7 +875,7 @@ def test_window_pinned_posts_do_not_prove_continuity(tk, client, http_mock, run_
     run = run_of(client, full_run(client, tk, run_worker, fake))
     assert run["status"] == "partial" and warns(run) == [GAP.format(k=2)], run
 
-    fake.items = feed(fake, [P[1], P[10], P[9]], pinned={P[1]})  # P[9] уже собрана — сбор непрерывен
+    fake.items = feed(fake, [P[1], P[10], P[9]], pinned={P[1]})  # P[9] уже собрана - сбор непрерывен
     run = run_of(client, full_run(client, tk, run_worker, fake))
     assert run["status"] == "succeeded" and warns(run) == [], run
 
@@ -889,8 +889,8 @@ def test_window_pinned_posts_do_not_prove_continuity(tk, client, http_mock, run_
 
 
 def test_window_per_profile_survives_dataset_deferral(tk, client, env, http_mock, run_worker, page2):
-    """Счётчики по профилям переживают отсрочку чтения Dataset (итог считает фаза cost в другом проходе воркера);
-    пропуск отмечается только у профиля без пересечения; выдача на пределе APIFY_MAX_ITEMS_PER_PROFILE — подсказка
+    """Счётчики по профилям переживают отсрочку чтения Dataset(итог считает фаза cost в другом проходе воркера);
+    пропуск отмечается только у профиля без пересечения; выдача на пределе APIFY_MAX_ITEMS_PER_PROFILE - подсказка
     про .env."""
     env(APIFY_MAX_ITEMS_PER_PROFILE="2")
     fake = FakeApify(http_mock, statuses=("SUCCEEDED",))
@@ -903,7 +903,7 @@ def test_window_per_profile_survives_dataset_deferral(tk, client, env, http_mock
     body, q = fake.bodies[0], fake.posts()[0].url.params
     assert (body["resultsPerPage"], q["maxItems"]) == (2, "4")
 
-    # страница 1: ulba.river U[4], tumargroup P[3] (новые); сбой; страница 2: ulba.river U[3] (новая), tumargroup P[2]
+    # страница 1: ulba.river U[4], tumargroup P[3](новые); сбой; страница 2: ulba.river U[3](новая), tumargroup P[2]
     fake.items = [*feed(fake, [U[4]], name="ulba.river"), *feed(fake, [P[3]]), *feed(fake, [U[3]], name="ulba.river"),
                   *feed(fake, [P[2]])]
     http_mock.on("GET", re.compile(r"/v2/datasets/DsRun2/items\?.*offset=2"), handler=ds_503, times=1)
@@ -934,7 +934,7 @@ def test_window_rules(env):
     tiktok.tally(stats, item(P[2], pinned=True), "created")
     tiktok.tally(stats, item(P[3], name="UlbaRiver"), "unchanged")
     tiktok.tally(stats, {"id": P[4], "authorMeta": {}, "input": "https://www.tiktok.com/@ulbariver"}, "created")
-    tiktok.tally(stats, {"id": P[5], "authorMeta": {"name": "имя"}}, "created")  # профиль не определён — не считается
+    tiktok.tally(stats, {"id": P[5], "authorMeta": {"name": "имя"}}, "created")  # профиль не определён - не считается
     assert stats == {"tumargroup": [2, 1, 1], "ulbariver": [2, 2, 1]}
     assert tiktok._stats({"a": [1, 1, 1], "b": [1, -1, 0], "c": "x", "d": [True, 1, 1], 5: [1, 1, 1]}) == \
         {"a": [1, 1, 1]}
@@ -957,7 +957,7 @@ def test_window_rules(env):
     at = "2026-10-01T00:00:00Z"
     legacy = {"profiles": {"a": {"run": 7, "at": at}, "b": {"run": 6, "at": at}}}
     ctx = window({"a": [3, 3, 3], "b": [3, 3, 3]}, seeded=None, state=legacy)
-    assert flagged(ctx) == ["@b"]  # a отмечен этим же запуском (повтор фазы cost) — первый сбор, не пропуск
+    assert flagged(ctx) == ["@b"]  # a отмечен этим же запуском(повтор фазы cost) - первый сбор, не пропуск
     assert ctx.state["profiles"]["a"]["run"] == 7 and ctx.state["profiles"]["b"]["items"] == 3
     many = {"profiles": {f"p{i:03d}": {"run": 1, "at": f"2026-01-01T00:{i // 60:02d}:{i % 60:02d}Z"}
                          for i in range(tiktok.SEEN_MAX + 20)}}

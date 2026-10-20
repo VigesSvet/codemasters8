@@ -1,9 +1,9 @@
-"""Схема БД и старт приложения: версия схемы в таблице meta (обновление на месте — app.migrate), пустая БД получает
-стартовый набор shared/snapshot (app.snapshot — реальные данные мониторинга: ЖК, застройщики, собранная реклама с OCR и
-анализом ИИ, объекты из рекламы, журнал), затем при каждом старте — карточки ЖК по открытому реестру
-shared/registry_ust_kamenogorsk.json (app.demo.import_registry: идемпотентно, только дополняет пустое).
+"""Схема БД и старт приложения: версия схемы в таблице meta(обновление на месте - app.migrate), пустая БД получает
+стартовый набор shared/snapshot(app.snapshot - реальные данные мониторинга: ЖК, застройщики, собранная реклама с OCR и
+анализом ИИ, объекты из рекламы, журнал), затем при каждом старте - карточки ЖК по открытому реестру
+shared/registry_ust_kamenogorsk.json(app.demo.import_registry: идемпотентно, только дополняет пустое).
 
-Демо-набора (вымышленных ЖК) в приложении нет: он — только у тестов (shared/testdata/demo_seed.json,
+Демо-набора(вымышленных ЖК) в приложении нет: он - только у тестов(shared/testdata/demo_seed.json,
 backend/tests/demo_seed.py), которые подставляют свой старт пустой БД через START. Демо-данные в БД прежних версий
 удаляет python -m app.demo purge."""
 import logging
@@ -23,9 +23,9 @@ log = logging.getLogger("saq")
 
 
 def start(db: Session, *, src: Optional[Path] = None, files: bool = True) -> None:
-    """Старт API после создания и обновления схемы (в сессии db, без commit). Пустая БД (snapshot.is_empty) — стартовый
-    набор src (по умолчанию shared/snapshot; files=False — без файлов изображений); набора нет — только открытый
-    реестр, с предупреждением. Затем карточки ЖК по открытому реестру (на свежем наборе — без изменений) и подсказка,
+    """Старт API после создания и обновления схемы(в сессии db, без commit). Пустая БД(snapshot.is_empty) - стартовый
+    набор src(по умолчанию shared/snapshot; files=False - без файлов изображений); набора нет - только открытый
+    реестр, с предупреждением. Затем карточки ЖК по открытому реестру(на свежем наборе - без изменений) и подсказка,
     если в БД остались демо-данные прежних версий."""
     from . import demo, snapshot
 
@@ -46,11 +46,11 @@ def start(db: Session, *, src: Optional[Path] = None, files: bool = True) -> Non
                     "python -m app.demo purge --dry-run, затем --yes")
 
 
-# Старт пустой и существующей БД; тесты подставляют свой (демо-набор из shared/testdata — backend/tests/demo_seed.py)
+# Старт пустой и существующей БД; тесты подставляют свой(демо-набор из shared/testdata - backend/tests/demo_seed.py)
 START: Callable[[Session], None] = start
 
 
-# Таблицы приложения прошлых версий схемы: удаляются при пересоздании вместе с текущими (Base.metadata)
+# Таблицы приложения прошлых версий схемы: удаляются при пересоздании вместе с текущими(Base.metadata)
 LEGACY_TABLES = {"developers", "complexes", "ads", "audit_events", "appeals", "signals", "meta"}
 
 
@@ -69,13 +69,13 @@ def _meta(eng: Engine, tables: set, key: str) -> Optional[str]:
     with SessionLocal(bind=eng) as db:
         try:
             m = db.get(models.Meta, key)
-        except SQLAlchemyError:  # meta старой схемы другого вида — значения нет
+        except SQLAlchemyError:  # meta старой схемы другого вида - значения нет
             return None
         return m.value if m else None
 
 
 def _drop_app_tables(eng: Engine) -> None:
-    """DROP только таблиц приложения: по именам, зависимые раньше родительских (без reflect — старая схема
+    """DROP только таблиц приложения: по именам, зависимые раньше родительских(без reflect - старая схема
     может ссылаться на уже удалённые таблицы, а reflect всей БД задел бы чужие таблицы)."""
     present = _app_tables(eng)
     order = sorted(LEGACY_TABLES - set(Base.metadata.tables)) + [t.name for t in reversed(Base.metadata.sorted_tables)]
@@ -86,15 +86,15 @@ def _drop_app_tables(eng: Engine) -> None:
 
 
 def init_db(eng: Engine = default_engine, start: Optional[Callable[[Session], None]] = None) -> None:
-    """Нет таблиц приложения → таблицы + старт (START: пустая БД — стартовый набор). Известная прошлая версия схемы →
-    обновление на месте с резервной копией (migrate.upgrade), данные сохраняются. Неизвестная версия (или нет meta) →
-    таблицы приложения пересоздаются, но только если в базе нет собранных/внесённых данных (migrate.durable_rows); иначе
-    SchemaError — пока не задан SAQ_ALLOW_SCHEMA_RESET=1. Посторонние таблицы в той же БД остаются как есть.
-    start — свой старт вместо START (загрузка набора из другого каталога — app.snapshot)."""
+    """Нет таблиц приложения → таблицы + старт(START: пустая БД - стартовый набор). Известная прошлая версия схемы →
+    обновление на месте с резервной копией(migrate.upgrade), данные сохраняются. Неизвестная версия(или нет meta) →
+    таблицы приложения пересоздаются, но только если в базе нет собранных/внесённых данных(migrate.durable_rows); иначе
+    SchemaError - пока не задан SAQ_ALLOW_SCHEMA_RESET=1. Посторонние таблицы в той же БД остаются как есть.
+    start - свой старт вместо START(загрузка набора из другого каталога - app.snapshot)."""
     from . import demo
 
     tables = _app_tables(eng)
-    flag = None  # флаг «демо удалены» переживает пересоздание таблиц
+    flag = None  # флаг "демо удалены" переживает пересоздание таблиц
     if tables:
         ver = _version(eng, tables)
         if ver == models.SCHEMA_VERSION:
@@ -123,6 +123,6 @@ def init_db(eng: Engine = default_engine, start: Optional[Callable[[Session], No
 
 
 def reset(eng: Engine = default_engine) -> None:
-    """Таблицы приложения пересоздаются, затем старт пустой БД (тесты). Флаг «демо удалены» тоже удаляется."""
+    """Таблицы приложения пересоздаются, затем старт пустой БД(тесты). Флаг "демо удалены" тоже удаляется."""
     _drop_app_tables(eng)
     init_db(eng)

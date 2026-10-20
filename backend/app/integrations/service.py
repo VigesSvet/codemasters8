@@ -1,12 +1,12 @@
-"""Состояние подключений для API и воркера (integration-spec §10.4–§10.7, §5.2): строки collectors, фактический
+"""Состояние подключений для API и воркера(integration-spec §10.4-§10.7, §5.2): строки collectors, фактический
 статус, настройки, запуски, переходы статуса с записью в журнал, квоты, учёт отказов клиентов приёма.
 
-Фактический статус — хранимый статус с наложениями (по порядку): нет ключей на сервере → «не настроен»; ключи
-сменились после последней проверки → «не проверен»; идёт проверка → «проверяется»; сбор в очереди / идёт; живой статус
-подключения (приём, анализатор, OAuth); иначе — хранимый. Значения секретов сюда не попадают: только имена переменных,
-отпечатки и несекретные сведения (facts, очищенные ingest.scrub).
+Фактический статус - хранимый статус с наложениями(по порядку): нет ключей на сервере → "не настроен"; ключи
+сменились после последней проверки → "не проверен"; идёт проверка → "проверяется"; сбор в очереди / идёт; живой статус
+подключения(приём, анализатор, OAuth); иначе - хранимый. Значения секретов сюда не попадают: только имена переменных,
+отпечатки и несекретные сведения(facts, очищенные ingest.scrub).
 
-Функции работают в сессии вызывающего и не фиксируют транзакцию; исключения — reserve_quota и record_reject (своя
+Функции работают в сессии вызывающего и не фиксируют транзакцию; исключения - reserve_quota и record_reject(своя
 короткая сессия: квота учитывается до сетевого вызова, отказ клиента пишется, даже если запрос отклонён).
 """
 import logging
@@ -42,7 +42,7 @@ CONFIG_LABELS = {"accounts": "аккаунты", "channels": "каналы", "pr
 
 
 class Rejected(Exception):
-    """Действие невозможно: status — HTTP-код (404, 409), detail — по-русски."""
+    """Действие невозможно: status - HTTP-код(404, 409), detail - по-русски."""
 
     def __init__(self, status: int, detail: str):
         super().__init__(detail)
@@ -50,7 +50,7 @@ class Rejected(Exception):
 
 
 class Invalid(Exception):
-    """Неверное значение поля запроса (422): loc — путь поля, msg — по-русски."""
+    """Неверное значение поля запроса(422): loc - путь поля, msg - по-русски."""
 
     def __init__(self, loc: tuple, msg: str, value: Any = None):
         super().__init__(msg)
@@ -60,7 +60,7 @@ class Invalid(Exception):
 # ---------- строки подключений ----------
 
 def row(db: Session, code: str, *, create: bool = False) -> Optional[models.Collector]:
-    """Строка подключения; create — создать, если нет (INSERT … ON CONFLICT DO NOTHING и перечитывание)."""
+    """Строка подключения; create - создать, если нет(INSERT … ON CONFLICT DO NOTHING и перечитывание)."""
     C = models.Collector
     r = db.get(C, code)
     if r is None and create:
@@ -122,7 +122,7 @@ def effective_status(db: Session, conn: Connector, r: Optional[models.Collector]
 # ---------- запуски ----------
 
 def run_out(db: Session, run: models.CollectionRun) -> dict:
-    """RunOut: счётчики, заметки, когда повтор (если задание ждёт повтора или продолжения)."""
+    """RunOut: счётчики, заметки, когда повтор(если задание ждёт повтора или продолжения)."""
     J = models.Job
     retry_at = None
     if run.status in ACTIVE_RUN:
@@ -140,7 +140,7 @@ def run_out(db: Session, run: models.CollectionRun) -> dict:
 
 
 def start_run(db: Session, run_id: int, now: datetime) -> Optional[models.CollectionRun]:
-    """Запуск — «выполняется» (время начала — первое)."""
+    """Запуск - "выполняется"(время начала - первое)."""
     run = db.get(models.CollectionRun, run_id)
     if run is None:
         return None
@@ -162,7 +162,7 @@ def finish_run(db: Session, run_id: int, status: str, *, error_code: Optional[st
 
 def transition(db: Session, code: str, status: str, detail: Optional[str] = None, *,
                at: Optional[datetime] = None, audit: bool = True) -> None:
-    """Хранимый статус подключения; при смене — событие журнала «Источник «…»: {статус}. {пояснение}»."""
+    """Хранимый статус подключения; при смене - событие журнала "Источник "…": {статус}. {пояснение}"."""
     conn = registry.get(code)
     r = row(db, code, create=True)
     old = r.status
@@ -175,8 +175,8 @@ def transition(db: Session, code: str, status: str, detail: Optional[str] = None
 
 
 def not_configured_detail(conn: Connector, s, r: Optional[models.Collector], missing: list[str]) -> str:
-    """Текст 409 «не настроено»: каких переменных окружения нет на сервере. Не хватает не переменной, а условия (нет
-    сессии Telegram: TG_SESSION_PATH задан, нужен вход) — пояснение самого подключения (missing_detail), а не совет
+    """Текст 409 "не настроено": каких переменных окружения нет на сервере. Не хватает не переменной, а условия(нет
+    сессии Telegram: TG_SESSION_PATH задан, нужен вход) - пояснение самого подключения(missing_detail), а не совет
     задать переменную, которая уже задана."""
     env = [n for n in missing if n in tuple(conn.required_env or ())]
     if not env:
@@ -189,7 +189,7 @@ def not_configured_detail(conn: Connector, s, r: Optional[models.Collector], mis
 
 def request_run(db: Session, code: str, *, trigger: str, who: str,
                 now: Optional[datetime] = None) -> tuple[models.CollectionRun, bool]:
-    """Запуск проверки (trigger test) или сбора (manual / schedule) в очередь. Уже есть активный — он и возвращается
+    """Запуск проверки(trigger test) или сбора(manual / schedule) в очередь. Уже есть активный - он и возвращается
     (created=False). Без commit."""
     conn = registry.get(code)
     now = models.as_utc(now) or models.utcnow()
@@ -217,7 +217,7 @@ def request_run(db: Session, code: str, *, trigger: str, who: str,
     job, created = jobs.enqueue(db, kind, dedupe_key=key, collector=code, run_id=run.id,
                                 max_attempts=1 if kind == "test" else max(int(conn.max_attempts or 1), 1),
                                 run_after=now)
-    if not created:  # гонка: активное задание поставили одновременно — свой запуск не нужен
+    if not created:  # гонка: активное задание поставили одновременно - свой запуск не нужен
         db.delete(run)
         db.flush()
         other = db.get(models.CollectionRun, job.run_id) if job.run_id is not None else None
@@ -233,7 +233,7 @@ def _stopped(r: Optional[models.Collector]) -> bool:
 
 
 def collect_all(db: Session, who: str, now: datetime) -> dict:
-    """«Обновить всё»: сбор для каждого включённого, настроенного и проверенного сборщика; остальные — с причиной."""
+    """"Обновить всё": сбор для каждого включённого, настроенного и проверенного сборщика; остальные - с причиной."""
     s = get_settings()
     now = models.as_utc(now)
     active = _active_jobs(db)
@@ -290,8 +290,8 @@ def _diff(label: str, old: Any, new: Any) -> Optional[str]:
 
 
 def patch(db: Session, code: str, body: schemas.ConnectorPatchIn, *, now: Optional[datetime] = None) -> None:
-    """Настройки подключения администратором: включение сбора, период, списки источников. Изменения — в журнал от имени
-    автора. Rejected (409) / Invalid (422) / base.ConfigError (422, loc config.поле). Без commit."""
+    """Настройки подключения администратором: включение сбора, период, списки источников. Изменения - в журнал от имени
+    автора. Rejected(409) / Invalid(422) / base.ConfigError(422, loc config.поле). Без commit."""
     conn = registry.get(code)
     now = models.as_utc(now) or models.utcnow()
     s = get_settings()
@@ -350,8 +350,8 @@ def patch(db: Session, code: str, body: schemas.ConnectorPatchIn, *, now: Option
 
 
 def _cancel_queued_collect(db: Session, code: str, now: datetime) -> None:
-    """Сбор выключен: сбор, который ещё ждёт в очереди, отменяется (выполняющийся — доработает). Задание с уже
-    начатым внешним запуском (Apify: ждёт между фазами) не отменяется — иначе оплаченный запуск не будет дочитан
+    """Сбор выключен: сбор, который ещё ждёт в очереди, отменяется(выполняющийся - доработает). Задание с уже
+    начатым внешним запуском(Apify: ждёт между фазами) не отменяется - иначе оплаченный запуск не будет дочитан
     и его стоимость не запишется; оно доработает, новых по расписанию не будет."""
     job = jobs.active(db, f"collect:{code}")
     if job is None or job.status != "queued":
@@ -364,7 +364,7 @@ def _cancel_queued_collect(db: Session, code: str, now: datetime) -> None:
         finish_run(db, job.run_id, "cancelled", now=now)
 
 
-# ---------- для страницы «Подключения» ----------
+# ---------- для страницы "Подключения" ----------
 
 def _counts(db: Session) -> dict[str, dict]:
     I, A = models.IngestItem, models.MediaAsset
@@ -418,8 +418,8 @@ def connector_out(db: Session, conn: Connector, r: Optional[models.Collector], *
     }
 
 
-# Посетителю (без токена администратора) — только состояние: без способа подключения (адреса API, модели, сервисы),
-# имён ключей, списков источников, пояснений и текстов ошибок, фактов проверки (аккаунты, отпечатки ключей), автора,
+# Посетителю(без токена администратора) - только состояние: без способа подключения(адреса API, модели, сервисы),
+# имён ключей, списков источников, пояснений и текстов ошибок, фактов проверки(аккаунты, отпечатки ключей), автора,
 # стоимости и заметок запусков, ID воркера
 PUBLIC_CONNECTOR_HIDDEN = {"via": "", "status_detail": None, "missing": [], "secret_refs": [], "config": {},
                            "last_error": None, "last_error_at": None, "facts": {}}
@@ -440,7 +440,7 @@ def public_worker(w: dict) -> dict:
 
 
 def view(db: Session, codes: Optional[list] = None, *, now: Optional[datetime] = None) -> list[dict]:
-    """ConnectorOut по реестру (порядок страницы) или по выбранным кодам."""
+    """ConnectorOut по реестру(порядок страницы) или по выбранным кодам."""
     now = models.as_utc(now) or models.utcnow()
     codes = [c for c in registry.CONNECTORS if codes is None or c in codes]
     rows = {r.code: r for r in db.scalars(select(models.Collector).where(models.Collector.code.in_(codes)))}
@@ -460,8 +460,8 @@ def _stopped_at(lease: models.WorkerLease) -> Optional[datetime]:
 
 
 def worker_info(db: Session, now: Optional[datetime] = None) -> dict:
-    """Жив ли воркер: пульс любого worker:* не старше 120 с и воркер не отметил остановку (stoppedAt не раньше
-    последнего пульса — release_lease при штатной остановке)."""
+    """Жив ли воркер: пульс любого worker:* не старше 120 с и воркер не отметил остановку(stoppedAt не раньше
+    последнего пульса - release_lease при штатной остановке)."""
     now = models.as_utc(now) or models.utcnow()
     L = models.WorkerLease
     leases = list(db.scalars(select(L).where(L.name.like("worker:%")).order_by(L.heartbeat_at.desc()).limit(20)))
@@ -479,15 +479,15 @@ def worker_info(db: Session, now: Optional[datetime] = None) -> dict:
 
 
 def processing_view(item: Optional[models.IngestItem]) -> Optional[dict]:
-    """AdOut.processing — состояние анализа собранной публикации."""
+    """AdOut.processing - состояние анализа собранной публикации."""
     return item.processing_view() if item is not None else None
 
 
 # ---------- квоты ----------
 
 def reserve_quota(name: str, limit: int, now: Optional[datetime] = None, *, amount: int = 1) -> bool:
-    """Учесть amount единиц квоты (по умолчанию один запрос) атомарно, в своей сессии (commit — до сетевого вызова):
-    UPDATE … count + amount WHERE count + amount <= limit; строки нет — создать и повторить. False — квота исчерпана."""
+    """Учесть amount единиц квоты(по умолчанию один запрос) атомарно, в своей сессии(commit - до сетевого вызова):
+    UPDATE … count + amount WHERE count + amount <= limit; строки нет - создать и повторить. False - квота исчерпана."""
     Q = models.QuotaCounter
     now = models.as_utc(now) or models.utcnow()
     amount = max(int(amount), 0)
@@ -507,8 +507,8 @@ def reserve_quota(name: str, limit: int, now: Optional[datetime] = None, *, amou
 
 
 def adjust_quota(name: str, delta: int, now: Optional[datetime] = None) -> None:
-    """Поправка учтённого расхода (резерв → фактический): UPDATE … count + delta атомарно, не ниже нуля, в своей
-    сессии. Строки нет — ничего не делает (резерва не было)."""
+    """Поправка учтённого расхода(резерв → фактический): UPDATE … count + delta атомарно, не ниже нуля, в своей
+    сессии. Строки нет - ничего не делает(резерва не было)."""
     Q = models.QuotaCounter
     now = models.as_utc(now) or models.utcnow()
     delta = int(delta)
@@ -525,17 +525,17 @@ def quota_used(db: Session, name: str) -> int:
     return int(db.scalar(select(models.QuotaCounter.count).where(models.QuotaCounter.name == name)) or 0)
 
 
-# ---------- отказы клиентов приёма (§5.2) ----------
+# ---------- отказы клиентов приёма(§5.2) ----------
 
 _REJECT_AT: dict[tuple, float] = {}
 _REJECT_LOCK = threading.Lock()
 
 
 def record_reject(code: str, status: int, detail: str) -> None:
-    """Отказ клиенту приёма публикаций или боту (401/403/409/413/415/422) или сбой сервера при приёме (500) →
+    """Отказ клиенту приёма публикаций или боту(401/403/409/413/415/422) или сбой сервера при приёме(500) →
     collectors[code].state.rejects = {count, lastAt, lastCode, lastDetail}. Пояснение маскируется и обрезается до 200
-    символов, токен не пишется. Не чаще одной записи в 5 с на (подключение, код ответа) — count приблизительный;
-    принятая публикация снимает это ограничение (reset_reject_throttle). Никогда не бросает."""
+    символов, токен не пишется. Не чаще одной записи в 5 с на(подключение, код ответа) - count приблизительный;
+    принятая публикация снимает это ограничение(reset_reject_throttle). Никогда не бросает."""
     try:
         key = (code, int(status))
         mono = time.monotonic()
@@ -552,13 +552,13 @@ def record_reject(code: str, status: int, detail: str) -> None:
                                 "lastCode": int(status), "lastDetail": (redact(str(detail or ""), limit=200) or "")}
             r.state = state
             db.commit()
-    except Exception:  # noqa: BLE001 — учёт отказа не должен ломать ответ клиенту
+    except Exception:  # noqa: BLE001 - учёт отказа не должен ломать ответ клиенту
         log.warning("Отказ клиенту (%s, HTTP %s) не записан в состояние подключения", code, status, exc_info=True)
 
 
 def reset_reject_throttle(code: str) -> None:
-    """Принятая заявка/публикация: следующий отказ этому клиенту записывается сразу (иначе отказ в течение 5 с после
-    успеха не попал бы в состояние, и статус показывал бы «принимает», хотя последняя попытка отклонена)."""
+    """Принятая заявка/публикация: следующий отказ этому клиенту записывается сразу(иначе отказ в течение 5 с после
+    успеха не попал бы в состояние, и статус показывал бы "принимает", хотя последняя попытка отклонена)."""
     with _REJECT_LOCK:
         for key in [k for k in _REJECT_AT if k[0] == code]:
             del _REJECT_AT[key]

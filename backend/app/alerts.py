@@ -1,35 +1,35 @@
-"""Предупреждения жителям (страница «Жителям»): аналитик готовит текст по данным ЖК, другой сотрудник в режиме
+"""Предупреждения жителям(страница "Жителям"): аналитик готовит текст по данным ЖК, другой сотрудник в режиме
 администратора согласует, воркер отправляет его через Telegram Bot API в канал ГАСК и подписчикам района.
 
-    GET  /api/alerts?complexId=&limit=        предупреждения, новые первыми (без chat_id подписчиков)
-    GET  /api/alerts/audience?district=       кому уйдёт: канал, подписчики района и «всех районов», готова ли отправка
-    POST /api/alerts                          текст → «на согласовании» (автор — вошедший сотрудник)
-    POST /api/alerts/check                    проверить бота и канал в Telegram (getMe, getChat, getChatMember)
-    POST /api/alerts/{id}/approve             согласовать и отправить: токен администратора, согласующий — не автор
-    POST /api/alerts/{id}/reject              отклонить (токен администратора), комментарий по желанию
-    POST /api/alerts/{id}/retry               отправить доставки, оставшиеся «ожидает» (токен администратора)
+    GET  /api/alerts?complexId=&limit=        предупреждения, новые первыми(без chat_id подписчиков)
+    GET  /api/alerts/audience?district=       кому уйдёт: канал, подписчики района и "всех районов", готова ли отправка
+    POST /api/alerts                          текст → "на согласовании"(автор - вошедший сотрудник)
+    POST /api/alerts/check                    проверить бота и канал в Telegram(getMe, getChat, getChatMember)
+    POST /api/alerts/{id}/approve             согласовать и отправить: токен администратора, согласующий - не автор
+    POST /api/alerts/{id}/reject              отклонить(токен администратора), комментарий по желанию
+    POST /api/alerts/{id}/retry               отправить доставки, оставшиеся "ожидает"(токен администратора)
 
-Подписки регистрирует бот заявок (saq-telegram-bot) с тем же сервисным токеном, что и заявки (SERVICE_API_TOKEN):
+Подписки регистрирует бот заявок(saq-telegram-bot) с тем же сервисным токеном, что и заявки(SERVICE_API_TOKEN):
 
-    GET    /api/intake/telegram/districts                 районы ЖК — для клавиатуры бота
-    PUT    /api/intake/telegram/subscriptions/{chatId}    {"districts": [...]} — заменить; [] или ["*"] — все районы
-    GET    /api/intake/telegram/subscriptions/{chatId}    текущая подписка (404 — подписки нет)
-    DELETE /api/intake/telegram/subscriptions/{chatId}    отписка (идемпотентно, 204)
+    GET    /api/intake/telegram/districts                 районы ЖК - для клавиатуры бота
+    PUT    /api/intake/telegram/subscriptions/{chatId}    {"districts": [...]} - заменить; [] или ["*"] - все районы
+    GET    /api/intake/telegram/subscriptions/{chatId}    текущая подписка(404 - подписки нет)
+    DELETE /api/intake/telegram/subscriptions/{chatId}    отписка(идемпотентно, 204)
 
-Хранятся только chat_id и район — ни имени, ни username, ни телефона. У доставки подписчику chat_id стирается после
-итога (остаётся счётчик); житель заблокировал бота или чат не найден — подписка снимается.
+Хранятся только chat_id и район - ни имени, ни username, ни телефона. У доставки подписчику chat_id стирается после
+итога(остаётся счётчик); житель заблокировал бота или чат не найден - подписка снимается.
 
-Согласование: предупреждение «на согласовании» (одно на ЖК) согласует сотрудник с токеном администратора, и это не
-автор текста (сравнение имён без регистра) — так сообщение жителям никогда не уходит решением одного человека.
+Согласование: предупреждение "на согласовании"(одно на ЖК) согласует сотрудник с токеном администратора, и это не
+автор текста(сравнение имён без регистра) - так сообщение жителям никогда не уходит решением одного человека.
 Автоматически система жителям ничего не отправляет.
 
-Отправка (задание воркера «alert», jobs.HANDLERS): при согласовании получатели фиксируются — доставки «ожидает» в канал
-TG_ALERTS_CHANNEL и подписчикам района ЖК (и «всех районов»). Воркер берёт их по одной условным UPDATE «ожидает →
-отправляется», вызывает sendMessage (BOT_TOKEN, HTML) и записывает итог; не больше SEND_RATE сообщений в секунду, за
-одно выполнение — BATCH доставок (дальше — продолжение тем же заданием). 429 — отсрочка на retry_after без расхода
-попытки; сеть, тайм-аут, 5xx — повтор задания с паузой; Telegram не принял BOT_TOKEN — задание завершается ошибкой,
-доставки остаются «ожидает» («Повторить отправку» после исправления). Доставка, оставшаяся «отправляется» после сбоя
-воркера, повторно не отправляется («результат неизвестен»): одно и то же предупреждение не придёт жителю дважды.
+Отправка(задание воркера "alert", jobs.HANDLERS): при согласовании получатели фиксируются - доставки "ожидает" в канал
+TG_ALERTS_CHANNEL и подписчикам района ЖК(и "всех районов"). Воркер берёт их по одной условным UPDATE "ожидает →
+отправляется", вызывает sendMessage(BOT_TOKEN, HTML) и записывает итог; не больше SEND_RATE сообщений в секунду, за
+одно выполнение - BATCH доставок(дальше - продолжение тем же заданием). 429 - отсрочка на retry_after без расхода
+попытки; сеть, тайм-аут, 5xx - повтор задания с паузой; Telegram не принял BOT_TOKEN - задание завершается ошибкой,
+доставки остаются "ожидает"("Повторить отправку" после исправления). Доставка, оставшаяся "отправляется" после сбоя
+воркера, повторно не отправляется("результат неизвестен"): одно и то же предупреждение не придёт жителю дважды.
 Этот сервис бот API только отправляет: getUpdates и webhook не вызываются, long polling бота заявок с тем же токеном
 не прерывается.
 """
@@ -63,11 +63,11 @@ router = APIRouter(tags=["alerts"])
 
 API_BASE = "https://api.telegram.org"
 TIMEOUT_S = 15.0
-SEND_RATE = 20.0  # сообщений в секунду: у Bot API предел — около 30 в секунду разным чатам
-BATCH = 200  # доставок за одно выполнение задания — дальше продолжение (отсрочка 0 с), очередь не занята надолго
+SEND_RATE = 20.0  # сообщений в секунду: у Bot API предел - около 30 в секунду разным чатам
+BATCH = 200  # доставок за одно выполнение задания - дальше продолжение(отсрочка 0 с), очередь не занята надолго
 MAX_ATTEMPTS = 5
 TITLE_MAX = 80
-TEXT_MAX = 240  # как в форме «Предупредить жителей» (frontend/src/pages/Residents.tsx)
+TEXT_MAX = 240  # как в форме "Предупредить жителей"(frontend/src/pages/Residents.tsx)
 ALL = "*"  # подписка на все районы
 SYSTEM = "Система"
 SIGNATURE = "ГАСК ВКО · SAQ QURYLYS"
@@ -81,7 +81,7 @@ STATUS_LABELS = {"pending": "На согласовании", "rejected": "Отк
 TEMPLATE_LABELS = {"basis": "Проверьте основание", "idle": "Стройка стоит", "ok": "Есть в перечне"}
 
 NOT_FOUND = "Предупреждение не найдено"
-# Тексты для человека — без имён переменных: страница «Жителям» показывает их и администратору
+# Тексты для человека - без имён переменных: страница "Жителям" показывает их и администратору
 NOT_CONFIGURED = "Отправка не настроена: на сервере не задан токен бота заявок"
 NOBODY = "Некому отправить: канал ГАСК не задан, подписчиков района в боте нет"
 SAME_PERSON = "Согласует другой сотрудник: автор предупреждения не может согласовать его сам"
@@ -115,7 +115,7 @@ class AlertIn(Camel):
 
 
 class AlertDecisionIn(Camel):
-    """Согласование, отклонение или повтор отправки: кто (вошедший сотрудник) и комментарий."""
+    """Согласование, отклонение или повтор отправки: кто(вошедший сотрудник) и комментарий."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -164,7 +164,7 @@ class AlertOut(Camel):
     last_error: Optional[str] = None
     channel: Optional[ChannelDeliveryOut] = None
     subscribers: DeliveryCountsOut = Field(default_factory=DeliveryCountsOut)
-    errors: List[ErrorCountOut] = []  # почему не доставлено подписчикам — до трёх причин
+    errors: List[ErrorCountOut] = []  # почему не доставлено подписчикам - до трёх причин
 
 
 class DistrictCountOut(Camel):
@@ -173,16 +173,16 @@ class DistrictCountOut(Camel):
 
 
 class AudienceOut(Camel):
-    """Кому уйдёт предупреждение по району и готова ли отправка (без chat_id)."""
+    """Кому уйдёт предупреждение по району и готова ли отправка(без chat_id)."""
 
     configured: bool  # BOT_TOKEN задан
-    admin_configured: bool  # SAQ_ADMIN_TOKEN задан — согласовать есть кому
+    admin_configured: bool  # SAQ_ADMIN_TOKEN задан - согласовать есть кому
     worker_alive: bool
     problem: Optional[str] = None
     channel: Optional[str] = None
     channel_problem: Optional[str] = None
     district: str = ""
-    subscribers: int = 0  # подписчики района и «всех районов» — получат предупреждение по ЖК этого района
+    subscribers: int = 0  # подписчики района и "всех районов" - получат предупреждение по ЖК этого района
     everywhere: int = 0
     districts: List[DistrictCountOut] = []
 
@@ -199,7 +199,7 @@ District = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
 
 
 class SubscriptionIn(Camel):
-    """Районы подписки: названия районов ЖК (GET /api/intake/telegram/districts) без учёта регистра; [] или «*» —
+    """Районы подписки: названия районов ЖК(GET /api/intake/telegram/districts) без учёта регистра; [] или "*" -
     все районы."""
 
     model_config = ConfigDict(extra="forbid")
@@ -222,7 +222,7 @@ class DistrictOut(Camel):
 # ---------- канал и сообщение ----------
 
 def channel(s: Settings) -> tuple[Optional[str], Optional[str]]:
-    """Канал ГАСК из TG_ALERTS_CHANNEL: (канал, None); не задан — (None, None); неверный — (None, пояснение).
+    """Канал ГАСК из TG_ALERTS_CHANNEL: (канал, None); не задан - (None, None); неверный - (None, пояснение).
     Ссылка t.me/<имя> принимается как @<имя>."""
     raw = (s.tg_alerts_channel or "").strip()
     if not raw:
@@ -236,14 +236,14 @@ def channel(s: Settings) -> tuple[Optional[str], Optional[str]]:
 
 
 def hashtag(district: str) -> str:
-    """«Северо-запад» → «#Северо_запад»: хэштег района, по которому житель находит предупреждения своего района в
-    канале; без района — пусто."""
+    """"Северо-запад" → "#Северо_запад": хэштег района, по которому житель находит предупреждения своего района в
+    канале; без района - пусто."""
     tag = re.sub(r"\W+", "_", district or "").strip("_")
     return f"#{tag}" if tag else ""
 
 
 def render(a: models.ResidentAlert) -> str:
-    """Текст сообщения Telegram (parse_mode HTML): заголовок жирным, текст, хэштег района и подпись."""
+    """Текст сообщения Telegram(parse_mode HTML): заголовок жирным, текст, хэштег района и подпись."""
     foot = " · ".join(x for x in (hashtag(a.district), SIGNATURE) if x)
     esc = lambda v: html.escape(v or "", quote=False)  # noqa: E731
     return f"<b>{esc(a.title)}</b>\n{esc(a.text)}\n\n{esc(foot)}"
@@ -271,7 +271,7 @@ class _TokenRejected(Exception):
 
 
 class _ChatRejected(Exception):
-    """Получатель или сообщение отклонены (4xx, кроме 401/404/429): description — текст Telegram."""
+    """Получатель или сообщение отклонены(4xx, кроме 401/404/429): description - текст Telegram."""
 
     def __init__(self, code: int, description: str):
         self.code, self.description = code, description
@@ -279,9 +279,9 @@ class _ChatRejected(Exception):
 
 
 def call(cli: httpx.Client, token: str, method: str, payload: dict) -> Any:
-    """Метод Bot API → result. 429 — _Limited (retry_after из ответа или заголовка); 401/404 — _TokenRejected (токен
-    не принят: неверный или отозван); сеть, тайм-аут, 5xx, ответ не Bot API — _Transient; прочие 4xx — _ChatRejected.
-    Токен — только в пути запроса; в тексты ошибок он не попадает (журналы маскируют «/bot<токен>»)."""
+    """Метод Bot API → result. 429 - _Limited(retry_after из ответа или заголовка); 401/404 - _TokenRejected(токен
+    не принят: неверный или отозван); сеть, тайм-аут, 5xx, ответ не Bot API - _Transient; прочие 4xx - _ChatRejected.
+    Токен - только в пути запроса; в тексты ошибок он не попадает(журналы маскируют "/bot<токен>")."""
     try:
         r = cli.post(f"/bot{token}/{method}", json=payload)
     except httpx.TimeoutException:
@@ -336,7 +336,7 @@ def chat_reason(kind: str, target: Optional[str], description: str) -> tuple[str
 
 
 def send(cli: httpx.Client, token: str, target: str, text: str) -> Optional[int]:
-    """sendMessage → message_id (или None, если Telegram его не вернул)."""
+    """sendMessage → message_id(или None, если Telegram его не вернул)."""
     res = call(cli, token, "sendMessage", {"chat_id": target, "text": text, "parse_mode": "HTML",
                                            "link_preview_options": {"is_disabled": True}})
     mid = res.get("message_id") if isinstance(res, dict) else None
@@ -350,7 +350,7 @@ def _client() -> httpx.Client:
 # ---------- получатели и счётчики ----------
 
 def _districts(db: Session) -> list[tuple[str, int]]:
-    """Районы ЖК (непустые) и сколько ЖК в каждом — по убыванию."""
+    """Районы ЖК(непустые) и сколько ЖК в каждом - по убыванию."""
     C = models.Complex
     rows = db.execute(select(C.district, func.count()).where(C.district != "").group_by(C.district)).all()
     return sorted(((d, int(n)) for d, n in rows), key=lambda x: (-x[1], x[0]))
@@ -444,7 +444,7 @@ def _already(a: models.ResidentAlert) -> HTTPException:
 
 
 def _move(db: Session, a: models.ResidentAlert, frm: tuple, to: str, **values) -> None:
-    """Смена статуса условным UPDATE: два одновременных согласования не создадут две рассылки — второе получит 409."""
+    """Смена статуса условным UPDATE: два одновременных согласования не создадут две рассылки - второе получит 409."""
     A = models.ResidentAlert
     res = db.execute(update(A).where(A.id == a.id, A.status.in_(frm)).values(status=to, **values)
                      .execution_options(synchronize_session=False))
@@ -474,7 +474,7 @@ def _ready(s: Settings) -> None:
 @router.get("/api/alerts", response_model=List[AlertOut], response_model_by_alias=True)
 def list_alerts(complex_id: Optional[str] = Query(None, alias="complexId", max_length=32),
                 limit: int = Query(50, ge=1, le=200), db: Session = Depends(get_db)):
-    """Предупреждения, новые первыми; по ЖК — complexId. Получатели — только счётчики, без chat_id."""
+    """Предупреждения, новые первыми; по ЖК - complexId. Получатели - только счётчики, без chat_id."""
     A = models.ResidentAlert
     q = select(A).order_by(A.id.desc()).limit(limit)
     if complex_id:
@@ -505,7 +505,7 @@ def audience(district: str = Query("", max_length=64), db: Session = Depends(get
 @router.post("/api/alerts", response_model=AlertOut, response_model_by_alias=True, status_code=201,
              responses={404: {"description": "ЖК не найден"}, 409: {"description": "Уже есть на согласовании"}})
 def create(body: AlertIn, db: Session = Depends(get_db)):
-    """Предупреждение «на согласовании» по ЖК: район — из карточки ЖК. Не больше одного на согласовании по ЖК."""
+    """Предупреждение "на согласовании" по ЖК: район - из карточки ЖК. Не больше одного на согласовании по ЖК."""
     c = db.get(models.Complex, body.complex_id)
     if c is None:
         raise registry.not_found(db, body.complex_id)
@@ -534,7 +534,7 @@ def create(body: AlertIn, db: Session = Depends(get_db)):
 @router.post("/api/alerts/check", response_model=CheckOut, response_model_by_alias=True,
              dependencies=[Depends(auth.require_admin)], responses={503: {"description": NOT_CONFIGURED}})
 def check():
-    """Проверить бота и канал (токен администратора): getMe — токен принят; getChat и getChatMember — канал есть и бот
+    """Проверить бота и канал(токен администратора): getMe - токен принят; getChat и getChatMember - канал есть и бот
     в нём администратор с правом публикации. Сообщений не отправляет."""
     s = get_settings()
     _ready(s)
@@ -588,7 +588,7 @@ def check():
              responses={409: {"description": "Не на согласовании, согласует автор или некому отправить"},
                         503: {"description": NOT_CONFIGURED}})
 def approve(aid: AlertId, body: AlertDecisionIn, db: Session = Depends(get_db)):
-    """Согласовать и отправить (токен администратора; согласующий — не автор): получатели фиксируются (канал ГАСК и
+    """Согласовать и отправить(токен администратора; согласующий - не автор): получатели фиксируются(канал ГАСК и
     подписчики района на этот момент), отправку выполняет воркер."""
     a = _get(db, aid)
     if a.status != "pending":
@@ -619,7 +619,7 @@ def approve(aid: AlertId, body: AlertDecisionIn, db: Session = Depends(get_db)):
 @router.post("/api/alerts/{aid}/reject", response_model=AlertOut, response_model_by_alias=True,
              dependencies=[Depends(auth.require_admin)], responses={409: {"description": "Не на согласовании"}})
 def reject(aid: AlertId, body: AlertDecisionIn, db: Session = Depends(get_db)):
-    """Отклонить (токен администратора): жителям ничего не уходит; по ЖК можно подготовить новое предупреждение."""
+    """Отклонить(токен администратора): жителям ничего не уходит; по ЖК можно подготовить новое предупреждение."""
     a = _get(db, aid)
     _move(db, a, ("pending",), "rejected", decided_by=body.author, decided_at=models.utcnow(),
           decision_comment=body.comment)
@@ -633,7 +633,7 @@ def reject(aid: AlertId, body: AlertDecisionIn, db: Session = Depends(get_db)):
              dependencies=[Depends(auth.require_admin)],
              responses={409: {"description": "Нечего повторять"}, 503: {"description": NOT_CONFIGURED}})
 def retry(aid: AlertId, body: AlertDecisionIn, db: Session = Depends(get_db)):
-    """Повторить отправку (токен администратора): только доставки «ожидает» — оставшиеся после неверного BOT_TOKEN или
+    """Повторить отправку(токен администратора): только доставки "ожидает" - оставшиеся после неверного BOT_TOKEN или
     исчерпанных повторов. Доставленные, отклонённые Telegram и с неизвестным результатом повторно не отправляются."""
     a = _get(db, aid)
     if a.status not in ("failed", "partial"):
@@ -652,10 +652,10 @@ def retry(aid: AlertId, body: AlertDecisionIn, db: Session = Depends(get_db)):
     return alert_out(db, a)
 
 
-# ---------- маршруты: бот заявок (подписки) ----------
+# ---------- маршруты: бот заявок(подписки) ----------
 
 def _bot_ok(db: Session) -> None:
-    """Обращение бота с верным токеном снимает прежнее «нет доступа» у подключения «Telegram-бот заявок»."""
+    """Обращение бота с верным токеном снимает прежнее "нет доступа" у подключения "Telegram-бот заявок"."""
     from .integrations import telegram_bot
 
     telegram_bot._token_ok(db)
@@ -675,7 +675,7 @@ def _sub_out(chat_id: str, districts: list[str], status: Optional[str] = None) -
 @router.get("/api/intake/telegram/districts", response_model=List[DistrictOut], response_model_by_alias=True,
             dependencies=[Depends(auth.require_service)])
 def districts(db: Session = Depends(get_db)):
-    """Районы ЖК для выбора подписки в боте (по числу ЖК). «*» — все районы — в списке нет, его принимает PUT."""
+    """Районы ЖК для выбора подписки в боте(по числу ЖК). "*" - все районы - в списке нет, его принимает PUT."""
     out = [{"district": d, "complexes": n} for d, n in _districts(db)]
     _bot_ok(db)
     return out
@@ -684,8 +684,8 @@ def districts(db: Session = Depends(get_db)):
 @router.put("/api/intake/telegram/subscriptions/{chat_id}", response_model=SubscriptionOut,
             response_model_by_alias=True, dependencies=[Depends(auth.require_service)])
 def put_subscription(chat_id: ChatId, body: SubscriptionIn, db: Session = Depends(get_db)):
-    """Подписка жителя (chat_id) на районы — заменяет прежнюю: [] или «*» — все районы. Неизвестный район — 422 со
-    списком районов. Повтор той же подписки — unchanged."""
+    """Подписка жителя(chat_id) на районы - заменяет прежнюю: [] или "*" - все районы. Неизвестный район - 422 со
+    списком районов. Повтор той же подписки - unchanged."""
     known = {d.casefold(): d for d, _ in _districts(db)}
     want: set[str] = set()
     for raw in body.districts:
@@ -730,7 +730,7 @@ def get_subscription(chat_id: ChatId, db: Session = Depends(get_db)):
 @router.delete("/api/intake/telegram/subscriptions/{chat_id}", status_code=204,
                dependencies=[Depends(auth.require_service)])
 def delete_subscription(chat_id: ChatId, db: Session = Depends(get_db)):
-    """Отписка (повтор — тоже 204): подписка удаляется, доставки этому жителю, ещё ожидающие отправки, — «отписался»."""
+    """Отписка(повтор - тоже 204): подписка удаляется, доставки этому жителю, ещё ожидающие отправки, - "отписался"."""
     S, D = models.AlertSubscription, models.AlertDelivery
     db.execute(delete(S).where(S.chat_id == chat_id).execution_options(synchronize_session=False))
     db.execute(update(D).where(D.kind == "subscriber", D.target == chat_id, D.status == "pending")
@@ -741,10 +741,10 @@ def delete_subscription(chat_id: ChatId, db: Session = Depends(get_db)):
     return Response(status_code=204)
 
 
-# ---------- отправка (задание воркера «alert») ----------
+# ---------- отправка(задание воркера "alert") ----------
 
 def _settle_interrupted(db: Session, alert_id: int, now: datetime) -> int:
-    """Доставки «отправляется», оставшиеся после сбоя воркера, → «не доставлено: результат неизвестен» (без commit).
+    """Доставки "отправляется", оставшиеся после сбоя воркера, → "не доставлено: результат неизвестен"(без commit).
     Повторно они не отправляются: Telegram мог принять сообщение до сбоя."""
     D = models.AlertDelivery
     res = db.execute(update(D).where(D.alert_id == alert_id, D.status == "sending")
@@ -755,7 +755,7 @@ def _settle_interrupted(db: Session, alert_id: int, now: datetime) -> int:
 
 
 def _claim(alert_id: int, now: datetime) -> Optional[tuple[int, str, str]]:
-    """Следующая доставка «ожидает» → «отправляется» (условный UPDATE, своя транзакция): (id, вид, получатель) или
+    """Следующая доставка "ожидает" → "отправляется"(условный UPDATE, своя транзакция): (id, вид, получатель) или
     None."""
     D = models.AlertDelivery
     with SessionLocal() as db:
@@ -774,7 +774,7 @@ def _claim(alert_id: int, now: datetime) -> Optional[tuple[int, str, str]]:
 
 
 def _settle(did: int, now: datetime, **values) -> None:
-    """Итог доставки, пока она «отправляется» (своя транзакция)."""
+    """Итог доставки, пока она "отправляется"(своя транзакция)."""
     D = models.AlertDelivery
     with SessionLocal() as db:
         db.execute(update(D).where(D.id == did, D.status == "sending").values(updated_at=now, **values)
@@ -799,7 +799,7 @@ def _rejected(did: int, kind: str, target: str, e: _ChatRejected, now: datetime)
 
 
 def _release(did: int, now: datetime) -> None:
-    """Доставка не выполнена не по вине получателя (лимит, сеть, токен) — снова «ожидает»."""
+    """Доставка не выполнена не по вине получателя(лимит, сеть, токен) - снова "ожидает"."""
     _settle(did, now, status="pending")
 
 
@@ -823,8 +823,8 @@ def _summary(t: dict) -> str:
 
 
 def finalize(db: Session, a: models.ResidentAlert, now: datetime, error: Optional[str] = None) -> None:
-    """Итог отправки по доставкам (без commit): всем — «отправлено», части — «частично», никому — «не отправлено»;
-    событие журнала ЖК от «Системы». error — почему отправка остановлена (доставки «ожидает» остаются для повтора)."""
+    """Итог отправки по доставкам(без commit): всем - "отправлено", части - "частично", никому - "не отправлено";
+    событие журнала ЖК от "Системы". error - почему отправка остановлена(доставки "ожидает" остаются для повтора)."""
     t = _tally(db, [a.id])[a.id]
     c, ch = t["subscribers"], t["channel"]
     sent = c["sent"] + (ch is not None and ch.status == "sent")
@@ -848,7 +848,7 @@ def finalize(db: Session, a: models.ResidentAlert, now: datetime, error: Optiona
 
 
 def abandoned(db: Session, job: models.Job, reason: str, now: datetime) -> None:
-    """Задание брошено окончательно (jobs._abandoned: воркер упал или завис, попытки исчерпаны) — в той же сессии."""
+    """Задание брошено окончательно(jobs._abandoned: воркер упал или завис, попытки исчерпаны) - в той же сессии."""
     a = db.get(models.ResidentAlert, _alert_id(job.payload))
     if a is None or a.status != "sending":
         return
@@ -864,7 +864,7 @@ def _alert_id(payload: Optional[dict]) -> int:
 
 
 def _outcome(info, apply) -> None:
-    """Итог задания — только пока оно у этого захвата (jobs.fence); apply(db, job, alert, now)."""
+    """Итог задания - только пока оно у этого захвата(jobs.fence); apply(db, job, alert, now)."""
     with SessionLocal() as db:
         job = jobs.fence(db, info.id, info.worker_id, info.attempts)
         if job is None:
@@ -884,7 +884,7 @@ def _give_up(info, detail: str) -> None:
 
 
 def _later(info, seconds: float, detail: Optional[str] = None) -> None:
-    """Продолжить тем же заданием через seconds с (без расхода попытки): лимит Telegram, очередная партия, остановка
+    """Продолжить тем же заданием через seconds с(без расхода попытки): лимит Telegram, очередная партия, остановка
     воркера."""
     def apply(db, job, a, now):
         if not jobs.defer(db, job, seconds, None, now=now):
@@ -919,8 +919,8 @@ def _done(info, sent: int) -> None:
 
 
 def run_job(info, *, now: datetime, stop: Optional[threading.Event] = None) -> None:
-    """Задание «alert»: доставки «ожидает» по одной (см. описание модуля). Итог задания и предупреждения — только пока
-    задание у этого захвата (jobs.fence)."""
+    """Задание "alert": доставки "ожидает" по одной(см. описание модуля). Итог задания и предупреждения - только пока
+    задание у этого захвата(jobs.fence)."""
     alert_id = _alert_id(info.payload)
     with SessionLocal() as db:
         a = db.get(models.ResidentAlert, alert_id) if alert_id else None
@@ -969,7 +969,7 @@ def run_job(info, *, now: datetime, stop: Optional[threading.Event] = None) -> N
                 return
             except _ChatRejected as e:
                 _rejected(did, kind, target, e, info.now())
-            except Exception:  # noqa: BLE001 — непредвиденная ошибка: доставка снова «ожидает», задание — повтор
+            except Exception:  # noqa: BLE001 - непредвиденная ошибка: доставка снова "ожидает", задание - повтор
                 _release(did, info.now())
                 log.exception("Предупреждение №%s: доставка не выполнена", alert_id)
                 _retry(info, "Внутренняя ошибка отправки — подробности в журнале воркера")

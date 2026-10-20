@@ -1,39 +1,39 @@
-"""Стартовый набор данных: текущие данные рабочей БД — в репозиторий (shared/snapshot/), оттуда — в пустую БД нового
-развёртывания (seed.start при старте API).
+"""Стартовый набор данных: текущие данные рабочей БД - в репозиторий(shared/snapshot/), оттуда - в пустую БД нового
+развёртывания(seed.start при старте API).
 
     python -m app.snapshot export [--out DIR] [--max-px 1024] [--quality 75]   # выгрузить из DATABASE_URL и MEDIA_ROOT
-    python -m app.snapshot import [--dir DIR]                                  # загрузить в пустую БД (иначе — отказ)
+    python -m app.snapshot import [--dir DIR]                                  # загрузить в пустую БД(иначе - отказ)
 
-Выгрузка только читает: БД — одной транзакцией (PostgreSQL: REPEATABLE READ, READ ONLY), файлы — из MEDIA_ROOT.
-Схему не меняет: таблица читается столбцами, которые есть и в модели, и в БД (версия схемы БД — в manifest.json).
-Результат (каталог заменяется целиком, только если всё получилось и проверка на секреты пройдена):
-- <таблица>.json — строки по возрастанию первичного ключа, ключи по алфавиту, время — ISO 8601 в UTC;
-- media/<sha256>.<ext> — изображения публикаций, уменьшенные до max-px по длинной стороне (по умолчанию 1024 px, JPEG
-  q75; PNG — только если он меньше; исходный JPEG без EXIF в пределах размера — как есть, если перекодирование не
-  экономит 10 %). Строки media_assets получают новые размер, SHA-256, MIME, ключ хранилища и width/height; исходные —
+Выгрузка только читает: БД - одной транзакцией(PostgreSQL: REPEATABLE READ, READ ONLY), файлы - из MEDIA_ROOT.
+Схему не меняет: таблица читается столбцами, которые есть и в модели, и в БД(версия схемы БД - в manifest.json).
+Результат(каталог заменяется целиком, только если всё получилось и проверка на секреты пройдена):
+- <таблица>.json - строки по возрастанию первичного ключа, ключи по алфавиту, время - ISO 8601 в UTC;
+- media/<sha256>.<ext> - изображения публикаций, уменьшенные до max-px по длинной стороне(по умолчанию 1024 px, JPEG
+  q75; PNG - только если он меньше; исходный JPEG без EXIF в пределах размера - как есть, если перекодирование не
+  экономит 10 %). Строки media_assets получают новые размер, SHA-256, MIME, ключ хранилища и width/height; исходные -
   в meta.snapshot;
-- api/<имя>.json — ответы GET /api/… по этому набору (как их отдаст новое развёртывание) для офлайн-режима фронтенда и
-  api/media.json — id файла → имя в media/;
-- manifest.json — формат, версия схемы, время выгрузки, число строк по таблицам, что не вошло и почему.
+- api/<имя>.json - ответы GET /api/… по этому набору(как их отдаст новое развёртывание) для офлайн-режима фронтенда и
+  api/media.json - id файла → имя в media/;
+- manifest.json - формат, версия схемы, время выгрузки, число строк по таблицам, что не вошло и почему.
 
-Что не входит: видео (строка остаётся «недоступно» с пояснением VIDEO_NOTE и ссылкой на оригинал), кадры видео (строки
-удаляются — распознанный по ним текст уже в ads.ocr), задания воркера и аренды, состояния OAuth, токены, счётчики квот,
-заявки жителей (bot_submissions — персональные данные заявителей), записи открытого реестра (source_records — их
+Что не входит: видео(строка остаётся "недоступно" с пояснением VIDEO_NOTE и ссылкой на оригинал), кадры видео(строки
+удаляются - распознанный по ним текст уже в ads.ocr), задания воркера и аренды, состояния OAuth, токены, счётчики квот,
+заявки жителей(bot_submissions - персональные данные заявителей), записи открытого реестра(source_records - их
 пересоздаёт загрузка из shared/registry_ust_kamenogorsk.json; выгрузка сверяет их с файлом), кэш кандидатов 2ГИС
-(решения аналитика остаются, несостоявшиеся проверки — нет). Подключения — настройки и «включено»; статус проверки,
+(решения аналитика остаются, несостоявшиеся проверки - нет). Подключения - настройки и "включено"; статус проверки,
 ошибки, курсоры и время следующего запуска сбрасываются: новое развёртывание проверит подключения заново. Снимки
-ответов источников (ingest_*.raw, extra) ещё раз проходят ingest.scrub, тексты ошибок — logs.redact. Перед заменой
-каталога все файлы проверяются на значения секретов из настроек и на токеноподобные строки (leaks) — найдено —
+ответов источников(ingest_*.raw, extra) ещё раз проходят ingest.scrub, тексты ошибок - logs.redact. Перед заменой
+каталога все файлы проверяются на значения секретов из настроек и на токеноподобные строки(leaks) - найдено -
 выгрузка прерывается.
 
-Загрузка (import и seed.start) — в одной транзакции: таблицы в порядке зависимостей с прежними первичными ключами
-(PostgreSQL: последовательности — за максимальный id), файлы — в хранилище через media.store_bytes (тип по сигнатуре,
-SHA-256 и ключ сверяются с записью), записи реестра — из shared/registry_ust_kamenogorsk.json (без нового события
-журнала: событие о загрузке реестра уже в наборе), флаг meta demo_data = purged. Непустую БД (есть строки хотя бы в
+Загрузка(import и seed.start) - в одной транзакции: таблицы в порядке зависимостей с прежними первичными ключами
+(PostgreSQL: последовательности - за максимальный id), файлы - в хранилище через media.store_bytes(тип по сигнатуре,
+SHA-256 и ключ сверяются с записью), записи реестра - из shared/registry_ust_kamenogorsk.json(без нового события
+журнала: событие о загрузке реестра уже в наборе), флаг meta demo_data = purged. Непустую БД(есть строки хотя бы в
 одной таблице набора) загрузка не трогает. Набор прежней известной версии схемы загружается: столбцы, которых в нём
-нет, добавлены шагами migrate (nullable или с server_default) и получают NULL или значение по умолчанию, таблицы,
-которые добавили шаги после его версии (migrate.tables_after, например screening_decisions), — пустые; набор
-неизвестной или более новой версии — отказ (выгрузите набор заново).
+нет, добавлены шагами migrate(nullable или с server_default) и получают NULL или значение по умолчанию, таблицы,
+которые добавили шаги после его версии(migrate.tables_after, например screening_decisions), - пустые; набор
+неизвестной или более новой версии - отказ(выгрузите набор заново).
 """
 import argparse
 import hashlib
@@ -64,7 +64,7 @@ log = logging.getLogger("saq")
 DIR = SHARED / "snapshot"
 MANIFEST = "manifest.json"
 FORMAT = "saq-snapshot-1"
-# 1280 px / q80 дали 41 МБ изображений (весь набор — 45 МБ, больше цели 40 МБ) — поэтому 1024 px / q75
+# 1280 px / q80 дали 41 МБ изображений(весь набор - 45 МБ, больше цели 40 МБ) - поэтому 1024 px / q75
 MAX_PX = 1024
 QUALITY = 75
 VIDEO_NOTE = "не включено в стартовый набор — откройте оригинал"
@@ -80,7 +80,7 @@ class SnapshotError(RuntimeError):
 
 @dataclass
 class Ctx:
-    """Состояние выгрузки: время, каталог файлов, сжатые изображения (исходный SHA-256 → файл набора), счётчики."""
+    """Состояние выгрузки: время, каталог файлов, сжатые изображения(исходный SHA-256 → файл набора), счётчики."""
     at: datetime
     media_dir: Path
     max_px: int = MAX_PX
@@ -94,7 +94,7 @@ class Ctx:
 
 
 def _collector(row: Obj, ctx: Ctx) -> Obj:
-    """Настройки и «включено» остаются; статус, факты (ключи, аккаунты), курсоры и расписание — как у новой строки."""
+    """Настройки и "включено" остаются; статус, факты(ключи, аккаунты), курсоры и расписание - как у новой строки."""
     return {**row, "status": "unchecked", "status_detail": None, "facts": {}, "state": {}, "failures": 0,
             "next_run_at": None, "last_success_at": None, "last_error_at": None, "checked_at": None,
             "last_run_id": None, "last_error": None}
@@ -121,8 +121,8 @@ def _llm(row: Obj, ctx: Ctx) -> Obj:
 
 
 def _geo(row: Obj, ctx: Ctx) -> Optional[Obj]:
-    """Решения аналитика остаются (выбранный дом, «было → стало»); кандидаты 2ГИС — временный кэш, его нет в наборе.
-    Проверка без решения (только кандидаты) не выгружается."""
+    """Решения аналитика остаются(выбранный дом, "было → стало"); кандидаты 2ГИС - временный кэш, его нет в наборе.
+    Проверка без решения(только кандидаты) не выгружается."""
     if row.get("status") == "candidates":
         ctx.count("geo_checks: без решения — не выгружены")
         return None
@@ -160,7 +160,7 @@ def _media(row: Obj, ctx: Ctx) -> Optional[Obj]:
         got = ctx.files[src_sha] = (sha, mime, len(out), w, h)
         ctx.count("media: исходных байт", len(data))
     sha, mime, size, w, h = got
-    if sha != src_sha or "snapshot" not in meta:  # файл набора уже в наборе (повторная выгрузка) — сведения прежние
+    if sha != src_sha or "snapshot" not in meta:  # файл набора уже в наборе(повторная выгрузка) - сведения прежние
         meta["snapshot"] = {"sourceSha256": row.get("sha256"), "sourceSize": row.get("size"),
                             "sourceMime": row.get("mime"), "maxPx": ctx.max_px, "quality": ctx.quality}
     meta.update(width=w, height=h)
@@ -171,14 +171,14 @@ def _media(row: Obj, ctx: Ctx) -> Optional[Obj]:
 @dataclass(frozen=True)
 class Spec:
     model: type
-    prepare: Optional[Callable[[Obj, Ctx], Optional[Obj]]] = None  # строка БД → строка набора (None — не выгружать)
+    prepare: Optional[Callable[[Obj, Ctx], Optional[Obj]]] = None  # строка БД → строка набора(None - не выгружать)
 
     @property
     def name(self) -> str:
         return self.model.__tablename__
 
 
-# Порядок загрузки — по зависимостям (внешние ключи): родительские таблицы раньше
+# Порядок загрузки - по зависимостям(внешние ключи): родительские таблицы раньше
 TABLES: Tuple[Spec, ...] = (
     Spec(models.Analyst), Spec(models.Developer), Spec(models.Complex), Spec(models.Ad), Spec(models.Appeal),
     Spec(models.Signal), Spec(models.AuditEvent), Spec(models.Collector, _collector), Spec(models.CollectionRun, _run),
@@ -205,7 +205,7 @@ ALSO_EXCLUDED = {
     "geoCandidates": "кэш кандидатов 2ГИС — остаются только решения аналитика",
     "collectorsRuntime": "статус, факты, курсоры и расписание подключений — новое развёртывание проверит их заново",
 }
-# Ответы API для офлайн-режима фронтенда: имя файла → путь GET (asOf — дата расчёта риска и «Проверки по рекламе»)
+# Ответы API для офлайн-режима фронтенда: имя файла → путь GET(asOf - дата расчёта риска и "Проверки по рекламе")
 VIEWS: Tuple[Tuple[str, str, bool], ...] = (
     ("complexes", "/api/complexes", True), ("developers", "/api/developers", True), ("ads", "/api/ads", False),
     ("appeals", "/api/appeals", False), ("risk", "/api/risk", True), ("stats", "/api/stats", True),
@@ -219,9 +219,9 @@ KEEP_GAIN = 0.9  # исходный JPEG в пределах размера ос
 
 
 def compress(data: bytes, max_px: int = MAX_PX, quality: int = QUALITY) -> Tuple[bytes, str, int, int]:
-    """Изображение → (байты, MIME, ширина, высота): длинная сторона не больше max_px (с учётом поворота EXIF), без
-    метаданных; JPEG с качеством quality, PNG — только если он меньше JPEG (прозрачность — на белом фоне для JPEG).
-    Исходный JPEG без EXIF и не больше max_px остаётся как есть, если перекодирование не экономит 10 % (KEEP_GAIN): так
+    """Изображение → (байты, MIME, ширина, высота): длинная сторона не больше max_px(с учётом поворота EXIF), без
+    метаданных; JPEG с качеством quality, PNG - только если он меньше JPEG(прозрачность - на белом фоне для JPEG).
+    Исходный JPEG без EXIF и не больше max_px остаётся как есть, если перекодирование не экономит 10 %(KEEP_GAIN): так
     повторная выгрузка уже сжатого набора не меняет файлы."""
     from PIL import Image, ImageOps
 
@@ -272,7 +272,7 @@ TOKENISH = (
 
 
 def leaks(text_: str, secrets: Iterable[str] = ()) -> List[str]:
-    """Что похоже на секрет в тексте: названия находок (не сами значения). secrets — значения секретов из настроек
+    """Что похоже на секрет в тексте: названия находок(не сами значения). secrets - значения секретов из настроек
     (короче 8 символов не проверяются)."""
     found = [name for name, rx in TOKENISH if rx.search(text_)]
     if any(len(s) >= 8 and s in text_ for s in secrets):
@@ -281,7 +281,7 @@ def leaks(text_: str, secrets: Iterable[str] = ()) -> List[str]:
 
 
 def scan(root: Path, secrets: Iterable[str] = ()) -> Dict[str, List[str]]:
-    """Текстовые файлы набора (*.json) с находками leaks: относительный путь → названия находок."""
+    """Текстовые файлы набора(*.json) с находками leaks: относительный путь → названия находок."""
     secrets = [s for s in secrets if s]
     out: Dict[str, List[str]] = {}
     for p in sorted(root.rglob("*.json")):
@@ -300,7 +300,7 @@ def _jsonable(col, v: Any) -> Any:
 
 
 def _read(conn: Connection, model) -> Tuple[List[str], List[Obj]]:
-    """Строки таблицы модели — столбцами, которые есть и в модели, и в БД; по возрастанию первичного ключа."""
+    """Строки таблицы модели - столбцами, которые есть и в модели, и в БД; по возрастанию первичного ключа."""
     t = model.__table__
     have = {c["name"] for c in inspect(conn).get_columns(t.name)}
     cols = [c for c in t.c if c.name in have]
@@ -322,7 +322,7 @@ def _schema_version(conn: Connection) -> Optional[str]:
 
 def registry_check(conn: Connection) -> Obj:
     """Записи открытого реестра в БД против shared/registry_ust_kamenogorsk.json: загрузка набора пересоздаёт их из
-    файла, расхождение (импорт через интерфейс после сборки файла) — предупреждение в manifest.json."""
+    файла, расхождение(импорт через интерфейс после сборки файла) - предупреждение в manifest.json."""
     data = importer.load_registry() or {"records": []}
     want = {(r["source"], r["sourceRecordId"]): registry._values(r) for r in data["records"]}
     cols = list(registry.COLUMNS.values()) + ["collected_at"]
@@ -341,7 +341,7 @@ def registry_check(conn: Connection) -> Obj:
 
 
 def _swap(new: Path, out: Path) -> None:
-    """Каталог набора заменяется целиком: прежний — в сторону, новый — на его место, прежний удаляется."""
+    """Каталог набора заменяется целиком: прежний - в сторону, новый - на его место, прежний удаляется."""
     old = out.with_name(out.name + ".old")
     if old.exists():
         shutil.rmtree(old)
@@ -354,13 +354,13 @@ def _swap(new: Path, out: Path) -> None:
 
 def export(eng: Engine, out: Path = DIR, *, max_px: int = MAX_PX, quality: int = QUALITY, views: bool = True,
            now: Optional[datetime] = None) -> Obj:
-    """Выгрузка набора из БД eng и хранилища MEDIA_ROOT в каталог out (заменяется целиком). Возвращает manifest."""
+    """Выгрузка набора из БД eng и хранилища MEDIA_ROOT в каталог out(заменяется целиком). Возвращает manifest."""
     at = models.as_utc(now) or models.utcnow().replace(microsecond=0)
     out = Path(out).resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix=f".{out.name}.new-", dir=out.parent))
     try:
-        os.chmod(work, 0o755)  # mkdtemp создаёт 0700, а каталог набора — обычный каталог репозитория
+        os.chmod(work, 0o755)  # mkdtemp создаёт 0700, а каталог набора - обычный каталог репозитория
         (work / "media").mkdir()
         ctx = Ctx(at=at, media_dir=work / "media", max_px=max_px, quality=quality)
         tables: Dict[str, Obj] = {}
@@ -422,7 +422,7 @@ def export(eng: Engine, out: Path = DIR, *, max_px: int = MAX_PX, quality: int =
 # ---------- ответы API для офлайн-режима ----------
 
 def build_views_subprocess(src: Path, as_of: date) -> None:
-    """Ответы API считает отдельный процесс на временной SQLite (тот же код, что у нового развёртывания): движок БД
+    """Ответы API считает отдельный процесс на временной SQLite(тот же код, что у нового развёртывания): движок БД
     приложения создаётся при импорте app.db по DATABASE_URL. Секреты и настройки подключений в него не передаются."""
     from .settings import ENV_NAMES
 
@@ -438,7 +438,7 @@ def build_views_subprocess(src: Path, as_of: date) -> None:
 
 
 def build_views(src: Path, as_of: date) -> List[str]:
-    """(в отдельном процессе) Набор src → пустая БД DATABASE_URL (без файлов) → GET /api/… → src/api/<имя>.json."""
+    """(в отдельном процессе) Набор src → пустая БД DATABASE_URL(без файлов) → GET /api/… → src/api/<имя>.json."""
     from functools import partial
 
     from fastapi.testclient import TestClient
@@ -484,7 +484,7 @@ def manifest(src: Path = DIR) -> Optional[Obj]:
 
 
 def is_empty(db: Session) -> bool:
-    """В таблицах набора нет ни одной строки (новая БД): только в такую загружается набор."""
+    """В таблицах набора нет ни одной строки(новая БД): только в такую загружается набор."""
     return all(db.scalar(select(func.count()).select_from(s.model.__table__)) == 0 for s in TABLES)
 
 
@@ -493,8 +493,8 @@ def _compatible(version: Optional[str]) -> bool:
 
 
 def _prepare(table, rows: List[Obj], name: str) -> List[Obj]:
-    """Строки набора → значения INSERT: время — datetime; столбцы, которых в наборе нет (набор прежней версии схемы), —
-    NULL или server_default, как после шагов migrate; неизвестный столбец — отказ."""
+    """Строки набора → значения INSERT: время - datetime; столбцы, которых в наборе нет(набор прежней версии схемы), -
+    NULL или server_default, как после шагов migrate; неизвестный столбец - отказ."""
     if not rows:
         return []
     keys = set(rows[0])
@@ -521,7 +521,7 @@ def _prepare(table, rows: List[Obj], name: str) -> List[Obj]:
 
 
 def _reset_sequences(db: Session) -> None:
-    """PostgreSQL: последовательность целочисленного id — за максимальным значением (вставка без конфликта)."""
+    """PostgreSQL: последовательность целочисленного id - за максимальным значением(вставка без конфликта)."""
     if db.get_bind().dialect.name != "postgresql":
         return
     for s in TABLES:
@@ -535,7 +535,7 @@ def _reset_sequences(db: Session) -> None:
 
 
 def _restore_files(src: Path, rows: List[Obj]) -> int:
-    """Изображения набора → хранилище (media.store_bytes: тип по сигнатуре, место на диске), ключ и SHA-256 —
+    """Изображения набора → хранилище(media.store_bytes: тип по сигнатуре, место на диске), ключ и SHA-256 -
     сверяются."""
     done: Dict[str, str] = {}
     for r in rows:
@@ -555,7 +555,7 @@ def _restore_files(src: Path, rows: List[Obj]) -> int:
 
 
 def load(db: Session, src: Path = DIR, *, files: bool = True) -> LoadReport:
-    """Набор src → пустая БД (в сессии db, без commit). Непустая БД, нет набора, несовместимая версия —
+    """Набор src → пустая БД(в сессии db, без commit). Непустая БД, нет набора, несовместимая версия -
     SnapshotError."""
     src = Path(src)
     man = manifest(src)
@@ -577,9 +577,9 @@ def load(db: Session, src: Path = DIR, *, files: bool = True) -> LoadReport:
         info = (man.get("tables") or {}).get(s.name)
         if info is None and s.name not in later:
             raise SnapshotError(f"В наборе нет таблицы {s.name}")
-        # таблица, которую добавил шаг migrate после версии набора, — пустая (как после обновления схемы)
+        # таблица, которую добавил шаг migrate после версии набора, - пустая(как после обновления схемы)
         rows = json.loads((src / info["file"]).read_text(encoding="utf-8")) if info is not None else []
-        if s.name == "media_assets":  # кадры (parent_id) — после своих видео
+        if s.name == "media_assets":  # кадры(parent_id) - после своих видео
             rows.sort(key=lambda r: r.get("parent_id") is not None)
             media_rows = rows
         values = _prepare(s.model.__table__, rows, s.name)
@@ -605,7 +605,7 @@ def load(db: Session, src: Path = DIR, *, files: bool = True) -> LoadReport:
 
 
 def import_cli(eng: Engine, src: Path) -> int:
-    """CLI import: 0 — загружено, 2 — отказ (непустая БД, нет набора, версия)."""
+    """CLI import: 0 - загружено, 2 - отказ(непустая БД, нет набора, версия)."""
     from . import seed
 
     if not (Path(src) / MANIFEST).is_file():
@@ -625,7 +625,7 @@ def import_cli(eng: Engine, src: Path) -> int:
         from . import demo
 
         holder["rep"] = load(db, src)
-        demo.import_registry(db)  # на согласованном наборе — без изменений (как seed.start)
+        demo.import_registry(db)  # на согласованном наборе - без изменений(как seed.start)
 
     try:
         seed.init_db(eng, start=start)

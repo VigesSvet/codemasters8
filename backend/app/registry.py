@@ -1,9 +1,9 @@
-"""Открытые данные (T-26…T-31): записи источников в БД, объекты, перечень источников, импорт xlsx/csv.
+"""Открытые данные(T-26…T-31): записи источников в БД, объекты, перечень источников, импорт xlsx/csv.
 
-Отдельный слой, не смешанный с демо-ЖК: у записей и объектов нет риска, зон, «нужна проверка» и сигналов — это сведения
-источника на момент сбора, а не выводы системы (ТЗ §7 «Достоверность», «Безопасность»). Сигнал по ключу объекта — 404.
-Карточки ЖК по объектам реестра («r-<ключ>», origin «registry») создаёт app.demo — риск по ним не оценивается до
-проверенных сведений (risk.assessed).
+Отдельный слой, не смешанный с демо-ЖК: у записей и объектов нет риска, зон, "нужна проверка" и сигналов - это сведения
+источника на момент сбора, а не выводы системы(ТЗ §7 "Достоверность", "Безопасность"). Сигнал по ключу объекта - 404.
+Карточки ЖК по объектам реестра("r-<ключ>", origin "registry") создаёт app.demo - риск по ним не оценивается до
+проверенных сведений(risk.assessed).
 """
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
@@ -33,7 +33,7 @@ def _snake(key: str) -> str:
     return "".join("_" + ch.lower() if ch.isupper() else ch for ch in key)
 
 
-# поле записи (camelCase, как в importer) → столбец SourceRecord
+# поле записи(camelCase, как в importer) → столбец SourceRecord
 COLUMNS = {f: _snake(f) for f in importer.FIELDS}
 
 
@@ -54,7 +54,7 @@ def is_object(db: Session, key: str) -> bool:
 
 
 def not_found(db: Session, cid: str, detail: str = "ЖК не найден") -> HTTPException:
-    """404 для id, которого нет среди ЖК демо-реестра; для ключа объекта открытых данных — с объяснением (T-31)."""
+    """404 для id, которого нет среди ЖК демо-реестра; для ключа объекта открытых данных - с объяснением(T-31)."""
     return HTTPException(404, NOT_SCORED if is_object(db, cid) else detail)
 
 
@@ -83,7 +83,7 @@ def _same(row: models.SourceRecord, values: Obj) -> bool:
 
 
 def upsert(db: Session, recs: Iterable[Obj], file: Optional[str], at: datetime) -> Dict[str, int]:
-    """Дедупликация по (source, sourceRecordId): новые — вставка, изменившиеся — обновление, прочие без изменений."""
+    """Дедупликация по(source, sourceRecordId): новые - вставка, изменившиеся - обновление, прочие без изменений."""
     R = models.SourceRecord
     recs = list(recs)
     have = {(r.source, r.source_record_id): r for r in db.scalars(select(R))}
@@ -111,7 +111,7 @@ def _plural(n: int, one: str, few: str, many: str) -> str:
 
 
 def seed(db: Session, data: Optional[Obj]) -> Optional[models.AuditEvent]:
-    """Записи из shared/registry_ust_kamenogorsk.json (собраны импортёром) + событие журнала о загрузке."""
+    """Записи из shared/registry_ust_kamenogorsk.json(собраны импортёром) + событие журнала о загрузке."""
     if not data or not data.get("records"):
         return None
     meta = data.get("meta") or {}
@@ -165,7 +165,7 @@ def sources(db: Session) -> List[Obj]:
     count = lambda m: db.scalar(select(func.count()).select_from(m).where(m.origin == "demo"))  # noqa: E731
     counts = {"complexes": count(models.Complex), "developers": count(models.Developer), "ads": count(models.Ad),
               "appeals": count(models.Appeal)}
-    if any(counts.values()):  # после python -m app.demo purge демо-набора нет — и строки о нём нет
+    if any(counts.values()):  # после python -m app.demo purge демо-набора нет - и строки о нём нет
         out.append({**DEMO, "records": counts["complexes"], "objects": counts["complexes"], "collectedAt": None,
                     "providerLoadedAt": None, "counts": counts})
     return out
@@ -175,8 +175,8 @@ def sources(db: Session) -> List[Obj]:
 
 @router.get("/api/sources", response_model=List[schemas.SourceInfoOut], response_model_by_alias=True)
 def list_sources(db: Session = Depends(get_db)):
-    """Источники данных: что загружено, сколько записей, когда собрано; демо-набор — отдельной строкой.
-    Автоматической синхронизации с реестрами нет — записи появляются только импортом файла."""
+    """Источники данных: что загружено, сколько записей, когда собрано; демо-набор - отдельной строкой.
+    Автоматической синхронизации с реестрами нет - записи появляются только импортом файла."""
     return sources(db)
 
 
@@ -186,7 +186,7 @@ def list_registry(q: Optional[str] = Query(None, max_length=200, description="П
                   with_coords: Optional[bool] = Query(None, alias="withCoords",
                                                       description="true — только с координатами, false — только без"),
                   db: Session = Depends(get_db)):
-    """Объекты открытых данных (группы записей источников). Риска, зон и сигналов нет — это сведения источников."""
+    """Объекты открытых данных(группы записей источников). Риска, зон и сигналов нет - это сведения источников."""
     return registry(db, q, with_coords)
 
 
@@ -214,9 +214,9 @@ def _author(*values: Optional[str]) -> str:
                         422: {"description": "Файл повреждён или не в формате набора"}})
 def import_sources(file: UploadFile = File(...), author: Optional[str] = Form(None, max_length=512),
                    author_q: Optional[str] = Query(None, alias="author", max_length=512), db: Session = Depends(get_db)):
-    """Импорт xlsx/csv (формат docs/Усть-Каменогорск_объекты.xlsx, ≤ 5 МБ): тот же парсер, что у python -m app.importer;
-    дедупликация по (источник, ID в источнике) — новые вставляются, изменившиеся обновляются. Отчёт — в ответе,
-    событие — в журнале (kind data). Это загрузка файла, а не синхронизация с реестром."""
+    """Импорт xlsx/csv(формат docs/Усть-Каменогорск_объекты.xlsx, ≤ 5 МБ): тот же парсер, что у python -m app.importer;
+    дедупликация по(источник, ID в источнике) - новые вставляются, изменившиеся обновляются. Отчёт - в ответе,
+    событие - в журнале(kind data). Это загрузка файла, а не синхронизация с реестром."""
     who = _author(author, author_q)
     raw = file.file.read(importer.MAX_BYTES + 1)
     try:

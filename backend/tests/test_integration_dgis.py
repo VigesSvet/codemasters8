@@ -1,7 +1,7 @@
-"""2ГИС — геокодер (integration-spec §12.5, §16.3 test_integration_dgis, план §11): кандидаты с точностью, подсказка
-«рекомендуется» без автопринятия, кэш и квота до запроса, коды ответов 2ГИС, ключ не утекает, решения аналитика
-(принять / перенести координаты / отклонить), уборка кэша, проверка подключения через воркер. Без сети: ответы 2ГИС —
-синтетические (точный дом и «8/3а» с точностью number), через http_mock."""
+"""2ГИС - геокодер(integration-spec §12.5, §16.3 test_integration_dgis, план §11): кандидаты с точностью, подсказка
+"рекомендуется" без автопринятия, кэш и квота до запроса, коды ответов 2ГИС, ключ не утекает, решения аналитика
+(принять / перенести координаты / отклонить), уборка кэша, проверка подключения через воркер. Без сети: ответы 2ГИС -
+синтетические(точный дом и "8/3а" с точностью number), через http_mock."""
 import logging
 import re
 import threading
@@ -26,7 +26,7 @@ CONTROL = "Казахстан, Усть-Каменогорск, Увалиева
 
 def _item(id_: str, name: str, building: str, precision: str, lat: float, lon: float, *,
           purpose: str = "Жилой дом", city: str = "Усть-Каменогорск") -> dict:
-    """Элемент items[] как у 2ГИС (поля по FIELDS + приходящие по умолчанию); данные синтетические."""
+    """Элемент items[] как у 2ГИС(поля по FIELDS + приходящие по умолчанию); данные синтетические."""
     return {"id": id_, "type": "building", "name": name, "full_name": f"{city}, {name}", "address_name": building,
             "purpose_name": purpose, "full_address_name": f"{city}, {building}",
             "point": {"lat": lat, "lon": lon},
@@ -129,7 +129,7 @@ def test_recommended_is_only_a_single_exact_building(dgis):
                               precision=precision, lat=49.9, lon=82.6, city=city)
 
     assert dgis.recommended([cand("a", "exact"), cand("b", "number")]) == "a"
-    assert dgis.recommended([cand("a", "exact"), cand("b", "exact")]) is None  # два точных — выбирает аналитик
+    assert dgis.recommended([cand("a", "exact"), cand("b", "exact")]) is None  # два точных - выбирает аналитик
     assert dgis.recommended([cand("a", "number"), cand("b", "near")]) is None
     assert dgis.recommended([cand("a", "exact", city="Семей")]) is None
     assert dgis.recommended([cand("a", "exact", type_="street")]) is None
@@ -202,7 +202,7 @@ def test_geocode_not_found_and_network(geo, dgis):
         dgis.geocode(CONTROL, client=c, key=KEY)
     assert (ei.value.detail, ei.value.retryable) == ("2ГИС не ответил вовремя", True)
 
-    # явное «ничего не найдено» с HTTP 200 (код — в meta) и пустой список кандидатов — тоже []
+    # явное "ничего не найдено" с HTTP 200(код - в meta) и пустой список кандидатов - тоже []
     geo.on("GET", dgis.GEOCODE, json=error_body(404, "Results not found", "itemNotFound"))
     with http.client(base_url=dgis.BASE) as c:
         assert dgis.geocode(CONTROL, client=c, key=KEY) == []
@@ -212,9 +212,9 @@ def test_geocode_not_found_and_network(geo, dgis):
 
 
 NO_POINT = {"id": EXACT_ID, "type": "building", "name": "ЖК Asyl Tas",
-            "geometry": {"centroid": "POINT(82.610583 49.88873)"}}  # point не пришёл (формат или поля ключа)
+            "geometry": {"centroid": "POINT(82.610583 49.88873)"}}  # point не пришёл(формат или поля ключа)
 UNKNOWN = "2ГИС вернул ответ в неизвестном формате"
-MALFORMED = [  # (HTTP-статус, тело JSON или None — HTML, ожидаемый текст ошибки)
+MALFORMED = [  # (HTTP-статус, тело JSON или None - HTML, ожидаемый текст ошибки)
     (200, {}, UNKNOWN),
     (200, {"meta": {"code": 200}}, UNKNOWN),
     (200, {"meta": {"code": 200}, "result": {"total": 1}}, UNKNOWN),
@@ -234,7 +234,7 @@ def _respond(mock, dgis, status, payload):
 
 @pytest.mark.parametrize("status, payload, detail", MALFORMED)
 def test_geocode_unknown_format_is_failure(geo, dgis, status, payload, detail):
-    """Сменившийся формат — ошибка, а не «2ГИС ничего не нашёл» (D10, план §14 «сбой не выглядит пустой выдачей»)."""
+    """Сменившийся формат - ошибка, а не "2ГИС ничего не нашёл"(D10, план §14 "сбой не выглядит пустой выдачей")."""
     from app.integrations import base, http
 
     _respond(geo, dgis, status, payload)
@@ -248,7 +248,7 @@ def test_quota_names_and_reserve(env, dgis):
 
     s = env(DGIS_API_KEY=KEY, DGIS_QUOTA_PERIOD_START="2026-10-16", DGIS_QUOTA_LIMIT=2, DGIS_DAILY_LIMIT=5)
     fp = s.key_fp("DGIS_API_KEY")
-    # 20:30 UTC = 01:30 следующего дня в Усть-Каменогорске (UTC+5)
+    # 20:30 UTC = 01:30 следующего дня в Усть-Каменогорске(UTC+5)
     now = datetime(2026, 10, 16, 20, 30, tzinfo=timezone.utc)
     assert dgis.quota_names(s, now) == (f"dgis:{fp}:2026-10-16", f"dgis-day:{fp}:2026-10-17")
     assert KEY not in "".join(dgis.quota_names(s, now))
@@ -300,14 +300,14 @@ def test_check_route_cache_force_and_repeat(client, geo, dgis, monkeypatch):
     assert (st["configured"], st["used"], st["usedToday"], st["limit"], st["dailyLimit"], st["cacheDays"]) == (
         True, 1, 1, 900, 50, 7)
 
-    # повтор того же адреса — из кэша: без обращения к 2ГИС и без расхода квоты
+    # повтор того же адреса - из кэша: без обращения к 2ГИС и без расхода квоты
     again = post_check(client)
     assert again.status_code == 200 and again.json()["cached"] is True and again.json()["id"] == g["id"]
     assert len(geo_calls(geo)) == 1 and counter("dgis:") == 1 and geo_rows() == 1
     same = post_check(client, query="  казахстан,  УСТЬ-КАМЕНОГОРСК, пр. Сатпаева, 14/2 ")
     assert same.status_code == 200 and same.json()["cached"] is True and len(geo_calls(geo)) == 1
 
-    # «Обновить запрос» мимо кэша — только администратор
+    # "Обновить запрос" мимо кэша - только администратор
     assert client.post("/api/geo/checks", json={"targetKind": "complex", "targetId": "c4", "author": AUTHOR,
                                                 "force": True}).status_code == 401
     assert client.post("/api/geo/checks", headers={"X-Admin-Token": "t-wrong-0123456789abcdefghij"},
@@ -319,7 +319,7 @@ def test_check_route_cache_force_and_repeat(client, geo, dgis, monkeypatch):
     assert forced.status_code == 201 and forced.json()["cached"] is False and forced.json()["id"] != g["id"]
     assert len(geo_calls(geo)) == 2 and counter("dgis:") == 2
 
-    # новый запрос по тому же объекту в течение 10 минут — 429
+    # новый запрос по тому же объекту в течение 10 минут - 429
     other = post_check(client, query="Казахстан, Усть-Каменогорск, Увалиева 8/3")
     assert (other.status_code, other.json()["detail"]) == (
         429, "Сверку этого объекта уже запрашивали — повторите через 10 мин")
@@ -351,7 +351,7 @@ def test_check_targets_and_validation(client, geo, dgis):
     assert post_check(client, query="x" * 201).status_code == 422
     assert client.post("/api/geo/checks", json={"targetKind": "complex", "targetId": "c4",
                                                 "author": "Система"}).status_code == 422
-    # объект открытых данных: «г. Усть-Каменогорск» из адреса не повторяется
+    # объект открытых данных: "г. Усть-Каменогорск" из адреса не повторяется
     r = post_check(client, "park-line", kind="registry")
     assert r.status_code == 201, r.text
     assert r.json()["query"] == "Казахстан, Усть-Каменогорск, пр. И. Есенберлина, д. 56"
@@ -362,7 +362,7 @@ def test_check_targets_and_validation(client, geo, dgis):
     assert len(geo_calls(geo)) == 2
 
 
-# ---------- 3. квота, «не настроен», ответы 2ГИС ----------
+# ---------- 3. квота, "не настроен", ответы 2ГИС ----------
 
 def test_period_and_daily_quota(client, geo, env, dgis):
     env(DGIS_QUOTA_LIMIT=1)
@@ -402,12 +402,12 @@ def test_route_provider_errors(client, geo, dgis, status, payload, code, detail)
         geo.on("GET", dgis.GEOCODE, status=status, json=payload)
     r = post_check(client)
     assert (r.status_code, r.json()["detail"]) == (code, detail)
-    assert geo_rows() == 0  # сбой — не «адрес не найден» и не пустая сверка
-    assert counter("dgis:") == 1  # запрос к 2ГИС выполнен — учтён
+    assert geo_rows() == 0  # сбой - не "адрес не найден" и не пустая сверка
+    assert counter("dgis:") == 1  # запрос к 2ГИС выполнен - учтён
     conn = client.get("/api/sources/connectors/dgis").json()
-    if code == 503:  # ключ отклонён — видно на странице «Подключения»
+    if code == 503:  # ключ отклонён - видно на странице "Подключения"
         assert (conn["status"], conn["statusDetail"]) == ("expired", "Ключ 2ГИС отклонён")
-    elif code == 429:  # ограничение 2ГИС — пауза, видна на странице «Подключения»
+    elif code == 429:  # ограничение 2ГИС - пауза, видна на странице "Подключения"
         assert conn["status"] == "rate_limited" and "повтор после" in conn["statusDetail"]
     else:
         assert conn["status"] not in ("expired", "rate_limited")
@@ -427,8 +427,8 @@ def test_route_not_found(client, geo, dgis):
 
 @pytest.mark.parametrize("status, payload, detail", MALFORMED)
 def test_route_unknown_format_is_not_cached_as_not_found(client, geo, dgis, run_worker, status, payload, detail):
-    """Ответ неизвестного формата — 502, без записи сверки и без кэша: повтор снова идёт в 2ГИС; проверка
-    подключения — ошибка формата, а не «2ГИС не нашёл контрольный адрес»."""
+    """Ответ неизвестного формата - 502, без записи сверки и без кэша: повтор снова идёт в 2ГИС; проверка
+    подключения - ошибка формата, а не "2ГИС не нашёл контрольный адрес"."""
     _respond(geo, dgis, status, payload)
     for n in (1, 2):
         r = post_check(client)
@@ -451,15 +451,15 @@ def lock_rows() -> list:
 
 
 def test_concurrent_checks_of_one_target_do_not_duplicate(client, geo, dgis, monkeypatch):
-    """Две вкладки (или два аналитика) одновременно нажали «Сверить адрес» по одному ЖК: к 2ГИС — один запрос, одна
-    запись, одна единица квоты; вторая сверка — 429, другой объект не ждёт. После — ответ из кэша."""
+    """Две вкладки(или два аналитика) одновременно нажали "Сверить адрес" по одному ЖК: к 2ГИС - один запрос, одна
+    запись, одна единица квоты; вторая сверка - 429, другой объект не ждёт. После - ответ из кэша."""
     real = dgis.geocode
     inside, go = threading.Event(), threading.Event()
     queries: list = []
 
     def slow(query, *, client, key):
         queries.append(query)
-        if len(queries) == 1:  # первая сверка «ждёт ответа 2ГИС»
+        if len(queries) == 1:  # первая сверка "ждёт ответа 2ГИС"
             inside.set()
             assert go.wait(10)
         return real(query, client=client, key=key)
@@ -474,7 +474,7 @@ def test_concurrent_checks_of_one_target_do_not_duplicate(client, geo, dgis, mon
             r = post_check(client, **kw)
             assert (r.status_code, r.json()["detail"]) == (429, "Сверку этого объекта уже выполняют — повторите через "
                                                                 "минуту")
-        assert post_check(client, "c3").status_code == 201  # блокировка — по объекту
+        assert post_check(client, "c3").status_code == 201  # блокировка - по объекту
     finally:
         go.set()
         th.join(10)
@@ -486,7 +486,7 @@ def test_concurrent_checks_of_one_target_do_not_duplicate(client, geo, dgis, mon
 
 
 def test_check_lock_is_released_and_expires(client, geo, dgis):
-    """Блокировка другой сверки — 429 без запроса и квоты; блокировка упавшего процесса истекает; после ошибки
+    """Блокировка другой сверки - 429 без запроса и квоты; блокировка упавшего процесса истекает; после ошибки
     2ГИС блокировка снимается."""
     name = dgis._lock_name("complex", "c4")
     now = models.utcnow()
@@ -508,8 +508,8 @@ def test_check_lock_is_released_and_expires(client, geo, dgis):
 
 
 def test_provider_limit_pauses_route_checks(client, geo, dgis, run_worker, monkeypatch):
-    """2ГИС ограничил частоту при сверке: подключение «пауза: лимит запросов» до срока Retry-After, сверки до него —
-    429 без обращения к 2ГИС и без расхода квоты (кэш отвечает); после паузы удачная сверка возвращает прежний
+    """2ГИС ограничил частоту при сверке: подключение "пауза: лимит запросов" до срока Retry-After, сверки до него -
+    429 без обращения к 2ГИС и без расхода квоты(кэш отвечает); после паузы удачная сверка возвращает прежний
     статус."""
     client.post("/api/sources/dgis/test", headers=admin(), json={"author": AUTHOR})
     run_worker()
@@ -535,7 +535,7 @@ def test_provider_limit_pauses_route_checks(client, geo, dgis, run_worker, monke
         assert r.json()["detail"].startswith("2ГИС ограничил частоту запросов — повторите после ")
     forced = client.post("/api/geo/checks", headers=admin(), json={"targetKind": "complex", "targetId": "c1",
                                                                    "author": AUTHOR, "force": True})
-    assert forced.status_code == 429  # «Обновить запрос» администратора тоже ждёт
+    assert forced.status_code == 429  # "Обновить запрос" администратора тоже ждёт
     cached = post_check(client, "c1")
     assert cached.status_code == 200 and cached.json()["id"] == c1["id"]  # кэш отвечает и во время паузы
     assert len(geo_calls(geo)) == calls + 1 and counter("dgis:") == used + 1
@@ -579,7 +579,7 @@ def test_check_limit_pauses_route_until_check_or_new_key(client, geo, dgis, env,
     assert check() == "rate_limited"
     assert post_check(client, "c3").status_code == 429
     env(DGIS_API_KEY="FAKEDGIS-other-0123456789abcd")
-    assert post_check(client, "c3").status_code == 201  # пауза — по ключу
+    assert post_check(client, "c3").status_code == 201  # пауза - по ключу
 
 
 # ---------- 4. ключ не утекает ----------
@@ -591,7 +591,7 @@ def test_key_never_leaks(client, geo, dgis, caplog, run_worker):
     r = post_check(client)
     assert r.status_code == 502 and KEY not in r.text and "***" in r.json()["detail"]
     calls = geo_calls(geo)
-    assert calls and all(c.url.params["key"] == KEY for c in calls)  # ключ — только в запросе к 2ГИС
+    assert calls and all(c.url.params["key"] == KEY for c in calls)  # ключ - только в запросе к 2ГИС
     run = client.post("/api/sources/dgis/test", headers=admin(), json={"author": AUTHOR}).json()
     assert run_worker() >= 1
     got = client.get(f"/api/collection-runs/{run['id']}")
@@ -630,7 +630,7 @@ def test_accept_without_and_with_apply(client, geo, dgis):
     r = client.post(f"/api/geo/checks/{g['id']}/reject", json={"author": "Петров А."})
     assert (r.status_code, r.json()["detail"]) == (409, f"Сверку уже решили: принята ({AUTHOR})")
 
-    # перенос координат в карточку ЖК: условный UPDATE, «было → стало» в журнал
+    # перенос координат в карточку ЖК: условный UPDATE, "было → стало" в журнал
     old = complex_point("c3")
     g3 = post_check(client, "c3").json()
     r = client.post(f"/api/geo/checks/{g3['id']}/accept", json={"candidateId": "nope", "author": AUTHOR})
@@ -671,7 +671,7 @@ def test_accept_race_on_coordinates_rolls_back(client, geo, dgis, monkeypatch):
 
     def target(db, kind, tid):
         t = real(db, kind, tid)
-        db.get(models.Complex, tid).lng = 82.0  # «другой аналитик» успел изменить координаты
+        db.get(models.Complex, tid).lng = 82.0  # "другой аналитик" успел изменить координаты
         db.flush()
         return t
 
@@ -697,7 +697,7 @@ def test_registry_target_never_modified(client, geo, dgis):
     r = client.post(f"/api/geo/checks/{g['id']}/accept", json={"candidateId": EXACT_ID, "author": AUTHOR})
     assert r.status_code == 200 and r.json()["applied"] is False
     (row,) = audit_rows("Сверка адреса 2ГИС принята")
-    assert row[3] is None  # complex_id — только у сверки ЖК
+    assert row[3] is None  # complex_id - только у сверки ЖК
     with SessionLocal() as db:
         assert opendata.records(db, "park-line") == before
 
@@ -732,7 +732,7 @@ def test_reject_and_purge(client, geo, dgis, monkeypatch):
     assert listed[g["id"]]["status"] == "rejected"
     r = client.post(f"/api/geo/checks/{g3['id']}/accept", json={"candidateId": EXACT_ID, "author": AUTHOR})
     assert (r.status_code, r.json()["detail"]) == (409, "Кандидаты устарели — выполните сверку заново")
-    # после уборки — новый запрос к 2ГИС, не кэш
+    # после уборки - новый запрос к 2ГИС, не кэш
     calls = len(geo_calls(geo))
     monkeypatch.setattr(dgis, "_now", lambda: later)
     r = post_check(client, "c3")
@@ -769,7 +769,7 @@ def test_connector_check_via_worker(client, geo, dgis, run_worker):
     assert req.url.params["q"] == CONTROL
     assert client.get("/api/geo/status").json()["used"] == 1  # проверка учитывается в квоте
 
-    # 2ГИС не нашёл контрольный адрес — проверка не прошла (ok=False → ошибка запуска)
+    # 2ГИС не нашёл контрольный адрес - проверка не прошла(ok=False → ошибка запуска)
     geo.on("GET", dgis.GEOCODE, json=body([]))
     r = client.post("/api/sources/dgis/test", headers=admin(), json={"author": AUTHOR})
     assert run_worker() >= 1
@@ -781,7 +781,7 @@ def test_connector_check_via_worker(client, geo, dgis, run_worker):
 
 
 def test_connector_check_variants(client, geo, dgis, run_worker):
-    # ключ отклонён → «истёк доступ»; затем удачная проверка возвращает «готов»
+    # ключ отклонён → "истёк доступ"; затем удачная проверка возвращает "готов"
     geo.on("GET", dgis.GEOCODE, status=401, json=error_body(401, "Unauthorized"), times=1)
     client.post("/api/sources/dgis/test", headers=admin(), json={"author": AUTHOR})
     run_worker()
@@ -818,10 +818,10 @@ def test_smoke_is_not_counted(client, geo, dgis):
     assert counter("dgis") == 0 and len(geo_calls(geo)) == 1
 
 
-# ---------- приёмка по §14 плана (применимое к геосервису) ----------
+# ---------- приёмка по §14 плана(применимое к геосервису) ----------
 
 def test_acceptance_repeat_does_not_duplicate(client, geo, dgis):
-    """«повтор не создаёт дубликат»: повторная сверка того же адреса — та же запись из кэша, без запроса к 2ГИС."""
+    """"повтор не создаёт дубликат": повторная сверка того же адреса - та же запись из кэша, без запроса к 2ГИС."""
     first = post_check(client).json()
     for _ in range(3):
         again = post_check(client)
@@ -831,7 +831,7 @@ def test_acceptance_repeat_does_not_duplicate(client, geo, dgis):
 
 
 def test_acceptance_failure_is_not_empty(client, geo, dgis, run_worker, accept):
-    """«сбой не выглядит пустой выдачей»: ошибка 2ГИС — не «адрес не найден» и не «готов»."""
+    """"сбой не выглядит пустой выдачей": ошибка 2ГИС - не "адрес не найден" и не "готов"."""
     geo.on("GET", dgis.GEOCODE, status=200, json=error_body(400, "Parameter fields is invalid"))
     r = post_check(client)
     assert r.status_code == 502 and geo_rows() == 0
@@ -842,7 +842,7 @@ def test_acceptance_failure_is_not_empty(client, geo, dgis, run_worker, accept):
 
 
 def test_acceptance_not_confirmed_automatically(client, geo, dgis):
-    """«новая публикация не получает подтверждение автоматически» — для геосервиса: рекомендованный кандидат не
+    """"новая публикация не получает подтверждение автоматически" - для геосервиса: рекомендованный кандидат не
     принимается сам, координаты ЖК не меняются без решения аналитика."""
     before = complex_point("c4")
     g = post_check(client).json()
@@ -853,8 +853,8 @@ def test_acceptance_not_confirmed_automatically(client, geo, dgis):
 
 
 def test_acceptance_limit_stops_calls(client, geo, env, dgis, run_worker):
-    """«превышение лимита не вызывает бесконечный цикл»: квота исчерпана — к 2ГИС не обращаемся ни из маршрута, ни из
-    проверки воркера; ограничение 2ГИС — пауза, а не повтор."""
+    """"превышение лимита не вызывает бесконечный цикл": квота исчерпана - к 2ГИС не обращаемся ни из маршрута, ни из
+    проверки воркера; ограничение 2ГИС - пауза, а не повтор."""
     env(DGIS_QUOTA_LIMIT=0)
     for cid in ("c1", "c2", "c3"):
         assert post_check(client, cid).status_code == 429

@@ -17,32 +17,32 @@ SignalStatus = Literal["new", "confirmed", "returned"]
 FactorState = Literal["hit", "clear", "unknown"]
 EvidenceKind = Literal["ad", "document", "photo", "appeal", "readiness", "deadline"]
 AuditKind = Literal["system", "data", "status", "link", "comment", "request", "signal", "export", "ai", "alert"]
-# Происхождение сведений (ТЗ §7 «Достоверность»): demo — вымышленный демо-набор, analyst — добавил аналитик,
-# source — запись открытого источника, collected — собрано сборщиком или прислано жителем через бота,
-# registry — карточка ЖК или застройщик, созданные по открытому реестру (app.demo): сведения источника, не проверены;
-# advertised — ЖК (или застройщик), известный только по рекламе: в открытом реестре его нет, карточку создал аналитик или
-# импорт по объекту из рекламы (app.discovery) — сведения рекламы, не проверены
+# Происхождение сведений(ТЗ §7 "Достоверность"): demo - вымышленный демо-набор, analyst - добавил аналитик,
+# source - запись открытого источника, collected - собрано сборщиком или прислано жителем через бота,
+# registry - карточка ЖК или застройщик, созданные по открытому реестру(app.demo): сведения источника, не проверены;
+# advertised - ЖК(или застройщик), известный только по рекламе: в открытом реестре его нет, карточку создал аналитик или
+# импорт по объекту из рекламы(app.discovery) - сведения рекламы, не проверены
 Origin = Literal["demo", "analyst", "source", "collected", "registry", "advertised"]
 SourceCode = Literal["homeportal", "homeportal_section", "ashyq"]
 FundingMethod = Literal["guarantee", "mio", "bvu"]
 TermsReview = Literal["accepted", "rejected"]
 TermKind = Literal["booking", "deposit", "down_payment", "installment", "ddu", "direct_payment", "price", "investment"]
 ReasonFeature = Literal["name", "translit", "address", "account", "phone", "history", "district"]
-# Темы внутреннего запроса сведений по ЖК (POST /api/complexes/{id}/requests)
+# Темы внутреннего запроса сведений по ЖК(POST /api/complexes/{id}/requests)
 InfoTopic = Literal["basis", "readiness", "appeals", "list", "other"]
-# Сбор публикаций (integration-spec §10–§11): площадки приёма через API, статусы подключений и запусков
+# Сбор публикаций(integration-spec §10-§11): площадки приёма через API, статусы подключений и запусков
 IntakePlatform = Literal["instagram", "telegram", "tiktok", "krisha", "olx", "facebook"]
 ConnectorStatus = Literal["not_configured", "unchecked", "checking", "queued", "running", "ready", "working", "partial",
                           "waiting", "off", "error", "expired", "denied", "access_check", "rate_limited"]
 RunStatus = Literal["queued", "running", "succeeded", "partial", "failed", "access_check", "rate_limited",
                     "not_configured", "cancelled"]
-SYSTEM_AUTHOR = "Система"  # автор автоматических записей журнала; человеку это имя не дать (HumanName)
+SYSTEM_AUTHOR = "Система"  # автор автоматических записей журнала; человеку это имя не дать(HumanName)
 
 NUL_MSG = "недопустимый символ NUL (\\0)"
 
 
 def no_nul(v: Any) -> Any:
-    """NUL (\\x00) в тексте — 422: PostgreSQL не хранит его в text/varchar, иначе была бы ошибка БД (500)."""
+    """NUL(\\x00) в тексте - 422: PostgreSQL не хранит его в text/varchar, иначе была бы ошибка БД(500)."""
     if isinstance(v, str) and "\x00" in v:
         raise PydanticCustomError("value_error", NUL_MSG)
     return v
@@ -58,7 +58,7 @@ def _not_system(v: str) -> str:
     return v
 
 
-# Автор действия на новых маршрутах (подключения, геопроверки, OLX): «Система» — только у автоматических записей
+# Автор действия на новых маршрутах(подключения, геопроверки, OLX): "Система" - только у автоматических записей
 HumanName = Annotated[Name, AfterValidator(_not_system)]
 Comment = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000), AfterValidator(no_nul)]
 Note = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000), AfterValidator(no_nul)]
@@ -68,20 +68,20 @@ def _blank_to_none(v: Any) -> Any:
     return None if isinstance(v, str) and not v.strip() else v
 
 
-# Необязательные строки: пустая или из пробелов — то же, что не указана; длина — как у обязательных
+# Необязательные строки: пустая или из пробелов - то же, что не указана; длина - как у обязательных
 OptName = Annotated[Optional[Name], BeforeValidator(_blank_to_none)]
 OptComment = Annotated[Optional[Comment], BeforeValidator(_blank_to_none)]
 OptNote = Annotated[Optional[Note], BeforeValidator(_blank_to_none)]
-# Уверенность ИИ в привязке публикации к ЖК: 0…1, информативно — фактом привязку делает только подтверждение аналитика
+# Уверенность ИИ в привязке публикации к ЖК: 0…1, информативно - фактом привязку делает только подтверждение аналитика
 Confidence = Annotated[float, Field(ge=0, le=1)]
-# Текст объявления и распознанный скриншот: с запасом для любого поста, но с пределом — их анализирует ИИ (время анализа)
+# Текст объявления и распознанный скриншот: с запасом для любого поста, но с пределом - их анализирует ИИ(время анализа)
 AD_TEXT_MAX = 20000
-# Время из БД (datetime, в SQLite — наивное UTC) → ISO 8601 с UTC-смещением
+# Время из БД(datetime, в SQLite - наивное UTC) → ISO 8601 с UTC-смещением
 IsoTime = Annotated[Optional[str], BeforeValidator(lambda v: iso(v) if isinstance(v, datetime) else v)]
 
 
 class Camel(BaseModel):
-    """JSON в camelCase — совпадает с типами фронтенда (src/data/types.ts)."""
+    """JSON в camelCase - совпадает с типами фронтенда(src/data/types.ts)."""
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, from_attributes=True)
 
@@ -106,7 +106,7 @@ class ComplexOut(Camel):
     developer_id: str
     address: str
     district: str
-    lng: Optional[float] = None  # None — координат нет (объект реестра без координат, ЖК по рекламе до сверки 2ГИС)
+    lng: Optional[float] = None  # None - координат нет(объект реестра без координат, ЖК по рекламе до сверки 2ГИС)
     lat: Optional[float] = None
     stage: str
     progress: int
@@ -121,7 +121,7 @@ class ComplexOut(Camel):
     photos: list
     idle_days: int
     origin: Origin = "demo"
-    # Сверка аналитиком (app.verification): перечень ГАСК и «обращений нет — сверено»; null — не сверялось
+    # Сверка аналитиком(app.verification): перечень ГАСК и "обращений нет - сверено"; null - не сверялось
     published_list_check: Optional[dict] = None
     appeals_check: Optional[dict] = None
 
@@ -137,7 +137,7 @@ class AppealOut(Camel):
     subject: str
     source: str
     origin: Origin = "demo"
-    # внесено и проверено аналитиком (app.verification); у обращений демо-набора — null
+    # внесено и проверено аналитиком(app.verification); у обращений демо-набора - null
     comment: Optional[str] = None
     created_by: Optional[str] = None
     created_at: IsoTime = None
@@ -146,8 +146,8 @@ class AppealOut(Camel):
 
 
 class AdIn(Camel):
-    """Ручное добавление публикации. author — кто добавил (в журнал); без него — «Система».
-    Длины строк — как у столбцов БД: на PostgreSQL более длинное значение было бы ошибкой БД (500), а не понятным 422."""
+    """Ручное добавление публикации. author - кто добавил(в журнал); без него - "Система".
+    Длины строк - как у столбцов БД: на PostgreSQL более длинное значение было бы ошибкой БД(500), а не понятным 422."""
 
     id: Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]],
                   BeforeValidator(_blank_to_none)] = None
@@ -162,11 +162,11 @@ class AdIn(Camel):
     match_confidence: Confidence = 0
     price: Optional[str] = Field(None, max_length=64)
     source: str = Field("manual", max_length=16)
-    # Только статусы до решения: «На проверке», «Нарушение подтверждено», «Отклонено» — через PATCH /api/ads/{id}/status
+    # Только статусы до решения: "На проверке", "Нарушение подтверждено", "Отклонено" - через PATCH /api/ads/{id}/status
     # (автор, основание, событие в журнале). Иначе подтверждённая при создании публикация давала бы R2/R3 без следа решения.
     status: Literal["new", "needs_check"] = "new"
     author: OptName = None
-    # true — аналитик сам выбрал ЖК в форме: привязка сразу факт (linkConfirmedBy = author); иначе — гипотеза ИИ
+    # true - аналитик сам выбрал ЖК в форме: привязка сразу факт(linkConfirmedBy = author); иначе - гипотеза ИИ
     link_confirmed: bool = False
 
     @field_validator("*")
@@ -185,9 +185,9 @@ class AdIn(Camel):
 
 
 class SpeechOut(Camel):
-    """Речь в ролике (app.speech, faster-whisper): status как у OCR — done | empty (нет звука или речи) | unavailable
-    (нет движка, ffmpeg или модели) | failed | skipped (выключено, ролик длиннее SAQ_ASR_MAX_S, тайм-аут). text —
-    расшифровка (она же — абзац «Речь в ролике: …» в ocr публикации), language — ru | kk, audioS — секунд звука."""
+    """Речь в ролике(app.speech, faster-whisper): status как у OCR - done | empty(нет звука или речи) | unavailable
+    (нет движка, ffmpeg или модели) | failed | skipped(выключено, ролик длиннее SAQ_ASR_MAX_S, тайм-аут). text -
+    расшифровка(она же - абзац "Речь в ролике: …" в ocr публикации), language - ru | kk, audioS - секунд звука."""
 
     status: Literal["done", "empty", "unavailable", "failed", "skipped"]
     text: Optional[str] = None
@@ -200,7 +200,7 @@ class SpeechOut(Camel):
 
 class MediaRefOut(Camel):
     """Файл публикации в хранилище: адрес /api/media/{id} (только загруженные изображения и видео текущей версии).
-    speech — только у видео, речь которого распознавалась (иначе поля нет: JSON прочих файлов не меняется)."""
+    speech - только у видео, речь которого распознавалась(иначе поля нет: JSON прочих файлов не меняется)."""
 
     id: str
     kind: Literal["image", "video"]
@@ -218,7 +218,7 @@ class MediaRefOut(Camel):
 
 
 class ProcessingOut(Camel):
-    """Состояние анализа собранной публикации: очередь, выполняется, готово, не выполнен (этап и причина)."""
+    """Состояние анализа собранной публикации: очередь, выполняется, готово, не выполнен(этап и причина)."""
 
     status: Literal["queued", "running", "done", "failed"]
     version: int
@@ -227,7 +227,7 @@ class ProcessingOut(Camel):
     error: Optional[str] = None
 
 
-# Анализ ИИ (Claude, app.llm): виды признаков продажи и уверенность в кандидате ЖК — как в схеме ответа модели
+# Анализ ИИ(Claude, app.llm): виды признаков продажи и уверенность в кандидате ЖК - как в схеме ответа модели
 LlmSignalType = Literal["sale", "presale", "booking", "installment", "down_payment", "ddu", "price", "discount",
                         "keys_handover", "other"]
 LlmConfidence = Literal["low", "medium", "high"]
@@ -235,7 +235,7 @@ LlmConfidence = Literal["low", "medium", "high"]
 
 class LlmSignalOut(Camel):
     type: LlmSignalType
-    quote: str  # дословно из текста публикации или OCR (сверено на сервере)
+    quote: str  # дословно из текста публикации или OCR(сверено на сервере)
     source: Literal["text", "ocr"] = "text"
 
 
@@ -248,18 +248,18 @@ class LlmAmountOut(Camel):
 
 
 class LlmCandidateOut(Camel):
-    """Кандидат ЖК от модели — гипотеза: привязку делает только аналитик."""
+    """Кандидат ЖК от модели - гипотеза: привязку делает только аналитик."""
 
     complex_id: str
-    complex_name: str  # из справочника, отправленного модели, — не из ответа модели
+    complex_name: str  # из справочника, отправленного модели, - не из ответа модели
     confidence: LlmConfidence
     quote: str
     source: Literal["text", "ocr"] = "text"
 
 
 class LlmMentionOut(Camel):
-    """ЖК, который называет публикация (по ответу модели): название и цитата сверены с материалом, адрес — дословно из
-    материала или пустой. Есть и в справочнике, и вне его — тогда это объект из рекламы (GET /api/discovered)."""
+    """ЖК, который называет публикация(по ответу модели): название и цитата сверены с материалом, адрес - дословно из
+    материала или пустой. Есть и в справочнике, и вне его - тогда это объект из рекламы(GET /api/discovered)."""
 
     name: str
     address: str = ""
@@ -271,30 +271,30 @@ LlmStage = Literal["under_construction", "completed", "unknown"]
 
 
 class LlmStageOut(Camel):
-    """Стадия рекламируемого объекта по материалу; без дословной цитаты — unknown."""
+    """Стадия рекламируемого объекта по материалу; без дословной цитаты - unknown."""
 
     value: LlmStage = "unknown"
     quote: str = ""
     source: Optional[Literal["text", "ocr"]] = None
 
 
-LawArticle = Literal["7", "8", "18", "23"]  # статьи правового контекста анализа ИИ (shared/law.json)
+LawArticle = Literal["7", "8", "18", "23"]  # статьи правового контекста анализа ИИ(shared/law.json)
 
 
 class LlmLegalRefOut(Camel):
-    """Норма Закона РК «О долевом участии в жилищном строительстве», к которой может относиться публикация (по ответу
-    модели) — гипотеза, не вывод о нарушении. Статья — из правового контекста, цитата сверена с материалом."""
+    """Норма Закона РК "О долевом участии в жилищном строительстве", к которой может относиться публикация(по ответу
+    модели) - гипотеза, не вывод о нарушении. Статья - из правового контекста, цитата сверена с материалом."""
 
     article: LawArticle
-    part: str = ""  # номер пункта («6», «1-1») или пусто
+    part: str = ""  # номер пункта("6", "1-1") или пусто
     why: str = ""
     quote: str
     source: Literal["text", "ocr"] = "text"
 
 
 class LlmOut(Camel):
-    """Последний анализ ИИ публикации. Всё — гипотезы для аналитика: статус, привязку и вердикт модель не
-    задаёт. failed / refused / skipped — «анализ ИИ не выполнен», а не «риск отсутствует»."""
+    """Последний анализ ИИ публикации. Всё - гипотезы для аналитика: статус, привязку и вердикт модель не
+    задаёт. failed / refused / skipped - "анализ ИИ не выполнен", а не "риск отсутствует"."""
 
     status: Literal["done", "refused", "failed", "skipped"]
     provider: Literal["anthropic"] = "anthropic"
@@ -305,17 +305,17 @@ class LlmOut(Camel):
     sale_signals: List[LlmSignalOut] = []
     amounts: List[LlmAmountOut] = []
     complex_candidates: List[LlmCandidateOut] = []
-    mentioned_complexes: List[LlmMentionOut] = []  # saq-llm-2; у ответов saq-llm-1 — пусто
-    object_stage: Optional[LlmStageOut] = None  # saq-llm-2; у ответов saq-llm-1 — null
-    legal_refs: List[LlmLegalRefOut] = []  # saq-llm-3; у ответов прежних версий — пусто
+    mentioned_complexes: List[LlmMentionOut] = []  # saq-llm-2; у ответов saq-llm-1 - пусто
+    object_stage: Optional[LlmStageOut] = None  # saq-llm-2; у ответов saq-llm-1 - null
+    legal_refs: List[LlmLegalRefOut] = []  # saq-llm-3; у ответов прежних версий - пусто
     uncertainties: List[str] = []
     summary: Optional[str] = None
     dropped: Dict[str, int] = {}  # отброшено сервером: цитаты нет в тексте, ЖК нет в справочнике, сумма не число…
     error: Optional[str] = None
-    retry_at: IsoTime = None  # failed с retry_at — ждёт повтора
+    retry_at: IsoTime = None  # failed с retry_at - ждёт повтора
     attempts: int = 0
     refusal_category: Optional[str] = None
-    fallback: bool = False  # ответила резервная модель (серверный fallback после отказа)
+    fallback: bool = False  # ответила резервная модель(серверный fallback после отказа)
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: float = 0
@@ -323,7 +323,7 @@ class LlmOut(Camel):
     updated_at: IsoTime = None
 
 
-# Поля AdOut, которых нет у демо- и ручных публикаций: пустые не выводятся — их JSON (и world.ad_dict) не меняется
+# Поля AdOut, которых нет у демо- и ручных публикаций: пустые не выводятся - их JSON(и world.ad_dict) не меняется
 _AD_OPTIONAL = {"collectedAt": None, "collected_at": None, "media": [], "processing": None, "llm": None}
 
 
@@ -350,10 +350,10 @@ class AdOut(Camel):
     assignee: Optional[str] = None
     reach: Optional[int] = None
     origin: Origin = "demo"
-    collected_at: IsoTime = None  # время получения сборщиком/приёмом (UTC), не время публикации
+    collected_at: IsoTime = None  # время получения сборщиком/приёмом(UTC), не время публикации
     media: Annotated[List[MediaRefOut], BeforeValidator(lambda v: list(v or []))] = []
-    processing: Optional[ProcessingOut] = None  # только у публикаций из приёма (Ad.ingest)
-    llm: Optional[LlmOut] = None  # последний анализ ИИ — гипотезы; нет — анализа не было
+    processing: Optional[ProcessingOut] = None  # только у публикаций из приёма(Ad.ingest)
+    llm: Optional[LlmOut] = None  # последний анализ ИИ - гипотезы; нет - анализа не было
 
     @model_serializer(mode="wrap")
     def _out(self, handler) -> Dict[str, Any]:
@@ -361,14 +361,14 @@ class AdOut(Camel):
 
 
 class AdComplexIn(Camel):
-    """Привязка публикации к ЖК аналитиком: complexId — ЖК (привязка — факт, подтвердил author) или null — снять привязку."""
+    """Привязка публикации к ЖК аналитиком: complexId - ЖК(привязка - факт, подтвердил author) или null - снять привязку."""
 
     complex_id: Optional[Name]
     author: Name
 
 
 class StatusIn(Camel):
-    """Смена статуса публикации: автор обязателен; для «Нарушение подтверждено» — и основание решения (comment)."""
+    """Смена статуса публикации: автор обязателен; для "Нарушение подтверждено" - и основание решения(comment)."""
 
     status: AdStatus
     author: Name
@@ -420,7 +420,7 @@ class EvidenceItemOut(Camel):
 
     @model_serializer(mode="wrap")
     def _drop_empty(self, handler) -> Dict[str, Any]:
-        # как в движке: отсутствующие поля не выводятся (EvidenceItem в types.ts — все поля необязательные)
+        # как в движке: отсутствующие поля не выводятся(EvidenceItem в types.ts - все поля необязательные)
         return {k: v for k, v in handler(self).items() if v is not None}
 
 
@@ -449,7 +449,7 @@ class RiskOut(Camel):
     observations: List[ObservationOut]
     summary: str
     model_version: str
-    # False — риск не оценивается: карточка из открытого реестра без проверенных сведений (балл и зона не показываются)
+    # False - риск не оценивается: карточка из открытого реестра без проверенных сведений(балл и зона не показываются)
     assessed: bool = True
 
 
@@ -484,7 +484,7 @@ class AuditOut(Camel):
     signal_id: Optional[int] = None
 
 
-# ---------- сигналы (модуль 05) ----------
+# ---------- сигналы(модуль 05) ----------
 
 class SignalAdOut(Camel):
     id: str
@@ -551,7 +551,7 @@ class SignalDecisionIn(Camel):
     comment: Comment
 
 
-# ---------- ИИ-анализ публикаций (ТЗ §6) ----------
+# ---------- ИИ-анализ публикаций(ТЗ §6) ----------
 
 def _drop_none(handler, self) -> Dict[str, Any]:
     return {k: v for k, v in handler(self).items() if v is not None}
@@ -573,7 +573,7 @@ class AnalyzeIn(Camel):
 
 
 class TermOut(Camel):
-    """Условие оплаты — гипотеза ИИ: вид, значения, дословная цитата, источник (текст или скриншот), уверенность."""
+    """Условие оплаты - гипотеза ИИ: вид, значения, дословная цитата, источник(текст или скриншот), уверенность."""
 
     kind: TermKind
     label: str
@@ -643,7 +643,7 @@ class HypothesisRejectIn(HypothesisIn):
 
 
 class TermsReviewIn(Camel):
-    """Решение аналитика по условиям оплаты, найденным ИИ: rejected — «это не предложение внести деньги» (R2 не учитывается)."""
+    """Решение аналитика по условиям оплаты, найденным ИИ: rejected - "это не предложение внести деньги"(R2 не учитывается)."""
 
     author: Name
     decision: TermsReview
@@ -692,10 +692,10 @@ class AiEvalOut(Camel):
     metrics: AiMetricsOut
 
 
-# ---------- открытые данные (T-26…T-31): сведения источников, без риска и сигналов ----------
+# ---------- открытые данные(T-26…T-31): сведения источников, без риска и сигналов ----------
 
 class SourceRecordOut(Camel):
-    """Запись открытого источника: нормализованные поля строки и провенанс. Полей риска нет (T-31)."""
+    """Запись открытого источника: нормализованные поля строки и провенанс. Полей риска нет(T-31)."""
 
     id: int
     key: str
@@ -735,8 +735,8 @@ class SourceRecordOut(Camel):
 
 
 class RegistryFlagsOut(Camel):
-    source_section: Optional[str] = None  # раздел источника — как у источника, без оценки
-    coords_far_km: Optional[int] = None  # координаты источника далеко от Усть-Каменогорска (км от центра)
+    source_section: Optional[str] = None  # раздел источника - как у источника, без оценки
+    coords_far_km: Optional[int] = None  # координаты источника далеко от Усть-Каменогорска(км от центра)
 
     @model_serializer(mode="wrap")
     def _out(self, handler) -> Dict[str, Any]:
@@ -744,7 +744,7 @@ class RegistryFlagsOut(Camel):
 
 
 class RegistryObjectOut(Camel):
-    """Объект открытых данных — группа записей источников по нормализованному названию. Риска, зоны, сигналов нет."""
+    """Объект открытых данных - группа записей источников по нормализованному названию. Риска, зоны, сигналов нет."""
 
     key: str
     origin: Literal["source"] = "source"
@@ -816,7 +816,7 @@ class ImportReportOut(Camel):
     event_id: int
 
 
-# ---------- сбор публикаций: подключения, запуски, приём (integration-spec §11.2) ----------
+# ---------- сбор публикаций: подключения, запуски, приём(integration-spec §11.2) ----------
 
 class AdVersionOut(Camel):
     version: int
@@ -957,7 +957,7 @@ class ConnectorsOut(Camel):
     connectors: List[ConnectorOut]
     worker: WorkerOut
     admin_configured: bool
-    # true — запрос с верным токеном администратора: полные сведения; false — сведения для посетителя
+    # true - запрос с верным токеном администратора: полные сведения; false - сведения для посетителя
     admin: bool = False
 
 
@@ -972,13 +972,13 @@ class CollectAllOut(Camel):
     skipped: List[CollectAllItemOut]
 
 
-# ---------- приём публикаций через API (POST /api/intake/publications, integration-spec §7.4) ----------
+# ---------- приём публикаций через API(POST /api/intake/publications, integration-spec §7.4) ----------
 
 INTAKE_TEXT_MAX = 100000  # принимается до 100 000 символов, хранится до AD_TEXT_MAX
 INTAKE_MEDIA_MAX = 20
 INTAKE_PAST_DAYS = 30
 INTAKE_FUTURE_MIN = 5
-# Поля решений аналитика: через приём публикаций не передаются (решения — только у аналитика)
+# Поля решений аналитика: через приём публикаций не передаются(решения - только у аналитика)
 DECISION_KEYS = ("status", "assignee", "complexId", "complex_id", "matchConfidence", "linkConfirmed", "linkConfirmedBy",
                  "linkConfirmedAt", "termsReview", "termsReviewBy", "termsReviewAt", "rejectedLinks", "origin", "source",
                  "id")
@@ -997,7 +997,7 @@ _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 
 def normalize_external_id(platform: str, value: str) -> str:
-    """Проверка формата externalId; Telegram в форме Bot API (-100XXXXXXXXXX) → положительный ID канала Telethon."""
+    """Проверка формата externalId; Telegram в форме Bot API(-100XXXXXXXXXX) → положительный ID канала Telethon."""
     pattern, fmt = EXTERNAL_ID_FORMATS[platform]
     if not re.match(pattern, value):
         raise PydanticCustomError("value_error", "externalId для {platform}: ожидается {format}",
@@ -1012,7 +1012,7 @@ def normalize_external_id(platform: str, value: str) -> str:
 
 
 def _strip_ctrl(v: Any) -> Any:
-    """NUL и управляющие символы (кроме перевода строки и табуляции) удаляются: текст источника не отклоняется из-за них."""
+    """NUL и управляющие символы(кроме перевода строки и табуляции) удаляются: текст источника не отклоняется из-за них."""
     return _CTRL.sub("", v) if isinstance(v, str) else v
 
 
@@ -1040,8 +1040,8 @@ class IntakeMediaIn(Camel):
 
 
 class IntakePublicationIn(Camel):
-    """Нормализованная публикация от внешнего сборщика. Решения аналитика не принимаются; медиа — только https,
-    загружаются позже анализом; collectedAt — заявленное клиентом время (хранится как заявлено, в пределах 30 дней)."""
+    """Нормализованная публикация от внешнего сборщика. Решения аналитика не принимаются; медиа - только https,
+    загружаются позже анализом; collectedAt - заявленное клиентом время(хранится как заявлено, в пределах 30 дней)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1130,12 +1130,12 @@ class IntakeResultOut(Camel):
     analysis_queued: bool = False
 
 
-# ---------- «Проверка по рекламе» (app.screening) и объекты из рекламы (app.discovery) ----------
+# ---------- "Проверка по рекламе"(app.screening) и объекты из рекламы(app.discovery) ----------
 
 ScreeningStatus = Literal["ok", "check", "suspect", "unknown"]
 ScreeningVariant = Literal["commissioned", "analyst"]
 DecisionKind = Literal["commissioned", "no_issues"]
-# active — решение действует; reopened — снято автоматически новой рекламой после решения (остаётся видно как история)
+# active - решение действует; reopened - снято автоматически новой рекламой после решения(остаётся видно как история)
 DecisionStatus = Literal["active", "reopened"]
 PermitStatus = Literal["permitted", "not_permitted", "unknown"]
 ScreeningBasis = Literal["hypothesis", "confirmed"]
@@ -1143,18 +1143,18 @@ DiscoveredStatus = Literal["new", "linked", "dismissed"]
 
 
 class PermitOut(Camel):
-    """Основание привлекать деньги дольщиков по открытым данным или сверке аналитика: permitted — есть (Homeportal —
-    документ основания, Казреестр — запись о разрешении, сверенное «есть»); not_permitted — раздел Homeportal «Без
-    разрешения на дольщиков» или сверенное «нет» по всем трём; unknown — сведений нет. Сведения источника — не
+    """Основание привлекать деньги дольщиков по открытым данным или сверке аналитика: permitted - есть(Homeportal -
+    документ основания, Казреестр - запись о разрешении, сверенное "есть"); not_permitted - раздел Homeportal "Без
+    разрешения на дольщиков" или сверенное "нет" по всем трём; unknown - сведений нет. Сведения источника - не
     юридический вывод."""
 
     status: PermitStatus
     text: str
     source: Optional[str] = None  # homeportal | homeportal_section | ashyq | analyst
     url: Optional[str] = None
-    registry_key: Optional[str] = None  # объект открытых данных (GET /api/registry/{key})
+    registry_key: Optional[str] = None  # объект открытых данных(GET /api/registry/{key})
     registry_stage: Optional[Literal["completed", "under_construction"]] = None  # фильтр источника, не стадия
-    verified: bool = False  # сверено аналитиком (basis «есть/нет» с источником), а не только сведения источника
+    verified: bool = False  # сверено аналитиком(basis "есть/нет" с источником), а не только сведения источника
 
 
 class ScreeningReasonOut(Camel):
@@ -1162,22 +1162,22 @@ class ScreeningReasonOut(Camel):
     ad_id: Optional[str] = None
     quote: Optional[str] = None
     signal: Optional[str] = None  # presale | booking | ddu | installment | down_payment | money | sale | price | …
-    # decision — причина от решения аналитика (сведения решения или «новая реклама после решения»): такие идут первыми,
-    # следом — строка основания (permit.text), затем остальные
+    # decision - причина от решения аналитика(сведения решения или "новая реклама после решения"): такие идут первыми,
+    # следом - строка основания(permit.text), затем остальные
     kind: Optional[Literal["decision"]] = None
 
 
 class ScreeningCountsOut(Camel):
-    ads: int = 0  # публикаций, отнесённых к ЖК (без отклонённых аналитиком)
-    concerning: int = 0  # из них свежих (окно windowDays) с признаком приёма денег
-    last_ad_at: Optional[str] = None  # дата последней публикации (как Ad.date, местное время)
+    ads: int = 0  # публикаций, отнесённых к ЖК(без отклонённых аналитиком)
+    concerning: int = 0  # из них свежих(окно windowDays) с признаком приёма денег
+    last_ad_at: Optional[str] = None  # дата последней публикации(как Ad.date, местное время)
     window_days: int = 120
 
 
 class ScreeningOut(Camel):
-    """«Проверка по рекламе» — предварительная автоматическая оценка, не вывод о нарушении (disclaimer). variant — чем
-    обоснован статус ok, если не реестром: commissioned — аналитик подтвердил ввод в эксплуатацию («Дом сдан — замечаний
-    нет»), analyst — «Проверено — замечаний нет»; null — автоматическая оценка."""
+    """"Проверка по рекламе" - предварительная автоматическая оценка, не вывод о нарушении(disclaimer). variant - чем
+    обоснован статус ok, если не реестром: commissioned - аналитик подтвердил ввод в эксплуатацию("Дом сдан - замечаний
+    нет"), analyst - "Проверено - замечаний нет"; null - автоматическая оценка."""
 
     status: ScreeningStatus
     label: str
@@ -1203,9 +1203,9 @@ GalleryKind = Literal["operator", "site", "homeportal", "ad"]
 
 
 class GalleryPhotoOut(Camel):
-    """Фото объекта (app.gallery): operator — загрузил оператор, site — снимок площадки фото-мониторинга, homeportal —
-    фото карточки ЖК на Homeportal (фото или визуализация застройщика), ad — изображение рекламы ЖК (hypothesis — привязка
-    публикации не подтверждена). cover — закреплённая обложка карточки."""
+    """Фото объекта(app.gallery): operator - загрузил оператор, site - снимок площадки фото-мониторинга, homeportal -
+    фото карточки ЖК на Homeportal(фото или визуализация застройщика), ad - изображение рекламы ЖК(hypothesis - привязка
+    публикации не подтверждена). cover - закреплённая обложка карточки."""
 
     src: str
     kind: GalleryKind
@@ -1221,18 +1221,18 @@ class GalleryPhotoOut(Camel):
 
 
 class ComplexListOut(ComplexOut):
-    """ЖК в списке и карточке (GET /api/complexes, /api/complexes/{id}): основание по открытым данным и «Проверка по
-    рекламе»; gallery — фото объекта, обложка первой."""
+    """ЖК в списке и карточке(GET /api/complexes, /api/complexes/{id}): основание по открытым данным и "Проверка по
+    рекламе"; gallery - фото объекта, обложка первой."""
 
     permit: Optional[PermitOut] = None
     screening: Optional[ScreeningOut] = None
     advert: Optional[AdvertOut] = None
-    # Документы основания, которые называет открытый реестр (карточка «registry»): подсказка для сверки в один клик
+    # Документы основания, которые называет открытый реестр(карточка "registry"): подсказка для сверки в один клик
     basis_suggest: Optional[Dict[str, "BasisSuggestionOut"]] = None
-    # Решение аналитика по «Проверке по рекламе» («сдан» / «проверено — замечаний нет»); null — оценка автоматическая
+    # Решение аналитика по "Проверке по рекламе"("сдан" / "проверено - замечаний нет"); null - оценка автоматическая
     decision: Optional["ScreeningDecisionOut"] = None
     gallery: List[GalleryPhotoOut] = []
-    homeportal: bool = False  # есть карточка Homeportal в записях реестра — фото можно подгрузить оттуда
+    homeportal: bool = False  # есть карточка Homeportal в записях реестра - фото можно подгрузить оттуда
 
 
 class ScreeningWorstOut(Camel):
@@ -1269,7 +1269,7 @@ class DiscoveredQuoteOut(Camel):
     quote: str
     name: str = ""
     address: Optional[str] = None
-    source: str = "parser"  # parser | bot (заявка жителя) | manual
+    source: str = "parser"  # parser | bot(заявка жителя) | manual
     date: Optional[str] = None
     platform: Optional[str] = None
     account: Optional[str] = None
@@ -1290,7 +1290,7 @@ class DiscoveredStageOut(Camel):
 
 class DiscoveredSignalsOut(Camel):
     ads: int = 0
-    concerning: int = 0  # публикаций с признаком приёма денег (любой давности)
+    concerning: int = 0  # публикаций с признаком приёма денег(любой давности)
     recent_concerning: int = 0  # из них в окне windowDays
     types: Dict[str, int] = {}  # вид признака → публикаций
     last_ad_at: Optional[str] = None
@@ -1318,7 +1318,7 @@ class DiscoveredOut(Camel):
     quotes: List[DiscoveredQuoteOut] = []  # до трёх, новые первыми
     stage_hints: DiscoveredStageOut
     sale_signals: DiscoveredSignalsOut
-    geo: List[dict] = []  # последние сверки 2ГИС (форма GeoCheckOut), новые первыми
+    geo: List[dict] = []  # последние сверки 2ГИС(форма GeoCheckOut), новые первыми
     screening: Optional[ScreeningOut] = None  # оценка, как у ЖК вне реестра, по рекламе этого объекта
 
 
@@ -1337,8 +1337,8 @@ def _pair(lat: Optional[float], lng: Optional[float]) -> None:
 
 
 class DiscoveredCreateIn(Camel):
-    """Создать карточку ЖК по объекту из рекламы. Координаты — парой; без них, но с candidateId — точка выбранного
-    кандидата 2ГИС из сверок этого объекта; без того и другого — карточка без координат (сверка 2ГИС — позже)."""
+    """Создать карточку ЖК по объекту из рекламы. Координаты - парой; без них, но с candidateId - точка выбранного
+    кандидата 2ГИС из сверок этого объекта; без того и другого - карточка без координат(сверка 2ГИС - позже)."""
 
     author: HumanName
     name: DevName
@@ -1369,7 +1369,7 @@ class DiscoveredDismissIn(Camel):
 
 class DiscoveredGeoIn(Camel):
     author: HumanName
-    force: bool = False  # мимо кэша — только администратор
+    force: bool = False  # мимо кэша - только администратор
 
 
 class GeoErrorOut(Camel):
@@ -1379,7 +1379,7 @@ class GeoErrorOut(Camel):
 
 
 class DiscoveredGeoOut(Camel):
-    checks: List[dict] = []  # сверки 2ГИС (форма GeoCheckOut): по названию и, если есть, по адресу
+    checks: List[dict] = []  # сверки 2ГИС(форма GeoCheckOut): по названию и, если есть, по адресу
     errors: List[GeoErrorOut] = []
 
 
@@ -1389,7 +1389,7 @@ AliasItem = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1
 
 
 class AdvertisedItemIn(Camel):
-    """Строка импорта ЖК по рекламе (POST /api/discovered/import, python -m app.demo add-advertised)."""
+    """Строка импорта ЖК по рекламе(POST /api/discovered/import, python -m app.demo add-advertised)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1412,7 +1412,7 @@ class AdvertisedItemIn(Camel):
 
 class AdvertisedImportIn(Camel):
     author: HumanName
-    note: OptNote = None  # что это за импорт (попадает в журнал)
+    note: OptNote = None  # что это за импорт(попадает в журнал)
     items: List[AdvertisedItemIn] = Field(min_length=1, max_length=200)
 
 
@@ -1420,12 +1420,12 @@ class AdvertisedImportOut(Camel):
     created: List[str] = []  # id созданных карточек ЖК
     updated: List[str] = []  # дополнены пустые поля, другие названия, аккаунты или ссылки
     unchanged: List[str] = []
-    skipped: List[str] = []  # «название: причина» (есть в открытом реестре или справочнике ЖК)
+    skipped: List[str] = []  # "название: причина"(есть в открытом реестре или справочнике ЖК)
     developers_created: List[str] = []
     event_ids: List[int] = []
 
 
-# ---------- сверка сведений аналитиком (app.verification) ----------
+# ---------- сверка сведений аналитиком(app.verification) ----------
 
 BasisDocKey = Literal["guarantee", "mio", "bvu"]
 ReadinessKind = Literal["declared", "confirmed"]
@@ -1434,14 +1434,14 @@ DATE_FORMAT_MSG = "дата в формате ГГГГ-ММ-ДД"
 
 
 def today_local():
-    """«Сегодня» по Усть-Каменогорску (UTC+5) — даты сверки и обращений не позже него."""
+    """"Сегодня" по Усть-Каменогорску(UTC+5) - даты сверки и обращений не позже него."""
     from .risk_model import ALMATY
 
     return datetime.now(ALMATY).date()
 
 
 def _parse_day(v: Any, *, required: bool = False) -> Any:
-    """Дата сверки, обращения, снимка: «ГГГГ-ММ-ДД»; пустая строка у необязательной даты — не указана (сегодня);
+    """Дата сверки, обращения, снимка: "ГГГГ-ММ-ДД"; пустая строка у необязательной даты - не указана(сегодня);
     иначе 422 по-русски."""
     if isinstance(v, Date) and not isinstance(v, datetime):
         return v
@@ -1491,8 +1491,8 @@ def _source_for_tri(v: Optional[str], info: ValidationInfo) -> Optional[str]:
 
 
 class BasisCheckIn(Camel):
-    """Сверка документа основания: value — есть / нет / нет сведений (снять сверку); ref — номер и дата документа или
-    банк; source — где проверено (обязателен для «есть» и «нет»); checkedAt — дата сверки (по умолчанию сегодня)."""
+    """Сверка документа основания: value - есть / нет / нет сведений(снять сверку); ref - номер и дата документа или
+    банк; source - где проверено(обязателен для "есть" и "нет"); checkedAt - дата сверки(по умолчанию сегодня)."""
 
     author: HumanName
     doc: BasisDocKey
@@ -1507,7 +1507,7 @@ class BasisCheckIn(Camel):
 
 
 class PublishedListIn(Camel):
-    """Сверка с опубликованным перечнем ГАСК (наблюдение O1, вне балла)."""
+    """Сверка с опубликованным перечнем ГАСК(наблюдение O1, вне балла)."""
 
     author: HumanName
     value: Tri
@@ -1520,7 +1520,7 @@ class PublishedListIn(Camel):
 
 
 class ReadinessIn(Camel):
-    """Готовность (R5): заявленная застройщиком или подтверждённая (акт осмотра, фото-мониторинг) — с источником и датой."""
+    """Готовность(R5): заявленная застройщиком или подтверждённая(акт осмотра, фото-мониторинг) - с источником и датой."""
 
     author: HumanName
     kind: ReadinessKind
@@ -1531,7 +1531,7 @@ class ReadinessIn(Camel):
 
 
 class AppealIn(Camel):
-    """Обращение граждан (R4), внесённое аналитиком: ждёт проверки (status pending)."""
+    """Обращение граждан(R4), внесённое аналитиком: ждёт проверки(status pending)."""
 
     author: HumanName
     date: Day
@@ -1555,7 +1555,7 @@ class AppealDecisionIn(Camel):
 
 
 class AppealsCheckIn(Camel):
-    """«Обращений нет — сверено»: где проверено (ДЭР, ГАСК, eOtinish) и когда."""
+    """"Обращений нет - сверено": где проверено(ДЭР, ГАСК, eOtinish) и когда."""
 
     author: HumanName
     source: SourceText
@@ -1564,7 +1564,7 @@ class AppealsCheckIn(Camel):
 
 
 class SitePhotoIn(Camel):
-    """Поля формы снимка площадки (POST /api/complexes/{id}/photos, multipart): файл — отдельно."""
+    """Поля формы снимка площадки(POST /api/complexes/{id}/photos, multipart): файл - отдельно."""
 
     author: HumanName
     date: Day
@@ -1574,11 +1574,11 @@ class SitePhotoIn(Camel):
 
 
 class BasisSuggestionOut(Camel):
-    """Документ основания, который называет открытый реестр: номер и дата, источник, ссылка — для «Подтвердить»."""
+    """Документ основания, который называет открытый реестр: номер и дата, источник, ссылка - для "Подтвердить"."""
 
     ref: str
-    source: str  # короткое название для сверки: «Homeportal»
-    source_name: str  # как у источника: «Homeportal — карточки ЖК»
+    source: str  # короткое название для сверки: "Homeportal"
+    source_name: str  # как у источника: "Homeportal - карточки ЖК"
     url: Optional[str] = None
     records: int = 1
 
@@ -1593,12 +1593,12 @@ class BasisDocOut(Camel):
     checked_at: Optional[str] = None
     checked_by: Optional[str] = None
     comment: Optional[str] = None
-    checked: bool = False  # «есть» или «нет» с источником и датой сверки
+    checked: bool = False  # "есть" или "нет" с источником и датой сверки
     suggestion: Optional[BasisSuggestionOut] = None
 
 
 class BasisViewOut(Camel):
-    """Основание ЖК по документам: значение, сверка (кто, когда, где), подсказка из открытого реестра; перечень ГАСК."""
+    """Основание ЖК по документам: значение, сверка(кто, когда, где), подсказка из открытого реестра; перечень ГАСК."""
 
     complex_id: str
     documents: List[BasisDocOut]
@@ -1607,7 +1607,7 @@ class BasisViewOut(Camel):
     total: int
 
 
-# ---------- решение аналитика по «Проверке по рекламе» (app.decisions) ----------
+# ---------- решение аналитика по "Проверке по рекламе"(app.decisions) ----------
 
 def _min_text(n: int, msg: str):
     def check(v: str) -> str:
@@ -1626,8 +1626,8 @@ CancelReason = Annotated[str, StringConstraints(strip_whitespace=True, max_lengt
 
 
 class CommissionedIn(Camel):
-    """«Объект сдан»: ввод в эксплуатацию подтверждён — номер акта (необязателен), дата акта (обязательна, не позже
-    сегодня), источник (ЕГКН, акт приёмки, 2ГИС — жилой дом, ответ акимата / ГАСК или свой текст), ссылка, комментарий."""
+    """"Объект сдан": ввод в эксплуатацию подтверждён - номер акта(необязателен), дата акта(обязательна, не позже
+    сегодня), источник(ЕГКН, акт приёмки, 2ГИС - жилой дом, ответ акимата / ГАСК или свой текст), ссылка, комментарий."""
 
     author: HumanName
     act_number: ActNumber = None
@@ -1638,7 +1638,7 @@ class CommissionedIn(Camel):
 
 
 class ScreeningDecisionIn(Camel):
-    """«Проверено — замечаний нет»: что проверено (не короче 10 символов), источник, ссылка, комментарий."""
+    """"Проверено - замечаний нет": что проверено(не короче 10 символов), источник, ссылка, комментарий."""
 
     author: HumanName
     decision: Literal["no_issues"]
@@ -1649,20 +1649,20 @@ class ScreeningDecisionIn(Camel):
 
 
 class AuthorIn(Camel):
-    """Действие сотрудника без других полей (подгрузить фото Homeportal, удалить фото оператора)."""
+    """Действие сотрудника без других полей(подгрузить фото Homeportal, удалить фото оператора)."""
 
     author: HumanName
 
 
 class GalleryUploadIn(Camel):
-    """Поля формы фото объекта от оператора (POST /api/complexes/{id}/gallery, multipart): файл — отдельно."""
+    """Поля формы фото объекта от оператора(POST /api/complexes/{id}/gallery, multipart): файл - отдельно."""
 
     author: HumanName
     note: OptNote = None
 
 
 class CoverIn(Camel):
-    """Обложка карточки ЖК: src одного из фото объекта; пустой или null — снова автоматическая."""
+    """Обложка карточки ЖК: src одного из фото объекта; пустой или null - снова автоматическая."""
 
     author: HumanName
     src: Optional[str] = Field(None, max_length=512)
@@ -1685,14 +1685,14 @@ class DecisionTriggerOut(Camel):
 
 
 class ScreeningDecisionOut(Camel):
-    """Действующее (active) или снятое автоматически (reopened) решение аналитика по ЖК."""
+    """Действующее(active) или снятое автоматически(reopened) решение аналитика по ЖК."""
 
     id: int
     kind: DecisionKind
     status: DecisionStatus
-    label: str  # «Дом сдан — замечаний нет» | «Проверено — замечаний нет»
+    label: str  # "Дом сдан - замечаний нет" | "Проверено - замечаний нет"
     by: str
-    at: Optional[str] = None  # когда записано (UTC ISO)
+    at: Optional[str] = None  # когда записано(UTC ISO)
     act_number: Optional[str] = None
     act_date: Optional[str] = None
     source: str
@@ -1703,7 +1703,7 @@ class ScreeningDecisionOut(Camel):
 
 
 class DecisionRecordOut(Camel):
-    """Запись истории решений по ЖК (GET /api/complexes/{id}/screening-decisions): действующие, отменённые, заменённые."""
+    """Запись истории решений по ЖК(GET /api/complexes/{id}/screening-decisions): действующие, отменённые, заменённые."""
 
     id: int
     complex_id: str

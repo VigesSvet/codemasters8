@@ -1,5 +1,5 @@
-"""ИИ-сценарий (ТЗ §6, T-20…T-25): нормализация и транслитерация, условия оплаты с цитатами и уверенностью,
-сопоставление публикации с ЖК, проверка на новых текстах (shared/ai_cases.json), эндпоинты анализа, решений аналитика
+"""ИИ-сценарий(ТЗ §6, T-20…T-25): нормализация и транслитерация, условия оплаты с цитатами и уверенностью,
+сопоставление публикации с ЖК, проверка на новых текстах(shared/ai_cases.json), эндпоинты анализа, решений аналитика
 и OCR."""
 import io
 import json
@@ -47,10 +47,10 @@ def _features(h):
 def test_normalization():
     assert norm("  ЖК «Ёлки»\u00a0—\u202fНовый  “дом” ") == "жк елки - новый дом"
     assert norm("Шығыс–Тауэр") == "шығыс-тауэр"
-    # «ЖК», «ж.к.», «жилой комплекс» — не часть названия
+    # "ЖК", "ж.к.", "жилой комплекс" - не часть названия
     assert [t.norm for t in tokens("ЖК «Алтай Резиденс», ж.к. Nord Hills, жилой комплекс Green Line", drop_stop=True)] == [
         "алтай", "резиденс", "nord", "hills", "green", "line"]
-    # позиции токенов — в исходной строке (для дословных цитат)
+    # позиции токенов - в исходной строке(для дословных цитат)
     text = "Бронь в ЖК «Алтай\u00a0Резиденс»"
     t = tokens(text, drop_stop=True)
     assert [x.norm for x in t] == ["бронь", "в", "алтай", "резиденс"]
@@ -109,11 +109,11 @@ def test_phones():
     ("Переуступка по ДДУ", "ddu", {}),
     ("Бастапқы жарна 25%", "down_payment", {"percent": 25}),
     ("Бөліп төлеу 12 ай", "installment", {"months": 12}),
-    ("Вход от $15к", "investment", {"amount": 15000, "currency": "USD"}),  # «к» и после валюты, а не $15
+    ("Вход от $15к", "investment", {"amount": 15000, "currency": "USD"}),  # "к" и после валюты, а не $15
     ("Первый взнос 1 млн 200 тыс. тенге", "down_payment", {"amount": 1200000, "currency": "KZT"}),
     ("Первый взнос 1 млн 500 тыс тг", "down_payment", {"amount": 1500000}),
     ("Рассрочка на 1,5 года", "installment", {"months": 18}),
-    ("Взнос 20–30%", "down_payment", {"percent": 20}),  # диапазон — нижняя граница («от 20%»)
+    ("Взнос 20–30%", "down_payment", {"percent": 20}),  # диапазон - нижняя граница("от 20%")
 ])
 def test_term_formats(text, kind, values):
     t = _one(extract(text), kind)
@@ -124,7 +124,7 @@ def test_term_formats(text, kind, values):
 
 @pytest.mark.parametrize("marker", MARKERS["money"])
 def test_every_money_marker_is_a_term(marker):
-    """Каждый маркер R2 из словаря модели (markers.money) распознаётся как денежное условие."""
+    """Каждый маркер R2 из словаря модели(markers.money) распознаётся как денежное условие."""
     terms = extract(f"Квартиры в новом доме: {marker} 20%, звоните")
     assert any(t["money"] for t in terms), marker
 
@@ -145,11 +145,11 @@ def test_term_confidence():
     word_only = _one(extract("Первый взнос"), "down_payment")["confidence"]
     from_ocr = _one(extract("", "Первый взнос 20%"), "down_payment")["confidence"]
     assert with_number > word_only and with_number > from_ocr
-    # то же условие и в тексте, и на скриншоте — одно условие из текста, уверенность выше
+    # то же условие и в тексте, и на скриншоте - одно условие из текста, уверенность выше
     alone = _one(extract("Рассрочка 24 мес"), "installment")["confidence"]
     both = extract("Рассрочка 24 мес", "РАССРОЧКА 24 МЕС")
     assert len(both) == 1 and both[0]["from"] == "text" and both[0]["confidence"] > alone
-    # противоречие: два разных взноса — оба с пониженной уверенностью
+    # противоречие: два разных взноса - оба с пониженной уверенностью
     two = [t for t in extract("Первый взнос 20%. Акция: первоначальный взнос 30%") if t["kind"] == "down_payment"]
     assert sorted(t["percent"] for t in two) == [20, 30] and all(t["confidence"] < with_number for t in two)
     # низкая уверенность помечается
@@ -158,7 +158,7 @@ def test_term_confidence():
 
 
 def test_amount_parts_are_one_amount():
-    """«1 млн 200 тыс.» — одна сумма: остаток в тысячах не становится отдельной «ценой», которой в тексте нет."""
+    """"1 млн 200 тыс." - одна сумма: остаток в тысячах не становится отдельной "ценой", которой в тексте нет."""
     for text in ("Первый взнос 1 млн 200 тыс. тенге", "первый взнос 1 млн 500 тыс тг", "Задаток 2 миллиона 300 тысяч ₸"):
         assert [t["kind"] for t in extract(text)] == [extract(text)[0]["kind"]] and extract(text)[0]["kind"] != "price", text
     assert _one(extract("Задаток 2 миллиона 300 тысяч ₸"), "deposit")["amount"] == 2300000
@@ -167,22 +167,22 @@ def test_amount_parts_are_one_amount():
 def test_free_booking_and_negation():
     t = _one(extract("Белуха Парк: бронь бесплатная на 7 дней"), "booking")
     assert t["money"] is False and t["low"] and t["label"] == "Бронь без оплаты"
-    # отрицание после слова и «0 тг» — тоже не предложение внести деньги
+    # отрицание после слова и "0 тг" - тоже не предложение внести деньги
     for text in ("Nord Hills: бронь не нужна, оплата по ДДУ", "Бронь квартиры не обязательна", "Бронь 0 тг.",
                  "Достык Плаза. Бронь 0 тг! Бронирование бесплатно."):
-        t = _one(extract(text), "booking")  # «0 тг» и «бесплатно» — одно условие, а не два противоречащих
+        t = _one(extract(text), "booking")  # "0 тг" и "бесплатно" - одно условие, а не два противоречащих
         assert (t["money"], t["label"], t["low"]) == (False, "Бронь без оплаты", True), text
     assert extract("Первоначальный взнос не нужен") == [] and extract("Предоплата не требуется") == []
     assert _one(extract("Ипотека не нужна — бронь от застройщика 50 000 тг"), "booking")["money"] is True
     terms = extract("Рассрочка без первоначального взноса! Бронь без предоплаты")
-    assert {t["kind"] for t in terms} == {"installment", "booking"}  # «без взноса», «без предоплаты» — не условия
+    assert {t["kind"] for t in terms} == {"installment", "booking"}  # "без взноса", "без предоплаты" - не условия
     assert _one(terms, "booking")["money"] is False
-    # платная бронь — деньги
+    # платная бронь - деньги
     assert _one(extract("Бронь 100 000 ₸"), "booking")["money"] is True
 
 
 def test_ocr_lookalike_latin_letters():
-    """Tesseract (rus+eng) читает кириллическое слово латиницей из похожих букв: «12 mec» — это 12 месяцев. Цитата — дословно
+    """Tesseract(rus+eng) читает кириллическое слово латиницей из похожих букв: "12 mec" - это 12 месяцев. Цитата - дословно
     из распознанного текста; настоящие латинские названия не трогаются."""
     inst = _one(extract("", "Рассрочка 12 mec · ДДУ"), "installment")
     assert (inst["months"], inst["quote"], inst["from"]) == (12, "Рассрочка 12 mec", "ocr")
@@ -194,7 +194,7 @@ def test_ocr_lookalike_latin_letters():
 
 
 def test_long_texts_are_bounded():
-    """Длинный текст: цитата — окно слов вокруг условия; тысячи совпадений не делают анализ квадратичным."""
+    """Длинный текст: цитата - окно слов вокруг условия; тысячи совпадений не делают анализ квадратичным."""
     words = [f"слово{i}" for i in range(120)]
     text = " ".join(words[:60] + ["первый", "взнос", "20%"] + words[60:])  # один отрезок без разделителей
     t = _one(extract(text), "down_payment")
@@ -203,7 +203,7 @@ def test_long_texts_are_bounded():
     noisy = " ".join(f"Бронь {i} 000 ₸ · рассрочка {i % 90 + 1} мес" for i in range(1, 700))[:20000]
     started = time.perf_counter()
     an = analyze(case_catalog(), noisy, noisy.upper(), "@x")
-    assert time.perf_counter() - started < 5  # раньше — десятки секунд
+    assert time.perf_counter() - started < 5  # раньше - десятки секунд
     assert an["terms"] and all(x["quote"] in (noisy if x["from"] == "text" else noisy.upper()) for x in an["terms"])
     first = [x for x in an["terms"] if x["kind"] == "booking"][0]
     assert (first["amount"], first["quote"]) == (1000, "Бронь 1 000 ₸")
@@ -227,35 +227,35 @@ def test_match_features():
     assert h["complexId"] == "c2" and _features(h) == {"translit"} and h["quote"] == "Altai Residence"
     h = _top("Квартиры на Утепова 18")
     assert h["complexId"] == "c11" and _features(h) == {"address"} and not h["low"]
-    # та же улица, другой дом — не признак; та же улица без дома — слабый
+    # та же улица, другой дом - не признак; та же улица без дома - слабый
     assert _top("Квартиры, пр. Сатпаева 52")["complexId"] == "c8"
     assert _top("Квартиры на ул. Утепова, звоните")["low"]
-    # официальный аккаунт застройщика с одним строящимся ЖК — гипотеза с низкой уверенностью
+    # официальный аккаунт застройщика с одним строящимся ЖК - гипотеза с низкой уверенностью
     h = _top("Осталось 12 квартир", account="@kvartal.vostok")
     assert (h["complexId"], h["low"]) == ("c9", True) and _features(h) == {"account"}
     assert _top("Осталось 12 квартир", url="https://www.instagram.com/kvartal.vostok/")["complexId"] == "c9"
     # название ЖК в имени аккаунта
     assert _top("Старт продаж", account="@belukha.park.sale")["complexId"] == "c10"
-    # телефон застройщика с двумя строящимися ЖК — признак делится между ними
+    # телефон застройщика с двумя строящимися ЖК - признак делится между ними
     hyps = analyze(case_catalog(), "Звоните +7 7232 00-00-02", None, "@x")["hypotheses"]
     assert {h["complexId"] for h in hyps} == {"c2", "c8"} and all(h["low"] and _features(h) == {"phone"} for h in hyps)
     # история: у аккаунта есть подтверждённая аналитиком публикация по ЖК
     h = _top("Успей купить", account="@dostyk.plaza.uka")
     assert h["complexId"] == "c11" and "history" in _features(h)
-    # один район — слабый признак: гипотезу не показываем
+    # один район - слабый признак: гипотезу не показываем
     assert _top("Квартира на Левобережье") is None
 
 
 @pytest.mark.parametrize("text", [
-    "Продам квартиру на Абая, 9 этаж, 72 м², хороший ремонт",  # 9 — этаж, а не дом 9 (Солнечный квартал, пр. Абая, 9)
-    "Агентство на Утепова 18 лет на рынке!",  # стаж, а не дом 18 (Достык Плаза, ул. Утепова, 18)
-    "Квартира на Сатпаева, 52 м², ремонт",  # площадь, а не дом 52 (Тихий берег, пр. Сатпаева, 52)
-    "Новые квартиры в Казахстане: 66 м², рассрочка",  # страна и площадь, а не ул. Казахстан, 66 (Алтай Резиденс)
+    "Продам квартиру на Абая, 9 этаж, 72 м², хороший ремонт",  # 9 - этаж, а не дом 9(Солнечный квартал, пр. Абая, 9)
+    "Агентство на Утепова 18 лет на рынке!",  # стаж, а не дом 18(Достык Плаза, ул. Утепова, 18)
+    "Квартира на Сатпаева, 52 м², ремонт",  # площадь, а не дом 52(Тихий берег, пр. Сатпаева, 52)
+    "Новые квартиры в Казахстане: 66 м², рассрочка",  # страна и площадь, а не ул. Казахстан, 66(Алтай Резиденс)
     "Квартиры на Абая 9-й этаж", "ул. Утепова 18лет",
 ])
 def test_number_after_street_is_not_always_a_house(text):
-    """Число после улицы с единицей («этаж», «м²», «лет») или через знак конца фразы — не номер дома: признака «улица
-    и дом» нет, уверенной гипотезы нет (упоминание улицы — слабый признак)."""
+    """Число после улицы с единицей("этаж", "м²", "лет") или через знак конца фразы - не номер дома: признака "улица
+    и дом" нет, уверенной гипотезы нет(упоминание улицы - слабый признак)."""
     an = analyze(case_catalog(), text, None, "@x")
     reasons = [r for h in an["hypotheses"] for r in h["reasons"]]
     assert all(h["low"] for h in an["hypotheses"]) and not [r for r in reasons if "улица и дом" in r["detail"]]
@@ -266,7 +266,7 @@ def test_address_with_and_without_prefix():
     for text in ("Квартиры на Утепова 18", "Квартиры на Утепова, д. 18", "ул.Утепова,18", "Адрес: Утепова 18, звоните"):
         h = _top(text)
         assert (h["complexId"], h["low"], h["reasons"][0]["weight"]) == ("c11", False, W["address"]), text
-    # без «ул./пр./на» улица и дом — признак слабее: слово-улица может быть просто словом
+    # без "ул./пр./на" улица и дом - признак слабее: слово-улица может быть просто словом
     h = _top("Утепова 18 — старт продаж")
     assert (h["complexId"], h["low"], h["reasons"][0]["weight"]) == ("c11", True, W["address_bare"])
 
@@ -277,12 +277,12 @@ def test_name_declension_and_lost_kazakh_letters():
         h = _top(text)
         assert h["complexId"] in ("c8", "c14") and not h["low"] and _features(h) == {"name"}, text
         assert "в другом падеже" in h["reasons"][0]["detail"]
-    assert _top("Квартира на тихом берегу Иртыша") is None  # не имя собственное — не название ЖК
-    # «Нұр Әлем» без казахских букв (OCR, русское написание): ә → э
+    assert _top("Квартира на тихом берегу Иртыша") is None  # не имя собственное - не название ЖК
+    # "Нұр Әлем" без казахских букв(OCR, русское написание): ә → э
     h = _top("Квартиры в ЖК Нур Элем, рассрочка")
     assert (h["complexId"], _features(h)) == ("c13", {"translit"})
-    # на скриншоте слово названия латинскими буквами-двойниками (реальный вывод Tesseract): «Hyp Әлем» — это «Нұр Әлем»;
-    # цитата — дословно, настоящие латинские названия рядом с кириллицей не ломаются
+    # на скриншоте слово названия латинскими буквами-двойниками(реальный вывод Tesseract): "Hyp Әлем" - это "Нұр Әлем";
+    # цитата - дословно, настоящие латинские названия рядом с кириллицей не ломаются
     h = _top("Подробности на скриншоте", ocr="Hyp Әлем: 2-комн. : 28 000 000 П")
     assert (h["complexId"], h["quote"], h["low"]) == ("c13", "Hyp Әлем", False)
     assert _top("Подробности на скриншоте", ocr="ЖК Bereke City · бронь")["complexId"] == "c7"
@@ -318,7 +318,7 @@ def test_analysis_is_deterministic():
 
 
 def test_seed_ads_match_their_confirmed_complex():
-    """На демо-публикациях с подтверждённой привязкой первая гипотеза — тот же ЖК (история самой публикации не учитывается)."""
+    """На демо-публикациях с подтверждённой привязкой первая гипотеза - тот же ЖК(история самой публикации не учитывается)."""
     for ad in SEED["ads"]:
         if not ad.get("linkConfirmedBy"):
             continue
@@ -327,7 +327,7 @@ def test_seed_ads_match_their_confirmed_complex():
         assert hyps and hyps[0]["complexId"] == ad["complexId"], ad["id"]
 
 
-# ---------- проверка на новых данных (T-25) ----------
+# ---------- проверка на новых данных(T-25) ----------
 
 CASES = load_cases()
 
@@ -388,7 +388,7 @@ def test_analyze_endpoint_writes_nothing(client):
     assert {"complexId", "complexName", "confidence", "low", "reasons", "quote"} <= set(h)
     assert all({"feature", "detail", "weight"} == set(x) for x in h["reasons"])
     assert (client.get("/api/ads").json(), client.get("/api/audit", params={"limit": 500}).json()) == before
-    # пустой текст — пустой анализ, а не ошибка; слишком длинный — 422
+    # пустой текст - пустой анализ, а не ошибка; слишком длинный - 422
     empty = client.post("/api/analyze", json={"text": ""}).json()
     assert empty["terms"] == [] and empty["hypotheses"] == []
     assert client.post("/api/analyze", json={"text": "x" * 20001}).status_code == 422
@@ -405,21 +405,21 @@ def test_ad_analysis(client):
     assert (an["termsReview"], an["rejectedLinks"]) == (None, [])
     assert an["note"] is None
     assert client.get("/api/ads/nope/analysis").status_code == 404
-    # a4: привязка к «Тихий берег» из сида — гипотеза 71%, а в тексте только район: анализ её не поддерживает, и это видно
+    # a4: привязка к "Тихий берег" из сида - гипотеза 71%, а в тексте только район: анализ её не поддерживает, и это видно
     an = client.get("/api/ads/a4/analysis").json()
     assert an["hypotheses"] == [] and an["linkConfirmedBy"] is None
     assert "Текущая привязка к ЖК «Тихий берег» (гипотеза, 71%) анализом не подтверждается" in an["note"]
-    # a9 (подборка): текущая привязка среди гипотез, но сохранена с другой уверенностью — у одной привязки одна
+    # a9(подборка): текущая привязка среди гипотез, но сохранена с другой уверенностью - у одной привязки одна
     # уверенность, расхождение объяснено прямо
     an = client.get("/api/ads/a9/analysis").json()
     green = next(h for h in an["hypotheses"] if h["complexId"] == "c12")
     assert (green["confidence"], green["low"]) == (0.34, True)
     assert ("Текущая привязка к ЖК «Green Line» — гипотеза с уверенностью 54% при сборе; по текущему анализу — 34%, "
             "низкая уверенность") in an["note"]
-    # совпадающая уверенность — без пояснения
+    # совпадающая уверенность - без пояснения
     ad = client.post("/api/ads", json={"platform": "instagram", "account": "@x", "text": "ЖК Green Line — старт продаж"}).json()
     assert ad["matchConfidence"] == 0.8 and client.get(f"/api/ads/{ad['id']}/analysis").json()["note"] is None
-    # предел длины текста — как у /api/analyze: анализ длинного текста ограничен по времени
+    # предел длины текста - как у /api/analyze: анализ длинного текста ограничен по времени
     body = {"platform": "instagram", "account": "@x", "text": "x" * 20001}
     r = client.post("/api/ads", json=body)
     assert r.status_code == 422 and r.json()["detail"][0]["loc"][-1] == "text"
@@ -427,7 +427,7 @@ def test_ad_analysis(client):
 
 
 def test_accept_hypothesis(client):
-    # a9 — подборка: привязка к Green Line — гипотеза (54% из сида); R3 у c12 — «нужна проверка»
+    # a9 - подборка: привязка к Green Line - гипотеза(54% из сида); R3 у c12 - "нужна проверка"
     assert _f(_risk(client, "c12"), "R3")["state"] == "unknown"
     hyps = client.get("/api/ads/a9/analysis").json()["hypotheses"]
     green = next(h for h in hyps if h["complexId"] == "c12")
@@ -436,15 +436,15 @@ def test_accept_hypothesis(client):
     ad = r.json()
     assert (ad["complexId"], ad["linkConfirmedBy"], ad["matchConfidence"]) == ("c12", AUTHOR, green["confidence"])
     assert ad["linkConfirmedAt"].endswith("+00:00")
-    # уверенность — по текущему анализу (34%, низкая), а не сохранённая при сборе (54%): расхождение — в журнале
+    # уверенность - по текущему анализу(34%, низкая), а не сохранённая при сборе(54%): расхождение - в журнале
     assert _log(client, "a9")[-1] == (
         "ai", AUTHOR, "Гипотеза ИИ принята: ЖК «Green Line» (уверенность 34% — низкая; при сборе — 54%)")
-    assert _f(_risk(client, "c12"), "R3")["state"] == "hit"  # привязка — факт: реклама засчитана
-    # повтор — без нового события
+    assert _f(_risk(client, "c12"), "R3")["state"] == "hit"  # привязка - факт: реклама засчитана
+    # повтор - без нового события
     n = len(_log(client, "a9"))
     client.post("/api/ads/a9/hypotheses/accept", json={"author": AUTHOR, "complexId": "c12"})
     assert len(_log(client, "a9")) == n
-    # другой ЖК: прежний теряет публикацию — событие и в его журнале
+    # другой ЖК: прежний теряет публикацию - событие и в его журнале
     client.post("/api/ads/a9/hypotheses/accept", json={"author": "Омарова Ж.", "complexId": "c10"})
     gone = [e for e in client.get("/api/complexes/c12/audit").json() if e["adId"] == "a9"][-1]
     assert (gone["kind"], gone["who"], gone["what"]) == (
@@ -457,18 +457,18 @@ def test_accept_hypothesis(client):
 
 
 def test_accept_only_what_ai_offered(client):
-    """Принять можно гипотезу ИИ или текущую привязку-гипотезу; ЖК, которого ИИ не предлагал, — это ручная привязка."""
+    """Принять можно гипотезу ИИ или текущую привязку-гипотезу; ЖК, которого ИИ не предлагал, - это ручная привязка."""
     n = len(_log(client, "a4"))
     r = client.post("/api/ads/a4/hypotheses/accept", json={"author": AUTHOR, "complexId": "c1"})
     assert r.status_code == 422 and "ИИ для этой публикации не предлагал" in r.json()["detail"]
     a4 = next(a for a in client.get("/api/ads").json() if a["id"] == "a4")
     assert (a4["complexId"], a4["matchConfidence"], a4["linkConfirmedBy"]) == ("c8", 0.71, None) and len(_log(client, "a4")) == n
-    # текущая привязка-гипотеза, которую анализ не находит, подтверждается с уверенностью при сборе — и это видно
+    # текущая привязка-гипотеза, которую анализ не находит, подтверждается с уверенностью при сборе - и это видно
     r = client.post("/api/ads/a4/hypotheses/accept", json={"author": AUTHOR, "complexId": "c8"}).json()
     assert (r["complexId"], r["matchConfidence"], r["linkConfirmedBy"]) == ("c8", 0.71, AUTHOR)
     assert _log(client, "a4")[-1] == ("ai", AUTHOR, "Гипотеза ИИ принята: ЖК «Тихий берег» (уверенность при сборе 71%; "
                                                     "текущий анализ эту привязку не поддерживает)")
-    # отклонённую и снятую привязку без признаков в тексте «принять» нельзя: «уверенность 0%» в журнал не попадает
+    # отклонённую и снятую привязку без признаков в тексте "принять" нельзя: "уверенность 0%" в журнал не попадает
     client.patch("/api/ads/a4/complex", json={"complexId": None, "author": AUTHOR})
     r = client.post("/api/ads/a4/hypotheses/accept", json={"author": AUTHOR, "complexId": "c8"})
     assert r.status_code == 422
@@ -476,8 +476,8 @@ def test_accept_only_what_ai_offered(client):
 
 
 def _stale(aid):
-    """Сессия, в которой публикация уже прочитана (как у второго аналитика, открывшего её раньше чужого решения), и сама
-    публикация: ссылка на неё держит объект в сессии (карта объектов сессии хранит их по слабым ссылкам)."""
+    """Сессия, в которой публикация уже прочитана(как у второго аналитика, открывшего её раньше чужого решения), и сама
+    публикация: ссылка на неё держит объект в сессии(карта объектов сессии хранит их по слабым ссылкам)."""
     from app import models
     from app.db import SessionLocal
 
@@ -494,8 +494,8 @@ def _stale(aid):
     (("terms", {"decision": "rejected"}), ("terms", {"decision": "accepted"})),
 ])
 def test_decision_on_stale_data_is_409(client, first, second):
-    """Два аналитика решают по одной публикации почти одновременно: второе решение (по устаревшим данным) — 409, а не
-    смесь двух решений («факт привязки» без ЖК) и журнал, противоречащий состоянию."""
+    """Два аналитика решают по одной публикации почти одновременно: второе решение(по устаревшим данным) - 409, а не
+    смесь двух решений("факт привязки" без ЖК) и журнал, противоречащий состоянию."""
     from fastapi import HTTPException
 
     from app import main, schemas
@@ -526,7 +526,7 @@ def test_decision_on_stale_data_is_409(client, first, second):
 
 def test_parallel_decisions_stay_consistent(client, monkeypatch):
     """Одновременные accept и reject одной гипотезы на живом API: accept прочитал публикацию и считает гипотезы, тем
-    временем reject снял привязку — accept получает 409; состояние и журнал согласованы (нет «факта привязки» без ЖК)."""
+    временем reject снял привязку - accept получает 409; состояние и журнал согласованы(нет "факта привязки" без ЖК)."""
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
@@ -566,7 +566,7 @@ def test_reject_hypothesis(client):
     assert "c3" not in [h["complexId"] for h in an["hypotheses"]] and an["rejectedLinks"] == ["c3"]
     assert "Отклонённые аналитиком ЖК не предлагаются: 1" in an["note"]
     assert "Признаков конкретного ЖК не найдено" not in an["note"]
-    # повтор без комментария — без события
+    # повтор без комментария - без события
     n = len(_log(client, "a9"))
     client.post("/api/ads/a9/hypotheses/reject", json={"author": AUTHOR, "complexId": "c3"})
     assert len(_log(client, "a9")) == n
@@ -590,7 +590,7 @@ def test_reject_hypothesis(client):
 
 
 def test_terms_review_vetoes_r2(client):
-    # c2: R2 даёт единственная публикация a1 (бронь) — кейс B, 70, красная
+    # c2: R2 даёт единственная публикация a1(бронь) - кейс B, 70, красная
     r = _risk(client, "c2")
     assert (r["score"], r["zone"], _f(r, "R2")["state"]) == (70, "red", "hit")
     body = {"author": AUTHOR, "decision": "rejected", "comment": "это цена, не взнос"}
@@ -605,7 +605,7 @@ def test_terms_review_vetoes_r2(client):
     s = client.get("/api/ads/a1/score").json()
     assert _f(s, "R2")["state"] == "clear"
     assert client.get("/api/ads/a1/analysis").json()["termsReview"] == "rejected"
-    # повтор того же решения без комментария — без события; другое решение — меняет его
+    # повтор того же решения без комментария - без события; другое решение - меняет его
     n = len(_log(client, "a1"))
     client.post("/api/ads/a1/terms-review", json={"author": AUTHOR, "decision": "rejected"})
     assert len(_log(client, "a1")) == n
@@ -665,7 +665,7 @@ TSV = ("level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidt
 
 @pytest.fixture
 def fake_tesseract(monkeypatch):
-    """Подмена вызова tesseract: версия, языки (без kaz) и TSV; аргументы распознавания запоминаются."""
+    """Подмена вызова tesseract: версия, языки(без kaz) и TSV; аргументы распознавания запоминаются."""
     calls = []
 
     def run(args, data=None, timeout=10):
@@ -699,8 +699,8 @@ def test_ocr_recognizes_with_preprocessing(client, fake_tesseract):
     args = next(a for a in fake_tesseract if isinstance(a, list) and "tsv" in a)
     assert args[args.index("-l") + 1] == "rus+eng"
     image = next(c for c in fake_tesseract if c[0] == "image")
-    assert image[1] == "L" and image[2][0] >= 960  # серое и увеличенное (мелкий скриншот 320 px)
-    # распознанный текст — сразу в анализ: условие из OCR помечено источником
+    assert image[1] == "L" and image[2][0] >= 960  # серое и увеличенное(мелкий скриншот 320 px)
+    # распознанный текст - сразу в анализ: условие из OCR помечено источником
     an = client.post("/api/analyze", json={"text": "", "ocr": res["text"]}).json()
     assert {t["kind"]: t["from"] for t in an["terms"]} == {"booking": "ocr", "ddu": "ocr"}
 
@@ -723,8 +723,8 @@ def test_ocr_rejects_bad_files(client, fake_tesseract):
 
 
 def test_ocr_errors_are_plain_russian(client, fake_tesseract, caplog):
-    """Аналитику — понятный русский текст без внутренностей Pillow («cannot identify image file <_io.BytesIO …>»,
-    «image file is truncated»); техническая причина — в журнал API. HEIC с iPhone — изображение, но не тот формат."""
+    """Аналитику - понятный русский текст без внутренностей Pillow("cannot identify image file <_io.BytesIO …>",
+    "image file is truncated"); техническая причина - в журнал API. HEIC с iPhone - изображение, но не тот формат."""
     png = _png()
     jpeg = io.BytesIO()
     Image.open(io.BytesIO(png)).convert("RGB").save(jpeg, "JPEG")
@@ -735,7 +735,7 @@ def test_ocr_errors_are_plain_russian(client, fake_tesseract, caplog):
         detail = r.json()["detail"]
         assert r.status_code == 422 and "повреждён и не читается — сохраните скриншот заново" in detail, detail
         assert not any(w in detail for w in ("BytesIO", "cannot", "truncated", "Truncated", "<"))
-    assert "не декодируется" in caplog.text  # причина — в журнале
+    assert "не декодируется" in caplog.text  # причина - в журнале
     heic = b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic" + b"\x00" * 64
     svg = b'<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>'
     for data, name, ctype, fmt in ((heic, "IMG_0001.HEIC", "image/heic", "HEIC"),
@@ -747,8 +747,8 @@ def test_ocr_errors_are_plain_russian(client, fake_tesseract, caplog):
 
 
 def test_ocr_text_is_clipped_to_ad_limit(client, fake_tesseract, monkeypatch):
-    """Распознанный текст длиннее предела публикации обрезается по строке — иначе после OCR ломались бы и анализ, и
-    сохранение (422 на поле ocr); аналитику — пояснение."""
+    """Распознанный текст длиннее предела публикации обрезается по строке - иначе после OCR ломались бы и анализ, и
+    сохранение(422 на поле ocr); аналитику - пояснение."""
     rows = [f"5\t1\t1\t1\t{n // 8 + 1}\t{n % 8 + 1}\t0\t0\t10\t10\t90\tслово{n:05d}" for n in range(4000)]
     long_tsv = TSV.splitlines()[0] + "\n" + "\n".join(rows) + "\n"
     plain_run = ocr_engine._run
@@ -762,8 +762,8 @@ def test_ocr_text_is_clipped_to_ad_limit(client, fake_tesseract, monkeypatch):
 
 
 def test_ocr_upload_limit_before_reading_body(client, monkeypatch):
-    """Больше 10 МБ — 413 сразу по Content-Length (тело не читается и не ложится во временный файл), а без Content-Length
-    (chunked) — как только прочитано больше предела."""
+    """Больше 10 МБ - 413 сразу по Content-Length(тело не читается и не ложится во временный файл), а без Content-Length
+    (chunked) - как только прочитано больше предела."""
     called = []
     monkeypatch.setattr(ocr_engine, "recognize", lambda *a: called.append(a))
     big = b"\x89PNG\r\n\x1a\n" + b"\x00" * (ocr_engine.MAX_BYTES + 200_000)
@@ -848,7 +848,7 @@ def test_ocr_real_tesseract():
 
 
 def test_phone_regex_linear_on_long_separators():
-    # раньше «[\\s\\-()]*» давал квадратичный перебор: 20 КБ пробелов — около 5 с
+    # раньше "[\\s\\-()]*" давал квадратичный перебор: 20 КБ пробелов - около 5 с
     import time
     for text in ("x" + " " * 20000 + "1", "-" * 50000, "(" * 30000 + "7"):
         t = time.perf_counter()

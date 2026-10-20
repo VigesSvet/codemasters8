@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from . import (ads_service, ai, changes, decisions, discovery, gallery, importer, logs, media, models, registry, satstage,
                schemas, screening, signals, verification, world)
-from .ads_service import REASON_NAMES, _event, _pct, _why  # noqa: F401 — прежние имена main (журнал, гипотезы)
+from .ads_service import REASON_NAMES, _event, _pct, _why  # noqa: F401 - прежние имена main(журнал, гипотезы)
 from .ai import evaluate, ocr as ocr_engine
 from .db import get_db
 from .integrations import registry as connectors, routes as integration_routes, service as integration_service
@@ -29,7 +29,7 @@ log = logging.getLogger("saq")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    logs.install()  # маскирование секретов в логах (обработчики uvicorn к этому моменту уже настроены)
+    logs.install()  # маскирование секретов в логах(обработчики uvicorn к этому моменту уже настроены)
     init_db()
     s = get_settings()
     ready = [code for code, conn in connectors.CONNECTORS.items() if not conn.missing(s)]
@@ -46,8 +46,8 @@ INTERNAL_ERROR = "Внутренняя ошибка сервера. Подроб
 
 
 class InternalErrors:
-    """Необработанное исключение → 500 JSON {"detail": …} вместо обрыва соединения/текстовой страницы, трассировка — в лог.
-    ASGI-обёртка стоит внутри CORS, поэтому и у ответа 500 есть CORS-заголовки (фронт видит detail, а не «CORS error»)."""
+    """Необработанное исключение → 500 JSON {"detail": …} вместо обрыва соединения/текстовой страницы, трассировка - в лог.
+    ASGI-обёртка стоит внутри CORS, поэтому и у ответа 500 есть CORS-заголовки(фронт видит detail, а не "CORS error")."""
 
     def __init__(self, app):
         self.app = app
@@ -66,19 +66,19 @@ class InternalErrors:
             await self.app(scope, receive, tracked)
         except Exception:
             log.exception("Необработанная ошибка: %s %s", scope.get("method"), scope.get("path"))
-            if started:  # ответ уже начат — заменить его нельзя
+            if started:  # ответ уже начат - заменить его нельзя
                 raise
             await JSONResponse({"detail": INTERNAL_ERROR}, status_code=500)(scope, receive, send)
 
 
 class UploadLimit:
-    """Загрузка файлов и тела приёма (POST /api/ocr — 10 МБ, POST /api/sources/import — 5 МБ, POST /api/media и снимок
-    площадки POST /api/complexes/{id}/photos — 10 МБ, POST /api/intake/publications — 2 МБ, POST /api/intake/telegram —
-    60 МБ): тело больше предела (файл + запас на
-    разметку multipart) — 413 сразу, а не после того, как весь файл придёт по сети и ляжет во временный файл (FastAPI
-    разбирает форму до вызова обработчика, и предела на размер файла у разбора нет). По Content-Length — не читая тело;
-    без него (chunked) — по мере чтения. Точная проверка размера файла — в ocr.load, importer.parse и media.
-    413 на приёме (/api/intake/*) записывается в состояние подключения (service.record_reject)."""
+    """Загрузка файлов и тела приёма(POST /api/ocr - 10 МБ, POST /api/sources/import - 5 МБ, POST /api/media и снимок
+    площадки POST /api/complexes/{id}/photos - 10 МБ, POST /api/intake/publications - 2 МБ, POST /api/intake/telegram -
+    60 МБ): тело больше предела(файл + запас на
+    разметку multipart) - 413 сразу, а не после того, как весь файл придёт по сети и ляжет во временный файл(FastAPI
+    разбирает форму до вызова обработчика, и предела на размер файла у разбора нет). По Content-Length - не читая тело;
+    без него(chunked) - по мере чтения. Точная проверка размера файла - в ocr.load, importer.parse и media.
+    413 на приёме(/api/intake/*) записывается в состояние подключения(service.record_reject)."""
 
     LIMITS = {"/api/ocr": (ocr_engine.MAX_BYTES + 64 * 1024, ocr_engine.TOO_BIG),
               "/api/sources/import": (importer.MAX_BYTES + 64 * 1024, importer.TOO_BIG),
@@ -86,7 +86,7 @@ class UploadLimit:
               "/api/intake/publications": (media.INTAKE_JSON_MAX, "Тело запроса больше 2 МБ"),
               "/api/intake/telegram": (media.BOT_MAX_BODY, "Заявка больше 60 МБ")}
     REJECTS = {"/api/intake/publications": "intake", "/api/intake/telegram": "telegram_bot"}
-    PHOTO = re.compile(r"^/api/complexes/[^/]+/(photos|gallery)$")  # снимок площадки, фото объекта — как у скриншота
+    PHOTO = re.compile(r"^/api/complexes/[^/]+/(photos|gallery)$")  # снимок площадки, фото объекта - как у скриншота
 
     def __init__(self, app):
         self.app = app
@@ -123,9 +123,9 @@ class UploadLimit:
 
 
 class PublicHostGuard:
-    """Публичный адрес OLX Callback (туннель ngrok, OLX_REDIRECT_URI): через его хост доступен только путь обратного
-    вызова, остальное — 404 «Не найдено» (API наружу не открывается). Проверяются и Host, и X-Forwarded-Host; хост
-    сравнивается без порта, регистра и конечной точки («x.ngrok-free.dev.» — тот же хост, как в http.host_allowed).
+    """Публичный адрес OLX Callback(туннель ngrok, OLX_REDIRECT_URI): через его хост доступен только путь обратного
+    вызова, остальное - 404 "Не найдено"(API наружу не открывается). Проверяются и Host, и X-Forwarded-Host; хост
+    сравнивается без порта, регистра и конечной точки("x.ngrok-free.dev." - тот же хост, как в http.host_allowed).
     Самая внешняя обёртка приложения."""
 
     def __init__(self, app):
@@ -150,8 +150,8 @@ class PublicHostGuard:
 
 
 def no_nul_in_url(request: Request) -> None:
-    """NUL (%00) в пути или параметрах запроса — 422 в стандартной форме. PostgreSQL не хранит NUL в тексте:
-    без проверки id вида «c%00» доходил бы до БД и давал 500. Тела запросов проверяют схемы (schemas.no_nul)."""
+    """NUL(%00) в пути или параметрах запроса - 422 в стандартной форме. PostgreSQL не хранит NUL в тексте:
+    без проверки id вида "c%00" доходил бы до БД и давал 500. Тела запросов проверяют схемы(schemas.no_nul)."""
     errors = [{"type": "value_error", "loc": (place, key), "msg": schemas.NUL_MSG, "input": value}
               for place, items in (("path", request.path_params.items()), ("query", request.query_params.multi_items()))
               for key, value in items if isinstance(value, str) and "\x00" in value]
@@ -165,7 +165,7 @@ app.add_middleware(UploadLimit)
 app.add_middleware(InternalErrors)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
                    expose_headers=["Content-Disposition"])
-app.add_middleware(PublicHostGuard)  # последней — самая внешняя
+app.add_middleware(PublicHostGuard)  # последней - самая внешняя
 
 # Подписи для журнала
 STATUS_NAMES = {"new": "Новая", "needs_check": "Нужна проверка", "in_review": "На проверке",
@@ -186,7 +186,7 @@ def health():
 
 @app.get("/api/risk/model")
 def risk_model():
-    """Описание модели риска — shared/risk_model.json (веса, условия, пороги, тексты)."""
+    """Описание модели риска - shared/risk_model.json(веса, условия, пороги, тексты)."""
     return MODEL
 
 
@@ -199,13 +199,13 @@ def risk_all(as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
 
 @app.get("/api/analysts", response_model=List[schemas.AnalystOut], response_model_by_alias=True)
 def analysts(db: Session = Depends(get_db)):
-    """Аналитики для входа без пароля (пилот; в эксплуатации — ЭЦП/SSO); name пишется автором в журнал."""
+    """Аналитики для входа без пароля(пилот; в эксплуатации - ЭЦП/SSO); name пишется автором в журнал."""
     return world.by_id(db.scalars(select(models.Analyst)))
 
 
 @app.get("/api/developers", response_model=List[schemas.DeveloperListOut], response_model_by_alias=True)
 def developers(as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
-    """Застройщики с «Проверкой по рекламе» (screening): худшая оценка их ЖК — предварительная, не вывод о нарушении."""
+    """Застройщики с "Проверкой по рекламе"(screening): худшая оценка их ЖК - предварительная, не вывод о нарушении."""
     r = screening.compute(db, as_of)
     return screening.developer_rows(world.by_id(db.scalars(select(models.Developer))), r)
 
@@ -214,9 +214,9 @@ def developers(as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
 def complexes(zone: Optional[schemas.Zone] = None, screening_status: Optional[schemas.ScreeningStatus] = Query(
                   None, alias="screening", description="Только ЖК с этой оценкой «Проверка по рекламе»"),
               as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
-    """ЖК с основанием по открытым данным (permit), «Проверкой по рекламе» (screening) и объектами из рекламы (advert)."""
+    """ЖК с основанием по открытым данным(permit), "Проверкой по рекламе"(screening) и объектами из рекламы(advert)."""
     items = world.by_id(db.scalars(select(models.Complex)))
-    if zone:  # ЖК, риск по которому не оценивается (реестр без проверенных сведений), ни в одну зону не входит
+    if zone:  # ЖК, риск по которому не оценивается(реестр без проверенных сведений), ни в одну зону не входит
         keep = {r["complexId"] for r in world.risk_all(db, as_of) if r["assessed"] and r["zone"] == zone}
         items = [c for c in items if c.id in keep]
     r = screening.compute(db, as_of)
@@ -226,7 +226,7 @@ def complexes(zone: Optional[schemas.Zone] = None, screening_status: Optional[sc
 
 
 def _complex(db: Session, cid: str) -> models.Complex:
-    """ЖК (демо-набора или карточка из открытого реестра); ключ объекта открытых данных — 404 с объяснением (риск и
+    """ЖК(демо-набора или карточка из открытого реестра); ключ объекта открытых данных - 404 с объяснением(риск и
     сигналы для записей источников не считаются)."""
     c = db.get(models.Complex, cid)
     if not c:
@@ -242,7 +242,7 @@ def _ad(db: Session, aid: str) -> models.Ad:
 
 
 def _then(text: str, more: str) -> str:
-    """Следующее предложение без «..» после инициалов («ответственный: Омарова Ж.») — как statusLine во фронте (lib/audit.ts)."""
+    """Следующее предложение без ".." после инициалов("ответственный: Омарова Ж.") - как statusLine во фронте(lib/audit.ts)."""
     return f"{text}{'' if text.endswith('.') else '.'} {more}"
 
 
@@ -272,7 +272,7 @@ def appeals(complex_id: Optional[str] = Query(None, alias="complexId"), db: Sess
 
 @app.get("/api/ads", response_model=List[schemas.AdOut], response_model_by_alias=True)
 def ads(status: Optional[str] = None, platform: Optional[str] = None, db: Session = Depends(get_db)):
-    """Публикации, новые первыми; при одинаковой дате — по id (порядок одинаков на SQLite и PostgreSQL — офлайн-копия
+    """Публикации, новые первыми; при одинаковой дате - по id(порядок одинаков на SQLite и PostgreSQL - офлайн-копия
     набора, app.snapshot, совпадает с ответом API)."""
     q = select(models.Ad).order_by(models.Ad.date.desc(), models.Ad.id)
     if status:
@@ -284,21 +284,21 @@ def ads(status: Optional[str] = None, platform: Optional[str] = None, db: Sessio
 
 @app.get("/api/ads/{aid}", response_model=schemas.AdOut, response_model_by_alias=True)
 def ad_one(aid: str, db: Session = Depends(get_db)):
-    """Одна публикация (в том числе состояние анализа собранной — processing)."""
+    """Одна публикация(в том числе состояние анализа собранной - processing)."""
     return _ad(db, aid)
 
 
 def _confirmed(ad: models.Ad) -> bool:
-    """Привязка — факт: её подтвердил аналитик или подтверждено нарушение по публикации."""
+    """Привязка - факт: её подтвердил аналитик или подтверждено нарушение по публикации."""
     return bool(ad.link_confirmed_by) or ad.status == "confirmed"
 
 
 @app.post("/api/ads", response_model=schemas.AdOut, response_model_by_alias=True, status_code=201)
 def create_ad(body: schemas.AdIn, db: Session = Depends(get_db)):
     """Ручное добавление публикации. Без complexId ЖК подбирает ИИ: лучшая гипотеза с уверенностью от lowConfidence
-    становится привязкой-гипотезой (в балл ЖК не входит до подтверждения аналитиком). С complexId и linkConfirmed —
-    аналитик выбрал ЖК сам: привязка сразу факт. Общая запись публикации — ads_service.create_ad (её же вызывают
-    сборщики, приём публикаций и бот заявок); image «/api/media/{id}» привязывает загруженный формой скриншот."""
+    становится привязкой-гипотезой(в балл ЖК не входит до подтверждения аналитиком). С complexId и linkConfirmed -
+    аналитик выбрал ЖК сам: привязка сразу факт. Общая запись публикации - ads_service.create_ad(её же вызывают
+    сборщики, приём публикаций и бот заявок); image "/api/media/{id}" привязывает загруженный формой скриншот."""
     data = body.model_dump()
     try:
         ad = ads_service.create_ad(db, data, actor=ads_service.analyst(data.get("author")))
@@ -317,9 +317,9 @@ def ad_score(aid: str, db: Session = Depends(get_db)):
 
 @app.patch("/api/ads/{aid}/status", response_model=schemas.AdOut, response_model_by_alias=True)
 def set_status(aid: str, body: schemas.StatusIn, db: Session = Depends(get_db)):
-    """Решение по публикации: кто, что и когда — в журнал (ТЗ §7). Повтор без изменений и без комментария журнал не засоряет.
+    """Решение по публикации: кто, что и когда - в журнал(ТЗ §7). Повтор без изменений и без комментария журнал не засоряет.
 
-    Запись — условным UPDATE по прочитанным статусу и ответственному (как решение по сигналу): если их успел изменить другой
+    Запись - условным UPDATE по прочитанным статусу и ответственному(как решение по сигналу): если их успел изменить другой
     аналитик, 409, а не молчаливая перезапись чужого решения и событие с неверным прежним статусом. Работает и на SQLite,
     где SELECT … FOR UPDATE игнорируется."""
     ad = _ad(db, aid)
@@ -360,8 +360,8 @@ def add_comment(aid: str, body: schemas.CommentIn, db: Session = Depends(get_db)
 @app.patch("/api/ads/{aid}/complex", response_model=schemas.AdOut, response_model_by_alias=True,
            responses={409: {"description": "Решение по публикации уже принял другой аналитик"}})
 def set_complex(aid: str, body: schemas.AdComplexIn, db: Session = Depends(get_db)):
-    """Привязка публикации к ЖК аналитиком: подтверждённая привязка — факт (кто и когда — linkConfirmedBy/At,
-    уверенность 100%), null — снять привязку. Решение другого аналитика, принятое тем временем, — 409 (см. _decide)."""
+    """Привязка публикации к ЖК аналитиком: подтверждённая привязка - факт(кто и когда - linkConfirmedBy/At,
+    уверенность 100%), null - снять привязку. Решение другого аналитика, принятое тем временем, - 409(см. _decide)."""
     ad = _ad(db, aid)
     old = db.get(models.Complex, ad.complex_id) if ad.complex_id else None
     moved = None
@@ -374,7 +374,7 @@ def set_complex(aid: str, body: schemas.AdComplexIn, db: Session = Depends(get_d
                       rejected_links=[x for x in ad.rejected_links or [] if x != c.id])
         cid = c.id
         if old and old.id != c.id:
-            # прежний ЖК теряет доказательство (R2/R3) — в его журнале это видно с автором и временем, как и снятие привязки
+            # прежний ЖК теряет доказательство(R2/R3) - в его журнале это видно с автором и временем, как и снятие привязки
             moved = f"Публикация отвязана от ЖК «{old.name}»: перепривязана к ЖК «{c.name}»"
             what = f"Привязка изменена: «{old.name}» → «{c.name}»"
         else:
@@ -388,7 +388,7 @@ def set_complex(aid: str, body: schemas.AdComplexIn, db: Session = Depends(get_d
     return ad
 
 
-# ---------- журнал (ТЗ §7 «Контроль решений», §4 «источник и время фиксации») ----------
+# ---------- журнал(ТЗ §7 "Контроль решений", §4 "источник и время фиксации") ----------
 
 @app.get("/api/audit", response_model=List[schemas.AuditOut], response_model_by_alias=True)
 def audit_all(ad_id: Optional[str] = Query(None, alias="adId"), complex_id: Optional[str] = Query(None, alias="complexId"),
@@ -406,7 +406,7 @@ def audit_all(ad_id: Optional[str] = Query(None, alias="adId"), complex_id: Opti
                                        "msg": f"Input should be one of: {', '.join(sorted(AUDIT_KINDS))}"}])
     if kinds:
         where.append(E.kind.in_(kinds))
-    if human:  # «Последние действия» в сводке: системные события не вытесняют решения аналитиков
+    if human:  # "Последние действия" в сводке: системные события не вытесняют решения аналитиков
         where.append(E.who != "Система")
         if not kinds:
             where.append(E.kind.notin_(("system", "data")))
@@ -435,16 +435,16 @@ def info_request(cid: str, body: schemas.InfoRequestIn, db: Session = Depends(ge
     return audit_dict(e)
 
 
-# ---------- ИИ: анализ публикаций, гипотезы и решения аналитика (ТЗ §6) ----------
+# ---------- ИИ: анализ публикаций, гипотезы и решения аналитика(ТЗ §6) ----------
 
 @app.post("/api/analyze", response_model=schemas.AnalysisOut, response_model_by_alias=True)
 def analyze(body: schemas.AnalyzeIn, db: Session = Depends(get_db)):
-    """Анализ текста и распознанного скриншота без записи в БД (форма ручного ввода): условия оплаты, гипотезы ЖК."""
+    """Анализ текста и распознанного скриншота без записи в БД(форма ручного ввода): условия оплаты, гипотезы ЖК."""
     return ai.analyze(world.catalog(db), body.text, body.ocr, body.account, body.platform, body.url)
 
 
 def _ad_obj(ad: models.Ad) -> dict:
-    """Публикация для сопоставления с ЖК; у заявки жителя аккаунт и ссылка не учитываются (ads_service.match_obj)."""
+    """Публикация для сопоставления с ЖК; у заявки жителя аккаунт и ссылка не учитываются(ads_service.match_obj)."""
     return ads_service.match_obj(ad)
 
 
@@ -453,15 +453,15 @@ def _conf(h: dict) -> str:
 
 
 def _drifted(ad: models.Ad, h: dict) -> bool:
-    """Уверенность, сохранённая при сборе или добавлении публикации, и уверенность текущего анализа — заметно разные
-    (на 5 п. п. и больше) или по разные стороны порога «низкая уверенность»."""
+    """Уверенность, сохранённая при сборе или добавлении публикации, и уверенность текущего анализа - заметно разные
+    (на 5 п. п. и больше) или по разные стороны порога "низкая уверенность"."""
     stored = ad.match_confidence or 0
     return abs(h["confidence"] - stored) >= 0.05 or h["low"] != (stored < T["lowConfidence"])
 
 
 def _link_note(db: Session, cat, ad: models.Ad, shown: List[dict]) -> Optional[str]:
-    """Текущая привязка — гипотеза, а анализ её не поддерживает (не в топе или признаков нет) или оценивает иначе, чем
-    при сборе (у одной привязки — одна уверенность: расхождение объясняется прямо, ТЗ §6 «неуверенные выводы маркируются»)."""
+    """Текущая привязка - гипотеза, а анализ её не поддерживает(не в топе или признаков нет) или оценивает иначе, чем
+    при сборе(у одной привязки - одна уверенность: расхождение объясняется прямо, ТЗ §6 "неуверенные выводы маркируются")."""
     if not ad.complex_id or _confirmed(ad):
         return None
     name = _complex(db, ad.complex_id).name
@@ -496,7 +496,7 @@ def ad_analysis(aid: str, db: Session = Depends(get_db)):
 
 
 def _state(db: Session, ad: models.Ad) -> str:
-    """Текущее решение по публикации — для ответа 409."""
+    """Текущее решение по публикации - для ответа 409."""
     c = db.get(models.Complex, ad.complex_id) if ad.complex_id else None
     if not c:
         link = "ЖК не привязан"
@@ -509,9 +509,9 @@ def _state(db: Session, ad: models.Ad) -> str:
 
 
 def _decide(db: Session, ad: models.Ad, *guards, **values) -> None:
-    """Запись решения аналитика по публикации (привязка, гипотезы ИИ, условия оплаты) — условным UPDATE по номеру версии
-    решений, прочитанному вместе с публикацией (как PATCH /status и решение по сигналу). Если другой аналитик успел решить
-    раньше, 409: иначе два решения смешались бы в состояние, которого не давало ни одно (например, «факт привязки» без
+    """Запись решения аналитика по публикации(привязка, гипотезы ИИ, условия оплаты) - условным UPDATE по номеру версии
+    решений, прочитанному вместе с публикацией(как PATCH /status и решение по сигналу). Если другой аналитик успел решить
+    раньше, 409: иначе два решения смешались бы в состояние, которого не давало ни одно(например, "факт привязки" без
     ЖК), а журнал противоречил бы состоянию. События журнала добавляются после успешной записи."""
     A = models.Ad
     res = db.execute(update(A).where(A.id == ad.id, A.decision_rev == ad.decision_rev, *guards)
@@ -527,12 +527,12 @@ def _decide(db: Session, ad: models.Ad, *guards, **values) -> None:
           responses={409: {"description": "Решение по публикации уже принял другой аналитик"},
                      422: {"description": "Этот ЖК ИИ не предлагал"}})
 def accept_hypothesis(aid: str, body: schemas.HypothesisIn, db: Session = Depends(get_db)):
-    """Аналитик принимает гипотезу ИИ: привязка к ЖК становится фактом (linkConfirmedBy/At), уверенность — этой гипотезы
+    """Аналитик принимает гипотезу ИИ: привязка к ЖК становится фактом(linkConfirmedBy/At), уверенность - этой гипотезы
     по текущему анализу. Текущая привязка-гипотеза, которую анализ уже не находит, подтверждается с уверенностью при сборе.
-    ЖК, которого ИИ не предлагал, — 422: это ручная привязка (PATCH /api/ads/{id}/complex), а не гипотеза ИИ."""
+    ЖК, которого ИИ не предлагал, - 422: это ручная привязка(PATCH /api/ads/{id}/complex), а не гипотеза ИИ."""
     ad, c = _ad(db, aid), _complex(db, body.complex_id)
     if ad.complex_id == c.id and ad.link_confirmed_by:
-        return ad  # уже принята — журнал не засоряем
+        return ad  # уже принята - журнал не засоряем
     h = next((h for h in ai.all_hypotheses(world.catalog(db, exclude_ad=aid), _ad_obj(ad)) if h["complexId"] == c.id), None)
     current = ad.complex_id == c.id
     if h is None and not current:
@@ -559,8 +559,8 @@ def accept_hypothesis(aid: str, body: schemas.HypothesisIn, db: Session = Depend
 @app.post("/api/ads/{aid}/hypotheses/reject", response_model=schemas.AdOut, response_model_by_alias=True,
           responses={409: {"description": "Привязка уже подтверждена или решение принял другой аналитик"}})
 def reject_hypothesis(aid: str, body: schemas.HypothesisRejectIn, db: Session = Depends(get_db)):
-    """Аналитик отклоняет гипотезу ИИ: ЖК больше не предлагается; если это текущая привязка-гипотеза — она снимается.
-    Подтверждённую привязку так не отменить (409): её снимает PATCH /api/ads/{id}/complex."""
+    """Аналитик отклоняет гипотезу ИИ: ЖК больше не предлагается; если это текущая привязка-гипотеза - она снимается.
+    Подтверждённую привязку так не отменить(409): её снимает PATCH /api/ads/{id}/complex."""
     ad, c = _ad(db, aid), _complex(db, body.complex_id)
     if ad.complex_id == c.id and _confirmed(ad):
         who = f" ({ad.link_confirmed_by})" if ad.link_confirmed_by else ""
@@ -573,7 +573,7 @@ def reject_hypothesis(aid: str, body: schemas.HypothesisRejectIn, db: Session = 
     values = {"rejected_links": rejected + ([c.id] if c.id not in rejected else [])}
     if unlink:
         values.update(complex_id=None, match_confidence=0, link_confirmed_by=None, link_confirmed_at=None)
-    # статус тоже: «нарушение подтверждено», поставленное тем временем, делает привязку фактом
+    # статус тоже: "нарушение подтверждено", поставленное тем временем, делает привязку фактом
     _decide(db, ad, models.Ad.status == ad.status, **values)
     what = f"Гипотеза ИИ отклонена: ЖК «{c.name}»" + (", привязка снята" if unlink else "")
     _event(db, "ai", body.author, _then(what, f"Комментарий: {body.comment}") if body.comment else what,
@@ -590,8 +590,8 @@ TERMS_DECISIONS = {"accepted": "Условия оплаты (ИИ) подтве�
 @app.post("/api/ads/{aid}/terms-review", response_model=schemas.AdOut, response_model_by_alias=True,
           responses={409: {"description": "Решение по публикации уже принял другой аналитик"}})
 def terms_review(aid: str, body: schemas.TermsReviewIn, db: Session = Depends(get_db)):
-    """Решение аналитика по условиям оплаты, найденным ИИ. rejected — публикация не даёт R2 ни ЖК, ни в своей оценке;
-    accepted — пометка «подтверждено аналитиком». Повтор с другим решением меняет его (всё — в журнале)."""
+    """Решение аналитика по условиям оплаты, найденным ИИ. rejected - публикация не даёт R2 ни ЖК, ни в своей оценке;
+    accepted - пометка "подтверждено аналитиком". Повтор с другим решением меняет его(всё - в журнале)."""
     ad = _ad(db, aid)
     if ad.terms_review == body.decision and not body.comment:
         return ad
@@ -614,7 +614,7 @@ def ocr_status():
           responses={413: {"description": "Файл больше 10 МБ"}, 415: {"description": "Не изображение"},
                      422: {"description": "Файл повреждён"}})
 def ocr(file: UploadFile = File(...)):
-    """OCR скриншота объявления (Tesseract, rus+kaz+eng) с предобработкой. Нет Tesseract — 200 с engine 'none'."""
+    """OCR скриншота объявления(Tesseract, rus+kaz+eng) с предобработкой. Нет Tesseract - 200 с engine 'none'."""
     raw = file.file.read(ocr_engine.MAX_BYTES + 1)
     try:
         return ocr_engine.recognize(raw, file.content_type)
@@ -624,7 +624,7 @@ def ocr(file: UploadFile = File(...)):
 
 @app.get("/api/ai/eval", response_model=schemas.AiEvalOut, response_model_by_alias=True)
 def ai_eval():
-    """Проверка ИИ на новых данных (shared/ai_cases.json): ожидаемые условия оплаты и ЖК против результата движка."""
+    """Проверка ИИ на новых данных(shared/ai_cases.json): ожидаемые условия оплаты и ЖК против результата движка."""
     return evaluate.run()
 
 
@@ -635,7 +635,7 @@ def stats(as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
     for r in world.risk_all(db, as_of):
         if r["assessed"]:
             zones[r["zone"]] += 1
-        else:  # карточка из открытого реестра без проверенных сведений — не «зелёная», а не оценивается
+        else:  # карточка из открытого реестра без проверенных сведений - не "зелёная", а не оценивается
             not_assessed += 1
     ads_all = db.scalars(select(models.Ad)).all()
     return {"zones": zones, "notAssessed": not_assessed, "queue": sum(a.status in ("new", "needs_check") for a in ads_all),
@@ -643,20 +643,20 @@ def stats(as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
             "screening": screening.summary(screening.compute(db, as_of), db)}
 
 
-# ---------- сигналы (модуль 05); маршрут рассмотрения — раньше /{sid}, иначе /routes ушёл бы в него (T-79) ----------
+# ---------- сигналы(модуль 05); маршрут рассмотрения - раньше /{sid}, иначе /routes ушёл бы в него(T-79) ----------
 
 app.include_router(route.router)
 app.include_router(signals.router)
 
-# ---------- проект запроса сведений в ЖАО / Единому оператору / ГАСК (T-78) ----------
+# ---------- проект запроса сведений в ЖАО / Единому оператору / ГАСК(T-78) ----------
 
 app.include_router(letters.router)
 
-# ---------- открытые данные: источники, объекты, импорт (без риска и сигналов) ----------
+# ---------- открытые данные: источники, объекты, импорт(без риска и сигналов) ----------
 
 app.include_router(registry.router)
 
-# ---------- объекты из рекламы: ЖК, которых нет в справочнике и реестре; «Проверка по рекламе» — app.screening ----------
+# ---------- объекты из рекламы: ЖК, которых нет в справочнике и реестре; "Проверка по рекламе" - app.screening ----------
 
 app.include_router(discovery.router)
 
@@ -664,7 +664,7 @@ app.include_router(discovery.router)
 
 app.include_router(verification.router)
 
-# ---------- решение аналитика по «Проверке по рекламе»: «Объект сдан», «Проверено — замечаний нет», отмена ----------
+# ---------- решение аналитика по "Проверке по рекламе": "Объект сдан", "Проверено - замечаний нет", отмена ----------
 
 app.include_router(decisions.router)
 
@@ -680,13 +680,13 @@ app.include_router(changes.router)  # удалено в источнике и и
 for _router in connectors.routers():
     app.include_router(_router)
 
-# ---------- предупреждения жителям: согласование и отправка в Telegram, подписки от бота заявок (app.alerts) ----------
+# ---------- предупреждения жителям: согласование и отправка в Telegram, подписки от бота заявок(app.alerts) ----------
 
 from .alerts import router as alerts_router  # noqa: E402
 
 app.include_router(alerts_router)
 
-# ---------- кто продаёт: связанные продавцы, аномальная цена, связи застройщика — гипотезы вне балла (app.sellers) ----------
+# ---------- кто продаёт: связанные продавцы, аномальная цена, связи застройщика - гипотезы вне балла(app.sellers) ----------
 
 from .sellers import router as sellers_router  # noqa: E402
 

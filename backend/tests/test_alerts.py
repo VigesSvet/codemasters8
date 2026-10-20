@@ -1,5 +1,5 @@
-"""Предупреждения жителям (app.alerts): согласование другим сотрудником с токеном администратора, подписки от бота
-заявок по сервисному токену, отправка воркером через Telegram Bot API (заглушка http_mock) — канал и подписчики,
+"""Предупреждения жителям(app.alerts): согласование другим сотрудником с токеном администратора, подписки от бота
+заявок по сервисному токену, отправка воркером через Telegram Bot API(заглушка http_mock) - канал и подписчики,
 лимит 429, сеть, неверный токен, повтор, прерванная отправка, отписка; chat_id и токен не попадают в ответы и журнал."""
 import json
 import re
@@ -80,7 +80,7 @@ def alert(client, aid: int) -> dict:
 
 
 def journal(client, cid: str = "c1") -> list:
-    """События «жителям» журнала ЖК, новые первыми (журнал отдаётся по возрастанию)."""
+    """События "жителям" журнала ЖК, новые первыми(журнал отдаётся по возрастанию)."""
     return [e for e in client.get(f"/api/complexes/{cid}/audit").json() if e["kind"] == "alert"][::-1]
 
 
@@ -93,7 +93,7 @@ def test_draft_pending_one_per_complex_and_validation(client, ready):
     assert (a["createdBy"], a["decidedBy"], a["channel"], a["subscribers"]["total"]) == (AUTHOR, None, None, 0)
     ev = journal(client)
     assert len(ev) == 1 and ev[0]["who"] == AUTHOR and "A-0001 подготовлено и ждёт согласования" in ev[0]["what"]
-    # второе по тому же ЖК — 409 со ссылкой на первое; по другому ЖК — можно
+    # второе по тому же ЖК - 409 со ссылкой на первое; по другому ЖК - можно
     r = client.post("/api/alerts", json=DRAFT)
     assert r.status_code == 409 and r.json()["detail"]["alertId"] == a["id"]
     assert draft(client, complexId="c2")["district"] == "Центр"
@@ -121,7 +121,7 @@ def test_approve_needs_admin_other_person_bot_and_recipients(client, env):
     env(BOT_TOKEN=BOT)
     r = approve(client, a["id"])
     assert r.status_code == 409 and "Некому отправить" in r.json()["detail"]
-    env(TG_ALERTS_CHANNEL="https://t.me/bad")  # неверное имя канала — пояснение в отказе
+    env(TG_ALERTS_CHANNEL="https://t.me/bad")  # неверное имя канала - пояснение в отказе
     r = approve(client, a["id"])
     assert r.status_code == 409 and "Канал ГАСК указан неверно" in r.json()["detail"]
     assert alert(client, a["id"])["status"] == "pending"
@@ -133,7 +133,7 @@ def test_approve_fixes_recipients_and_queues_job(client, ready):
 
     assert subscribe(client, "1001", "Ульбинский").status_code == 200
     assert subscribe(client, "1002").status_code == 200  # все районы
-    assert subscribe(client, "1003", "Центр").status_code == 200  # другой район — не получит
+    assert subscribe(client, "1003", "Центр").status_code == 200  # другой район - не получит
     a = draft(client)
     r = approve(client, a["id"])
     assert r.status_code == 200, r.text
@@ -165,7 +165,7 @@ def test_reject_then_new_draft(client, ready):
     assert draft(client)["status"] == "pending"
 
 
-# ---------- подписки (бот заявок) ----------
+# ---------- подписки(бот заявок) ----------
 
 def test_subscriptions_api_for_bot(client, env):
     from app import models
@@ -192,7 +192,7 @@ def test_subscriptions_api_for_bot(client, env):
     assert client.put("/api/intake/telegram/subscriptions/abc", headers=SVC, json={}).status_code == 422
     assert client.get(url, headers=SVC).json()["everywhere"] is True
     assert client.delete(url, headers=SVC).status_code == 204
-    assert client.delete(url, headers=SVC).status_code == 204  # повтор — тоже 204
+    assert client.delete(url, headers=SVC).status_code == 204  # повтор - тоже 204
     assert client.get(url, headers=SVC).status_code == 404
 
 
@@ -208,7 +208,7 @@ def test_audience_counts_and_readiness(client, env):
     assert (r["configured"], r["adminConfigured"], r["problem"], r["channel"]) == (True, True, None, "@gask_vko_test")
     assert (r["subscribers"], r["everywhere"]) == (3, 1)
     assert {"district": "Центр", "subscribers": 1} in r["districts"]
-    assert client.get("/api/alerts/audience").json()["subscribers"] == 1  # без района — только «все районы»
+    assert client.get("/api/alerts/audience").json()["subscribers"] == 1  # без района - только "все районы"
     env(TG_ALERTS_CHANNEL="gask")
     r = client.get("/api/alerts/audience").json()
     assert r["channel"] is None and "Канал ГАСК указан неверно" in r["channelProblem"]
@@ -247,7 +247,7 @@ def test_worker_sends_to_channel_and_subscribers(client, ready, http_mock, run_w
     assert got["subscribers"] == {"total": 2, "sent": 1, "failed": 1, "pending": 0, "skipped": 0}
     assert got["errors"] == [{"text": "Житель заблокировал бота — подписка снята", "count": 1}]
     assert got["sentAt"] and got["lastError"] == "Житель заблокировал бота — подписка снята"
-    # chat_id подписчиков после итога не хранится; заблокировавший бота — без подписки
+    # chat_id подписчиков после итога не хранится; заблокировавший бота - без подписки
     assert [d[1] for d in deliveries(a["id"])] == ["@gask_vko_test", None, None]
     assert count(models.AlertSubscription, models.AlertSubscription.chat_id == "1002") == 0
     assert count(models.Job, models.Job.kind == "alert", models.Job.status == "done") == 1
@@ -317,7 +317,7 @@ def test_rejected_token_keeps_pending_and_retry_sends(client, ready, http_mock, 
     assert got["status"] == "failed" and "Telegram не принял токен бота (HTTP 401)" in got["lastError"]
     assert [d[2] for d in deliveries(a["id"])] == ["pending", "pending"]
     assert "Причина: Telegram не принял токен бота" in journal(client)[0]["what"]
-    # повтор — только администратор; после исправления токена доставки уходят
+    # повтор - только администратор; после исправления токена доставки уходят
     assert client.post(f"/api/alerts/{a['id']}/retry", json={"author": CHIEF}).status_code == 401
     r = client.post(f"/api/alerts/{a['id']}/retry", headers=ADMIN, json={"author": CHIEF})
     assert r.status_code == 200 and r.json()["status"] == "sending"

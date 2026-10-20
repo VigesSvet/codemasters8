@@ -1,6 +1,6 @@
-"""«Спутник против рекламы» (app.satstage): выбор снимков, склейка тайлов, запрос с изображениями к поддельному
-Anthropic API, разбор JSON модели, кэш по «ЖК/выпуск/дата съёмки», без ключа — без запросов, сравнение с рекламой и
-GET /api/complexes/{id}/sat-stage. Сети нет: тайлы — FETCH, клиент SDK — httpx2.MockTransport (как test_llm)."""
+""""Спутник против рекламы"(app.satstage): выбор снимков, склейка тайлов, запрос с изображениями к поддельному
+Anthropic API, разбор JSON модели, кэш по "ЖК/выпуск/дата съёмки", без ключа - без запросов, сравнение с рекламой и
+GET /api/complexes/{id}/sat-stage. Сети нет: тайлы - FETCH, клиент SDK - httpx2.MockTransport(как test_llm)."""
 import base64
 import io
 import json
@@ -46,7 +46,7 @@ def tiles(monkeypatch):
 
 def test_pick_shots_latest_and_nearest_to_start():
     assert [(r, s["id"]) for r, s in satstage.pick_shots(SHOTS, "2023-04-01")] == [("latest", 26334), ("start", 49849)]
-    # ближайший к началу — сам свежий снимок: второго нет; начала нет — только свежий
+    # ближайший к началу - сам свежий снимок: второго нет; начала нет - только свежий
     assert [r for r, _ in satstage.pick_shots(SHOTS, "2025-06-01")] == ["latest"]
     assert [r for r, _ in satstage.pick_shots(SHOTS, None)] == ["latest"]
     assert satstage.pick_shots([], "2024-01-01") == []
@@ -60,7 +60,7 @@ def test_compose_stitches_3x3_and_centres_point(tiles):
     im = Image.open(io.BytesIO(jpeg))
     assert im.size == (satstage.CROP, satstage.CROP)
     r, g, b = im.getpixel((satstage.CROP // 2 + satstage.RING, satstage.CROP // 2))[:3]
-    assert r > 200 and g < 120  # кольцо точки — красное
+    assert r > 200 and g < 120  # кольцо точки - красное
     assert satstage.shot_key(49.893336, 82.618958) == f"17/{int(fy)}/{int(fx)}"
 
 
@@ -96,7 +96,7 @@ def demo_cx(cid="c2"):
 
 def test_run_sends_images_saves_store_and_caches(client, env, api, tiles, tmp_path):
     env(ANTHROPIC_API_KEY=KEY)
-    cid, lat, lng, start = demo_cx("c5")  # начало 2023-04-01 — ближайший к нему снимок 2023-06-03
+    cid, lat, lng, start = demo_cx("c5")  # начало 2023-04-01 - ближайший к нему снимок 2023-06-03
     index = {satstage.shot_key(lat, lng): SHOTS}
     reply = {"images": [{"index": 1, "stage": "roof_facade", "confidence": "medium", "reasoning": "Кровля, фасад",
                          "cues": ["кровля"]},
@@ -158,29 +158,29 @@ def kinds(hints):
 
 
 def test_compare_ahead_and_stale():
-    # реклама до снимка заявляет каркас, на снимке котлован — расхождение R5
+    # реклама до снимка заявляет каркас, на снимке котлован - расхождение R5
     h = satstage.compare([img("excavation")], [claim("advanced", "2024-08-01 10:00", "каркас готов")], None)
     assert kinds(h) == ["ahead"] and h[0]["factor"] == "R5" and "каркас готов" in h[0]["text"]
     assert "гипотеза ИИ" in h[0]["text"] and h[0]["releaseId"] == 26334
-    # реклама на 2 года новее снимка — снимком не проверить, расхождения нет
+    # реклама на 2 года новее снимка - снимком не проверить, расхождения нет
     h = satstage.compare([img("empty_lot")], [claim("completed", "2026-09-01", "дом сдан")], None)
     assert kinds(h) == ["stale"] and "старше рекламы на 23 мес." in h[0]["text"]
-    # сданный дом на снимке и позднее «дом сдан» — не противоречит при любой давности
+    # сданный дом на снимке и позднее "дом сдан" - не противоречит при любой давности
     assert kinds(satstage.compare([img("completed")], [claim("completed", "2026-09-01")], None)) == ["match"]
 
 
 def test_compare_money_early_behind_before_start():
     h = satstage.compare([img("foundation")], [claim("money", "2024-10-10", "бронь 200 000 ₸")], None)
     assert kinds(h) == ["money_early"] and h[0]["factor"] == "R1" and "ст. 7" in h[0]["text"]
-    # на снимке дом готов, позже реклама — «строится»: возможно, другая очередь
+    # на снимке дом готов, позже реклама - "строится": возможно, другая очередь
     h = satstage.compare([img("completed")], [claim("building", "2025-03-01", "строится")], None)
     assert kinds(h) == ["behind"] and "другая очередь" in h[0]["text"]
-    # реклама «строится» до снимка с готовым домом — не противоречит
+    # реклама "строится" до снимка с готовым домом - не противоречит
     assert kinds(satstage.compare([img("completed")], [claim("building", "2024-01-01")], None)) == ["match"]
     # работы на снимке раньше начала стройки по документам
     h = satstage.compare([img("frame"), img("foundation", "2023-06-03", "start")], [], "2025-06-01")
     assert kinds(h) == ["before_start"] and "01.06.2025" in h[0]["text"]
-    # уверенность low и пустая площадка — не наблюдение
+    # уверенность low и пустая площадка - не наблюдение
     assert satstage.compare([img("frame", conf="low")], [], "2025-06-01") == []
 
 
@@ -205,7 +205,7 @@ def test_claims_of_ad_markers():
     A.text = "🏗 Каркас дома уже полностью готов. Квартиры с отделкой и вентилируемым фасадом"
     got = {c["kind"]: c["quote"] for c in satstage.claims_of(f, A(), "claude")}
     assert got["advanced"] == "🏗 Каркас дома уже полностью готов."
-    A.text = "Чистовая отделка, вентилируемый фасад, плоская кровля"  # свойства дома — не стадия
+    A.text = "Чистовая отделка, вентилируемый фасад, плоская кровля"  # свойства дома - не стадия
     assert "advanced" not in {c["kind"] for c in satstage.claims_of(f, A(), "claude")}
 
 

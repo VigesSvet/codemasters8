@@ -1,11 +1,11 @@
-"""PDF сигнальной карточки (A4) на reportlab.
+"""PDF сигнальной карточки(A4) на reportlab.
 
-Шрифт — Noto Sans (кириллица, казахские буквы, ₸; лицензия OFL, fonts/OFL.txt). Эмодзи и прочих символов,
-которых нет в шрифте, в PDF не будет: они вырезаются перед выводом, чтобы не печатались «квадратики».
-Время сервера выводится по Алматы (risk_model.ALMATY, фиксированное UTC+5 — в slim-образе может не быть tzdata).
-Длинные списки доказательств и комментарии — отдельные абзацы вне ячеек таблиц: они переносятся постранично.
-У факторов R1–R3 — «Основание: ст. N Закона РК …» (app.law, shared/law.json), после таблицы факторов — нормативная база:
-ссылки справочные, оценка — не юридическое заключение, «нет разрешения МИО» само по себе не «незаконно».
+Шрифт - Noto Sans(кириллица, казахские буквы, ₸; лицензия OFL, fonts/OFL.txt). Эмодзи и прочих символов,
+которых нет в шрифте, в PDF не будет: они вырезаются перед выводом, чтобы не печатались "квадратики".
+Время сервера выводится по Алматы(risk_model.ALMATY, фиксированное UTC+5 - в slim-образе может не быть tzdata).
+Длинные списки доказательств и комментарии - отдельные абзацы вне ячеек таблиц: они переносятся постранично.
+У факторов R1-R3 - "Основание: ст. N Закона РК …"(app.law, shared/law.json), после таблицы факторов - нормативная база:
+ссылки справочные, оценка - не юридическое заключение, "нет разрешения МИО" само по себе не "незаконно".
 """
 import math
 from datetime import datetime, timezone
@@ -32,11 +32,11 @@ FONTS = Path(__file__).with_name("fonts")
 FONT, BOLD = "NotoSans", "NotoSans-Bold"
 MARGIN = 16 * mm
 WIDTH = A4[0] - 2 * MARGIN
-CODE_W = 12 * mm  # колонка «Код» в таблице факторов
+CODE_W = 12 * mm  # колонка "Код" в таблице факторов
 
 DISCLAIMER = ("Предварительная оценка по открытым данным и публичной рекламе. Рекомендация для проверки, не юридическое "
               "заключение. Автоматической отправки в госорганы нет.")
-DEMO_NOTE = "Демонстрационные данные (вымышленный ЖК). "  # демо-строки прежних версий (до python -m app.demo purge)
+DEMO_NOTE = "Демонстрационные данные (вымышленный ЖК). "  # демо-строки прежних версий(до python -m app.demo purge)
 
 INK, MUTED = colors.HexColor("#1f1f1f"), colors.HexColor("#6b6b6b")
 LINE, SOFT = colors.HexColor("#d9d9d9"), colors.HexColor("#f3f3f3")
@@ -98,15 +98,15 @@ def esc(x: Any) -> str:
 
 
 def line(x: Any, limit: int) -> str:
-    """Одна строка без переводов и лишних пробелов, не длиннее limit (по словам, с «…») — для ячеек таблиц:
-    строка таблицы не переносится на следующую страницу, длинный текст в ячейке ронял сборку (LayoutError)."""
+    """Одна строка без переводов и лишних пробелов, не длиннее limit(по словам, с "…") - для ячеек таблиц:
+    строка таблицы не переносится на следующую страницу, длинный текст в ячейке ронял сборку(LayoutError)."""
     t = " ".join(clean(x).split())
     return t if len(t) <= limit else (t[:limit - 1].rsplit(" ", 1)[0] or t[:limit - 1]) + "…"
 
 
 def when(value: Any) -> str:
-    """ДД.ММ.ГГГГ для дат, ДД.ММ.ГГГГ ЧЧ:ММ для моментов. Время сервера (с UTC-смещением или наивное datetime) — по
-    Алматы; наивная строка из источника (дата публикации) — как есть, это уже местное время."""
+    """ДД.ММ.ГГГГ для дат, ДД.ММ.ГГГГ ЧЧ:ММ для моментов. Время сервера(с UTC-смещением или наивное datetime) - по
+    Алматы; наивная строка из источника(дата публикации) - как есть, это уже местное время."""
     if value is None or value == "":
         return "—"
     if isinstance(value, datetime):
@@ -185,7 +185,7 @@ def _pct(v: Any) -> str:
 
 
 def link(url: Any) -> str:
-    """Ссылка на источник: http(s) — кликабельная в PDF, прочее — текстом."""
+    """Ссылка на источник: http(s) - кликабельная в PDF, прочее - текстом."""
     u = clean(url).strip()
     if not u:
         return ""
@@ -195,8 +195,8 @@ def link(url: Any) -> str:
 
 
 def _document(d: Obj) -> str:
-    """Документ-основание с провенансом по документу (T-29): реквизит, источник, дата сверки, ссылка на источник.
-    Документ без источника и даты не проверялся — так и пишется, «нет» без источника не выдаётся за факт."""
+    """Документ-основание с провенансом по документу(T-29): реквизит, источник, дата сверки, ссылка на источник.
+    Документ без источника и даты не проверялся - так и пишется, "нет" без источника не выдаётся за факт."""
     state = DOC_STATE.get(str(d.get("value")), d.get("value"))
     head = f"<b>{esc(d.get('label'))}</b>: {esc(state)}"
     checked = d.get("source") or d.get("date")
@@ -213,7 +213,7 @@ DEMO_COMPLEX = "вымышленный ЖК (демо)"
 
 
 def _demo(x: Optional[Obj]) -> bool:
-    """Демо-сущность: origin 'demo'; в снимках сигналов до блока E поля нет — тогда тоже демо (других ЖК в реестре нет)."""
+    """Демо-сущность: origin 'demo'; в снимках сигналов до блока E поля нет - тогда тоже демо(других ЖК в реестре нет)."""
     return bool(x) and x.get("origin", "demo") == "demo"
 
 
@@ -253,13 +253,13 @@ def _header(sig: Obj, generated_at: datetime) -> list:
 
 
 def _sourced(x: Obj) -> str:
-    """«58% — источник · дата» для значения готовности {value, source, date}."""
+    """"58% - источник · дата" для значения готовности {value, source, date}."""
     tail = _join(x.get("source"), x.get("date") and when(x["date"]))
     return esc(_pct(x.get("value"))) + (f" — {tail}" if tail else ", без источника")
 
 
 def readiness_lines(c: Obj) -> List[str]:
-    """Стадия и готовность: «подтверждённая готовность» — только из readiness.confirmed (с источником и датой);
+    """Стадия и готовность: "подтверждённая готовность" - только из readiness.confirmed(с источником и датой);
     процент из карточки объекта без источника подтверждением не называется."""
     r = c.get("readiness") or {}
     conf, decl = r.get("confirmed"), r.get("declared")
@@ -311,7 +311,7 @@ FACTOR_W = [CODE_W, WIDTH - CODE_W - 30 * mm - 22 * mm, 30 * mm, 22 * mm]
 
 
 def _row(cells: list, *style: tuple) -> Table:
-    """Одна строка таблицы факторов (те же колонки у заголовка, факторов и итога)."""
+    """Одна строка таблицы факторов(те же колонки у заголовка, факторов и итога)."""
     t = Table([cells], colWidths=FACTOR_W)
     t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 4),
                            ("RIGHTPADDING", (0, 0), (-1, -1), 4), ("TOPPADDING", (0, 0), (-1, -1), 3),
@@ -341,7 +341,7 @@ def _factors(sig: Obj) -> list:
 
 
 def _law(sig: Obj) -> list:
-    """Нормативная база: статьи, на которые ссылаются факторы карточки, со ссылкой на текст в ИПС «Әділет»."""
+    """Нормативная база: статьи, на которые ссылаются факторы карточки, со ссылкой на текст в ИПС "Әділет"."""
     used = {r["article"] for f in sig["factors"] for r in law.refs(f["code"])}
     arts = [a for a in law.LAW["articles"] if a["num"] in used]
     if not arts:
@@ -394,7 +394,7 @@ def _materials(sig: Obj) -> list:
 
 
 def link_text(a: Obj) -> str:
-    """Привязка публикации к ЖК в материалах: факт (кто и когда подтвердил) или гипотеза ИИ с уверенностью."""
+    """Привязка публикации к ЖК в материалах: факт(кто и когда подтвердил) или гипотеза ИИ с уверенностью."""
     if a.get("linkConfirmedBy"):
         at = a.get("linkConfirmedAt")
         return f"привязка — факт (подтвердил {line(a['linkConfirmedBy'], 64)}{', ' + when(at) if at else ''})"
@@ -413,14 +413,14 @@ def _status(sig: Obj) -> list:
         ("Решение", P(decided)),
         ("Выгрузка", P(_join(sig.get("fileName"), sig.get("exportedAt") and when(sig["exportedAt"])))),
     ])
-    # комментарий (до 4000 символов) — абзацами вне таблицы, чтобы переносился на следующую страницу
+    # комментарий(до 4000 символов) - абзацами вне таблицы, чтобы переносился на следующую страницу
     comment = [P(esc(x.strip()), "p") for x in (sig.get("decisionComment") or "").splitlines() if x.strip()]
     comment = comment or [P("—", "p")]
     return [KeepTogether([P("Статус проверки", "h2"), table, P("Комментарий решения", "h3"), comment[0]]), *comment[1:]]
 
 
 def _journal(sig: Obj) -> list:
-    """Журнал событий; длинный текст события обрезан — полный комментарий решения есть в «Статусе проверки»."""
+    """Журнал событий; длинный текст события обрезан - полный комментарий решения есть в "Статусе проверки"."""
     rows = [[P("Когда", "bold"), P("Кто", "bold"), P("Событие", "bold")]]
     rows += [[P(esc(when(e["at"]))), P(esc(line(e["who"], 128))), P(esc(line(e["what"], 300)))]
              for e in sig.get("journal") or []]
@@ -431,7 +431,7 @@ def _journal(sig: Obj) -> list:
 
 def _canvas(footer: str):
     class NumberedCanvas(Canvas):
-        """Подвал «стр. N из M»: страницы копятся и дорисовываются при save, когда известно их число."""
+        """Подвал "стр. N из M": страницы копятся и дорисовываются при save, когда известно их число."""
 
         def __init__(self, *a: Any, **kw: Any) -> None:
             super().__init__(*a, **kw)
@@ -458,14 +458,14 @@ def _canvas(footer: str):
 
 
 def story(sig: Obj, generated_at: datetime) -> list:
-    """Содержимое карточки — список flowable (отдельно от сборки, чтобы проверять текст в тестах)."""
+    """Содержимое карточки - список flowable(отдельно от сборки, чтобы проверять текст в тестах)."""
     _glyphs()
     return (_header(sig, generated_at) + _object(sig) + [KeepTogether(_risk(sig))] + _factors(sig)
             + _observations(sig) + _materials(sig) + _status(sig) + _journal(sig))
 
 
 def render_signal(sig: Obj, generated_at: Optional[datetime] = None) -> bytes:
-    """Сигнал в форме API (camelCase, как Signal в types.ts) → PDF."""
+    """Сигнал в форме API(camelCase, как Signal в types.ts) → PDF."""
     generated_at = generated_at or datetime.now(timezone.utc)
     content = story(sig, generated_at)
     buf = BytesIO()

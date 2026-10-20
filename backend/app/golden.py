@@ -2,8 +2,8 @@
 
     cd backend && .venv/bin/python -m app.golden     # перезаписать shared/testdata/risk_golden.json
 
-Только для тестов (backend/tests/test_risk.py, frontend/src/lib/risk.test.ts). Входы — shared/testdata/: demo_seed.json
-(прежний демо-набор, весь) и risk_fixtures.json (синтетические случаи):
+Только для тестов(backend/tests/test_risk.py, frontend/src/lib/risk.test.ts). Входы - shared/testdata/: demo_seed.json
+(прежний демо-набор, весь) и risk_fixtures.json(синтетические случаи):
     {"complex": [{"name", "asOf"?, "complex", "developer", "ads", "appeals"}],
      "ad":      [{"name", "ad", "complex"}]}
 """

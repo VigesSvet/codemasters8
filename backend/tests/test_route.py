@@ -1,4 +1,4 @@
-"""Маршрут рассмотрения сигнала (T-79): этапы из журнала, переходы и запреты, кто согласует, сроки и просрочка."""
+"""Маршрут рассмотрения сигнала(T-79): этапы из журнала, переходы и запреты, кто согласует, сроки и просрочка."""
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -6,7 +6,7 @@ import pytest
 
 from app import route
 
-ANALYST, LEAD, GASK = "Нестерова А.", "Омарова Ж.", "Исаев Т."  # an1, an2 (руководитель в пилоте), an3
+ANALYST, LEAD, GASK = "Нестерова А.", "Омарова Ж.", "Исаев Т."  # an1, an2(руководитель в пилоте), an3
 UTC = timezone.utc
 
 
@@ -28,7 +28,7 @@ def _act(c, sid, action, author, comment=None):
     ("2026-10-23T17:00:00+05:00", 1, "2026-10-26"),  # пт → пн
     ("2026-10-23T17:00:00+05:00", 2, "2026-10-27"),  # пт → вт
     ("2026-10-24T12:00:00+05:00", 1, "2026-10-26"),  # сб → пн
-    ("2026-10-18T21:30:00+00:00", 1, "2026-10-20"),  # вс 21:30 UTC — уже пн 02:30 по Алматы
+    ("2026-10-18T21:30:00+00:00", 1, "2026-10-20"),  # вс 21:30 UTC - уже пн 02:30 по Алматы
 ])
 def test_due_at_counts_working_days_in_almaty(start, days, due):
     d = route.due_at(datetime.fromisoformat(start), days)
@@ -42,12 +42,12 @@ def test_build_stages_and_overdue_with_frozen_time():
     s = SimpleNamespace(id=7, code="S-0007", status="new", created_at=created, created_by=ANALYST, decided_at=None,
                         decided_by=None, decision_comment=None)
     ev = lambda at, what, who=ANALYST: {"at": at.isoformat(), "who": who, "what": what, "kind": "signal"}  # noqa: E731
-    r = route.build(s, [], now=datetime(2026, 10, 21, 18, 0, tzinfo=UTC))  # ср 23:00 — срок разбора ещё не прошёл
+    r = route.build(s, [], now=datetime(2026, 10, 21, 18, 0, tzinfo=UTC))  # ср 23:00 - срок разбора ещё не прошёл
     assert (r["stage"], r["slaDays"], r["overdue"], r["actions"]) == ("analysis", 2, False, ["submit"])
     assert r["dueAt"] == "2026-10-21T18:59:59+00:00"
     assert route.build(s, [], now=datetime(2026, 10, 21, 19, 0, tzinfo=UTC))["overdue"] is True
 
-    submitted = datetime(2026, 10, 22, 4, 0, tzinfo=UTC)  # чт — разбор закрыт с просрочкой
+    submitted = datetime(2026, 10, 22, 4, 0, tzinfo=UTC)  # чт - разбор закрыт с просрочкой
     back = datetime(2026, 10, 23, 6, 0, tzinfo=UTC)
     events = [ev(created, "Сигнал создан: балл 70, зона красная"), ev(submitted, route.SUBMIT_WHAT),
               ev(back, route._what(route.BACK_WHAT, "Нет сверки МИО"), LEAD)]
@@ -57,7 +57,7 @@ def test_build_stages_and_overdue_with_frozen_time():
     assert st[0]["overdue"] is True and st[0]["outcome"] == "submitted"
     assert st[1]["overdue"] is False and st[1]["outcome"] == "returned_to_analyst" and st[1]["outcomeComment"] == "Нет сверки МИО"
     assert st[1]["dueAt"] == "2026-10-23T18:59:59+00:00"  # 1 рабочий день от чт
-    # возврат — разбор заново: срок от пт → вт, пн 15:00 ещё в срок
+    # возврат - разбор заново: срок от пт → вт, пн 15:00 ещё в срок
     assert st[2]["startedBy"] == LEAD and st[2]["comment"] == "Нет сверки МИО"
     assert (r["stage"], r["dueAt"], r["overdue"]) == ("analysis", "2026-10-27T18:59:59+00:00", False)
 
@@ -83,7 +83,7 @@ def test_full_route_submit_return_submit_approve(client):
 
     r = _act(client, sid, "return", LEAD, "Нужна сверка разрешения МИО").json()
     assert r["stage"] == "analysis" and r["stages"][-1]["comment"] == "Нужна сверка разрешения МИО"
-    assert client.get(f"/api/signals/{sid}").json()["status"] == "new"  # возврат аналитику — не «на доработку»
+    assert client.get(f"/api/signals/{sid}").json()["status"] == "new"  # возврат аналитику - не "на доработку"
 
     assert _act(client, sid, "submit", ANALYST).status_code == 200
     r = _act(client, sid, "approve", LEAD, "Основание не подтверждено ни ЕО, ни МИО")
@@ -92,7 +92,7 @@ def test_full_route_submit_return_submit_approve(client):
     assert (r["stage"], r["status"], r["actions"]) == ("confirmed", "confirmed", [])
     assert [x["stage"] for x in r["stages"]] == ["analysis", "approval", "analysis", "approval", "confirmed"]
 
-    s = client.get(f"/api/signals/{sid}").json()  # согласование — та же логика, что POST /confirm
+    s = client.get(f"/api/signals/{sid}").json()  # согласование - та же логика, что POST /confirm
     assert (s["status"], s["decidedBy"], s["decisionComment"]) == ("confirmed", LEAD, "Основание не подтверждено ни ЕО, ни МИО")
     whats = [(e["who"], e["what"]) for e in s["journal"]]
     assert whats[1:] == [
@@ -111,7 +111,7 @@ def test_forbidden_transitions_409(client):
     assert _act(client, sid, "submit", ANALYST).status_code == 200
     r = _act(client, sid, "submit", ANALYST)
     assert r.status_code == 409 and "На согласовании у руководителя" in r.json()["detail"]
-    assert _act(client, sid, "approve", LEAD).status_code == 200  # без комментария — «Согласовано без замечаний»
+    assert _act(client, sid, "approve", LEAD).status_code == 200  # без комментария - "Согласовано без замечаний"
     assert client.get(f"/api/signals/{sid}").json()["decisionComment"] == route.APPROVE_DEFAULT
     for action, who in (("submit", ANALYST), ("approve", LEAD), ("return", LEAD)):
         r = _act(client, sid, action, who, "ещё раз")
@@ -136,7 +136,7 @@ def test_only_lead_approves_403(client):
 def test_validation_and_404(client):
     sid = _signal(client)
     _act(client, sid, "submit", ANALYST)
-    assert _act(client, sid, "return", LEAD).status_code == 422  # возврат — только с комментарием
+    assert _act(client, sid, "return", LEAD).status_code == 422  # возврат - только с комментарием
     assert _act(client, sid, "return", LEAD, "   ").status_code == 422
     assert _act(client, sid, "archive", LEAD).status_code == 422
     assert _act(client, sid, "submit", "Система").status_code == 422

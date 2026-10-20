@@ -1,10 +1,10 @@
-"""Распознавание скриншотов объявлений (T-20): Tesseract (нейросеть LSTM), языки rus+kaz+eng.
+"""Распознавание скриншотов объявлений(T-20): Tesseract(нейросеть LSTM), языки rus+kaz+eng.
 
-Проверки до распознавания: не изображение или формат, который здесь не читается (HEIC с iPhone, AVIF, SVG) → 415,
-больше 10 МБ (или больше 40 Мп) → 413, битый файл → 422; техническая причина — в журнал API, аналитику — понятный текст.
-Распознанный текст длиннее предела публикации (schemas.AD_TEXT_MAX) обрезается с пояснением.
-Предобработка (Pillow): поворот по EXIF, прозрачность на белом фоне, оттенки серого, увеличение мелких изображений,
-автоконтраст. Tesseract вызывается как программа (без обёрток); если его нет на сервере — ответ 200 с engine 'none'
+Проверки до распознавания: не изображение или формат, который здесь не читается(HEIC с iPhone, AVIF, SVG) → 415,
+больше 10 МБ(или больше 40 Мп) → 413, битый файл → 422; техническая причина - в журнал API, аналитику - понятный текст.
+Распознанный текст длиннее предела публикации(schemas.AD_TEXT_MAX) обрезается с пояснением.
+Предобработка(Pillow): поворот по EXIF, прозрачность на белом фоне, оттенки серого, увеличение мелких изображений,
+автоконтраст. Tesseract вызывается как программа(без обёрток); если его нет на сервере - ответ 200 с engine 'none'
 и пояснением, а не 500: текст можно ввести вручную.
 """
 import logging
@@ -29,7 +29,7 @@ LANGS = ("rus", "kaz", "eng")
 MAX_BYTES = 10 * 1024 * 1024
 MAX_PIXELS = 40_000_000
 TIMEOUT = int(os.getenv("SAQ_OCR_TIMEOUT", "60"))
-UPSCALE_TO = 1600  # мелкие картинки увеличиваются до этой длинной стороны (не больше чем втрое)
+UPSCALE_TO = 1600  # мелкие картинки увеличиваются до этой длинной стороны(не больше чем втрое)
 DOWNSCALE_TO = 5000
 
 # сигнатуры форматов, которые читает Pillow и понимает Tesseract
@@ -39,14 +39,14 @@ TYPES = {"image/png", "image/jpeg", "image/jpg", "image/pjpeg", "image/gif", "im
          "image/tiff"}
 FORMATS = "PNG, JPEG, WEBP, GIF, BMP или TIFF"
 TOO_BIG = f"Файл больше {MAX_BYTES // (1024 * 1024)} МБ — уменьшите или обрежьте скриншот"
-# изображения, которые Pillow без расширений не читает: бренды контейнера ISO BMFF (байты 8–12) и SVG
+# изображения, которые Pillow без расширений не читает: бренды контейнера ISO BMFF(байты 8-12) и SVG
 HEIF_BRANDS = {b"heic": "HEIC", b"heix": "HEIC", b"hevc": "HEIC", b"heim": "HEIC", b"heis": "HEIC", b"mif1": "HEIF",
                b"msf1": "HEIF", b"avif": "AVIF", b"avis": "AVIF"}
 NOT_INSTALLED = "Tesseract не установлен на сервере — распознавание скриншотов недоступно, текст можно ввести вручную"
 
 
 class OcrError(Exception):
-    """Ошибка входного файла: status — HTTP-код ответа (413, 415, 422), detail — понятный текст по-русски."""
+    """Ошибка входного файла: status - HTTP-код ответа(413, 415, 422), detail - понятный текст по-русски."""
 
     def __init__(self, status: int, detail: str):
         super().__init__(detail)
@@ -54,7 +54,7 @@ class OcrError(Exception):
 
 
 def _run(args: List[str], data: Optional[bytes] = None, timeout: float = 10) -> subprocess.CompletedProcess:
-    """Запуск tesseract (точка подмены в тестах). OMP_THREAD_LIMIT=1 — без перегрузки CPU при параллельных запросах."""
+    """Запуск tesseract(точка подмены в тестах). OMP_THREAD_LIMIT=1 - без перегрузки CPU при параллельных запросах."""
     env = {**os.environ, "OMP_THREAD_LIMIT": "1"}
     return subprocess.run(args, input=data, capture_output=True, timeout=timeout, env=env, check=False)
 
@@ -64,7 +64,7 @@ def _which() -> Optional[str]:
 
 
 def status() -> Obj:
-    """Доступен ли OCR на сервере: движок, версия, языки (из rus, kaz, eng — те, что установлены)."""
+    """Доступен ли OCR на сервере: движок, версия, языки(из rus, kaz, eng - те, что установлены)."""
     exe = _which()
     if not exe:
         return {"available": False, "engine": "none", "languages": [], "detail": NOT_INSTALLED}
@@ -97,7 +97,7 @@ def _sniff(raw: bytes) -> Optional[str]:
 
 
 def _unsupported(raw: bytes, ctype: str) -> Optional[str]:
-    """Это изображение, но в формате, который здесь не распознаётся: «HEIC», «SVG», «image/x-icon»…; иначе None."""
+    """Это изображение, но в формате, который здесь не распознаётся: "HEIC", "SVG", "image/x-icon"…; иначе None."""
     if raw[4:8] == b"ftyp" and raw[8:12] in HEIF_BRANDS:
         return HEIF_BRANDS[raw[8:12]]
     head = raw[:1024].lstrip().lower()
@@ -107,7 +107,7 @@ def _unsupported(raw: bytes, ctype: str) -> Optional[str]:
 
 
 def load(raw: bytes, content_type: Optional[str] = None) -> Image.Image:
-    """Проверенное и декодированное изображение или OcrError (413/415/422)."""
+    """Проверенное и декодированное изображение или OcrError(413/415/422)."""
     if not raw:
         raise OcrError(422, "Файл пустой — загрузите скриншот объявления")
     if len(raw) > MAX_BYTES:
@@ -116,7 +116,7 @@ def load(raw: bytes, content_type: Optional[str] = None) -> Image.Image:
     ctype = (content_type or "").split(";")[0].strip().lower()
     if fmt is None:
         other = _unsupported(raw, ctype)
-        if other:  # фото с iPhone (HEIC) и т. п.: изображение, но не в том формате
+        if other:  # фото с iPhone(HEIC) и т. п.: изображение, но не в том формате
             raise OcrError(415, f"Формат {other} не поддерживается — сохраните скриншот как PNG или JPEG")
         if ctype in TYPES:
             raise OcrError(422, f"Файл повреждён или это не изображение (заявлен тип {ctype}) — нужен {FORMATS}")
@@ -132,8 +132,8 @@ def load(raw: bytes, content_type: Optional[str] = None) -> Image.Image:
         raise
     except Image.DecompressionBombError:
         raise OcrError(413, f"Изображение слишком большое (до {MAX_PIXELS // 1_000_000} Мп) — уменьшите его") from None
-    except Exception as e:  # noqa: BLE001 — любой сбой декодера означает битый файл
-        # текст Pillow («cannot identify image file <_io.BytesIO …>», «image file is truncated») — для журнала, не для аналитика
+    except Exception as e:  # noqa: BLE001 - любой сбой декодера означает битый файл
+        # текст Pillow("cannot identify image file <_io.BytesIO …>", "image file is truncated") - для журнала, не для аналитика
         log.warning("OCR: файл %s (%s, %d байт) не декодируется: %s", fmt, ctype or "тип не указан", len(raw), e)
         raise OcrError(422, f"Файл {fmt} повреждён и не читается — сохраните скриншот заново (PNG или JPEG)") from None
     return im
@@ -141,7 +141,7 @@ def load(raw: bytes, content_type: Optional[str] = None) -> Image.Image:
 
 def preprocess(im: Image.Image) -> Tuple[Image.Image, List[str]]:
     """Подготовка для Tesseract: поворот по EXIF, прозрачность → белый фон, оттенки серого, увеличение мелких,
-    уменьшение огромных, автоконтраст. Возвращает изображение и список шагов (по-русски) для показа аналитику."""
+    уменьшение огромных, автоконтраст. Возвращает изображение и список шагов(по-русски) для показа аналитику."""
     steps: List[str] = []
     im = ImageOps.exif_transpose(im)
     if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
@@ -167,7 +167,7 @@ def preprocess(im: Image.Image) -> Tuple[Image.Image, List[str]]:
 
 
 def parse_tsv(tsv: str) -> Tuple[str, Optional[float]]:
-    """TSV Tesseract → текст по строкам (абзацы — через пустую строку) и средняя уверенность слов 0…1."""
+    """TSV Tesseract → текст по строкам(абзацы - через пустую строку) и средняя уверенность слов 0…1."""
     lines: Dict[Tuple[int, int, int, int], List[str]] = {}
     confs: List[float] = []
     for row in tsv.splitlines()[1:]:
@@ -195,7 +195,7 @@ def parse_tsv(tsv: str) -> Tuple[str, Optional[float]]:
 
 
 def clip(text: str, limit: int = AD_TEXT_MAX) -> str:
-    """Текст не длиннее limit: по последнему переводу строки (или пробелу) до предела — без обрубка на полуслове."""
+    """Текст не длиннее limit: по последнему переводу строки(или пробелу) до предела - без обрубка на полуслове."""
     if len(text) <= limit:
         return text
     head = text[:limit]

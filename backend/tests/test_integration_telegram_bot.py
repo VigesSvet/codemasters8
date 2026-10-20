@@ -1,6 +1,6 @@
-"""Telegram-бот заявок (integration-spec §12.3, §16.3 test_integration_telegram_bot, §16.5 столбец B): доступ по
+"""Telegram-бот заявок(integration-spec §12.3, §16.3 test_integration_telegram_bot, §16.5 столбец B): доступ по
 сервисному токену, заявка JSON и multipart, повторная доставка и версии, заявитель отдельно от публикации, статус заявки
-для бота, статус подключения и приёмка по §14 плана. Модуль подключения импортируется внутри тестов (ground rule 12)."""
+для бота, статус подключения и приёмка по §14 плана. Модуль подключения импортируется внутри тестов(ground rule 12)."""
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -25,7 +25,7 @@ ALMATY = timezone(timedelta(hours=5))
 
 @pytest.fixture
 def bot(env):
-    """Сервисный токен на сервере и модуль подключения (импорт — внутри теста)."""
+    """Сервисный токен на сервере и модуль подключения(импорт - внутри теста)."""
     env(SERVICE_API_TOKEN=SERVICE_TOKEN)
     from app.integrations import telegram_bot
 
@@ -89,7 +89,7 @@ def test_auth_matrix_and_rejections_visible(client, env):
     env(SERVICE_API_TOKEN=SERVICE_TOKEN)
     r = post(client, body(), headers={})
     assert (r.status_code, r.json()["detail"], r.headers["www-authenticate"]) == (401, auth.SERVICE_MISSING, "Bearer")
-    # токен проверяется до разбора тела: испорченный multipart без токена — 401, а не 400/422
+    # токен проверяется до разбора тела: испорченный multipart без токена - 401, а не 400/422
     r = client.post(URL, content=b"--xyz\r\ngarbage", headers={"Content-Type": "multipart/form-data; boundary=xyz"})
     assert r.status_code == 401
     assert client.post(URL, content=b"{not json", headers={"Content-Type": "application/json"}).status_code == 401
@@ -103,14 +103,14 @@ def test_auth_matrix_and_rejections_visible(client, env):
     assert c["statusDetail"].startswith("Бот обращается с неверным сервисным токеном (последняя попытка ")
     assert post(client, body(), headers={"Authorization": f"Bearer {WRONG_TOKEN}"}).status_code == 403
 
-    # X-API-Key и Bearer — оба принимаются; успех новее отказа — «принимает заявки»
+    # X-API-Key и Bearer - оба принимаются; успех новее отказа - "принимает заявки"
     assert post(client, body()).status_code == 201
     assert post(client, body(), headers=BEARER).status_code == 200
     assert post(client, body(), headers={"authorization": f"bearer {SERVICE_TOKEN}"}).status_code == 200
     c = connector(client)
     assert (c["status"], c["statusLabel"]) == ("working", "принимает заявки")
 
-    # отклонённая заявка (422) новее успеха — «ошибка» с причиной
+    # отклонённая заявка(422) новее успеха - "ошибка" с причиной
     r = post(client, body(externalId=None))
     assert r.status_code == 422
     c = connector(client)
@@ -121,7 +121,7 @@ def test_auth_matrix_and_rejections_visible(client, env):
     assert SERVICE_TOKEN not in text and WRONG_TOKEN not in text
 
 
-# ---------- 2. заявка JSON; заявитель — только в bot_submissions ----------
+# ---------- 2. заявка JSON; заявитель - только в bot_submissions ----------
 
 def test_json_submission_applicant_private(client, bot):
     from app import models
@@ -159,7 +159,7 @@ def test_json_submission_applicant_private(client, bot):
     for value in PII:
         assert not any(value in t for t in exposed), value
 
-    # без площадки и аккаунта — «Другая площадка», аккаунт «не указан»; без заявителя — пустой
+    # без площадки и аккаунта - "Другая площадка", аккаунт "не указан"; без заявителя - пустой
     r = post(client, {"externalId": "555:1", "text": "Квартиры в рассрочку"})
     assert r.status_code == 201, r.text
     ad = client.get(f"/api/ads/{r.json()['adId']}").json()
@@ -211,24 +211,24 @@ def test_multipart_files_stored_and_analysis_queued(client, bot):
                             .order_by(models.MediaAsset.position)).all()
         assert [(x.source_key, x.status, x.origin_ref, x.role, x.mime) for x in assets] == [
             ("AgADxyz", "downloaded", "bot", "attachment", "image/png"),
-            (bot.content_key(b), "downloaded", "bot", "attachment", "image/png")]  # без описания — ключ по содержимому
+            (bot.content_key(b), "downloaded", "bot", "attachment", "image/png")]  # без описания - ключ по содержимому
         assert bot.content_key(b).startswith("tgbot:sha256:")
         assert all("photo.jpg" not in json.dumps(x.meta or {}) for x in assets)  # имя файла жителя не хранится
         job = db.scalars(select(models.Job).where(models.Job.ad_id == ad_id)).one()
         assert (job.kind, job.status) == ("analyze", "queued")
 
-    # видео MP4 — kind video
+    # видео MP4 - kind video
     r = post_files(client, body(externalId="555:2"), [("v.mp4", mp4_bytes(), "video/mp4")])
     assert r.status_code == 201, r.text
     assert [m["kind"] for m in client.get(f"/api/ads/{r.json()['adId']}").json()["media"]] == ["video"]
 
-    # описанный, но не переданный файл — «бот не передал файл», не молчаливая потеря
+    # описанный, но не переданный файл - "бот не передал файл", не молчаливая потеря
     r = post(client, body(externalId="555:3", media=[{"key": "AgADnofile"}]))
     assert r.status_code == 201, r.text
     with SessionLocal() as db:
         x = db.scalars(select(models.MediaAsset).where(models.MediaAsset.ad_id == r.json()["adId"])).one()
         assert (x.source_key, x.status, x.error) == ("AgADnofile", "unavailable", "Бот не передал файл")
-    # тот же файл в повторной доставке — загружается
+    # тот же файл в повторной доставке - загружается
     r = post_files(client, body(externalId="555:3", media=[{"key": "AgADnofile"}]),
                    [("c.png", png_bytes((70, 80, 90)), "image/png")])
     assert r.json()["status"] == "unchanged"
@@ -240,7 +240,7 @@ def test_multipart_files_stored_and_analysis_queued(client, bot):
 def test_multipart_rejections_save_nothing(client, bot):
     before = snapshot()
     png = ("a.png", png_bytes((1, 2, 3)), "image/png")
-    # не изображение и не видео — 415, ни заявки, ни файлов (и первый, подходящий, файл тоже не сохранён)
+    # не изображение и не видео - 415, ни заявки, ни файлов(и первый, подходящий, файл тоже не сохранён)
     r = post_files(client, body(), [png, ("note.txt", b"plain text, not an image", "image/png")])
     assert (r.status_code, r.json()["detail"]) == (415, "Файл №2: неподдерживаемый тип — нужен JPEG, PNG, WEBP, GIF, "
                                                         "MP4 или MOV")
@@ -269,7 +269,7 @@ def test_multipart_rejections_save_nothing(client, bot):
     # повтор ключа файла в media
     r = post_files(client, body(media=[{"key": "k"}, {"key": "k"}]), [png])
     assert r.status_code == 422
-    # ошибка в payload — loc указывает на поле внутри payload
+    # ошибка в payload - loc указывает на поле внутри payload
     r = post_files(client, body(platform="vk"), [png])
     assert r.status_code == 422 and r.json()["detail"][0]["loc"] == ["body", "payload", "platform"]
     assert snapshot() == before
@@ -303,9 +303,9 @@ def test_decision_fields_and_validation(client, bot):
     assert r.status_code == 422 and not any(v in r.text for v in PII)
     r = client.post(URL, headers={**KEY, "Content-Type": "text/plain"}, content=b"hello")
     assert (r.status_code, r.json()["detail"]) == (415, "Нужен JSON или multipart/form-data")
-    assert client.post(URL, headers=KEY, data={"payload": "{}"}).status_code == 415  # urlencoded — не multipart
+    assert client.post(URL, headers=KEY, data={"payload": "{}"}).status_code == 415  # urlencoded - не multipart
     assert count(models.Ad, models.Ad.source == "bot") == 0
-    # платформа в другом регистре и ID числом — принимаются; текст длиннее предела публикации обрезается
+    # платформа в другом регистре и ID числом - принимаются; текст длиннее предела публикации обрезается
     r = post(client, body(externalId=777, platform=" TikTok ", text="ы" * 30000))
     assert r.status_code == 201, r.text
     assert r.json()["externalId"] == "777"
@@ -316,7 +316,7 @@ def test_decision_fields_and_validation(client, bot):
 # ---------- 6. статус заявки для бота ----------
 
 def test_submission_status_and_updates(client, bot):
-    eid = "-1001234567890/777"  # ID с «/» — маршрут {external_id:path}
+    eid = "-1001234567890/777"  # ID с "/" - маршрут {external_id:path}
     t_before = datetime.now(timezone.utc) - timedelta(seconds=1)
     ad_id = post(client, body(externalId=eid)).json()["adId"]
     r = client.get(f"{URL}/submissions/{eid}", headers=KEY)
@@ -335,14 +335,14 @@ def test_submission_status_and_updates(client, bot):
     assert (got["status"], got["statusLabel"]) == ("in_review", "Заявка на проверке")
     assert datetime.fromisoformat(got["updatedAt"]) >= received
 
-    since = t_mid.astimezone(ALMATY).isoformat()  # «+05:00»
+    since = t_mid.astimezone(ALMATY).isoformat()  # "+05:00"
     r = client.get(f"{URL}/updates", headers=KEY, params={"since": since})
     assert r.status_code == 200, r.text
     assert [(x["externalId"], x["status"]) for x in r.json()] == [(eid, "in_review")]
-    # «+» без кодирования в query приходит пробелом — время всё равно понятно
+    # "+" без кодирования в query приходит пробелом - время всё равно понятно
     r = client.get(f"{URL}/updates?since={since}", headers=KEY)
     assert [x["externalId"] for x in r.json()] == [eid]
-    # получена после since — тоже изменение; после последнего изменения — пусто
+    # получена после since - тоже изменение; после последнего изменения - пусто
     other = post(client, body(externalId="555:9")).json()["adId"]
     r = client.get(f"{URL}/updates", headers=KEY, params={"since": t_before.isoformat()})
     assert [(x["externalId"], x["status"]) for x in r.json()] == [(eid, "in_review"), ("555:9", "received")]
@@ -398,14 +398,14 @@ def test_connector_status_lifecycle(client, env, admin_headers):
                                                                    "Заявок через бота ещё не было")
     assert c["configured"] is True and c["secretRefs"] == ["env:SERVICE_API_TOKEN"]
     assert client.post("/api/sources/telegram_bot/test", headers=admin_headers,
-                       json={"author": AUTHOR}).status_code == 409  # проверки нет — только приём
+                       json={"author": AUTHOR}).status_code == 409  # проверки нет - только приём
     post_files(client, body(), [("a.png", png_bytes((5, 5, 5)), "image/png")])
     c = connector(client)
     assert (c["status"], c["statusLabel"]) == ("working", "принимает заявки")
     assert c["statusDetail"].startswith("Последняя заявка: ")
     assert c["counts"] == {"items": 1, "ads": 1, "media": 1}
     assert registry.get("telegram_bot").contract_verified is False
-    with SessionLocal() as db:  # через 8 дней без заявок — «ожидает заявок», время последней видно
+    with SessionLocal() as db:  # через 8 дней без заявок - "ожидает заявок", время последней видно
         later = service.view(db, ["telegram_bot"], now=models.utcnow() + timedelta(days=8))[0]
     assert (later["status"], later["status_detail"][:17]) == ("waiting", "Последняя заявка:")
     assert registry.get("telegram_bot").computed_status(None, None, None) is None  # smoke без БД
@@ -422,7 +422,7 @@ def test_db_error_does_not_leak_applicant(client, bot, monkeypatch, caplog):
     assert r.status_code == 500
     assert "Заявка не сохранена: ошибка базы данных (IntegrityError)" in caplog.text
     assert not any(v in caplog.text for v in PII) and not any(v in r.text for v in PII)
-    c = connector(client)  # сбой сохранения не выглядит как «ожидает заявок»
+    c = connector(client)  # сбой сохранения не выглядит как "ожидает заявок"
     assert (c["status"], c["statusDetail"]) == (
         "error", "Последняя заявка отклонена: ошибка базы данных (IntegrityError) — заявка не сохранена, подробности в "
                  "журнале API")
@@ -438,7 +438,7 @@ def test_server_failure_visible_and_files_removed(client, bot, monkeypatch):
     files = [("a.png", png_bytes((131, 0, 0)), "image/png"), ("b.png", png_bytes((132, 0, 0)), "image/png")]
     calls = []
 
-    def second_fails(data, **kw):  # первый файл уже на диске, на втором — сбой диска
+    def second_fails(data, **kw):  # первый файл уже на диске, на втором - сбой диска
         calls.append(1)
         if len(calls) == 2:
             raise OSError(28, "No space left on device")
@@ -454,20 +454,20 @@ def test_server_failure_visible_and_files_removed(client, bot, monkeypatch):
                            "журнале API")
     monkeypatch.setattr(media, "store_bytes", real_store)
 
-    def boom(db, pub, **kw):  # файлы записаны, приём упал — транзакция откатана, файлы убраны
+    def boom(db, pub, **kw):  # файлы записаны, приём упал - транзакция откатана, файлы убраны
         raise RuntimeError("Публикацию одновременно меняют — новая версия не записана, повторите приём")
 
     monkeypatch.setattr(bot.ingest, "ingest_publication", boom)
     assert post_files(client, body(), files).status_code == 500
     assert snapshot() == before
-    # файл, который уже был в хранилище до запроса (его мог только что записать другой запрос), не удаляется
+    # файл, который уже был в хранилище до запроса(его мог только что записать другой запрос), не удаляется
     other = media.store_bytes(png_bytes((133, 0, 0)))
     assert post_files(client, body(), [("c.png", png_bytes((133, 0, 0)), "image/png")]).status_code == 500
     assert media.path_of(other.storage_key).exists()
     media.path_of(other.storage_key).unlink()
     monkeypatch.setattr(bot.ingest, "ingest_publication", real_ingest)
 
-    # принятая заявка новее сбоя — «принимает заявки»; файлы на месте
+    # принятая заявка новее сбоя - "принимает заявки"; файлы на месте
     r = post_files(client, body(), files)
     assert r.status_code == 201, r.text
     ad = client.get(f"/api/ads/{r.json()['adId']}").json()
@@ -476,7 +476,7 @@ def test_server_failure_visible_and_files_removed(client, bot, monkeypatch):
 
 
 def test_file_removed_by_parallel_failure_is_restored(client, bot, monkeypatch):
-    """Параллельный неудачный запрос с теми же байтами удалил файл до commit этого — сохранённая заявка записывает файл
+    """Параллельный неудачный запрос с теми же байтами удалил файл до commit этого - сохранённая заявка записывает файл
     снова, ссылка на него не битая."""
     from app import media
 
@@ -505,21 +505,21 @@ def test_file_keys_follow_content(client, bot):
     assert r.status_code == 201, r.text
     ad_id = r.json()["adId"]
     ad = client.get(f"/api/ads/{ad_id}").json()
-    assert len(ad["media"]) == 1  # один и тот же файл дважды — один файл
+    assert len(ad["media"]) == 1  # один и тот же файл дважды - один файл
     assert post_files(client, body(), [("a.png", a, "image/png")]).json()["status"] == "unchanged"
 
-    # повторная доставка без files и без media (JSON) — файлы прежней версии остаются, новой версии нет
+    # повторная доставка без files и без media(JSON) - файлы прежней версии остаются, новой версии нет
     r = post(client, body())
     assert (r.status_code, r.json()["status"]) == (200, "unchanged")
     assert client.get(f"/api/ads/{ad_id}").json()["image"] == ad["image"]
-    # изменилась только подпись — новая версия, фото по-прежнему у публикации
+    # изменилась только подпись - новая версия, фото по-прежнему у публикации
     r = post(client, body(text="Старт продаж, бронь от 150 000 ₸"))
     assert r.json()["status"] == "updated"
     now = client.get(f"/api/ads/{ad_id}").json()
     assert (now["image"], [m["id"] for m in now["media"]]) == (ad["image"], [m["id"] for m in ad["media"]])
     assert [x["mediaKeys"] for x in client.get(f"/api/ads/{ad_id}/versions").json()] == [[bot.content_key(a)]] * 2
 
-    # житель заменил фото в сообщении (тот же externalId) — новая версия с новым файлом, прежний — в истории
+    # житель заменил фото в сообщении(тот же externalId) - новая версия с новым файлом, прежний - в истории
     r = post_files(client, body(text="Старт продаж, бронь от 150 000 ₸"), [("b.png", b, "image/png")])
     assert (r.status_code, r.json()["status"]) == (200, "updated")
     now = client.get(f"/api/ads/{ad_id}").json()
@@ -528,7 +528,7 @@ def test_file_keys_follow_content(client, bot):
     assert count(models.MediaAsset, models.MediaAsset.ad_id == ad_id) == 2
     assert count(models.IngestVersion) == 3
 
-    # тот же ключ media с другими байтами (бот нарушил контракт ключа) — без изменений, лишний файл не остаётся на диске
+    # тот же ключ media с другими байтами(бот нарушил контракт ключа) - без изменений, лишний файл не остаётся на диске
     eid = "555:7"
     assert post_files(client, body(externalId=eid, media=[{"key": "AgADsame"}]),
                       [("c.png", png_bytes((153, 0, 0)), "image/png")]).status_code == 201
@@ -542,7 +542,7 @@ def test_file_keys_follow_content(client, bot):
 # ---------- 11. часть files без имени файла, лишние поля формы ----------
 
 def _multipart(*parts: tuple) -> tuple[bytes, dict]:
-    """Тело multipart вручную: части (name, filename или None, content-type или None, bytes)."""
+    """Тело multipart вручную: части(name, filename или None, content-type или None, bytes)."""
     out = b""
     for name, filename, ctype, data in parts:
         disp = f'form-data; name="{name}"' + (f'; filename="{filename}"' if filename is not None else "")
@@ -554,18 +554,18 @@ def _multipart(*parts: tuple) -> tuple[bytes, dict]:
 def test_multipart_file_without_filename_rejected(client, bot):
     before = snapshot()
     payload = ("payload", None, None, json.dumps(body()).encode())
-    # curl -F "files=<a.png" — файл без filename: Starlette отдаёт его строкой, молча терять его нельзя
+    # curl -F "files=<a.png" - файл без filename: Starlette отдаёт его строкой, молча терять его нельзя
     content, headers = _multipart(payload, ("files", None, "image/png", png_bytes((161, 0, 0))))
     r = client.post(URL, headers=headers, content=content)
     assert (r.status_code, r.json()["detail"]) == (422, "Файлы передаются в поле files с именем файла (filename)")
     c = connector(client)
     assert (c["status"], c["statusDetail"]) == ("error", "Последняя заявка отклонена: Файлы передаются в поле files с "
                                                          "именем файла (filename)")
-    # такой же файл больше 1 МБ — 413 с подсказкой про filename
+    # такой же файл больше 1 МБ - 413 с подсказкой про filename
     content, headers = _multipart(payload, ("files", None, "image/png", b"\x89PNG" + b"0" * (1024 * 1024)))
     r = client.post(URL, headers=headers, content=content)
     assert r.status_code == 413 and "без имени файла (filename)" in r.json()["detail"]
-    # лишнее текстовое поле и payload дважды — не игнорируются молча
+    # лишнее текстовое поле и payload дважды - не игнорируются молча
     content, headers = _multipart(payload, ("caption", None, None, "Подпись".encode()))
     r = client.post(URL, headers=headers, content=content)
     assert (r.status_code, r.json()["detail"]) == (422, "Лишние поля формы: нужны только payload и files")
@@ -573,32 +573,32 @@ def test_multipart_file_without_filename_rejected(client, bot):
     r = client.post(URL, headers=headers, content=content)
     assert (r.status_code, r.json()["detail"]) == (422, "Поле payload передано несколько раз")
     assert snapshot() == before
-    # с filename — принимается
+    # с filename - принимается
     content, headers = _multipart(payload, ("files", "a.png", "image/png", png_bytes((161, 0, 0))))
     r = client.post(URL, headers=headers, content=content)
     assert r.status_code == 201, r.text
     assert len(client.get(f"/api/ads/{r.json()['adId']}").json()["media"]) == 1
 
 
-# ---------- 12. «нет доступа» снимается верным токеном; заявитель при повторе не стирается ----------
+# ---------- 12. "нет доступа" снимается верным токеном; заявитель при повторе не стирается ----------
 
 def test_token_reject_cleared_by_successful_poll(client, bot):
     since = {"since": "2026-10-17T00:00:00Z"}
     assert post(client, body()).status_code == 201
     assert client.get(f"{URL}/updates", headers={"X-API-Key": WRONG_TOKEN}, params=since).status_code == 403
     assert connector(client)["status"] == "denied"
-    # бот исправлен: опрос с верным токеном — не «нет доступа», хотя новых заявок нет
+    # бот исправлен: опрос с верным токеном - не "нет доступа", хотя новых заявок нет
     assert client.get(f"{URL}/updates", headers=KEY, params=since).status_code == 200
     c = connector(client)
     assert (c["status"], c["statusDetail"][:17]) == ("working", "Последняя заявка:")
     assert client.get(f"{URL}/submissions/{EID}", headers=BEARER).status_code == 200  # повторная отметка не нужна
     assert connector(client)["status"] == "working"
-    # снова неверный токен (запрос без токена) — снова «нет доступа»; верный опрос статуса заявки его снимает
+    # снова неверный токен(запрос без токена) - снова "нет доступа"; верный опрос статуса заявки его снимает
     assert client.get(f"{URL}/submissions/{EID}").status_code == 401
     assert connector(client)["status"] == "denied"
     assert client.get(f"{URL}/submissions/nope:1", headers=KEY).status_code == 404
     assert connector(client)["status"] == "working"
-    # опрос с верным токеном не скрывает отклонённую заявку: «ошибка» остаётся
+    # опрос с верным токеном не скрывает отклонённую заявку: "ошибка" остаётся
     assert post(client, body(platform="vk")).status_code == 422
     assert client.get(f"{URL}/updates", headers=KEY, params=since).status_code == 200
     assert connector(client)["status"] == "error"
@@ -609,7 +609,7 @@ def test_redelivery_keeps_applicant_and_comment(client, bot):
     from app.db import SessionLocal
 
     assert post(client, body()).status_code == 201
-    # повторная доставка: заявитель без телефона, комментарий null — прежние сведения не стираются
+    # повторная доставка: заявитель без телефона, комментарий null - прежние сведения не стираются
     r = post(client, body(applicant={"telegramUserId": 987654321, "username": "", "name": "Иванова М."}) |
              {"comment": None})
     assert r.json()["status"] == "unchanged"
@@ -617,14 +617,14 @@ def test_redelivery_keeps_applicant_and_comment(client, bot):
         sub = db.scalars(select(models.BotSubmission)).one()
         assert sub.applicant == {**APPLICANT, "telegramUserId": "987654321", "name": "Иванова М."}
         assert sub.comment == COMMENT
-    # новый непустой комментарий — заменяет прежний
+    # новый непустой комментарий - заменяет прежний
     post(client, body(comment="Уточнение: офис на Казахстан, 61"))
     with SessionLocal() as db:
         assert db.scalars(select(models.BotSubmission)).one().comment == "Уточнение: офис на Казахстан, 61"
 
 
 def test_auth_runs_off_event_loop(client, bot, monkeypatch):
-    """Проверка токена пишет отказ в БД — она выполняется в пуле потоков, а не в цикле событий."""
+    """Проверка токена пишет отказ в БД - она выполняется в пуле потоков, а не в цикле событий."""
     import asyncio
 
     from app import auth
@@ -645,7 +645,7 @@ def test_auth_runs_off_event_loop(client, bot, monkeypatch):
     assert where == ["thread", "thread"]
 
 
-# ---------- §16.5: приёмка по §14 плана (столбец B) ----------
+# ---------- §16.5: приёмка по §14 плана(столбец B) ----------
 
 def test_acceptance_repeat_no_duplicate(client, bot, run_worker, accept, ocr_stub, http_mock):
     files = [("a.png", png_bytes((11, 0, 0)), "image/png"), ("b.png", png_bytes((12, 0, 0)), "image/png")]
@@ -656,7 +656,7 @@ def test_acceptance_repeat_no_duplicate(client, bot, run_worker, accept, ocr_stu
     assert (r.status_code, r.json()["status"]) == (200, "unchanged")
     run_worker()
     assert accept.snapshot() == before and stored_files() == stored
-    assert http_mock.calls == []  # файлы пришли от бота — внешних загрузок нет
+    assert http_mock.calls == []  # файлы пришли от бота - внешних загрузок нет
 
 
 def test_acceptance_failure_not_empty(client, bot, accept):
@@ -676,7 +676,7 @@ def test_acceptance_media_survives_source(client, bot, accept):
 
 
 def test_acceptance_not_confirmed_automatically(client, bot, run_worker, accept, ocr_stub):
-    ad_id = post(client, body()).json()["adId"]  # текст называет демо-ЖК «Ульба Ривер»
+    ad_id = post(client, body()).json()["adId"]  # текст называет демо-ЖК "Ульба Ривер"
     run_worker()
     accept.assert_not_confirmed(ad_id)
     r = client.post(f"/api/ads/{ad_id}/hypotheses/accept", json={"author": AUTHOR, "complexId": "c3"})

@@ -1,12 +1,12 @@
-"""API подключений и приёма публикаций (integration-spec §11.1, §7.4).
+"""API подключений и приёма публикаций(integration-spec §11.1, §7.4).
 
-Чтение (состояние подключений, запуски, версии публикации, файлы) токена не требует и секретов не содержит; состояние
-подключений и запуски без токена администратора — урезанные (service.public_*): посетитель видит только статусы,
+Чтение(состояние подключений, запуски, версии публикации, файлы) токена не требует и секретов не содержит; состояние
+подключений и запуски без токена администратора - урезанные(service.public_*): посетитель видит только статусы,
 расписание и счётчики. Настройка
-подключений, ручной запуск и повторный анализ ИИ (платный запрос к Claude) — только администратору (SAQ_ADMIN_TOKEN,
-проверяет сервер). Приём публикаций — по отдельному токену INTEGRATION_INGEST_TOKEN; токен проверяется ДО разбора тела
-запроса, отказы записываются в состояние подключения «Приём публикаций API». Сбор, проверки и анализ в запросе не
-выполняются: запрос ставит задание воркеру (202).
+подключений, ручной запуск и повторный анализ ИИ(платный запрос к Claude) - только администратору(SAQ_ADMIN_TOKEN,
+проверяет сервер). Приём публикаций - по отдельному токену INTEGRATION_INGEST_TOKEN; токен проверяется ДО разбора тела
+запроса, отказы записываются в состояние подключения "Приём публикаций API". Сбор, проверки и анализ в запросе не
+выполняются: запрос ставит задание воркеру(202).
 """
 import logging
 import uuid
@@ -60,7 +60,7 @@ def _invalid(loc: tuple, msg: str, value: Any) -> RequestValidationError:
 @router.get("/api/sources/connectors", response_model=schemas.ConnectorsOut, response_model_by_alias=True)
 def connectors(request: Request, db: Session = Depends(get_db)):
     """Подключения в порядке страницы: фактический статус, настройки, счётчики, последний запуск; жив ли воркер.
-    Без токена администратора — только статусы, расписание и счётчики (admin = false)."""
+    Без токена администратора - только статусы, расписание и счётчики(admin = false)."""
     now = models.utcnow()
     admin = auth.is_admin(request)
     items, worker = service.view(db, now=now), service.worker_info(db, now)
@@ -80,7 +80,7 @@ def connector_one(code: str, request: Request, db: Session = Depends(get_db)):
 @router.post("/api/sources/collect-all", response_model=schemas.CollectAllOut, response_model_by_alias=True)
 def collect_all(body: schemas.AdminActionIn, admin: auth.Admin = Depends(auth.require_admin),
                 db: Session = Depends(get_db)):
-    """«Обновить всё»: сбор для включённых, настроенных и проверенных сборщиков; остальные — с причиной пропуска."""
+    """"Обновить всё": сбор для включённых, настроенных и проверенных сборщиков; остальные - с причиной пропуска."""
     out = service.collect_all(db, body.author, models.utcnow())
     db.commit()
     return out
@@ -90,7 +90,7 @@ def collect_all(body: schemas.AdminActionIn, admin: auth.Admin = Depends(auth.re
               responses={409: {"description": "Подключение не настроено или действие недоступно"}})
 def patch_connector(code: registry.ConnectorCode, body: schemas.ConnectorPatchIn,
                     admin: auth.Admin = Depends(auth.require_admin), db: Session = Depends(get_db)):
-    """Настройки подключения (администратор): сбор по расписанию, период, списки аккаунтов/каналов/URL."""
+    """Настройки подключения(администратор): сбор по расписанию, период, списки аккаунтов/каналов/URL."""
     _connector(code)
     try:
         service.patch(db, code, body)
@@ -123,7 +123,7 @@ def _request(code: str, trigger: str, author: str, db: Session) -> JSONResponse:
              status_code=202, responses={200: {"description": "Проверка уже в очереди или идёт"}})
 def test_connector(code: registry.ConnectorCode, body: schemas.AdminActionIn,
                    admin: auth.Admin = Depends(auth.require_admin), db: Session = Depends(get_db)):
-    """«Проверить подключение» (администратор): задание воркеру; ответ — запуск (202) или уже активный (200)."""
+    """"Проверить подключение"(администратор): задание воркеру; ответ - запуск(202) или уже активный(200)."""
     return _request(code, "test", body.author, db)
 
 
@@ -131,7 +131,7 @@ def test_connector(code: registry.ConnectorCode, body: schemas.AdminActionIn,
              status_code=202, responses={200: {"description": "Сбор уже в очереди или идёт"}})
 def collect_connector(code: registry.ConnectorCode, body: schemas.AdminActionIn,
                       admin: auth.Admin = Depends(auth.require_admin), db: Session = Depends(get_db)):
-    """«Собрать сейчас» (администратор; можно и после остановки по ошибке — это явное действие)."""
+    """"Собрать сейчас"(администратор; можно и после остановки по ошибке - это явное действие)."""
     return _request(code, "manual", body.author, db)
 
 
@@ -140,7 +140,7 @@ def collect_connector(code: registry.ConnectorCode, body: schemas.AdminActionIn,
 @router.get("/api/collection-runs", response_model=List[schemas.RunOut], response_model_by_alias=True)
 def runs(request: Request, source: Optional[str] = Query(None, max_length=32),
          limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_db)):
-    """Запуски сбора и проверок, новые первыми; без токена администратора — без автора, ошибок, заметок и стоимости."""
+    """Запуски сбора и проверок, новые первыми; без токена администратора - без автора, ошибок, заметок и стоимости."""
     R = models.CollectionRun
     q = select(R).order_by(R.id.desc()).limit(limit)
     if source:
@@ -158,10 +158,10 @@ def run_one(request: Request, run_id: int = Path(ge=1, le=2_147_483_647), db: Se
     return out if auth.is_admin(request) else service.public_run(out)
 
 
-# ---------- приём публикаций (§7.4) ----------
+# ---------- приём публикаций(§7.4) ----------
 
 def _intake_schema() -> dict:
-    """JSON-схема тела для документации OpenAPI (тело разбирается вручную — после проверки токена)."""
+    """JSON-схема тела для документации OpenAPI(тело разбирается вручную - после проверки токена)."""
     schema = schemas.IntakePublicationIn.model_json_schema(by_alias=True)
     defs = schema.pop("$defs", {})
 
@@ -184,7 +184,7 @@ def _first_error(e: ValidationError) -> str:
 
 
 def _intake_sync(body: schemas.IntakePublicationIn) -> ingest.IngestResult:
-    """Работа с БД — в пуле потоков: публикация → единый приём (collector = intake), commit."""
+    """Работа с БД - в пуле потоков: публикация → единый приём(collector = intake), commit."""
     now = models.utcnow()
     pub = Publication(platform=body.platform, external_id=body.external_id, account=body.account, url=body.url,
                       text=body.text, collected_at=now, published_at=body.published_at,
@@ -215,8 +215,8 @@ def _intake_sync(body: schemas.IntakePublicationIn) -> ingest.IngestResult:
                         409: {"description": "Публикация собрана другим источником"},
                         413: {"description": "Тело больше 2 МБ"}, 503: {"description": "Приём не настроен"}})
 async def intake(request: Request) -> JSONResponse:
-    """Нормализованная публикация от внешнего сборщика (Authorization: Bearer INTEGRATION_INGEST_TOKEN). Новая — 201,
-    повтор или новая версия — 200. Файлы по ссылкам загружает задание анализа, не этот запрос."""
+    """Нормализованная публикация от внешнего сборщика(Authorization: Bearer INTEGRATION_INGEST_TOKEN). Новая - 201,
+    повтор или новая версия - 200. Файлы по ссылкам загружает задание анализа, не этот запрос."""
     # до разбора тела; в пуле потоков: отказ записывается в БД и не должен держать цикл событий
     await run_in_threadpool(auth.require_ingest, request)
     data = await request.body()
@@ -229,7 +229,7 @@ async def intake(request: Request) -> JSONResponse:
     try:
         res = await run_in_threadpool(_intake_sync, body)
     except Exception as e:
-        # сбой сервера — тоже в статусе подключения («ошибка»): иначе он выглядел бы как «ожидает публикаций»
+        # сбой сервера - тоже в статусе подключения("ошибка"): иначе он выглядел бы как "ожидает публикаций"
         await run_in_threadpool(service.record_reject, "intake", 500,
                                 f"ошибка сервера ({type(e).__name__}) — публикация не сохранена, подробности в журнале "
                                 "API")
@@ -250,7 +250,7 @@ async def intake(request: Request) -> JSONResponse:
 
 @router.get("/api/ads/{aid}/versions", response_model=List[schemas.AdVersionOut], response_model_by_alias=True)
 def ad_versions(aid: str, db: Session = Depends(get_db)):
-    """Версии содержимого собранной публикации в источнике, новые первыми; у ручных и демо-публикаций — []."""
+    """Версии содержимого собранной публикации в источнике, новые первыми; у ручных и демо-публикаций - []."""
     if db.get(models.Ad, aid) is None:
         raise HTTPException(404, AD_NOT_FOUND)
     item = db.scalar(select(models.IngestItem).where(models.IngestItem.ad_id == aid))
@@ -262,10 +262,10 @@ def ad_versions(aid: str, db: Session = Depends(get_db)):
              "media_keys": list(v.media_keys or []), "current": v.version == item.version} for v in rows]
 
 
-# ---------- анализ ИИ: «Проанализировать ещё раз» ----------
+# ---------- анализ ИИ: "Проанализировать ещё раз" ----------
 
 def _active_analysis(db: Session, aid: str) -> Optional[models.Job]:
-    """Задание анализа публикации, которое выполняется (у него dedupe_key уже обнулён), иначе — в очереди; None — нет."""
+    """Задание анализа публикации, которое выполняется(у него dedupe_key уже обнулён), иначе - в очереди; None - нет."""
     J = models.Job
     found = list(db.scalars(select(J).where(J.kind == "analyze", J.ad_id == aid, J.status.in_(jobs.ACTIVE))
                             .order_by(J.id.desc())))
@@ -287,11 +287,11 @@ def _ad_response(ad: models.Ad, status: int) -> JSONResponse:
                         503: {"description": "Администрирование или анализ ИИ не настроены на сервере"}})
 def reanalyze(aid: str, body: schemas.AdminActionIn, admin: auth.Admin = Depends(auth.require_admin),
               db: Session = Depends(get_db)):
-    """«Проанализировать ещё раз» (администратор: запрос к Claude расходует дневной бюджет анализа ИИ). Задание анализа
+    """"Проанализировать ещё раз"(администратор: запрос к Claude расходует дневной бюджет анализа ИИ). Задание анализа
     с повторным запросом, даже если этот материал этой моделью уже проанализирован: новая строка результата, прежняя
-    остаётся в истории. Ответ — публикация (processing — состояние анализа): 202 — задание поставлено или задание в
-    очереди стало повторным анализом; 200 — анализ уже идёт или повторный анализ уже в очереди (без дубля и без
-    события). Бюджета на запрос не хватает — 409 без задания. В журнал — «Запрошен повторный анализ ИИ» от автора."""
+    остаётся в истории. Ответ - публикация(processing - состояние анализа): 202 - задание поставлено или задание в
+    очереди стало повторным анализом; 200 - анализ уже идёт или повторный анализ уже в очереди(без дубля и без
+    события). Бюджета на запрос не хватает - 409 без задания. В журнал - "Запрошен повторный анализ ИИ" от автора."""
     ad = db.get(models.Ad, aid)
     if ad is None:
         raise HTTPException(404, AD_NOT_FOUND)
@@ -316,7 +316,7 @@ def reanalyze(aid: str, body: schemas.AdminActionIn, admin: auth.Admin = Depends
     if job is None:
         job, created = jobs.enqueue(db, "analyze", ad_id=aid, content_version=item.version,
                                     dedupe_key=f"analyze:{aid}", payload=payload, priority=llm.REANALYZE_PRIORITY)
-    if not created:  # в очереди повтор загрузки или запроса, новая версия, дозапрос — теперь это повторный анализ
+    if not created:  # в очереди повтор загрузки или запроса, новая версия, дозапрос - теперь это повторный анализ
         job.payload = {**(job.payload or {}), **payload}
         job.priority = max(job.priority or 0, llm.REANALYZE_PRIORITY)
         if models.as_utc(job.run_after) > now:
@@ -334,7 +334,7 @@ def reanalyze(aid: str, body: schemas.AdminActionIn, admin: auth.Admin = Depends
 @router.get("/api/media/{asset_id}", response_class=FileResponse,
             responses={200: {"description": "Файл (изображение или видео)"}, 404: {"description": FILE_NOT_FOUND}})
 def media_file(asset_id: str = MEDIA_ID, db: Session = Depends(get_db)):
-    """Сохранённый файл публикации. Только загруженные файлы; тип — по сигнатуре; браузер не угадывает тип (nosniff)."""
+    """Сохранённый файл публикации. Только загруженные файлы; тип - по сигнатуре; браузер не угадывает тип(nosniff)."""
     a = db.get(models.MediaAsset, asset_id)
     if a is None or a.status != "downloaded" or not a.storage_key:
         raise HTTPException(404, FILE_NOT_FOUND)
@@ -354,7 +354,7 @@ def media_file(asset_id: str = MEDIA_ID, db: Session = Depends(get_db)):
                         429: {"description": "Слишком много загрузок"}, 507: {"description": "Мало места"}})
 def media_upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Скриншот из формы ручного ввода → хранилище. Привязывается к публикации, когда POST /api/ads указывает
-    image «/api/media/{id}»; непривязанный удаляется через сутки."""
+    image "/api/media/{id}"; непривязанный удаляется через сутки."""
     data = file.file.read(media.UPLOAD_MAX + 1)
     if len(data) > media.UPLOAD_MAX:
         raise HTTPException(413, f"Файл больше {media.UPLOAD_MAX // media.MB} МБ")
@@ -376,5 +376,5 @@ def media_upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
 @router.get("/api/admin/check")
 def admin_check(admin: auth.Admin = Depends(auth.require_admin)):
-    """Проверка введённого токена администратора (страница «Подключения»)."""
+    """Проверка введённого токена администратора(страница "Подключения")."""
     return {"ok": True}

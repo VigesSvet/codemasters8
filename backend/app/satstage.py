@@ -1,20 +1,20 @@
-"""«Спутник против рекламы»: стадия стройки на снимке Esri Wayback (гипотеза Claude по изображению) против того, что о
+""""Спутник против рекламы": стадия стройки на снимке Esri Wayback(гипотеза Claude по изображению) против того, что о
 стадии заявляет реклама ЖК.
 
-Командная строка — `python -m app.satstage [--only ID,…] [--limit N] [--max-usd X] [--force] [--dry-run]`: для каждого
-ЖК с координатами берёт из индекса снимков (frontend/public/wayback-index.json, scripts/wayback-index.mjs) свежий снимок
-точки и снимок, ближайший к началу стройки по документам (если он другой), скачивает по выпуску 3 × 3 тайла 17-го
-масштаба вокруг точки, склеивает (Pillow), обрезает 512 × 512 с точкой в центре, отмечает точку кольцом и одним
-запросом спрашивает модель ANTHROPIC_MODEL (app.integrations.analyzer_anthropic: тот же ключ, клиент, цены, fallbacks)
+Командная строка - `python -m app.satstage [--only ID,…] [--limit N] [--max-usd X] [--force] [--dry-run]`: для каждого
+ЖК с координатами берёт из индекса снимков(frontend/public/wayback-index.json, scripts/wayback-index.mjs) свежий снимок
+точки и снимок, ближайший к началу стройки по документам(если он другой), скачивает по выпуску 3 × 3 тайла 17-го
+масштаба вокруг точки, склеивает(Pillow), обрезает 512 × 512 с точкой в центре, отмечает точку кольцом и одним
+запросом спрашивает модель ANTHROPIC_MODEL(app.integrations.analyzer_anthropic: тот же ключ, клиент, цены, fallbacks)
 о стадии на каждом снимке: empty_lot | excavation | foundation | frame | roof_facade | completed | unclear, уверенность,
-что видно (по-русски). Результат — shared/sat_stage.json (поставляется в репозитории, как индекс снимков): записи по
-ключу «ЖК/выпуск/дата съёмки» с моделью, временем и стоимостью запроса. Те же снимки той же версией промпта повторно не
-отправляются (--force — отправить). Без ANTHROPIC_API_KEY запросов нет. Предел — MAX_REQUESTS запросов и --max-usd за
+что видно(по-русски). Результат - shared/sat_stage.json(поставляется в репозитории, как индекс снимков): записи по
+ключу "ЖК/выпуск/дата съёмки" с моделью, временем и стоимостью запроса. Те же снимки той же версией промпта повторно не
+отправляются(--force - отправить). Без ANTHROPIC_API_KEY запросов нет. Предел - MAX_REQUESTS запросов и --max-usd за
 запуск; расход пишется в лог и в runs файла.
 
-GET /api/complexes/{id}/sat-stage читает файл и сравнивает снимок с рекламой ЖК (отнесение публикаций — как в
-«Проверке по рекламе», screening.load_facts): расхождение — подсказка аналитику сверить готовность (R5) или основание
-(R1, ст. 7), баллов не добавляет: R5 требует подтверждённых значений с источником и датой, снимок и ответ модели — нет.
+GET /api/complexes/{id}/sat-stage читает файл и сравнивает снимок с рекламой ЖК(отнесение публикаций - как в
+"Проверке по рекламе", screening.load_facts): расхождение - подсказка аналитику сверить готовность(R5) или основание
+(R1, ст. 7), баллов не добавляет: R5 требует подтверждённых значений с источником и датой, снимок и ответ модели - нет.
 """
 import argparse
 import base64
@@ -45,21 +45,21 @@ from .settings import Settings, get_settings
 log = logging.getLogger("saq.satstage")
 
 ROOT = Path(__file__).resolve().parents[2]
-STORE = SHARED / "sat_stage.json"  # в Docker — /app/shared (SAQ_SHARED_DIR)
-INDEX = ROOT / "frontend" / "public" / "wayback-index.json"  # нужен только командной строке (в образе API его нет)
+STORE = SHARED / "sat_stage.json"  # в Docker - /app/shared(SAQ_SHARED_DIR)
+INDEX = ROOT / "frontend" / "public" / "wayback-index.json"  # нужен только командной строке(в образе API его нет)
 TILE_URL = ("https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/"
             "tile/{release}/{z}/{y}/{x}")
 ZOOM = 17
 TILE = 256
 CROP = 512
-RING = 56  # радиус кольца точки, пкс (≈ 65 м на 17-м масштабе в Усть-Каменогорске)
+RING = 56  # радиус кольца точки, пкс(≈ 65 м на 17-м масштабе в Усть-Каменогорске)
 PROMPT_VERSION = "saq-sat-1"
 MAX_REQUESTS = 25  # запросов за запуск
 MAX_USD = 1.0  # расход за запуск по умолчанию
 REASONING_MAX = 400
 CUES_MAX = 5
 CUE_LEN = 120
-GRACE_DAYS = 90  # публикация не позже снимка + 90 дней — снимок ещё описывает площадку на дату публикации
+GRACE_DAYS = 90  # публикация не позже снимка + 90 дней - снимок ещё описывает площадку на дату публикации
 
 STAGES = ("empty_lot", "excavation", "foundation", "frame", "roof_facade", "completed", "unclear")
 STAGE_LABELS = {"empty_lot": "пустая площадка", "excavation": "котлован", "foundation": "фундамент, нулевой цикл",
@@ -71,12 +71,12 @@ DISCLAIMER = ("Стадия на снимке — гипотеза ИИ по с�
               "готовность и не вывод о нарушении. В балл не входит: R5 считается только по заявленной и подтверждённой "
               "готовности с источниками и датами (акт осмотра, фото-мониторинг).")
 
-# Что реклама говорит о стадии (кроме objectStage Claude): маркеры с цитатой
+# Что реклама говорит о стадии(кроме objectStage Claude): маркеры с цитатой
 ADVANCED_MARKERS = ["каркас готов", "каркас возвед", "возведён каркас", "возведен каркас", "возвели каркас",
                     "монолит заверш", "кровля готова", "монтаж кровли", "фасадные работы", "монтаж фасада",
                     "на финишной прямой", "готовится к сдаче", "сдача дома", "сдаём дом", "сдаем дом", "выдача ключей",
-                    "получение ключей", "заселени"]  # описания отделки и фасада как свойства дома — не стадия
-# «Каркас дома уже полностью готов», «каркас 9-этажного корпуса возведён» — между словами до 40 символов
+                    "получение ключей", "заселени"]  # описания отделки и фасада как свойства дома - не стадия
+# "Каркас дома уже полностью готов", "каркас 9-этажного корпуса возведён" - между словами до 40 символов
 FRAME_RE = re.compile(r"каркас\w*[^.!?\n]{0,40}?(?:готов|возвед|заверш)\w*", re.I)
 EARLY_MARKERS = ["котлован", "нулевой цикл", "старт строительства", "начало строительства", "начали строительство"]
 CLAIM_LABELS = {"completed": "дом сдан", "advanced": "каркас возведён, финиш или сдача", "building": "строится",
@@ -88,7 +88,7 @@ Obj = Dict[str, Any]
 # ---------- индекс снимков и тайлы ----------
 
 def tile_of(lat: float, lng: float, z: int = ZOOM) -> Tuple[float, float]:
-    """Дробные координаты тайла Web Mercator (как tileOf в lib/wayback.ts, без округления)."""
+    """Дробные координаты тайла Web Mercator(как tileOf в lib/wayback.ts, без округления)."""
     n = 2 ** z
     r = math.radians(lat)
     return (lng + 180) / 360 * n, (1 - math.log(math.tan(r) + 1 / math.cos(r)) / math.pi) / 2 * n
@@ -111,7 +111,7 @@ def shot_date(s: Obj) -> str:
 
 
 def pick_shots(shots: List[Obj], start: Optional[str]) -> List[Tuple[str, Obj]]:
-    """Свежий снимок (role latest) и снимок, ближайший к началу стройки по документам (role start), если он другой."""
+    """Свежий снимок(role latest) и снимок, ближайший к началу стройки по документам(role start), если он другой."""
     shots = [s for s in shots if shot_date(s)]
     if not shots:
         return []
@@ -126,7 +126,7 @@ def pick_shots(shots: List[Obj], start: Optional[str]) -> List[Tuple[str, Obj]]:
 
 
 def fetch_tile(release: int, z: int, y: int, x: int) -> Optional[bytes]:
-    """Тайл выпуска Wayback (JPEG); нет тайла или ошибка — None. Тесты подменяют FETCH (сети в тестах нет)."""
+    """Тайл выпуска Wayback(JPEG); нет тайла или ошибка - None. Тесты подменяют FETCH(сети в тестах нет)."""
     import httpx
 
     try:
@@ -141,7 +141,7 @@ FETCH: Callable[[int, int, int, int], Optional[bytes]] = fetch_tile
 
 
 def compose(release: int, lat: float, lng: float, fetch: Optional[Callable] = None) -> Tuple[bytes, int]:
-    """3 × 3 тайла вокруг точки → JPEG 512 × 512, точка в центре, кольцо вокруг неё. Возвращает (байты, тайлов получено)."""
+    """3 × 3 тайла вокруг точки → JPEG 512 × 512, точка в центре, кольцо вокруг неё. Возвращает(байты, тайлов получено)."""
     from PIL import Image, ImageDraw
 
     fetch = fetch or FETCH
@@ -157,7 +157,7 @@ def compose(release: int, lat: float, lng: float, fetch: Optional[Callable] = No
             continue
         try:
             im = Image.open(io.BytesIO(raw)).convert("RGB")
-        except Exception:  # noqa: BLE001 — битый тайл: серый квадрат
+        except Exception:  # noqa: BLE001 - битый тайл: серый квадрат
             continue
         canvas.paste(im.resize((TILE, TILE)), ((dx + 1) * TILE, (dy + 1) * TILE))
         got += 1
@@ -207,8 +207,8 @@ SCHEMA = {
 
 
 def build_request(s: Settings, name: str, lat: float, images: List[Tuple[Obj, bytes]]) -> dict:
-    """Запрос Messages API: те же модель, предел токенов, effort и fallbacks, что у анализа публикаций; в сообщении —
-    подписи снимков и изображения (base64 JPEG)."""
+    """Запрос Messages API: те же модель, предел токенов, effort и fallbacks, что у анализа публикаций; в сообщении -
+    подписи снимков и изображения(base64 JPEG)."""
     req = claude.build_request(s, system=SYSTEM_PROMPT, user="", schema=SCHEMA)
     m = metres_per_px(lat)
     blocks: List[Obj] = [{"type": "text", "text": (
@@ -231,8 +231,8 @@ def _text(v: Any, n: int) -> str:
 
 
 def parse_reply(text: str, n: int) -> List[Obj]:
-    """JSON модели → по элементу на каждый из n снимков (index 1…n). Стадия вне списка — unclear, уверенность вне
-    списка — low, нет ответа по снимку — unclear с пояснением. Не JSON — ValueError."""
+    """JSON модели → по элементу на каждый из n снимков(index 1…n). Стадия вне списка - unclear, уверенность вне
+    списка - low, нет ответа по снимку - unclear с пояснением. Не JSON - ValueError."""
     data = json.loads(text)
     if not isinstance(data, dict) or not isinstance(data.get("images"), list):
         raise ValueError("в ответе нет списка images")
@@ -329,7 +329,7 @@ def plans(db: Session, index: Dict[str, List[Obj]], only: Optional[List[str]] = 
 def run(db: Session, *, only: Optional[List[str]] = None, limit: int = MAX_REQUESTS, max_usd: float = MAX_USD,
         force: bool = False, dry_run: bool = False, store_path: Optional[Path] = None,
         index: Optional[Dict[str, List[Obj]]] = None, settings: Optional[Settings] = None) -> Obj:
-    """Один проход по ЖК: запросы только по снимкам, которых нет в файле (или все — force). Итог — счётчики и расход."""
+    """Один проход по ЖК: запросы только по снимкам, которых нет в файле(или все - force). Итог - счётчики и расход."""
     s = settings or get_settings()
     store = load_store(store_path)
     todo, skipped = plans(db, index if index is not None else load_index(), only)
@@ -413,9 +413,9 @@ def _q(f: "screening.AdFacts", ad: Optional[models.Ad], markers: List[str]) -> L
 
 
 def claims_of(f: "screening.AdFacts", ad: Optional[models.Ad], basis: str) -> List[Obj]:
-    """Что публикация заявляет о стадии: сдан (objectStage completed), каркас возведён / на финишной прямой / сдача
-    (маркеры), строится (objectStage under_construction или «строится»), котлован / начало строительства (маркеры),
-    признак приёма денег (старт продаж, бронь, ДДУ, рассрочка, взнос — как в «Проверке по рекламе»)."""
+    """Что публикация заявляет о стадии: сдан(objectStage completed), каркас возведён / на финишной прямой / сдача
+    (маркеры), строится(objectStage under_construction или "строится"), котлован / начало строительства(маркеры),
+    признак приёма денег(старт продаж, бронь, ДДУ, рассрочка, взнос - как в "Проверке по рекламе")."""
     base = {"adId": f.id, "date": f.date, "platform": f.platform, "account": f.account, "basis": basis}
     out: List[Obj] = []
     if f.stage == "completed" and f.stage_quote:
@@ -449,11 +449,11 @@ def _fmt(d: Optional[date]) -> str:
 
 
 def compare(images: List[Obj], claims: List[Obj], start: Optional[str]) -> List[Obj]:
-    """Подсказки «снимок против рекламы» (без вердикта). kind: ahead — реклама заявляет каркас/сдачу, а на снимке
-    пустая площадка или котлован; money_early — признак приёма денег при стадии до каркаса на снимке; behind — на снимке
-    дом завершён (или каркас), а более поздняя реклама — «строится» / котлован / старт продаж; before_start — работы на
-    снимке раньше начала стройки по документам; stale — заявления новее снимка больше чем на GRACE_DAYS — снимком не
-    проверить; match — остальные заявления не противоречат снимку. factor — что сверить аналитику (подсказка, не балл)."""
+    """Подсказки "снимок против рекламы"(без вердикта). kind: ahead - реклама заявляет каркас/сдачу, а на снимке
+    пустая площадка или котлован; money_early - признак приёма денег при стадии до каркаса на снимке; behind - на снимке
+    дом завершён(или каркас), а более поздняя реклама - "строится" / котлован / старт продаж; before_start - работы на
+    снимке раньше начала стройки по документам; stale - заявления новее снимка больше чем на GRACE_DAYS - снимком не
+    проверить; match - остальные заявления не противоречат снимку. factor - что сверить аналитику(подсказка, не балл)."""
     latest = next((x for x in images if x.get("role") == "latest"), images[0] if images else None)
     if latest is None:
         return []
@@ -540,15 +540,15 @@ CLAIM_ORDER = {"completed": 0, "advanced": 1, "early": 2, "money": 3, "building"
 
 
 def claims_for(db: Session, cid: str, max_claims: int = 12) -> List[Obj]:
-    """Заявления рекламы ЖК о стадии: публикации, отнесённые к ЖК так же, как в «Проверке по рекламе»; сначала сдача,
-    каркас, котлован и приём денег, затем «строится», внутри вида — новые первыми; повторы цитаты — один раз."""
+    """Заявления рекламы ЖК о стадии: публикации, отнесённые к ЖК так же, как в "Проверке по рекламе"; сначала сдача,
+    каркас, котлован и приём денег, затем "строится", внутри вида - новые первыми; повторы цитаты - один раз."""
     facts = screening.load_facts(db)
     mine = [(f, f.targets()[cid]) for f in facts.values() if cid in f.targets()]
     ads = {a.id: a for a in db.scalars(select(models.Ad).where(models.Ad.id.in_([f.id for f, _ in mine])))} if mine else {}
     out: List[Obj] = []
     for f, basis in mine:
         out.extend(claims_of(f, ads.get(f.id), basis))
-    # заявления о стадии важнее «строится», внутри вида — новые первыми; одна цитата в разных площадках — один раз
+    # заявления о стадии важнее "строится", внутри вида - новые первыми; одна цитата в разных площадках - один раз
     out.sort(key=lambda c: c.get("date") or "", reverse=True)
     out.sort(key=lambda c: CLAIM_ORDER.get(c["kind"], 9))
     seen, uniq = set(), []
@@ -577,7 +577,7 @@ router = APIRouter()
 
 @router.get("/api/complexes/{cid}/sat-stage")
 def sat_stage(cid: str, db: Session = Depends(get_db)):
-    """Стадия на снимке (гипотеза ИИ из shared/sat_stage.json), заявления рекламы о стадии и подсказки-расхождения."""
+    """Стадия на снимке(гипотеза ИИ из shared/sat_stage.json), заявления рекламы о стадии и подсказки-расхождения."""
     c = db.get(models.Complex, cid)
     if c is None:
         raise HTTPException(404, "ЖК не найден")

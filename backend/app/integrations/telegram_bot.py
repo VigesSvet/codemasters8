@@ -1,56 +1,56 @@
-"""Telegram-бот заявок жителей (отдельный проект saq-telegram-bot) — приёмник POST /api/intake/telegram
+"""Telegram-бот заявок жителей(отдельный проект saq-telegram-bot) - приёмник POST /api/intake/telegram
 (integration-spec §12.3, план §7.2).
 
-Контракт адаптера saq-telegram-bot не сверен — проверить по integration/telegram_intake.py, когда проект бота будет
-доступен (contract_verified = False). Ниже — контракт, который реализует этот приёмник.
+Контракт адаптера saq-telegram-bot не сверен - проверить по integration/telegram_intake.py, когда проект бота будет
+доступен(contract_verified = False). Ниже - контракт, который реализует этот приёмник.
 
-Доступ: сервисный токен SERVICE_API_TOKEN (тот же секрет, что у бота) в заголовке «Authorization: Bearer <токен>» или
-«X-API-Key: <токен>». Токен проверяется до разбора тела: нет секрета на сервере — 503, нет заголовка — 401, неверный —
-403. Отказы (401/403, а также 409/413/415/422 по заявке) и сбои сервера при сохранении (500, 507) записываются в
-состояние подключения: бот с неверным токеном выглядит как «нет доступа», отклонённая или не сохранённая заявка — как
-«ошибка», а не как «ожидает заявок». Успешный опрос статусов с верным токеном снимает прежнее «нет доступа».
+Доступ: сервисный токен SERVICE_API_TOKEN(тот же секрет, что у бота) в заголовке "Authorization: Bearer <токен>" или
+"X-API-Key: <токен>". Токен проверяется до разбора тела: нет секрета на сервере - 503, нет заголовка - 401, неверный -
+403. Отказы(401/403, а также 409/413/415/422 по заявке) и сбои сервера при сохранении(500, 507) записываются в
+состояние подключения: бот с неверным токеном выглядит как "нет доступа", отклонённая или не сохранённая заявка - как
+"ошибка", а не как "ожидает заявок". Успешный опрос статусов с верным токеном снимает прежнее "нет доступа".
 
-POST /api/intake/telegram — заявка жителя:
-- application/json — тело TelegramIntakeIn (до 1 МБ, без файлов);
-- multipart/form-data — поле payload (строка JSON TelegramIntakeIn, до 1 МБ) и повторяющееся поле files (до 10 файлов,
+POST /api/intake/telegram - заявка жителя:
+- application/json - тело TelegramIntakeIn(до 1 МБ, без файлов);
+- multipart/form-data - поле payload(строка JSON TelegramIntakeIn, до 1 МБ) и повторяющееся поле files(до 10 файлов,
   каждый до 20 МБ; изображения JPEG, PNG, WEBP, GIF не больше MEDIA_MAX_IMAGE_MB, видео MP4 или MOV). Тип файла
-  определяется по содержимому; один неподходящий файл — отказ всей заявки (413/415/422), ничего не сохраняется.
+  определяется по содержимому; один неподходящий файл - отказ всей заявки(413/415/422), ничего не сохраняется.
 
-  {"externalId": "123456789:42",            // повторяемый ID заявки от бота (например, «{chat_id}:{message_id}»),
-                                             //   1–128 символов: буквы, цифры, . : @ / + = -
-   "submittedAt": "2026-10-17T09:30:00Z",   // когда житель отправил заявку (с часовым поясом), необязательно
+  {"externalId": "123456789:42",            // повторяемый ID заявки от бота(например, "{chat_id}:{message_id}"),
+                                             //   1-128 символов: буквы, цифры, . : @ / + = -
+   "submittedAt": "2026-10-17T09:30:00Z",   // когда житель отправил заявку(с часовым поясом), необязательно
    "platform": "instagram",                 // instagram|telegram|tiktok|krisha|olx|facebook|other, по умолчанию other
-   "account": "@developer",                 // аккаунт рекламодателя со слов жителя (до 255), необязательно
-   "url": "https://…",                      // ссылка на публикацию (http/https, до 512), необязательно
-   "text": "…",                             // текст объявления (до 100 000 символов, хранится до 20 000)
-   "comment": "…",                          // слова жителя (до 4000) — только в заявке, не в публикации
+   "account": "@developer",                 // аккаунт рекламодателя со слов жителя(до 255), необязательно
+   "url": "https://…",                      // ссылка на публикацию(http/https, до 512), необязательно
+   "text": "…",                             // текст объявления(до 100 000 символов, хранится до 20 000)
+   "comment": "…",                          // слова жителя(до 4000) - только в заявке, не в публикации
    "applicant": {"telegramUserId": "…", "chatId": "…", "username": "…", "name": "…", "phone": "…"},
-   "media": [{"key": "…", "fileName": "…", "mime": "…"}]}   // описание files по порядку (до 10), необязательно
+   "media": [{"key": "…", "fileName": "…", "mime": "…"}]}   // описание files по порядку(до 10), необязательно
 
-  Ключ i-го файла — media[i].key (например, file_unique_id Telegram: другой файл — другой ключ), иначе ключ по
-  содержимому «tgbot:sha256:<sha256 файла>»: замена фото под тем же externalId — новая версия, тот же файл — без
-  изменений, одинаковые файлы без описания — один файл. Описанный в media файл, которого нет в files, — «бот не
-  передал файл» (виден у публикации). Повторная доставка без files и без media оставляет файлы прежней версии. Часть
-  files без имени файла (filename) и лишние поля формы — 422. Поля решений аналитика (status, complexId,
-  linkConfirmed…, source, origin, id …) и неизвестные поля — 422. Ответ TelegramIntakeOut: новая заявка — 201
-  «created», повторная доставка — 200 «unchanged» (копия не создаётся), изменённое содержимое — 200 «updated» (новая
-  версия, история хранится). Файл, не попавший в БД (заявка отклонена или не сохранена), удаляется с диска.
+  Ключ i-го файла - media[i].key(например, file_unique_id Telegram: другой файл - другой ключ), иначе ключ по
+  содержимому "tgbot:sha256:<sha256 файла>": замена фото под тем же externalId - новая версия, тот же файл - без
+  изменений, одинаковые файлы без описания - один файл. Описанный в media файл, которого нет в files, - "бот не
+  передал файл"(виден у публикации). Повторная доставка без files и без media оставляет файлы прежней версии. Часть
+  files без имени файла(filename) и лишние поля формы - 422. Поля решений аналитика(status, complexId,
+  linkConfirmed…, source, origin, id …) и неизвестные поля - 422. Ответ TelegramIntakeOut: новая заявка - 201
+  "created", повторная доставка - 200 "unchanged"(копия не создаётся), изменённое содержимое - 200 "updated"(новая
+  версия, история хранится). Файл, не попавший в БД(заявка отклонена или не сохранена), удаляется с диска.
 
-GET /api/intake/telegram/submissions/{externalId} — статус заявки (SubmissionStatusOut); ID может содержать «/».
-GET /api/intake/telegram/updates?since=<ISO с поясом>&limit=1..500 — заявки, статус которых менялся (или которые
-получены) строго позже since, по времени изменения: бот сообщает жителю, что проверка начата или завершена. updatedAt —
-UTC с микросекундами: следующий опрос — с since = updatedAt последнего полученного элемента (решение, записанное в
-момент опроса, может прийти с временем чуть раньше since — надёжнее брать since с запасом в несколько секунд и не
-сообщать жителю повторно тот же (externalId, status)).
-Статусы: received «Заявка получена и ждёт проверки аналитиком», in_review «Заявка на проверке», confirmed «Проверка
-завершена: признаки нарушения подтверждены аналитиком», dismissed «Проверка завершена: нарушение не подтверждено».
+GET /api/intake/telegram/submissions/{externalId} - статус заявки(SubmissionStatusOut); ID может содержать "/".
+GET /api/intake/telegram/updates?since=<ISO с поясом>&limit=1..500 - заявки, статус которых менялся(или которые
+получены) строго позже since, по времени изменения: бот сообщает жителю, что проверка начата или завершена. updatedAt -
+UTC с микросекундами: следующий опрос - с since = updatedAt последнего полученного элемента(решение, записанное в
+момент опроса, может прийти с временем чуть раньше since - надёжнее брать since с запасом в несколько секунд и не
+сообщать жителю повторно тот же(externalId, status)).
+Статусы: received "Заявка получена и ждёт проверки аналитиком", in_review "Заявка на проверке", confirmed "Проверка
+завершена: признаки нарушения подтверждены аналитиком", dismissed "Проверка завершена: нарушение не подтверждено".
 
-Хранение: заявка → единый приём (ingest: пространство «tgbot», подключение telegram_bot, публикация source = bot,
-origin = collected, статус «new», без привязки к ЖК) и анализ в общей очереди. Сведения о заявителе (applicant) и его
-комментарий — только в bot_submissions: ни в публикации, ни в снимке приёма (raw), ни в журнале, ни в ответах API их
+Хранение: заявка → единый приём(ingest: пространство "tgbot", подключение telegram_bot, публикация source = bot,
+origin = collected, статус "new", без привязки к ЖК) и анализ в общей очереди. Сведения о заявителе(applicant) и его
+комментарий - только в bot_submissions: ни в публикации, ни в снимке приёма(raw), ни в журнале, ни в ответах API их
 нет. Повторная доставка дополняет их, а не стирает: отсутствующие или пустые поля заявителя остаются прежними,
 комментарий заменяется только непустым. Аккаунт и ссылка, указанные жителем, хранятся у публикации как его слова и в
-сопоставлении с ЖК не участвуют (D20).
+сопоставлении с ЖК не участвуют(D20).
 """
 import hashlib
 import logging
@@ -82,10 +82,10 @@ from .intake_api import intake_status
 log = logging.getLogger("saq.integrations.telegram_bot")
 
 CODE = "telegram_bot"
-NAMESPACE = "tgbot"  # пространство дедупликации заявок (не площадка публикации)
+NAMESPACE = "tgbot"  # пространство дедупликации заявок(не площадка публикации)
 NOTE = "заявка жителя"
-PAYLOAD_MAX = 1024 * 1024  # JSON заявки (тело application/json или поле payload)
-MAX_FILES = media.BOT_MAX_FILES  # поле схемы «media» затеняет модуль media в теле класса
+PAYLOAD_MAX = 1024 * 1024  # JSON заявки(тело application/json или поле payload)
+MAX_FILES = media.BOT_MAX_FILES  # поле схемы "media" затеняет модуль media в теле класса
 TEXT_MAX = 100000
 COMMENT_MAX = 4000
 FUTURE_SKEW = timedelta(minutes=5)
@@ -97,7 +97,7 @@ NO_FILE = "Бот не передал файл"
 BAD_TYPE = "неподдерживаемый тип — нужен JPEG, PNG, WEBP, GIF, MP4 или MOV"
 NO_FILENAME = "Файлы передаются в поле files с именем файла (filename)"
 EXTRA_FIELD = "Лишние поля формы: нужны только payload и files"
-TOKEN_REJECTS = (401, 403)  # отказы по сервисному токену («нет доступа»), остальные — отказы по заявке («ошибка»)
+TOKEN_REJECTS = (401, 403)  # отказы по сервисному токену("нет доступа"), остальные - отказы по заявке("ошибка")
 
 SubmissionStatus = Literal["received", "in_review", "confirmed", "dismissed"]
 SUBMISSION_LABELS = {"received": "Заявка получена и ждёт проверки аналитиком", "in_review": "Заявка на проверке",
@@ -113,7 +113,7 @@ _HTTP_URL = re.compile(r"^https?://\S+$", re.I)
 # ---------- схемы ----------
 
 def _as_text(v: Any) -> Any:
-    """ID Telegram приходят числами (Bot API) — принимаются и как строки; управляющие символы удаляются."""
+    """ID Telegram приходят числами(Bot API) - принимаются и как строки; управляющие символы удаляются."""
     if isinstance(v, int) and not isinstance(v, bool):
         return str(v)
     return _CTRL.sub("", v) if isinstance(v, str) else v
@@ -124,7 +124,7 @@ def _short(n: int) -> Any:
 
 
 class TelegramApplicantIn(Camel):
-    """Заявитель — персональные данные: хранятся только в bot_submissions."""
+    """Заявитель - персональные данные: хранятся только в bot_submissions."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -136,7 +136,7 @@ class TelegramApplicantIn(Camel):
 
 
 class TelegramMediaIn(Camel):
-    """Описание i-го файла из поля files: стабильный ключ (например, file_unique_id Telegram)."""
+    """Описание i-го файла из поля files: стабильный ключ(например, file_unique_id Telegram)."""
 
     key: Annotated[str, BeforeValidator(_as_text), StringConstraints(strip_whitespace=True, min_length=1,
                                                                      max_length=255)]
@@ -145,7 +145,7 @@ class TelegramMediaIn(Camel):
 
 
 class TelegramIntakeIn(Camel):
-    """Заявка жителя от бота. Решения аналитика не принимаются; неизвестные поля — 422."""
+    """Заявка жителя от бота. Решения аналитика не принимаются; неизвестные поля - 422."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -213,7 +213,7 @@ class TelegramIntakeIn(Camel):
 
 
 def _precise(v: Any) -> Any:
-    """Время изменения заявки — UTC с микросекундами: бот передаёт его обратно как since, и округление до секунд
+    """Время изменения заявки - UTC с микросекундами: бот передаёт его обратно как since, и округление до секунд
     возвращало бы те же заявки при каждом опросе."""
     return models.as_utc(v).isoformat(timespec="microseconds") if isinstance(v, datetime) else v
 
@@ -252,7 +252,7 @@ async def _reject(status: int, detail: str) -> HTTPException:
 
 
 class NotSaved(RuntimeError):
-    """Заявка не сохранена из-за ошибки БД. Текст — без параметров запроса: в них данные заявителя."""
+    """Заявка не сохранена из-за ошибки БД. Текст - без параметров запроса: в них данные заявителя."""
 
     def __init__(self, cause: str):
         self.reason = f"ошибка базы данных ({cause})"
@@ -260,8 +260,8 @@ class NotSaved(RuntimeError):
 
 
 def _failure(e: BaseException) -> str:
-    """Пояснение сбоя сервера для статуса подключения: тип ошибки без её текста (в тексте могут быть пути и данные
-    заявки), подробности — в журнале API."""
+    """Пояснение сбоя сервера для статуса подключения: тип ошибки без её текста(в тексте могут быть пути и данные
+    заявки), подробности - в журнале API."""
     reason = e.reason if isinstance(e, NotSaved) else f"ошибка сервера ({type(e).__name__})"
     return f"{reason} — заявка не сохранена, подробности в журнале API"
 
@@ -273,11 +273,11 @@ def _first_error(errors: list) -> str:
 
 
 async def _validate(data: Any, loc: tuple) -> TelegramIntakeIn:
-    """JSON заявки → TelegramIntakeIn; ошибка — запись отказа и 422 в формате FastAPI (loc начинается с loc)."""
+    """JSON заявки → TelegramIntakeIn; ошибка - запись отказа и 422 в формате FastAPI(loc начинается с loc)."""
     try:
         return TelegramIntakeIn.model_validate_json(data)
     except ValidationError as e:
-        # без «input»: в ответ не возвращаются присланные значения (телефон, имя, комментарий жителя)
+        # без "input": в ответ не возвращаются присланные значения(телефон, имя, комментарий жителя)
         errors = [{**{k: v for k, v in err.items() if k != "input"}, "loc": (*loc, *err["loc"])}
                   for err in e.errors(include_url=False, include_input=False)]
         await run_in_threadpool(_record, 422, _first_error(errors))
@@ -292,7 +292,7 @@ async def _invalid(loc: tuple, msg: str) -> RequestValidationError:
 # ---------- чтение заявки ----------
 
 async def _read_json(request: Request) -> bytes:
-    """Тело application/json не больше PAYLOAD_MAX: по Content-Length сразу, без него — по мере чтения."""
+    """Тело application/json не больше PAYLOAD_MAX: по Content-Length сразу, без него - по мере чтения."""
     too_big = f"JSON заявки больше {PAYLOAD_MAX // media.MB} МБ — файлы передавайте через multipart/form-data"
     length = request.headers.get("content-length") or ""
     if length.isdigit() and int(length) > PAYLOAD_MAX:
@@ -307,7 +307,7 @@ async def _read_json(request: Request) -> bytes:
 
 
 def _check_file(n: int, data: bytes) -> None:
-    """Проверка файла до записи (тип по сигнатуре, размер) — чтобы при отказе не сохранилось ничего."""
+    """Проверка файла до записи(тип по сигнатуре, размер) - чтобы при отказе не сохранилось ничего."""
     if not data:
         raise media.MediaRejected(422, f"Файл №{n} пустой")
     mime = media.sniff(data[:media.HEAD])
@@ -319,14 +319,14 @@ def _check_file(n: int, data: bytes) -> None:
 
 
 async def _read_multipart(request: Request) -> tuple[TelegramIntakeIn, list[bytes]]:
-    """multipart/form-data: payload (JSON, ≤ 1 МБ) + files (≤ 10, каждый ≤ 20 МБ)."""
+    """multipart/form-data: payload(JSON, ≤ 1 МБ) + files(≤ 10, каждый ≤ 20 МБ)."""
     try:
         form = await request.form(max_files=media.BOT_MAX_FILES, max_fields=2, max_part_size=PAYLOAD_MAX)
     except StarletteHTTPException as e:
-        if e.status_code != 400:  # 413 от предела тела (UploadLimit) — как есть
+        if e.status_code != 400:  # 413 от предела тела(UploadLimit) - как есть
             raise
         msg = str(e.detail or "")
-        if "maximum size" in msg:  # предел — только у частей без filename: payload или файл, отправленный без имени
+        if "maximum size" in msg:  # предел - только у частей без filename: payload или файл, отправленный без имени
             raise await _reject(413, f"Поле payload больше {PAYLOAD_MAX // media.MB} МБ или файл передан без имени "
                                      "файла (filename)") from None
         if "Too many files" in msg:
@@ -338,7 +338,7 @@ async def _read_multipart(request: Request) -> tuple[TelegramIntakeIn, list[byte
         files: list[UploadFile] = []
         payloads = 0
         for name, value in form.multi_items():
-            # часть без filename Starlette отдаёт строкой: файл в ней не сохранить — отказ, а не молчаливая потеря
+            # часть без filename Starlette отдаёт строкой: файл в ней не сохранить - отказ, а не молчаливая потеря
             if name == "files":
                 if not isinstance(value, UploadFile):
                     raise await _reject(422, NO_FILENAME)
@@ -352,7 +352,7 @@ async def _read_multipart(request: Request) -> tuple[TelegramIntakeIn, list[byte
         if payloads > 1:
             raise await _reject(422, "Поле payload передано несколько раз")
         payload = form.get("payload")
-        if isinstance(payload, UploadFile):  # JSON отправлен как файл — читается с тем же пределом
+        if isinstance(payload, UploadFile):  # JSON отправлен как файл - читается с тем же пределом
             payload = await payload.read(PAYLOAD_MAX + 1)
             if len(payload) > PAYLOAD_MAX:
                 raise await _reject(413, f"Поле payload больше {PAYLOAD_MAX // media.MB} МБ")
@@ -379,17 +379,17 @@ def _content_key(sha: str) -> str:
 
 
 def content_key(data: bytes) -> str:
-    """Ключ файла без описания в media — по содержимому: другой файл под тем же externalId (житель заменил фото в
-    сообщении) — новая версия заявки, тот же файл — повторная доставка без изменений."""
+    """Ключ файла без описания в media - по содержимому: другой файл под тем же externalId(житель заменил фото в
+    сообщении) - новая версия заявки, тот же файл - повторная доставка без изменений."""
     return _content_key(hashlib.sha256(data).hexdigest())
 
 
-Planned = tuple[str, Optional[bytes], Optional[str]]  # ключ, байты (None — не передан), sha256
+Planned = tuple[str, Optional[bytes], Optional[str]]  # ключ, байты(None - не передан), sha256
 
 
 def _plan(body: TelegramIntakeIn, blobs: list[bytes]) -> list[Planned]:
-    """Файлы заявки по порядку: (ключ, байты; None — описан в media, но не передан; sha256). Ключ — media[i].key,
-    иначе content_key. Одинаковые файлы без описания — один файл. Проверка до записи файлов: при отказе не сохранится
+    """Файлы заявки по порядку: (ключ, байты; None - описан в media, но не передан; sha256). Ключ - media[i].key,
+    иначе content_key. Одинаковые файлы без описания - один файл. Проверка до записи файлов: при отказе не сохранится
     ничего."""
     described = {m.key for m in body.media}
     out: list[Planned] = []
@@ -410,17 +410,17 @@ def _plan(body: TelegramIntakeIn, blobs: list[bytes]) -> list[Planned]:
 
 
 def _store(blob: bytes, sha: str) -> tuple[media.Stored, bool]:
-    """Файл → хранилище; True — файл записан этим запросом (такого в хранилище не было). Удалить при неудаче можно
+    """Файл → хранилище; True - файл записан этим запросом(такого в хранилище не было). Удалить при неудаче можно
     только такой: прежний файл мог только что записать другой запрос, ещё не успевший сохранить свою запись."""
     ext = media.ALLOWED.get(media.sniff(blob[:media.HEAD]) or "")
-    key = f"{sha[:2]}/{sha[2:4]}/{sha}{ext}" if ext else None  # раскладка хранилища — integration-spec §6.1
+    key = f"{sha[:2]}/{sha[2:4]}/{sha}{ext}" if ext else None  # раскладка хранилища - integration-spec §6.1
     existed = key is None or media.path_of(key).exists()
     st = media.store_bytes(blob, allowed=BOT_TYPES)
     return st, not existed and st.storage_key == key
 
 
 def _media(plan: list[Planned], stored: list[Optional[media.Stored]]) -> list[MediaIn]:
-    """Файлы заявки; описанный в media, но не переданный файл — «недоступен» (виден у публикации, а не потерян
+    """Файлы заявки; описанный в media, но не переданный файл - "недоступен"(виден у публикации, а не потерян
     молча)."""
     out: list[MediaIn] = []
     for (key, _, _), st in zip(plan, stored):
@@ -434,7 +434,7 @@ def _media(plan: list[Planned], stored: list[Optional[media.Stored]]) -> list[Me
 
 def _known_media(db: Session, external_id: str) -> list[MediaIn]:
     """Повторная доставка без files и без media: файлы прежней версии заявки остаются у публикации. Бот не передал их
-    снова — это не удаление, и такая доставка не должна делать новую версию без фото."""
+    снова - это не удаление, и такая доставка не должна делать новую версию без фото."""
     k = ingest.known(db, NAMESPACE, external_id)
     if k is None or k.collector != CODE:
         return []
@@ -442,10 +442,10 @@ def _known_media(db: Session, external_id: str) -> list[MediaIn]:
 
 
 def _settle_files(files: dict[str, tuple[str, bytes, bool]]) -> None:
-    """Файлы этого запроса после транзакции (sha256 → (ключ хранилища, байты, записан этим запросом)). Записанный этим
-    запросом файл, на который не ссылается ни одна запись media_assets (заявка не сохранена, отклонена или файл не
+    """Файлы этого запроса после транзакции(sha256 → (ключ хранилища, байты, записан этим запросом)). Записанный этим
+    запросом файл, на который не ссылается ни одна запись media_assets(заявка не сохранена, отклонена или файл не
     понадобился), удаляется с диска: файлы жителей без записи в БД не найти и не удалить из интерфейса. Файл, на
-    который ссылаются, но которого нет (его убрал параллельный неудачный запрос с теми же байтами), записывается снова.
+    который ссылаются, но которого нет(его убрал параллельный неудачный запрос с теми же байтами), записывается снова.
     Никогда не бросает: исход заявки уже известен."""
     if not files:
         return
@@ -460,7 +460,7 @@ def _settle_files(files: dict[str, tuple[str, bytes, bool]]) -> None:
                     path.unlink(missing_ok=True)
             elif not path.exists():
                 media.store_bytes(blob, allowed=BOT_TYPES)
-    except Exception as e:  # noqa: BLE001 — уборка не меняет ответ боту
+    except Exception as e:  # noqa: BLE001 - уборка не меняет ответ боту
         log.warning("Файлы заявки бота не проверены после приёма (лишние могли остаться на диске): %s",
                     type(e).__name__)
 
@@ -476,8 +476,8 @@ def _publication(body: TelegramIntakeIn, files: list[MediaIn], now: datetime) ->
 
 def _upsert_submission(db: Session, body: TelegramIntakeIn, res: ingest.IngestResult,
                        now: datetime) -> models.BotSubmission:
-    """Заявка (заявитель, комментарий, связь с публикацией): INSERT … ON CONFLICT DO NOTHING и обновление.
-    Повторная доставка дополняет сведения, а не стирает их: поля заявителя, которых в ней нет (или они пустые),
+    """Заявка(заявитель, комментарий, связь с публикацией): INSERT … ON CONFLICT DO NOTHING и обновление.
+    Повторная доставка дополняет сведения, а не стирает их: поля заявителя, которых в ней нет(или они пустые),
     остаются прежними; комментарий заменяется только непустым."""
     B = models.BotSubmission
     applicant = {k: v for k, v in (body.applicant.model_dump(by_alias=True) if body.applicant is not None
@@ -505,7 +505,7 @@ def _view(external_id: str, ad_id: Optional[str], ad_status: Optional[str], rece
 
 
 def submission_view(db: Session, sub: models.BotSubmission) -> dict:
-    """SubmissionStatusOut по заявке: статус — по статусу публикации; время — последнее изменение статуса аналитиком
+    """SubmissionStatusOut по заявке: статус - по статусу публикации; время - последнее изменение статуса аналитиком
     или получение заявки."""
     ad_status = last = None
     if sub.ad_id:
@@ -517,8 +517,8 @@ def submission_view(db: Session, sub: models.BotSubmission) -> dict:
 
 def _submit_sync(body: TelegramIntakeIn, blobs: list[bytes]) -> tuple[ingest.IngestResult, Optional[dict]]:
     """В пуле потоков: файлы → хранилище, заявка → единый приём + bot_submissions, commit. Файлы пишутся до
-    транзакции (без долгой записи на диск внутри неё); записанные этим запросом и оставшиеся без записи в БД
-    (отказ, сбой, файл не понадобился) удаляются — _settle_files."""
+    транзакции(без долгой записи на диск внутри неё); записанные этим запросом и оставшиеся без записи в БД
+    (отказ, сбой, файл не понадобился) удаляются - _settle_files."""
     plan = _plan(body, blobs)
     media.ensure_space(sum(len(b) for _, b, _ in plan if b is not None))
     files: dict[str, tuple[str, bytes, bool]] = {}
@@ -544,7 +544,7 @@ def _submit_sync(body: TelegramIntakeIn, blobs: list[bytes]) -> tuple[ingest.Ing
                 db.commit()
                 return res, view
             except SQLAlchemyError as e:
-                # без цепочки исключений: текст ошибки БД содержит параметры запроса, а в них — данные заявителя
+                # без цепочки исключений: текст ошибки БД содержит параметры запроса, а в них - данные заявителя
                 db.rollback()
                 raise NotSaved(type(e).__name__) from None
             except BaseException:
@@ -555,7 +555,7 @@ def _submit_sync(body: TelegramIntakeIn, blobs: list[bytes]) -> tuple[ingest.Ing
 
 
 def _inline(schema: dict) -> dict:
-    """JSON-схема без $defs/$ref — для requestBody в OpenAPI (тело разбирается вручную, после проверки токена)."""
+    """JSON-схема без $defs/$ref - для requestBody в OpenAPI(тело разбирается вручную, после проверки токена)."""
     defs = schema.pop("$defs", {})
 
     def walk(v):
@@ -595,8 +595,8 @@ router = APIRouter(tags=["integrations"])
                         415: {"description": "Не JSON/multipart или неподдерживаемый файл"},
                         503: {"description": "Приём заявок не настроен"}})
 async def intake(request: Request) -> JSONResponse:
-    """Заявка жителя от бота (Authorization: Bearer или X-API-Key = SERVICE_API_TOKEN): JSON или multipart с файлами.
-    Новая — 201, повторная доставка или изменённая — 200. Анализ ставится в общую очередь."""
+    """Заявка жителя от бота(Authorization: Bearer или X-API-Key = SERVICE_API_TOKEN): JSON или multipart с файлами.
+    Новая - 201, повторная доставка или изменённая - 200. Анализ ставится в общую очередь."""
     # первой строкой, до разбора тела; в пуле потоков: отказ записывается в БД и не должен держать цикл событий
     await run_in_threadpool(auth.require_service, request)
     try:
@@ -611,9 +611,9 @@ async def intake(request: Request) -> JSONResponse:
     except media.MediaRejected as e:
         raise await _reject(e.status, e.detail) from None
     except (StarletteHTTPException, RequestValidationError, ClientDisconnect):
-        raise  # отказ уже записан (или бот сам оборвал запрос)
+        raise  # отказ уже записан(или бот сам оборвал запрос)
     except Exception as e:
-        # сбой сервера — тоже в статусе подключения («ошибка»): иначе он выглядел бы как «ожидает заявок»
+        # сбой сервера - тоже в статусе подключения("ошибка"): иначе он выглядел бы как "ожидает заявок"
         await run_in_threadpool(_record, 500, _failure(e))
         raise
     if res.status == "foreign":
@@ -634,7 +634,7 @@ async def intake(request: Request) -> JSONResponse:
             response_model_by_alias=True, dependencies=[Depends(auth.require_service)],
             responses={404: {"description": NOT_FOUND}})
 def submission(external_id: str, db: Session = Depends(get_db)):
-    """Статус заявки для бота (житель узнаёт, что заявка на проверке или проверка завершена). Персональных данных
+    """Статус заявки для бота(житель узнаёт, что заявка на проверке или проверка завершена). Персональных данных
     в ответе нет."""
     _token_ok(db)
     sub = db.scalar(select(models.BotSubmission).where(models.BotSubmission.external_id == external_id.strip()))
@@ -644,7 +644,7 @@ def submission(external_id: str, db: Session = Depends(get_db)):
 
 
 def _since(value: str) -> datetime:
-    """since — ISO 8601 с часовым поясом. «+05:00», переданное в query без кодирования, приходит как « 05:00»."""
+    """since - ISO 8601 с часовым поясом. "+05:00", переданное в query без кодирования, приходит как " 05:00"."""
     s = re.sub(r" (\d{2}:?\d{2})$", r"+\1", value.strip())
     try:
         dt = datetime.fromisoformat(s[:-1] + "+00:00" if s[-1:] in ("Z", "z") else s)
@@ -661,7 +661,7 @@ def _since(value: str) -> datetime:
             dependencies=[Depends(auth.require_service)])
 def updates(since: str = Query(..., max_length=64, description="ISO 8601 с часовым поясом; изменения строго позже"),
             limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_db)):
-    """Заявки, статус которых аналитик менял (или которые получены) после since — по времени изменения."""
+    """Заявки, статус которых аналитик менял(или которые получены) после since - по времени изменения."""
     at = _since(since)
     _token_ok(db)
     B, E, A = models.BotSubmission, models.AuditEvent, models.Ad
@@ -679,7 +679,7 @@ def updates(since: str = Query(..., max_length=64, description="ISO 8601 с ча
 # ---------- подключение ----------
 
 def _token_ok_at(r: Optional[models.Collector]) -> Optional[datetime]:
-    """Когда бот последний раз обратился с верным токеном после отказа по токену (state.tokenOkAt) или None."""
+    """Когда бот последний раз обратился с верным токеном после отказа по токену(state.tokenOkAt) или None."""
     at = ((r.state or {}) if r is not None else {}).get("tokenOkAt")
     try:
         return models.as_utc(datetime.fromisoformat(str(at))) if at else None
@@ -688,8 +688,8 @@ def _token_ok_at(r: Optional[models.Collector]) -> Optional[datetime]:
 
 
 def _token_ok(db: Session) -> None:
-    """Запрос бота с верным токеном (опрос статусов): записанный раньше отказ 401/403 больше не показывается как «нет
-    доступа», даже если новых заявок нет. Пишется только когда отказ по токену новее прежней отметки — регулярные
+    """Запрос бота с верным токеном(опрос статусов): записанный раньше отказ 401/403 больше не показывается как "нет
+    доступа", даже если новых заявок нет. Пишется только когда отказ по токену новее прежней отметки - регулярные
     опросы БД не нагружают. Никогда не бросает: учёт не меняет ответ боту."""
     from . import service
 
@@ -724,10 +724,10 @@ class TelegramBotConnector(Connector):
     limitation = "Контракт адаптера saq-telegram-bot с этой версией API не сверен."
 
     def computed_status(self, db, row, now: datetime) -> Optional[tuple[str, str]]:
-        """Живой статус приёмника: отказ боту новее последней принятой заявки — «нет доступа» (401/403) или «ошибка»
-        (409/413/415/422, сбой сервера 500/507); заявка за 7 дней — «принимает заявки»; иначе — «ожидает заявок».
+        """Живой статус приёмника: отказ боту новее последней принятой заявки - "нет доступа"(401/403) или "ошибка"
+        (409/413/415/422, сбой сервера 500/507); заявка за 7 дней - "принимает заявки"; иначе - "ожидает заявок".
         Отказ по токену, после которого бот обращался с верным токеном, не показывается. Проверки и сбора нет."""
-        if db is None:  # проверка из командной строки — без БД
+        if db is None:  # проверка из командной строки - без БД
             return None
         from . import service
 
@@ -736,7 +736,7 @@ class TelegramBotConnector(Connector):
         if rej is not None and rej["code"] in TOKEN_REJECTS:
             ok = _token_ok_at(row)
             if ok is not None and ok >= rej["at"]:
-                row = None  # intake_status берёт из строки только последний отказ — он устарел
+                row = None  # intake_status берёт из строки только последний отказ - он устарел
         return intake_status(db, row, now, collector=self.code, last_at=last,
                              denied="Бот обращается с неверным сервисным токеном (последняя попытка {when})",
                              rejected="Последняя заявка отклонена: {detail}", working="Последняя заявка: {when}",

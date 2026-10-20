@@ -1,5 +1,5 @@
-"""«Удалено в источнике» и история изменений (app.changes): пословный diff версий, удалённые условия оплаты, статус в
-источнике по окну сбора (classify), GET /api/ads/{id}/source-status и GET /api/changes на приёме Instagram."""
+""""Удалено в источнике" и история изменений(app.changes): пословный diff версий, удалённые условия оплаты, статус в
+источнике по окну сбора(classify), GET /api/ads/{id}/source-status и GET /api/changes на приёме Instagram."""
 from datetime import datetime, timedelta, timezone
 
 from app import changes, ingest, models
@@ -16,7 +16,7 @@ def test_diff_words_marks_removed_and_added():
     assert "".join(t for op, t in ops if op != "del") == "Старт продаж! Рассрочка до сдачи 2027"
     assert "".join(t for op, t in ops if op != "add") == "Старт продаж! Бронь 200 000 ₸, рассрочка до сдачи"
     assert ("del", "Бронь 200 000 ₸, рассрочка") in ops and ("add", "Рассрочка") in ops and ops[-1] == ("add", " 2027")
-    assert changes.diff_words("а  б", "а б") == [("eq", "а б")]  # только пробелы — без изменений
+    assert changes.diff_words("а  б", "а б") == [("eq", "а б")]  # только пробелы - без изменений
     assert changes.diff_words("", "новый текст") == [("add", "новый текст")]
     assert changes.diff_words("старый", "") == [("del", "старый")]
 
@@ -60,19 +60,19 @@ RUNS = [{"id": n, "status": "succeeded", "trigger": "schedule", "finishedAt": T0
 
 
 def test_classify_present_deleted_window_and_single_miss():
-    window = [it(i, 5, 10 + i) for i in range(1, 5)]  # в последнем запуске — публикации дней 11…14
-    gone = it(9, 2, 12)  # дня 12 — в окне, не видели в запусках 3, 4, 5
+    window = [it(i, 5, 10 + i) for i in range(1, 5)]  # в последнем запуске - публикации дней 11…14
+    gone = it(9, 2, 12)  # дня 12 - в окне, не видели в запусках 3, 4, 5
     s = changes.classify(gone, window + [gone], RUNS)
     assert s["status"] == "deleted" and s["missedRuns"] == 3 and "3 последних сборах" in s["how"]
     assert s["checkedAt"] == (T0 + timedelta(days=5)).isoformat(timespec="seconds")
-    old = it(10, 2, 3)  # старше окна — вытеснена новыми публикациями
+    old = it(10, 2, 3)  # старше окна - вытеснена новыми публикациями
     assert changes.classify(old, window + [old], RUNS)["status"] == "unknown"
     assert "Вытеснена" in changes.classify(old, window, RUNS)["how"]
-    once = it(11, 4, 12)  # пропущена одним запуском — ещё не удаление
+    once = it(11, 4, 12)  # пропущена одним запуском - ещё не удаление
     s = changes.classify(once, window + [once], RUNS)
     assert s["status"] == "unknown" and s["missedRuns"] == 1 and "ждём подтверждения" in s["how"]
     assert changes.classify(window[0], window, RUNS)["status"] == "present"
-    alone = it(12, 2, 12, account="@b")  # аккаунт позже не собирался — нет данных против
+    alone = it(12, 2, 12, account="@b")  # аккаунт позже не собирался - нет данных против
     assert changes.classify(alone, [alone], RUNS)["status"] == "present"
     nopub = {**gone, "publishedAt": None}
     assert changes.classify(nopub, window + [nopub], RUNS)["status"] == "unknown"
@@ -106,7 +106,7 @@ def test_source_status_and_changes_api(client):
         r1 = run_row(db, 1)
         res = {n: ingest.ingest_publication(db, pub(n, f"ЖК Тест, пост {n}. Бронь 200 000 ₸", T0), collector="instagram",
                                             run_id=r1) for n in range(1, 5)}
-        # запуски 2 и 3: публикация 2 пропала (в окне), у публикации 3 убрали бронь — новая версия
+        # запуски 2 и 3: публикация 2 пропала(в окне), у публикации 3 убрали бронь - новая версия
         for k in (2, 3):
             rk = run_row(db, k)
             for n in (1, 3, 4):

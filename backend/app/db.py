@@ -4,11 +4,11 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-# PostgreSQL по умолчанию (docker compose). Для быстрого запуска без БД: DATABASE_URL=sqlite:///./saq.db
+# PostgreSQL по умолчанию(docker compose). Для быстрого запуска без БД: DATABASE_URL=sqlite:///./saq.db
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://saq:saq@localhost:5432/saq")
 
-# SQLite: API и воркер пишут в один файл — ожидание блокировки вместо мгновенного «database is locked», WAL — чтение
-# не ждёт записи. Значение читается при каждом новом соединении (тесты могут уменьшить его)
+# SQLite: API и воркер пишут в один файл - ожидание блокировки вместо мгновенного "database is locked", WAL - чтение
+# не ждёт записи. Значение читается при каждом новом соединении(тесты могут уменьшить его)
 BUSY_TIMEOUT_MS = 30000
 
 
@@ -18,8 +18,8 @@ def _is_memory(url) -> bool:
 
 
 def make_engine(url: str, **kwargs) -> Engine:
-    """Engine приложения. SQLite: timeout соединения 30 с, PRAGMA busy_timeout и journal_mode=WAL (кроме :memory:);
-    PostgreSQL — как есть."""
+    """Engine приложения. SQLite: timeout соединения 30 с, PRAGMA busy_timeout и journal_mode=WAL(кроме :memory:);
+    PostgreSQL - как есть."""
     u = make_url(url)
     if u.get_backend_name() != "sqlite":
         return create_engine(url, pool_pre_ping=True, **kwargs)

@@ -1,6 +1,6 @@
-"""OLX.kz — OAuth собственного аккаунта (integration-spec §12.7, §16.3 test_integration_olx, §16.5): старт с
-одноразовым state, возврат, обмен кода сервером, users/me с «Version: 2.0», обновление токена, проверка воркером,
-плановые проверки, отсутствие токенов в ответах API и журналах. Сеть — только заглушки (http_mock)."""
+"""OLX.kz - OAuth собственного аккаунта(integration-spec §12.7, §16.3 test_integration_olx, §16.5): старт с
+одноразовым state, возврат, обмен кода сервером, users/me с "Version: 2.0", обновление токена, проверка воркером,
+плановые проверки, отсутствие токенов в ответах API и журналах. Сеть - только заглушки(http_mock)."""
 import hashlib
 import json
 import logging
@@ -176,7 +176,7 @@ def test_not_configured(client, env):
     env(OLX_CLIENT_ID=CLIENT_ID, OLX_CLIENT_SECRET=CLIENT_SECRET)
     r = client.post("/api/integrations/olx/start", json={"author": AUTHOR}, headers=admin())
     assert (r.status_code, r.json()["detail"]) == (409, "OLX не настроен: нет на сервере OLX_REDIRECT_URI")
-    # без ключей проверка из командной строки не ходит в сеть (conftest запрещает сеть)
+    # без ключей проверка из командной строки не ходит в сеть(conftest запрещает сеть)
     env(OLX_CLIENT_ID=None, OLX_CLIENT_SECRET=None)
     from app.integrations import smoke
 
@@ -227,7 +227,7 @@ def test_start_builds_authorize_url_and_stores_only_hash(client, olx_env):
     assert all(state not in str(getattr(row, c.key)) for c in models.OAuthState.__table__.columns)
     expires = models.as_utc(row.expires_at)
     assert timedelta(minutes=9) < expires - before <= timedelta(minutes=10, seconds=5)
-    # два старта — два разных state
+    # два старта - два разных state
     assert start(client) != state
 
 
@@ -239,14 +239,14 @@ def test_callback_success(client, olx_env, http_mock):
     before = models.utcnow()
     cap = connect(client, http_mock)
     r = cap["response"]
-    # обмен кода — JSON с ключами приложения, кодом, scope и redirect_uri
+    # обмен кода - JSON с ключами приложения, кодом, scope и redirect_uri
     req = cap["token"]
     assert req.headers["content-type"].startswith("application/json")
     assert json.loads(req.content) == {"grant_type": "authorization_code", "client_id": CLIENT_ID,
                                        "client_secret": CLIENT_SECRET, "code": CODE, "scope": "read v2",
                                        "redirect_uri": REDIRECT}
     assert "?" not in str(req.url)
-    # users/me — Bearer и Version: 2.0, без Content-Type, токен не в адресе
+    # users/me - Bearer и Version: 2.0, без Content-Type, токен не в адресе
     me = cap["me"][0]
     assert (me.headers["authorization"], me.headers["version"]) == (f"Bearer {ACCESS}", "2.0")
     assert "content-type" not in me.headers and ACCESS not in str(me.url)
@@ -259,20 +259,20 @@ def test_callback_success(client, olx_env, http_mock):
     for secret in (ACCESS, REFRESH, CODE, cap["state"], CLIENT_SECRET, "owner@example.com", "+77010000000"):
         assert secret not in text
     assert "<script" not in text.lower()
-    # токены — в БД
+    # токены - в БД
     tok = token_row()
     assert (tok.access_token, tok.refresh_token, tok.account_label, tok.rev, tok.scope) == (
         ACCESS, REFRESH, LABEL, 0, "read v2")
     assert timedelta(hours=23, minutes=59) < models.as_utc(tok.expires_at) - before <= timedelta(hours=24, minutes=1)
     assert timedelta(days=29) < models.as_utc(tok.refresh_expires_at) - before <= timedelta(days=30, minutes=1)
-    # подключение — «подключено · ограничено», не «работает»; сведения без e-mail и телефона
+    # подключение - "подключено · ограничено", не "работает"; сведения без e-mail и телефона
     c = connector(client)
     assert (c["status"], c["statusLabel"]) == ("ready", "подключено · ограничено")
     assert c["facts"]["account"] == LABEL and c["facts"]["isBusiness"] is True
     assert "чужие объявления так не собираются" in c["statusDetail"]
     assert c["checkedAt"] is not None
     assert "owner@example.com" not in json.dumps(c, ensure_ascii=False)
-    # журнал — от автора старта
+    # журнал - от автора старта
     assert (f"OLX: подключён аккаунт {LABEL} (OAuth). Доступны только ресурсы этого аккаунта — чужие объявления так "
             f"не собираются") in audit_texts(AUTHOR)
     # state погашен
@@ -302,12 +302,12 @@ def test_callback_rejections(client, olx_env, http_mock, env):
     assert r.status_code == 400 and m.BAD_STATE in r.text
     for k, v in SECURITY_HEADERS.items():
         assert r.headers[k] == v
-    http_mock.clear()  # дальше — ни одного запроса к OLX
+    http_mock.clear()  # дальше - ни одного запроса к OLX
     # неизвестный и пустой state
     assert callback(client, code=CODE, state="no-such-state-0123456789").status_code == 400
     assert callback(client, code=CODE).status_code == 400
     assert callback(client, code=CODE, state="x" * 600).status_code == 400
-    # чужие значения с публичного адреса не становятся «секретами» маскирования (список не растёт, текст не портится)
+    # чужие значения с публичного адреса не становятся "секретами" маскирования(список не растёт, текст не портится)
     from app import logs
 
     junk = ("FAKE-junk-state-0123456789abcdef", "FAKE-junk-code-0123456789abcdef")
@@ -321,7 +321,7 @@ def test_callback_rejections(client, olx_env, http_mock, env):
         db.commit()
     r = callback(client, code=CODE, state=state)
     assert r.status_code == 400 and m.BAD_STATE in r.text
-    # токен администратора сменился между стартом и возвратом — state погашен
+    # токен администратора сменился между стартом и возвратом - state погашен
     state = start(client)
     env(SAQ_ADMIN_TOKEN="t-admin-other-0123456789abcdefXYZ")
     r = callback(client, code=CODE, state=state)
@@ -329,7 +329,7 @@ def test_callback_rejections(client, olx_env, http_mock, env):
     assert state_row(state).used_at is not None
     env(SAQ_ADMIN_TOKEN=FAKE_ADMIN_TOKEN)
     assert callback(client, code=CODE, state=state).status_code == 400
-    # отказ провайдера — 400 с описанием, state погашен
+    # отказ провайдера - 400 с описанием, state погашен
     state = start(client)
     r = callback(client, error="access_denied", error_description="The user denied access", state=state)
     assert r.status_code == 400 and "OLX отказал в доступе: The user denied access" in r.text
@@ -359,7 +359,7 @@ def test_callback_exchange_failures(client, olx_env, http_mock):
     http_mock.on("POST", TOKEN_URL, content=b"<html>502</html>", status=502, headers=HTML)
     r = callback(client, code=CODE, state=start(client))
     assert r.status_code == 502 and "OLX не выдал токен" in r.text and token_row() is None
-    # токен выдан, users/me не прошёл — токен сохранён, статус «ошибка» с причиной (не «подключено»)
+    # токен выдан, users/me не прошёл - токен сохранён, статус "ошибка" с причиной(не "подключено")
     http_mock.on("POST", TOKEN_URL, handler=lambda req: jresp(200, token_body()))
     http_mock.on("GET", ME_URL, status=500, content=b"oops")
     r = callback(client, code=CODE, state=start(client))
@@ -400,7 +400,7 @@ def test_refresh_when_less_than_hour_left(client, olx_env, http_mock):
     assert (tok.access_token, tok.refresh_token, tok.rev) == (ACCESS2, REFRESH2, 4)
     assert models.as_utc(tok.expires_at) - before > timedelta(hours=23)
     assert models.as_utc(tok.refresh_expires_at) - before > timedelta(days=29)
-    # больше часа до истечения — без сети
+    # больше часа до истечения - без сети
     http_mock.clear()
     assert _ensure() == ACCESS2 and http_mock.calls == []
 
@@ -458,7 +458,7 @@ def test_refresh_invalid_grant_after_concurrent_refresh(client, olx_env, http_mo
 
     seed_token(expires_in=timedelta(minutes=10), rev=1)
 
-    def handler(request):  # другой процесс уже обменял этот refresh token — OLX отвечает invalid_grant
+    def handler(request):  # другой процесс уже обменял этот refresh token - OLX отвечает invalid_grant
         T = models.IntegrationToken
         with SessionLocal() as db:
             db.execute(update(T).where(T.provider == "olx").values(access_token="FAKE-olx-other-0123456789",
@@ -530,7 +530,7 @@ def test_computed_statuses(client, olx_env, http_mock, run_worker):
     m = olx()
     c = connector(client)  # ключи есть, токена нет
     assert (c["status"], c["statusLabel"], c["statusDetail"]) == ("unchecked", "не подключён", m.UNCHECKED)
-    run = run_test(client, run_worker)  # проверка без токена — «не подключён», без сети
+    run = run_test(client, run_worker)  # проверка без токена - "не подключён", без сети
     assert run["status"] == "not_configured" and http_mock.calls == []
     assert connector(client)["status"] == "unchecked"
     seed_token(refresh_in=timedelta(days=-1))  # refresh token истёк
@@ -556,7 +556,7 @@ def test_disconnect(client, olx_env, http_mock):
 
 
 def test_disconnect_without_token_clears_account_facts(client, olx_env):
-    """Токена уже нет, а в сведениях остался аккаунт (остаток гонки) — повторное отключение их убирает, журнал не
+    """Токена уже нет, а в сведениях остался аккаунт(остаток гонки) - повторное отключение их убирает, журнал не
     засоряется."""
     set_row(status="ready", facts={"account": LABEL, "isBusiness": True, "keyFp": {"OLX_CLIENT_ID": "x"}})
     before = len(audit_texts())
@@ -565,7 +565,7 @@ def test_disconnect_without_token_clears_account_facts(client, olx_env):
     facts = r.json()["facts"]
     assert "account" not in facts and "isBusiness" not in facts and facts["keyFp"] == {"OLX_CLIENT_ID": "x"}
     assert len(audit_texts()) == before
-    # строки подключения нет вовсе — тоже без ошибки
+    # строки подключения нет вовсе - тоже без ошибки
     from app import models
     from app.db import SessionLocal
 
@@ -582,7 +582,7 @@ OLD_ME = {"data": {"id": 1, "name": "Старый", "is_business": False}}
 
 
 def reconnect_now(access=ACCESS2, refresh=REFRESH2, me=ME) -> None:
-    """То, что делает возврат из OLX: новые токены (новое поколение) и подтверждённый аккаунт."""
+    """То, что делает возврат из OLX: новые токены(новое поколение) и подтверждённый аккаунт."""
     from app import models
     from app.db import SessionLocal
     from app.settings import get_settings
@@ -597,7 +597,7 @@ def reconnect_now(access=ACCESS2, refresh=REFRESH2, me=ME) -> None:
 
 def test_check_reconnect_during_check_verifies_current_account(client, olx_env, http_mock, run_worker):
     """Пока users/me со старым токеном идёт к OLX, администратор подключил другой аккаунт: ответ про старый аккаунт не
-    пишется в новое подключение, проверяется текущее (новый токен)."""
+    пишется в новое подключение, проверяется текущее(новый токен)."""
     seed_token(label=OLD_LABEL)
     set_row(status="ready", facts={"account": OLD_LABEL, "isBusiness": False})
     seen: list = []
@@ -622,8 +622,8 @@ def test_check_reconnect_during_check_verifies_current_account(client, olx_env, 
 
 
 def test_check_disconnect_during_check_not_resurrected(client, olx_env, http_mock, run_worker):
-    """Администратор отключил аккаунт, пока проверка ждала ответ: сведения об аккаунте не возвращаются, статус — «не
-    подключён»."""
+    """Администратор отключил аккаунт, пока проверка ждала ответ: сведения об аккаунте не возвращаются, статус - "не
+    подключён"."""
     seed_token(label=LABEL)
     set_row(status="ready", facts={"account": LABEL, "isBusiness": True})
 
@@ -642,7 +642,7 @@ def test_check_disconnect_during_check_not_resurrected(client, olx_env, http_moc
 
 
 def test_check_replaced_twice_fails_without_account(client, olx_env, http_mock, run_worker):
-    """Подключение сменилось и при повторной проверке — ошибка с причиной, сведения о проверенном аккаунте не
+    """Подключение сменилось и при повторной проверке - ошибка с причиной, сведения о проверенном аккаунте не
     пишутся."""
     seed_token(label=OLD_LABEL)
     tokens = iter([(ACCESS2, REFRESH2), ("FAKE-olx-access3-0123456789abcdefXY", "FAKE-olx-refresh3-0123456789abcd")])
@@ -652,7 +652,7 @@ def test_check_replaced_twice_fails_without_account(client, olx_env, http_mock, 
         from app.db import SessionLocal
 
         access, refresh = next(tokens)
-        with SessionLocal() as db:  # новое подключение без подтверждения аккаунта (подпись сброшена)
+        with SessionLocal() as db:  # новое подключение без подтверждения аккаунта(подпись сброшена)
             olx().save_token(db, token_body(access, refresh), models.utcnow())
             db.commit()
         return jresp(200, OLD_ME)
@@ -668,8 +668,8 @@ def test_check_replaced_twice_fails_without_account(client, olx_env, http_mock, 
 
 
 def test_callback_replaced_during_account_check(client, olx_env, http_mock):
-    """Возврат A ждёт users/me, а за это время подключили другой аккаунт (возврат B): A не перезаписывает подпись,
-    сведения и статус B и не пишет в журнал «подключён»."""
+    """Возврат A ждёт users/me, а за это время подключили другой аккаунт(возврат B): A не перезаписывает подпись,
+    сведения и статус B и не пишет в журнал "подключён"."""
     other = {"data": {"id": 777, "name": "Другой", "is_business": False}}
     other_label = "Другой (id 777)"
     http_mock.on("POST", TOKEN_URL, handler=lambda r: jresp(200, token_body()))
@@ -685,7 +685,7 @@ def test_callback_replaced_during_account_check(client, olx_env, http_mock):
     c = connector(client)
     assert (c["status"], c["facts"]["account"]) == ("ready", other_label)
     assert not any(LABEL in t for t in audit_texts())
-    # то же со сбоем users/me: статус нового подключения не становится «ошибкой»
+    # то же со сбоем users/me: статус нового подключения не становится "ошибкой"
     http_mock.on("GET", ME_URL, handler=lambda req: reconnect_now(me=other) or jresp(500, {}))
     r = callback(client, code=CODE, state=start(client))
     assert r.status_code == 502
@@ -705,7 +705,7 @@ def test_callback_replaced_during_account_check(client, olx_env, http_mock):
 
 
 def test_callback_account_failed_clears_previous_account(client, olx_env, http_mock):
-    """Переподключение, users/me не прошёл: сведения о прежнем аккаунте убираются (токен уже другой)."""
+    """Переподключение, users/me не прошёл: сведения о прежнем аккаунте убираются(токен уже другой)."""
     seed_token(label=OLD_LABEL)
     set_row(status="ready", facts={"account": OLD_LABEL, "isBusiness": False})
     http_mock.on("POST", TOKEN_URL, handler=lambda r: jresp(200, token_body(ACCESS2, REFRESH2)))
@@ -725,8 +725,8 @@ INSUFFICIENT_SCOPE = {"error": "insufficient_scope",
 
 
 def test_check_insufficient_scope_is_denied_not_expired(client, olx_env, http_mock, run_worker):
-    """Документация OLX: недостаточный scope — HTTP 401 insufficient_scope. Это не истёкший токен: без обновления,
-    статус «нет доступа» с подсказкой про OLX_SCOPES, по расписанию не повторяется."""
+    """Документация OLX: недостаточный scope - HTTP 401 insufficient_scope. Это не истёкший токен: без обновления,
+    статус "нет доступа" с подсказкой про OLX_SCOPES, по расписанию не повторяется."""
     seed_token()
     http_mock.on("GET", ME_URL, json=INSUFFICIENT_SCOPE, status=401, headers=HTML)
     http_mock.on("POST", TOKEN_URL, handler=lambda r: jresp(200, token_body(ACCESS2, REFRESH2)))
@@ -740,7 +740,7 @@ def test_check_insufficient_scope_is_denied_not_expired(client, olx_env, http_mo
     assert token_row().access_token == ACCESS
     set_row(checked_at=None)
     assert not _scheduled()
-    # без описания — без двоеточия
+    # без описания - без двоеточия
     http_mock.on("GET", ME_URL, json={"error": "insufficient_scope"}, status=401)
     from app.integrations import http
 
@@ -781,19 +781,19 @@ def test_health_checks_scheduled(client, olx_env):
     set_row(status="ready", checked_at=now - timedelta(hours=2))
     assert _scheduled()  # токен истекает меньше чем через час
     set_row(checked_at=now - timedelta(minutes=5))
-    assert not _scheduled()  # только что проверяли — не зацикливаться
+    assert not _scheduled()  # только что проверяли - не зацикливаться
     seed_token(expires_in=timedelta(hours=20))
     set_row(checked_at=now - timedelta(hours=25))
     assert _scheduled()  # проверке больше суток
     set_row(checked_at=now - timedelta(hours=1))
     assert not _scheduled()
     set_row(checked_at=now - timedelta(hours=25), status="expired")
-    assert not _scheduled()  # истёкший доступ — только повторное подключение
+    assert not _scheduled()  # истёкший доступ - только повторное подключение
     set_row(status="rate_limited", next_run_at=now + timedelta(minutes=30))
     assert not _scheduled()  # пауза по лимиту частоты
-    assert _scheduled(now + timedelta(minutes=31))  # пауза кончилась — проверить снова, не дожидаясь суток
+    assert _scheduled(now + timedelta(minutes=31))  # пауза кончилась - проверить снова, не дожидаясь суток
     set_row(checked_at=now - timedelta(minutes=5), next_run_at=now - timedelta(minutes=1))
-    assert not _scheduled()  # пауза короче 15 минут — всё равно не чаще раза в 15 минут
+    assert not _scheduled()  # пауза короче 15 минут - всё равно не чаще раза в 15 минут
     set_row(status="ready")
     seed_token(refresh_in=timedelta(days=-1))
     assert not _scheduled()  # refresh token истёк
@@ -809,7 +809,7 @@ def test_health_check_runs_from_worker(client, olx_env, http_mock, run_worker):
     assert run_worker() == 1
     assert [str(c.url) for c in http_mock.calls] == [TOKEN_URL, ME_URL]
     assert token_row().access_token == ACCESS2
-    assert run_worker() == 0  # следующий такт — ничего
+    assert run_worker() == 0  # следующий такт - ничего
 
 
 # ---------- 8. токены не выходят наружу ----------
@@ -841,10 +841,10 @@ def test_no_tokens_in_api_or_logs(client, olx_env, http_mock, run_worker, caplog
             assert state not in st.state_hash
 
 
-# ---------- приёмка по §14 плана (§16.5, применимое к OAuth-подключению) ----------
+# ---------- приёмка по §14 плана(§16.5, применимое к OAuth-подключению) ----------
 
 def test_acceptance_failure_not_empty(client, olx_env, http_mock, run_worker, accept):
-    """«сбой не выглядит пустой выдачей»: ошибка OLX — запуск не «успешно», подключение не «работает», причина видна."""
+    """"сбой не выглядит пустой выдачей": ошибка OLX - запуск не "успешно", подключение не "работает", причина видна."""
     seed_token()
     http_mock.on("GET", ME_URL, status=503, content=b"busy")
     run = run_test(client, run_worker)
@@ -853,7 +853,7 @@ def test_acceptance_failure_not_empty(client, olx_env, http_mock, run_worker, ac
 
 
 def test_acceptance_oauth_is_not_collection(client, olx_env, http_mock, accept):
-    """Успешный OAuth — не сбор чужих объявлений: публикаций не появляется, сбора нет, статус не «работает»."""
+    """Успешный OAuth - не сбор чужих объявлений: публикаций не появляется, сбора нет, статус не "работает"."""
     snap = accept.snapshot()
     connect(client, http_mock)
     assert accept.snapshot() == snap
@@ -866,7 +866,7 @@ def test_acceptance_oauth_is_not_collection(client, olx_env, http_mock, accept):
 
 
 def test_acceptance_rate_limit_no_loop(client, olx_env, http_mock, run_worker):
-    """«превышение лимита не вызывает бесконечный цикл»: 429 — пауза, следующие такты воркера не обращаются к OLX."""
+    """"превышение лимита не вызывает бесконечный цикл": 429 - пауза, следующие такты воркера не обращаются к OLX."""
     seed_token()
     http_mock.on("GET", ME_URL, status=429, content=b"slow down", headers={"Retry-After": "900"})
     run = run_test(client, run_worker)
@@ -879,7 +879,7 @@ def test_acceptance_rate_limit_no_loop(client, olx_env, http_mock, run_worker):
 
 
 def test_rate_limited_health_check_retried_after_pause(client, olx_env, http_mock, run_worker):
-    """429 на плановой проверке (Retry-After 15 мин): до конца паузы не проверять, после — проверка ставится сама, а
+    """429 на плановой проверке(Retry-After 15 мин): до конца паузы не проверять, после - проверка ставится сама, а
     не через сутки; успех снимает паузу."""
     from app import models
 
@@ -898,8 +898,8 @@ def test_rate_limited_health_check_retried_after_pause(client, olx_env, http_moc
 
 
 def test_callback_429_respects_retry_after(client, olx_env, http_mock):
-    """users/me ответил 429 сразу после обмена кода: пауза до Retry-After (как у плановой проверки), без проверки на
-    ближайшем такте; после паузы — проверка."""
+    """users/me ответил 429 сразу после обмена кода: пауза до Retry-After(как у плановой проверки), без проверки на
+    ближайшем такте; после паузы - проверка."""
     from app import models
     from app.integrations.base import local_time
 

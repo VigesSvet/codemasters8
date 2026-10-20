@@ -1,10 +1,10 @@
-"""Демо-набор — только для тестов: вымышленные ЖК, застройщики, публикации, обращения, аналитики и исходный журнал из
-shared/testdata/demo_seed.json. Приложение его не засевает и не отдаёт (пустая БД приложения получает стартовый набор
-shared/snapshot — app.snapshot); тесты подставляют свой старт пустой БД: seed.START = start (conftest.py).
+"""Демо-набор - только для тестов: вымышленные ЖК, застройщики, публикации, обращения, аналитики и исходный журнал из
+shared/testdata/demo_seed.json. Приложение его не засевает и не отдаёт(пустая БД приложения получает стартовый набор
+shared/snapshot - app.snapshot); тесты подставляют свой старт пустой БД: seed.START = start(conftest.py).
 
-start — пустая БД получает демо-набор (как прежний демо-режим; после python -m app.demo purge — как live_start);
-live_start — «боевой» старт без демо-набора и без стартового набора: аналитики для входа, открытый реестр и карточки ЖК
-из него (прежний SAQ_DEMO_DATA=0); live() — переключить старт на live_start и пересоздать БД."""
+start - пустая БД получает демо-набор(как прежний демо-режим; после python -m app.demo purge - как live_start);
+live_start - "боевой" старт без демо-набора и без стартового набора: аналитики для входа, открытый реестр и карточки ЖК
+из него(прежний SAQ_DEMO_DATA=0); live() - переключить старт на live_start и пересоздать БД."""
 import json
 import logging
 from datetime import datetime, timezone
@@ -30,7 +30,7 @@ def _snake(key: str) -> str:
 
 
 def _row(model: Type[Base], d: Dict[str, Any]) -> Base:
-    """camelCase-ключи верхнего уровня → snake_case; вложенные словари (basis, readiness, photos) — как есть."""
+    """camelCase-ключи верхнего уровня → snake_case; вложенные словари(basis, readiness, photos) - как есть."""
     cols = set(model.__table__.columns.keys())
     data = {_snake(k): v for k, v in d.items() if not k.startswith("_")}
     extra = sorted(set(data) - cols)
@@ -46,8 +46,8 @@ TRI = {"yes": "есть", "no": "нет", "unknown": "нет сведений"}
 
 
 def utc(value: str, local_time: str = "10:00") -> datetime:
-    """Время из сида → UTC. Без смещения — местное время Усть-Каменогорска (UTC+5), как в источниках;
-    только дата — фиксация в local_time того же дня. Строки со смещением (+05:00) переводятся как есть."""
+    """Время из сида → UTC. Без смещения - местное время Усть-Каменогорска(UTC+5), как в источниках;
+    только дата - фиксация в local_time того же дня. Строки со смещением(+05:00) переводятся как есть."""
     dt = datetime.fromisoformat(value if "T" in value else f"{value}T{local_time}")
     return (dt if dt.tzinfo else dt.replace(tzinfo=ALMATY)).astimezone(timezone.utc)
 
@@ -59,7 +59,7 @@ def _applicants(n: int) -> str:
 
 
 def _ad_events(ad: Dict[str, Any], names: Dict[str, str]) -> Iterator[Dict[str, Any]]:
-    """Сбор публикации, гипотеза ИИ о ЖК (при сборе) и — если было — подтверждение привязки аналитиком."""
+    """Сбор публикации, гипотеза ИИ о ЖК(при сборе) и - если было - подтверждение привязки аналитиком."""
     at = utc(ad["date"])
     cid = ad.get("complexId") if ad.get("complexId") in names else None
     platform = PLATFORMS.get(ad["platform"], ad["platform"])
@@ -78,7 +78,7 @@ def _ad_events(ad: Dict[str, Any], names: Dict[str, str]) -> Iterator[Dict[str, 
 
 
 def _complex_events(c: Dict[str, Any], appeals: List[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
-    """Сведения по ЖК с источником и временем фиксации (ТЗ §4): основание, готовность, обращения, снимки площадки."""
+    """Сведения по ЖК с источником и временем фиксации(ТЗ §4): основание, готовность, обращения, снимки площадки."""
     b = c.get("basis") or {}
     if b.get("source") and b.get("checkedAt"):
         yield {"at": utc(b["checkedAt"]), "what": f"Основание сверено ({b['source']}): гарантия ЕО — "
@@ -102,7 +102,7 @@ def _complex_events(c: Dict[str, Any], appeals: List[Dict[str, Any]]) -> Iterato
 
 
 def journal(data: Dict[str, Any]) -> List[models.AuditEvent]:
-    """Исходный журнал демо-БД, детерминированно: публикации (сбор и привязка), сведения по ЖК, явные события seed.audit."""
+    """Исходный журнал демо-БД, детерминированно: публикации(сбор и привязка), сведения по ЖК, явные события seed.audit."""
     names = {c["id"]: c["name"] for c in data["complexes"]}
     out = [models.AuditEvent(ad_id=ad["id"], **{"who": SYSTEM, **e}) for ad in data["ads"] for e in _ad_events(ad, names)]
     for c in data["complexes"]:
@@ -126,7 +126,7 @@ def seed(db) -> None:
     db.flush()
     db.add_all(_row(models.Complex, c) for c in data["complexes"])
     db.flush()
-    times = ("linkConfirmedAt", "termsReviewAt")  # время решений аналитика — в DateTime (UTC), как у записей из API
+    times = ("linkConfirmedAt", "termsReviewAt")  # время решений аналитика - в DateTime(UTC), как у записей из API
     db.add_all(_row(models.Ad, {**a, **{k: utc(a[k]) for k in times if a.get(k)}}) for a in data["ads"])
     db.add_all(_row(models.Appeal, a) for a in data.get("appeals", []))
     db.flush()
@@ -139,7 +139,7 @@ def seed(db) -> None:
 # ---------- старт пустой БД в тестах ----------
 
 def live_start(db) -> None:
-    """Без демо-набора и без стартового набора: аналитики для входа (если их нет), открытый реестр (если записей нет) и
+    """Без демо-набора и без стартового набора: аналитики для входа(если их нет), открытый реестр(если записей нет) и
     карточки ЖК из него."""
     if db.scalar(select(models.Analyst.id).limit(1)) is None:
         db.add_all(_row(models.Analyst, a) for a in DATA.get("analysts", []))
@@ -148,7 +148,7 @@ def live_start(db) -> None:
 
 
 def start(db) -> None:
-    """Пустая БД — демо-набор; после python -m app.demo purge (флаг demo_data) — как live_start."""
+    """Пустая БД - демо-набор; после python -m app.demo purge(флаг demo_data) - как live_start."""
     if demo.purged(db):
         live_start(db)
     elif not db.scalar(select(models.Developer.id).limit(1)):
@@ -156,7 +156,7 @@ def start(db) -> None:
 
 
 def live() -> None:
-    """Тест «боевого» режима: старт без демо-набора (live_start) и пересоздание БД. Прежний старт вернёт автофикстура
+    """Тест "боевого" режима: старт без демо-набора(live_start) и пересоздание БД. Прежний старт вернёт автофикстура
     conftest._demo_start."""
     app_seed.START = live_start
     app_seed.reset()

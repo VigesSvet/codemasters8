@@ -1,4 +1,4 @@
-"""Нормативная база (shared/law.json, app.law): структура, ссылки факторов модели риска на статьи, тексты оснований,
+"""Нормативная база(shared/law.json, app.law): структура, ссылки факторов модели риска на статьи, тексты оснований,
 нормативная база в PDF сигнальной карточки и в GET /api/risk/model."""
 import re
 from datetime import datetime, timezone
@@ -15,17 +15,17 @@ def test_act_and_articles():
     assert act["url"] == "https://adilet.zan.kz/rus/docs/Z1600000486"
     assert act["redaction"] and re.fullmatch(r"\d{4}-\d{2}-\d{2}", act["fetchedAt"])
     assert act["short"].startswith("Закона РК «О долевом участии в жилищном строительстве»")
-    assert list(law.ARTICLES) == ["7", "8", "18", "23"]  # ориентиры ТЗ (7, 8, 18) и реклама (23)
+    assert list(law.ARTICLES) == ["7", "8", "18", "23"]  # ориентиры ТЗ(7, 8, 18) и реклама(23)
     for num, a in law.ARTICLES.items():
         assert a["url"] == f"{act['url']}#z{num}" and a["title"] and a["summary"]
-        assert a["footnote"].startswith(f"Сноска. Статья {num} ")  # сноска об изменениях — как в источнике
+        assert a["footnote"].startswith(f"Сноска. Статья {num} ")  # сноска об изменениях - как в источнике
         parts = [e["part"] for e in a["excerpts"]]
         assert parts and len(parts) == len(set(parts))
         for e in a["excerpts"]:
             assert e["text"] == e["text"].strip() and "  " not in e["text"]
             if re.fullmatch(r"\d+(-\d+)?", e["part"]):  # пронумерованный пункт начинается со своего номера
                 assert e["text"].startswith(f"{e['part']}. "), (num, e["part"])
-    # ключевые положения — дословно
+    # ключевые положения - дословно
     assert "одним из следующих способов:\n1) получение гарантии Единого оператора;" in law.ARTICLES["7"]["excerpts"][0]["text"]
     six = next(e["text"] for e in law.ARTICLES["8"]["excerpts"] if e["part"] == "6")
     assert "не требует получения застройщиком и уполномоченной компанией разрешения на привлечение денег дольщиков" in six
@@ -35,7 +35,7 @@ def test_act_and_articles():
 
 def test_factor_refs_match_law_json():
     for code, f in FACTORS.items():
-        assert "law" in f, code  # у каждого фактора поле есть, у R4–R6 — пустое
+        assert "law" in f, code  # у каждого фактора поле есть, у R4-R6 - пустое
         assert f["law"] == [{"article": r["article"], "parts": r["parts"]} for r in law.REFS.get(code, [])], code
     assert {r["article"] for r in FACTORS["R1"]["law"]} == {"7", "8", "18"}
     assert {r["article"] for r in FACTORS["R2"]["law"]} == {"7", "8", "18"}

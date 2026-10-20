@@ -1,4 +1,4 @@
-"""Журнал (T-16…T-19): исходный журнал сида, смена статуса с автором, комментарии, журнал ЖК, запросы сведений,
+"""Журнал(T-16…T-19): исходный журнал сида, смена статуса с автором, комментарии, журнал ЖК, запросы сведений,
 общий журнал с фильтрами, демо-аналитики, JSON-ответ на необработанную ошибку."""
 import logging
 
@@ -29,11 +29,11 @@ def test_seed_journal_of_ad(client):
     assert all(set(e) == EVENT_KEYS and e["at"].endswith("+00:00") for e in log) and _sorted(log)
     assert [(e["kind"], e["who"]) for e in log] == [("system", "Система"), ("ai", "Система"), ("link", "Нестерова А."),
                                                     ("status", "Нестерова А."), ("status", "Нестерова А.")]
-    # время публикации в сиде — местное (UTC+5) без смещения; явные события и подтверждение привязки — со смещением +05:00
+    # время публикации в сиде - местное(UTC+5) без смещения; явные события и подтверждение привязки - со смещением +05:00
     assert [e["at"] for e in log] == ["2026-10-11T11:02:00+00:00", "2026-10-11T11:02:00+00:00", "2026-10-11T11:42:00+00:00",
                                       "2026-10-12T04:30:00+00:00", "2026-10-12T06:10:00+00:00"]
     assert log[0]["what"] == "Публикация собрана автоматически (Instagram)"
-    # при сборе привязка — гипотеза ИИ; фактом её сделал аналитик (linkConfirmedBy/At из сида)
+    # при сборе привязка - гипотеза ИИ; фактом её сделал аналитик(linkConfirmedBy/At из сида)
     assert log[1]["what"] == ("Гипотеза ИИ: ЖК «Достык Плаза», уверенность 95% (совпадение при сборе публикации) — "
                               "нужна проверка аналитиком")
     assert log[2]["what"] == "Привязка к ЖК «Достык Плаза» подтверждена аналитиком"
@@ -43,7 +43,7 @@ def test_seed_journal_of_ad(client):
     a6 = next(a for a in client.get("/api/ads").json() if a["id"] == "a6")
     assert (a6["linkConfirmedBy"], a6["linkConfirmedAt"]) == ("Нестерова А.", "2026-10-11T11:42:00+00:00")
 
-    # источник публикации; неподтверждённая привязка — только гипотеза, без события подтверждения
+    # источник публикации; неподтверждённая привязка - только гипотеза, без события подтверждения
     assert [(e["kind"], e["what"]) for e in _log(client, "/api/ads/a4/audit")][:3] == [
         ("system", "Публикация добавлена вручную"),
         ("ai", "Гипотеза ИИ: ЖК «Тихий берег», уверенность 71% (совпадение при добавлении публикации) — "
@@ -62,7 +62,7 @@ def test_seed_journal_of_complex(client):
     data = [e for e in log if e["kind"] == "data"]
     assert all(e["who"] == "Система" and e["adId"] is None for e in data)
     texts = [e["what"] for e in data]
-    # сведения с источником и временем фиксации (дата источника, 10:00 по UTC+5 = 05:00 UTC; снимки — 12:00)
+    # сведения с источником и временем фиксации(дата источника, 10:00 по UTC+5 = 05:00 UTC; снимки - 12:00)
     basis = next(e for e in data if e["what"].startswith("Основание сверено"))
     assert basis["what"] == ("Основание сверено (Картотека ГАСК ВКО (демо)): гарантия ЕО — нет, разрешение МИО — нет, "
                              "банк — нет сведений")
@@ -75,7 +75,7 @@ def test_seed_journal_of_complex(client):
     shots = [e for e in data if e["what"].startswith("Снимок площадки")]
     assert len(shots) == 4 and all(e["at"].endswith("T07:00:00+00:00") for e in shots)
     assert shots[-1]["what"] == "Снимок площадки (дрон): активность — нет. Изменений нет 95 дней"
-    # публикации по ЖК — тоже в журнале объекта
+    # публикации по ЖК - тоже в журнале объекта
     assert {e["kind"] for e in log} == {"data", "system", "ai", "link", "status", "comment"}
     assert {e["adId"] for e in log if e["kind"] != "data"} == {"a2"}
 
@@ -84,7 +84,7 @@ def test_seed_journal_of_complex(client):
                for e in _log(client, "/api/complexes/c11/audit"))
     req = [e for e in _log(client, "/api/complexes/c6/audit") if e["kind"] == "request"]
     assert [(e["who"], e["at"]) for e in req] == [("Омарова Ж.", "2026-10-12T05:15:00+00:00")]
-    # у c14 сведения не сверены (нет источника) — в журнале только его публикация
+    # у c14 сведения не сверены(нет источника) - в журнале только его публикация
     assert {e["kind"] for e in _log(client, "/api/complexes/c14/audit")} == {"system", "ai", "link"}
 
 
@@ -107,11 +107,11 @@ def test_status_change_journal(client):
     assert e["what"] == f"Статус: «Новая» → «На проверке» · ответственный: {AUTHOR}" and e["at"].endswith("+00:00")
     n = len(_log(client, "/api/ads/a5/audit"))
 
-    # повтор без изменений — 200, журнал не засоряется (и тот же ответственный — не изменение)
+    # повтор без изменений - 200, журнал не засоряется(и тот же ответственный - не изменение)
     assert _status(client, "a5", "in_review").status_code == 200
     assert _status(client, "a5", "in_review", assignee=f"  {AUTHOR} ").status_code == 200
     assert len(_log(client, "/api/ads/a5/audit")) == n
-    # тот же статус с комментарием — событие пишется
+    # тот же статус с комментарием - событие пишется
     _status(client, "a5", "in_review", comment="  ждём ответ ГАСК  ")
     assert _log(client, "/api/ads/a5/audit")[-1]["what"] == "Статус: «На проверке» без изменений. Основание: ждём ответ ГАСК"
     # смена ответственного без смены статуса
@@ -119,7 +119,7 @@ def test_status_change_journal(client):
     e = _log(client, "/api/ads/a5/audit")[-1]
     assert (e["who"], e["what"]) == ("Исаев Т.", "Статус: «На проверке» без изменений · ответственный: Исаев Т.")
 
-    # подтверждение нарушения — только с основанием
+    # подтверждение нарушения - только с основанием
     for bad in ({}, {"comment": ""}, {"comment": "   "}):
         r = _status(client, "a5", "confirmed", **bad)
         assert r.status_code == 422 and r.json()["detail"][0]["loc"][-1] == "comment", bad
@@ -132,26 +132,26 @@ def test_status_change_journal(client):
 
 
 def test_status_line_has_no_double_dot(client):
-    """Инициалы ответственного кончаются точкой («Исаев Т.»): перед основанием — без «..»; тот же текст, что statusLine в демо."""
+    """Инициалы ответственного кончаются точкой("Исаев Т."): перед основанием - без ".."; тот же текст, что statusLine в демо."""
     r = client.patch("/api/ads/a1/status",
                      json={"status": "confirmed", "author": "Исаев Т.", "assignee": "Исаев Т.", "comment": "сверено"})
     assert r.status_code == 200 and (r.json()["status"], r.json()["assignee"]) == ("confirmed", "Исаев Т.")
     e = _log(client, "/api/ads/a1/audit")[-1]
     assert (e["kind"], e["who"]) == ("status", "Исаев Т.")
     assert e["what"] == "Статус: «Новая» → «Нарушение подтверждено» · ответственный: Исаев Т. Основание: сверено"
-    # смена ответственного на «Омарова Ж.» без смены статуса — тоже без «..»
+    # смена ответственного на "Омарова Ж." без смены статуса - тоже без ".."
     _status(client, "a1", "confirmed", assignee=AUTHOR, comment="передано")
     assert _log(client, "/api/ads/a1/audit")[-1]["what"] == (
         "Статус: «Нарушение подтверждено» без изменений · ответственный: Омарова Ж. Основание: передано")
-    # ответственный без точки на конце и без смены ответственного — обычная точка перед основанием
+    # ответственный без точки на конце и без смены ответственного - обычная точка перед основанием
     _status(client, "a5", "in_review", assignee="Тест", comment="ок")
     assert _log(client, "/api/ads/a5/audit")[-1]["what"] == "Статус: «Новая» → «На проверке» · ответственный: Тест. Основание: ок"
     assert not [e["what"] for e in _log(client, "/api/audit", limit=500) if ".." in e["what"]]
 
 
 def test_concurrent_status_decisions(client, monkeypatch):
-    """Два аналитика решают по одной публикации одновременно (оба прочитали «Новая»): первое решение записывается,
-    второе — 409, а не молчаливая перезапись с событием от неверного прежнего статуса."""
+    """Два аналитика решают по одной публикации одновременно(оба прочитали "Новая"): первое решение записывается,
+    второе - 409, а не молчаливая перезапись с событием от неверного прежнего статуса."""
     import threading
 
     from fastapi import HTTPException
@@ -176,7 +176,7 @@ def test_concurrent_status_decisions(client, monkeypatch):
         db = SessionLocal()
         try:
             results[i] = main.set_status("a1", bodies[i], db).status
-        except Exception as e:  # noqa: BLE001 — 409 ожидаем, любое другое исключение провалит проверку ниже
+        except Exception as e:  # noqa: BLE001 - 409 ожидаем, любое другое исключение провалит проверку ниже
             results[i] = e
         finally:
             db.close()
@@ -200,17 +200,17 @@ def test_concurrent_status_decisions(client, monkeypatch):
     assert "Обновите страницу" in lost[0].detail and ".." not in lost[0].detail
 
     log = _log(client, "/api/ads/a1/audit")
-    assert log[:len(before)] == before and len(log) == len(before) + 1  # одно решение — одно событие
+    assert log[:len(before)] == before and len(log) == len(before) + 1  # одно решение - одно событие
     assert (log[-1]["who"], log[-1]["what"].split(" · ")[0]) == (
         winner.author, f"Статус: «Новая» → «{main.STATUS_NAMES[winner.status]}»")
 
-    # следующее решение — уже от фактического статуса
+    # следующее решение - уже от фактического статуса
     assert _status(client, "a1", "needs_check").status_code == 200
     assert _log(client, "/api/ads/a1/audit")[-1]["what"].startswith(f"Статус: «{main.STATUS_NAMES[winner.status]}» →")
 
 
 def test_status_validation_and_current_complex(client):
-    # автор обязателен; пустая строка или пробелы — 422; длиннее 128 — 422; неизвестный статус — 422
+    # автор обязателен; пустая строка или пробелы - 422; длиннее 128 - 422; неизвестный статус - 422
     assert client.patch("/api/ads/a5/status", json={"status": "in_review"}).status_code == 422
     for bad in ("", "   ", "x" * 129):
         assert _status(client, "a5", "in_review", author=bad).status_code == 422
@@ -219,13 +219,13 @@ def test_status_validation_and_current_complex(client):
     assert _status(client, "a5", "in_review", comment="x" * 4001).status_code == 422
     assert next(a for a in client.get("/api/ads").json() if a["id"] == "a5")["status"] == "new"
 
-    # complexId события — текущий ЖК публикации (после перепривязки), без привязки — null
+    # complexId события - текущий ЖК публикации(после перепривязки), без привязки - null
     client.patch("/api/ads/a5/complex", json={"complexId": "c1", "author": AUTHOR})
     assert _log(client, "/api/ads/a5/audit")[-1]["kind"] == "link"
     _status(client, "a5", "needs_check")
     e = _log(client, "/api/ads/a5/audit")[-1]
     assert (e["complexId"], e["what"]) == ("c1", "Статус: «Новая» → «Нужна проверка»")
-    _status(client, "a12", "dismissed", assignee="  ")  # пустой ответственный — как не указан
+    _status(client, "a12", "dismissed", assignee="  ")  # пустой ответственный - как не указан
     e = _log(client, "/api/ads/a12/audit")[-1]
     assert (e["complexId"], e["what"]) == (None, "Статус: «Новая» → «Отклонено»")
 
@@ -236,7 +236,7 @@ def test_manual_ad_events(client):
     log = _log(client, f"/api/ads/{ad['id']}/audit")
     assert [(e["kind"], e["who"], e["complexId"]) for e in log] == [("system", AUTHOR, "c3"), ("ai", "Система", "c3")]
     assert "author" not in ad
-    # без автора — «Система»; повтор id — 409, а не ошибка БД; длина полей — как у столбцов БД
+    # без автора - "Система"; повтор id - 409, а не ошибка БД; длина полей - как у столбцов БД
     assert _log(client, f"/api/ads/{client.post('/api/ads', json=body).json()['id']}/audit")[0]["who"] == "Система"
     assert client.post("/api/ads", json={**body, "id": "m1"}).status_code == 409
     assert client.post("/api/ads", json={**body, "id": "a1"}).status_code == 409
@@ -245,8 +245,8 @@ def test_manual_ad_events(client):
 
 
 def test_manual_ad_cannot_carry_decision(client):
-    """Решение по публикации — только через PATCH /status (автор, основание, событие kind='status'). При создании статус
-    решения — 422: иначе «Нарушение подтверждено» сделало бы гипотезу-привязку фактом и дало R2/R3 без следа решения."""
+    """Решение по публикации - только через PATCH /status(автор, основание, событие kind='status'). При создании статус
+    решения - 422: иначе "Нарушение подтверждено" сделало бы гипотезу-привязку фактом и дало R2/R3 без следа решения."""
     risk = client.get("/api/complexes/c12/risk").json()
     body = {"id": "zz1", "platform": "instagram", "account": "@z", "text": "ЖК Green Line: бронь, первый взнос 10%"}
     for status in ("confirmed", "in_review", "dismissed"):
@@ -255,7 +255,7 @@ def test_manual_ad_cannot_carry_decision(client):
             assert r.status_code == 422 and r.json()["detail"][0]["loc"][-1] == "status", (status, extra)
     assert client.get("/api/ads/zz1/audit").status_code == 404
     assert client.get("/api/complexes/c12/risk").json() == risk
-    # статусы до решения — можно; привязка по названию остаётся гипотезой ИИ
+    # статусы до решения - можно; привязка по названию остаётся гипотезой ИИ
     r = client.post("/api/ads", json={**body, "status": "needs_check"})
     assert r.status_code == 201 and (r.json()["status"], r.json()["complexId"], r.json()["matchConfidence"]) == (
         "needs_check", "c12", 0.8) and r.json()["linkConfirmedBy"] is None
@@ -298,7 +298,7 @@ def test_complex_journal_collects_everything(client):
     sig = [e for e in log if e["signalId"] == sid]
     assert [(e["kind"], e["what"]) for e in sig] == [("signal", "Сигнал создан: балл 100, зона красная"), ("export", "Выгружен PDF")]
     assert [e["kind"] for e in log[-5:]] == ["signal", "export", "request", "comment", "status"]
-    # журнал сигнала — та же форма
+    # журнал сигнала - та же форма
     assert _log(client, f"/api/signals/{sid}/audit") == sig
     assert client.get(f"/api/signals/{sid}").json()["journal"] == sig
 
@@ -307,7 +307,7 @@ def test_complex_journal_collects_everything(client):
 
 
 def test_relink_is_in_both_complex_journals(client):
-    """Перепривязка A → B: прежний ЖК теряет доказательство (R2/R3) — событие с автором и временем есть и в его журнале."""
+    """Перепривязка A → B: прежний ЖК теряет доказательство(R2/R3) - событие с автором и временем есть и в его журнале."""
     assert not [e for e in _log(client, "/api/complexes/c3/audit") if e["adId"] == "a3"]
     r = client.patch("/api/ads/a3/complex", json={"complexId": "c3", "author": "Исаев Т."})
     assert r.status_code == 200 and (r.json()["complexId"], r.json()["matchConfidence"]) == ("c3", 1)
@@ -318,16 +318,16 @@ def test_relink_is_in_both_complex_journals(client):
     came = [e for e in _log(client, "/api/complexes/c3/audit") if e["adId"] == "a3"]
     assert [(e["kind"], e["who"], e["what"]) for e in came] == [
         ("link", "Исаев Т.", "Привязка изменена: «Ертіс Парк» → «Ульба Ривер»")]
-    # в журнале публикации — обе записи, по порядку
+    # в журнале публикации - обе записи, по порядку
     assert _log(client, "/api/ads/a3/audit")[-2:] == [gone, came[0]]
 
-    # подтверждение той же привязки и снятие — по-прежнему одно событие, в текущем ЖК
+    # подтверждение той же привязки и снятие - по-прежнему одно событие, в текущем ЖК
     n = len(_log(client, "/api/ads/a3/audit"))
     client.patch("/api/ads/a3/complex", json={"complexId": "c3", "author": AUTHOR})
     client.patch("/api/ads/a3/complex", json={"complexId": None, "author": AUTHOR})
     assert [(e["complexId"], e["who"], e["what"]) for e in _log(client, "/api/ads/a3/audit")[n:]] == [
         ("c3", AUTHOR, "Привязка к ЖК «Ульба Ривер» подтверждена аналитиком"), ("c3", AUTHOR, "Привязка к ЖК снята")]
-    # привязка публикации без ЖК — одно событие
+    # привязка публикации без ЖК - одно событие
     client.patch("/api/ads/a3/complex", json={"complexId": "c6", "author": AUTHOR})
     assert _log(client, "/api/ads/a3/audit")[-1]["what"] == "Привязка к ЖК «Nord Hills» подтверждена аналитиком"
     assert len(_log(client, "/api/ads/a3/audit")) == n + 3
@@ -363,8 +363,8 @@ def test_audit_filters_and_limit(client):
 
     everything = _log(client, "/api/audit", limit=500)
     assert _sorted(everything) and all(set(e) == EVENT_KEYS for e in everything)
-    assert _log(client, "/api/audit") == everything[-200:]  # по умолчанию — последние 200
-    # limit — последние N, но по возрастанию времени
+    assert _log(client, "/api/audit") == everything[-200:]  # по умолчанию - последние 200
+    # limit - последние N, но по возрастанию времени
     last = _log(client, "/api/audit", limit=5)
     assert last == everything[-5:] and last[-1]["kind"] == "comment" and last[-2]["kind"] == "signal"
 
@@ -414,8 +414,8 @@ def test_unhandled_error_is_json_500(client, monkeypatch, caplog):
 
 
 def test_nul_bytes_are_422(client):
-    """PostgreSQL не хранит NUL (\\x00) в тексте: в теле, пути и параметрах запроса — 422 «недопустимый символ», а не 500
-    ошибки БД. На SQLite проверяется сам контракт (SQLite NUL принимает); прогон на PostgreSQL — SAQ_TEST_DATABASE_URL."""
+    """PostgreSQL не хранит NUL(\\x00) в тексте: в теле, пути и параметрах запроса - 422 "недопустимый символ", а не 500
+    ошибки БД. На SQLite проверяется сам контракт(SQLite NUL принимает); прогон на PostgreSQL - SAQ_TEST_DATABASE_URL."""
     from app.schemas import NUL_MSG
 
     def rejected(r, what):
@@ -450,7 +450,7 @@ def test_nul_bytes_are_422(client):
     assert _log(client, "/api/audit", limit=500) == before and client.get("/api/ads").json() == ads
     assert client.get("/api/signals").json() == []
 
-    # решение по сигналу с NUL в основании — 422, сигнал остаётся нерассмотренным
+    # решение по сигналу с NUL в основании - 422, сигнал остаётся нерассмотренным
     sid = client.post("/api/signals", json={"complexId": "c2", "author": AUTHOR}).json()["id"]
     for action in ("confirm", "return"):
         rejected(client.post(f"/api/signals/{sid}/{action}", json={"author": AUTHOR, "comment": nul}), action)

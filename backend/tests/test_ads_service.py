@@ -1,4 +1,4 @@
-"""Общая запись публикации (integration-spec §7.1, §16.2 test_ads_service): ручной ввод, собранная, заявка бота."""
+"""Общая запись публикации(integration-spec §7.1, §16.2 test_ads_service): ручной ввод, собранная, заявка бота."""
 import os
 import re
 from datetime import datetime, timezone
@@ -31,7 +31,7 @@ def test_manual_path_same_as_route(client):
         assert [e[:2] for e in _events(db, ad.id)] == [("system", AUTHOR), ("ai", "Система")]
         assert _events(db, ad.id)[0][2] == "Публикация добавлена вручную"
         assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d", ad.date)
-    # тот же ввод через POST /api/ads — то же поведение
+    # тот же ввод через POST /api/ads - то же поведение
     r = client.post("/api/ads", json={"platform": "instagram", "account": "@x", "text": TEXT, "author": AUTHOR}).json()
     assert (r["complexId"], r["origin"], r["matchConfidence"]) == ("c3", "analyst", ad.match_confidence)
     assert "collectedAt" not in r and "media" not in r and "processing" not in r  # JSON ручной публикации не изменился
@@ -76,7 +76,7 @@ def test_collected_path(client):
                                                             "API", None)]
         e = db.query(models.AuditEvent).filter(models.AuditEvent.ad_id == ad.id).one()
         assert models.as_utc(e.at) == at
-        # без даты — местное время получения; без платформы — «other»
+        # без даты - местное время получения; без платформы - "other"
         ad2 = ads_service.create_ad(db, {"text": "x"}, actor=COLLECTOR, at=at)
         assert (ad2.platform, ad2.date, ad2.account, ad2.url) == ("other", "2026-10-16T13:08", "", "")
         with pytest.raises(AdExists):
@@ -131,7 +131,7 @@ def test_manual_image_attaches_upload(client):
     ad = r.json()
     assert ad["image"] == f"/api/media/{free}"
     assert ad["media"] == [{"id": free, "kind": "image", "mime": "image/png", "url": f"/api/media/{free}", "role": None}]
-    for ref in (taken, other):  # чужая (уже привязанная) и не ручная загрузка не забираются
+    for ref in (taken, other):  # чужая(уже привязанная) и не ручная загрузка не забираются
         r = client.post("/api/ads", json={"platform": "instagram", "account": "@x", "text": "t",
                                           "image": f"/api/media/{ref}"}).json()
         assert "media" not in r

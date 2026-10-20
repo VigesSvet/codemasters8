@@ -1,8 +1,8 @@
-"""Instagram через Meta Graph API · Business Discovery (integration-spec §12.1, §16.3 test_integration_instagram,
+"""Instagram через Meta Graph API · Business Discovery(integration-spec §12.1, §16.3 test_integration_instagram,
 §16.5 столбец I): проверка токена и разрешений, сбор публикаций с файлами, повтор без дублей, правки, обход страниц,
 совместимость полей, ошибки и лимиты Graph API, токен не утекает, плановая проверка; приёмка по §14 плана.
 
-Сеть — только поддельный Graph API и CDN поверх http_mock; модуль подключения импортируется внутри тестов."""
+Сеть - только поддельный Graph API и CDN поверх http_mock; модуль подключения импортируется внутри тестов."""
 import hashlib
 import hmac
 import json
@@ -27,7 +27,7 @@ APP_SECRET = "fake-app-secret-0123456789abcdef"
 IG_ID = "17841400000000001"
 BUSINESS_ID = "1000000000000001"
 PAGE_ID = "1000000000000002"
-LEAK = "LEAKYPAGINGTOKEN0123456789"  # токен в ссылке paging.next — по ней никогда не ходят
+LEAK = "LEAKYPAGINGTOKEN0123456789"  # токен в ссылке paging.next - по ней никогда не ходят
 AUTHOR = "Омарова Ж."
 ACCOUNT = "tumar.group.astana"
 CDN_RE = re.compile(r"^https://[a-z0-9.-]+\.(?:cdninstagram\.com|fbcdn\.net)/")
@@ -90,12 +90,12 @@ def graph_error(code: int, message: str, *, subcode=None, transient=False, statu
 
 class Graph:
     """Graph API и CDN Instagram поверх http_mock: разрешения, профиль, debug_token, Business Discovery со страницами
-    (курсор CUR<смещение>), ошибки по аккаунту/странице, «неподдерживаемые» поля, заголовки использования лимита.
+    (курсор CUR<смещение>), ошибки по аккаунту/странице, "неподдерживаемые" поля, заголовки использования лимита.
 
-    Страницы — как у настоящего Business Discovery (docs: «the response will not include previous or next fields»):
-    только paging.cursors, без paging.next; курсоры есть, если публикаций больше одной страницы (и на последней такой
-    странице тоже), запрос после последнего курсора — пустая data без paging. leak_next=True добавляет ссылку
-    paging.next с токеном — по ней ходить нельзя; cursor_override подменяет курсор after."""
+    Страницы - как у настоящего Business Discovery(docs: "the response will not include previous or next fields"):
+    только paging.cursors, без paging.next; курсоры есть, если публикаций больше одной страницы(и на последней такой
+    странице тоже), запрос после последнего курсора - пустая data без paging. leak_next=True добавляет ссылку
+    paging.next с токеном - по ней ходить нельзя; cursor_override подменяет курсор after."""
 
     def __init__(self, mock):
         self.mock = mock
@@ -237,7 +237,7 @@ def connector(client) -> dict:
 
 
 def collect(client, run_worker, **kw) -> dict:
-    """Сбор через воркер (с заданиями анализа) → RunOut запуска."""
+    """Сбор через воркер(с заданиями анализа) → RunOut запуска."""
     rid = queue(now=kw.get("now"))
     run_worker(**kw)
     return run_json(client, rid)
@@ -284,7 +284,7 @@ def test_not_configured_status_and_smoke(client):
         "not_configured", "не настроен", ["META_USER_ACCESS_TOKEN"], "Нет на сервере: META_USER_ACCESS_TOKEN")
     assert (c["kind"], c["group"], c["via"], c["configFields"], c["intervalMin"], c["intervalBounds"]) == (
         "collector", "collectors", "Meta Graph API · Business Discovery", ["accounts"], 60, [30, 1440])
-    # проверка из командной строки — без сети (сеть в тестах падает)
+    # проверка из командной строки - без сети(сеть в тестах падает)
     assert smoke.check_one("instagram") == "instagram: не настроен — нет META_USER_ACCESS_TOKEN"
 
 
@@ -307,7 +307,7 @@ def test_account_normalization(client, ig, admin_headers):
     assert err["loc"] == ["body", "config", "accounts"] and err["msg"].startswith("Неверный аккаунт Instagram")
 
 
-# ---------- 2–5. проверка подключения ----------
+# ---------- 2-5. проверка подключения ----------
 
 def test_check_ok_bearer_only(client, configured, graph, run_worker):
     run = check(client, run_worker)
@@ -325,7 +325,7 @@ def test_check_ok_bearer_only(client, configured, graph, run_worker):
     for r in calls:
         assert r.headers["Authorization"] == f"Bearer {TOKEN}"
         assert "access_token" not in str(r.url) and "appsecret_proof" not in str(r.url)
-    # токен — только в заголовке; debug_token требует input_token в адресе — единственное исключение
+    # токен - только в заголовке; debug_token требует input_token в адресе - единственное исключение
     assert [r for r in calls if TOKEN in str(r.url)] == [r for r in calls if r.url.path.endswith("debug_token")]
     assert TOKEN not in json.dumps(client.get("/api/sources/connectors").json())
 
@@ -337,7 +337,7 @@ def test_check_appsecret_proof_masked(client, env, graph, run_worker, caplog):
     proof = hmac.new(APP_SECRET.encode(), TOKEN.encode(), hashlib.sha256).hexdigest()
     user_calls = [r for r in graph.graph_calls() if not r.url.path.endswith("debug_token")]
     assert user_calls and all(r.url.params["appsecret_proof"] == proof for r in user_calls)
-    # appsecret_proof зарегистрирован как секрет: в журнале — «***»
+    # appsecret_proof зарегистрирован как секрет: в журнале - "***"
     logging.getLogger("app.integrations.instagram").warning("запрос %s", f"{GRAPH}me?appsecret_proof={proof}")
     logging.getLogger("app.integrations.instagram").warning(f"значение {proof}")
     assert proof not in caplog.text and TOKEN not in caplog.text and APP_SECRET not in caplog.text
@@ -367,7 +367,7 @@ def test_owned_pages_fallback(client, env, http_mock, graph, run_ctx, ig):
     paths = [r.url.path for r in graph.graph_calls()]
     assert paths.index("/v26.0/me/accounts") < paths.index(f"/v26.0/{BUSINESS_ID}/owned_pages")
     assert collector().state["igUserId"] == IG_ID
-    # ни Страниц токена, ни бизнес-портфолио — ошибка настроек
+    # ни Страниц токена, ни бизнес-портфолио - ошибка настроек
     env(META_BUSINESS_ID=None)
     with pytest.raises(ig.BadConfig) as e:
         ig.CONNECTOR.check(run_ctx("instagram", trigger="test"))
@@ -385,7 +385,7 @@ def test_token_expiry_and_short_token(client, env, graph, run_worker, run_ctx, i
     assert res.facts["expiresAt"] == models.iso(soon.replace(microsecond=0))
     debug = [r for r in graph.graph_calls() if r.url.path.endswith("debug_token")][-1]
     assert debug.headers["Authorization"] == f"Bearer {TOKEN}" and debug.url.params["input_token"] == TOKEN
-    # с App ID и App Secret — токеном приложения (и appsecret_proof к нему)
+    # с App ID и App Secret - токеном приложения(и appsecret_proof к нему)
     env(META_APP_ID=APP_ID, META_APP_SECRET=APP_SECRET)
     ig.CONNECTOR.check(run_ctx("instagram", trigger="test"))
     debug = [r for r in graph.graph_calls() if r.url.path.endswith("debug_token")][-1]
@@ -393,7 +393,7 @@ def test_token_expiry_and_short_token(client, env, graph, run_worker, run_ctx, i
     assert debug.headers["Authorization"] == f"Bearer {app_token}"
     assert debug.url.params["appsecret_proof"] == hmac.new(APP_SECRET.encode(), app_token.encode(),
                                                            hashlib.sha256).hexdigest()
-    # бессрочный токен; ошибка debug_token — «не проверен», но подключение работает; is_valid=false — истёк
+    # бессрочный токен; ошибка debug_token - "не проверен", но подключение работает; is_valid=false - истёк
     graph.debug["data"]["expires_at"] = 0
     res = ig.CONNECTOR.check(run_ctx("instagram", trigger="test"))
     assert res.facts["expiresAt"] is None and "Токен без срока действия" in res.detail
@@ -403,7 +403,7 @@ def test_token_expiry_and_short_token(client, env, graph, run_worker, run_ctx, i
     graph.debug = {"data": {"is_valid": False, "expires_at": 0}}
     with pytest.raises(ig.AuthExpired):
         ig.CONNECTOR.check(run_ctx("instagram", trigger="test"))
-    # краткосрочный токен (истекает через 2 ч) — сбор не включается
+    # краткосрочный токен(истекает через 2 ч) - сбор не включается
     env(META_APP_ID=None, META_APP_SECRET=None)
     graph.debug = {"data": {"is_valid": True, "expires_at": int((models.utcnow() + timedelta(hours=2)).timestamp())}}
     assert check(client, run_worker)["status"] == "succeeded"
@@ -416,7 +416,7 @@ def test_token_expiry_and_short_token(client, env, graph, run_worker, run_ctx, i
     assert r.status_code == 200 and r.json()["enabled"] is True
 
 
-# ---------- 6–8. сбор, повтор, правка ----------
+# ---------- 6-8. сбор, повтор, правка ----------
 
 def three_items(graph) -> list:
     items = [image(1, "Старт продаж, рассрочка 0%"), video(2, with_url=False), carousel(3, [31, 32])]
@@ -428,14 +428,14 @@ def three_items(graph) -> list:
 def test_collect_media_kinds(client, configured, graph, run_worker, ocr_stub):
     three_items(graph)
     run = collect(client, run_worker)
-    assert run["status"] == "partial", run  # видео без файла — «файлов не загружено: 1»
+    assert run["status"] == "partial", run  # видео без файла - "файлов не загружено: 1"
     assert run["counts"] == {"seen": 3, "new": 3, "updated": 0, "unchanged": 0, "failed": 0, "mediaSaved": 4,
                              "mediaFailed": 1}
     assert count(models.Ad) and count(models.IngestItem) == 3
     ad = ad_of(mid(1))
     assert (ad.platform, ad.account, ad.url, ad.origin, ad.source, ad.status) == (
         "instagram", f"@{ACCOUNT}", "https://www.instagram.com/p/C1x/", "collected", "parser", "new")
-    assert ad.date == "2026-10-09T16:10"  # время публикации — по Усть-Каменогорску
+    assert ad.date == "2026-10-09T16:10"  # время публикации - по Усть-Каменогорску
     a = assets(mid(1))
     assert (a[f"ig:{mid(1)}"].status, a[f"ig:{mid(1)}"].kind) == ("downloaded", "image")
     assert a[f"ig:{mid(1)}"].origin_url == "https://scontent-ams2-1.cdninstagram.com/v/t51.2885-15/1.jpg"
@@ -447,7 +447,7 @@ def test_collect_media_kinds(client, configured, graph, run_worker, ocr_stub):
     k = assets(mid(3))
     assert sorted(k) == [f"ig:{mid(31)}", f"ig:{mid(32)}"]
     assert all((x.status, x.role) == ("downloaded", "slide") for x in k.values())
-    # файлы — только с CDN Instagram/Facebook, без токена
+    # файлы - только с CDN Instagram/Facebook, без токена
     cdn_calls = graph.cdn_calls()
     assert len(cdn_calls) == 4 and all(CDN_RE.match(str(r.url)) for r in cdn_calls)
     assert all("Authorization" not in r.headers for r in cdn_calls)
@@ -495,7 +495,7 @@ def test_rerun_unchanged_and_failed_image_retried(client, configured, graph, run
     second = collect(client, run_worker)
     assert second["counts"] == {"seen": 4, "new": 0, "updated": 0, "unchanged": 4, "failed": 0, "mediaSaved": 1,
                                 "mediaFailed": 0}
-    assert second["status"] == "succeeded", second  # отметка «недоступен» не считается заново
+    assert second["status"] == "succeeded", second  # отметка "недоступен" не считается заново
     assert [urlsplit(str(r.url)).path.rsplit("/", 1)[-1] for r in graph.cdn_calls()] == ["6.jpg"]
     assert assets(mid(6))[f"ig:{mid(6)}"].status == "downloaded"
     assert ad_of(mid(6)).image is not None
@@ -534,7 +534,7 @@ def test_paging_first_load_cap_and_seeded(client, env, graph, run_worker, ocr_st
     assert run["counts"]["new"] == 5 and run["status"] == "partial"
     assert f"@{ACCOUNT}: новых публикаций больше 5 — старые могли быть пропущены" in [n["text"] for n in run["notes"]]
     assert collector().state["accounts"][ACCOUNT]["seeded"] is True
-    # следующий запуск: на первой странице есть уже известная — дальше не идём
+    # следующий запуск: на первой странице есть уже известная - дальше не идём
     graph.accounts[ACCOUNT].insert(0, image(9))
     graph.mock.calls.clear()
     run = collect(client, run_worker)
@@ -543,19 +543,19 @@ def test_paging_first_load_cap_and_seeded(client, env, graph, run_worker, ocr_st
 
 
 def test_paging_without_next_walks_all_pages(client, env, graph, run_worker, ocr_stub):
-    """Business Discovery не присылает paging.next: страницы — по курсору after до пустой страницы; новые публикации
-    дальше первой страницы не теряются (ревью C1: обход останавливался на первой странице)."""
+    """Business Discovery не присылает paging.next: страницы - по курсору after до пустой страницы; новые публикации
+    дальше первой страницы не теряются(ревью C1: обход останавливался на первой странице)."""
     env(META_USER_ACCESS_TOKEN=TOKEN, META_IG_USER_ID=IG_ID, IG_PAGE_SIZE="2", IG_FIRST_LOAD_MAX="50")
-    graph.accounts[ACCOUNT] = [image(n) for n in range(140, 147)]  # 7 публикаций — 4 страницы
+    graph.accounts[ACCOUNT] = [image(n) for n in range(140, 147)]  # 7 публикаций - 4 страницы
     configure(config={"accounts": [ACCOUNT]})
     run = collect(client, run_worker)
     assert (run["status"], run["counts"]["new"]) == ("succeeded", 7), run
     afters = [re.search(r"media\.limit\(2\)(?:\.after\(([^)]*)\))?\{", fields_of(r)).group(1)
               for r in graph.bd_calls()]
-    assert afters == [None, "CUR2", "CUR4", "CUR6", "CUR7"]  # последний запрос — пустая страница
+    assert afters == [None, "CUR2", "CUR4", "CUR6", "CUR7"]  # последний запрос - пустая страница
     assert not any("старые могли быть пропущены" in n["text"] for n in run["notes"])
     assert collector().state["accounts"][ACCOUNT]["seeded"] is True
-    # между запусками — три новые публикации, больше одной страницы: вторая страница тоже запрашивается
+    # между запусками - три новые публикации, больше одной страницы: вторая страница тоже запрашивается
     graph.accounts[ACCOUNT][:0] = [image(n) for n in range(150, 153)]
     graph.mock.calls.clear()
     run = collect(client, run_worker)
@@ -567,7 +567,7 @@ def test_paging_without_next_walks_all_pages(client, env, graph, run_worker, ocr
 
 
 def test_odd_cursor_partial_not_seeded(client, env, graph, run_worker, ocr_stub):
-    """Курсор в неожиданном формате (в fields не подставляется) — «частично», аккаунт не отмечен «загружен»: следующий
+    """Курсор в неожиданном формате(в fields не подставляется) - "частично", аккаунт не отмечен "загружен": следующий
     запуск снова идёт вглубь; если следующая страница не нужна, курсор не важен."""
     env(META_USER_ACCESS_TOKEN=TOKEN, META_IG_USER_ID=IG_ID, IG_PAGE_SIZE="2")
     graph.accounts[ACCOUNT] = [image(n) for n in range(160, 165)]
@@ -582,12 +582,12 @@ def test_odd_cursor_partial_not_seeded(client, env, graph, run_worker, ocr_stub)
     assert not (collector().state.get("accounts") or {}).get(ACCOUNT, {}).get("seeded")
     c = connector(client)
     assert (c["status"], c["statusLabel"]) == ("partial", "работает частично") and reason in c["statusDetail"]
-    # курсор снова в порядке — аккаунт пройден вглубь до конца
+    # курсор снова в порядке - аккаунт пройден вглубь до конца
     graph.cursor_override = None
     run = collect(client, run_worker)
     assert (run["status"], run["counts"]["new"], run["counts"]["unchanged"]) == ("succeeded", 3, 2), run
     assert collector().state["accounts"][ACCOUNT]["seeded"] is True
-    # загруженный аккаунт: на первой странице есть известная — следующая не нужна, странный курсор не мешает
+    # загруженный аккаунт: на первой странице есть известная - следующая не нужна, странный курсор не мешает
     graph.accounts[ACCOUNT].insert(0, image(159))
     graph.cursor_override = "QVFI~odd){id}"
     run = collect(client, run_worker)
@@ -680,7 +680,7 @@ def test_usage_over_80_stops_and_postpones(client, configured, graph, run_worker
 
 
 def test_usage_pause_not_shorter_than_interval(client, configured, graph, run_worker, ocr_stub):
-    """Пауза по лимиту Graph API не делает следующий запуск раньше расписания (интервал сутки — не через час)."""
+    """Пауза по лимиту Graph API не делает следующий запуск раньше расписания(интервал сутки - не через час)."""
     graph.accounts[ACCOUNT] = [image(53)]
     graph.usage = {"X-App-Usage": json.dumps({"call_count": 90})}
     configure(config={"accounts": [ACCOUNT]}, interval_min=1440)
@@ -727,12 +727,12 @@ def test_no_token_in_urls_logs_or_notes(client, env, graph, run_worker, run_ctx,
         assert e.value.code == "host_not_allowed"
     assert graph.mock.calls == []
     graph.accounts[ACCOUNT] = [image(n) for n in range(70, 80)]
-    graph.leak_next = True  # ответ со ссылкой paging.next с токеном: следующая страница — только курсором
+    graph.leak_next = True  # ответ со ссылкой paging.next с токеном: следующая страница - только курсором
     configure(config={"accounts": [ACCOUNT]})
     graph.page_errors[ACCOUNT] = lambda after: graph_error(1, f"An unknown error occurred (token {TOKEN})",
                                                            status=500) if after else None
     run = collect(client, run_worker)
-    assert run["status"] == "running" and run["counts"]["new"] == 5  # временная ошибка второй страницы — повтор
+    assert run["status"] == "running" and run["counts"]["new"] == 5  # временная ошибка второй страницы - повтор
     assert any(n["text"].startswith("Временная ошибка Graph API (код 1): An unknown error occurred (token ***)")
                for n in run["notes"]), run["notes"]
     assert len(graph.bd_calls()) == 2 and ".after(CUR5){" in fields_of(graph.bd_calls()[1])
@@ -758,10 +758,10 @@ def test_daily_health_check_scheduled(client, configured, graph, run_worker, ocr
     assert models.as_utc(r.checked_at) >= now - timedelta(seconds=5) and r.status == "working"
     assert not graph.bd_calls()
     run_worker(now=now + timedelta(minutes=30))
-    assert count(models.CollectionRun) == 1  # следующая — через сутки
+    assert count(models.CollectionRun) == 1  # следующая - через сутки
 
 
-# ---------- приёмка по §14 плана (integration-spec §16.5, столбец I) ----------
+# ---------- приёмка по §14 плана(integration-spec §16.5, столбец I) ----------
 
 def test_acceptance_repeat_no_duplicate(client, configured, graph, run_worker, accept, ocr_stub):
     three_items(graph)
@@ -780,7 +780,7 @@ def test_acceptance_failure_not_empty(client, configured, graph, run_worker, acc
     c = accept.assert_failure_visible("instagram", run["id"])
     assert (c["status"], c["statusDetail"]) == ("denied", "Нет разрешения Meta: (#200) Requires instagram_basic "
                                                           "permission")
-    # ответ без конверта ошибки (HTTP 502) — тоже не «нет новых»: повтор, затем ошибка
+    # ответ без конверта ошибки(HTTP 502) - тоже не "нет новых": повтор, затем ошибка
     graph.page_errors[ACCOUNT] = lambda after: httpx.Response(502, content=b"<html>Bad Gateway</html>")
     run = collect(client, run_worker)
     assert run["status"] == "running"  # повтор задания позже
@@ -798,7 +798,7 @@ def test_acceptance_restart_keeps_position(client, env, graph, run_ctx, ig, acce
     configure(config={"accounts": [ACCOUNT]})
     ig.CONNECTOR.collect(run_ctx("instagram"))
     assert collector().state["accounts"][ACCOUNT]["seeded"] is True
-    # пять новых сверху; вторая страница падает — отметка «загружен» уже снята
+    # пять новых сверху; вторая страница падает - отметка "загружен" уже снята
     graph.accounts[ACCOUNT][:0] = [image(n) for n in range(90, 95)]
     graph.page_errors[ACCOUNT] = lambda after: graph_error(2, "Service temporarily unavailable", transient=True,
                                                            status=503) if after == "CUR2" else None
@@ -812,7 +812,7 @@ def test_acceptance_restart_keeps_position(client, env, graph, run_ctx, ig, acce
         ids = sorted(db.scalars(select(models.IngestItem.external_id)).all())
     assert ids == sorted(mid(n) for n in [*range(80, 84), *range(90, 95)])
     assert collector().state["accounts"][ACCOUNT]["seeded"] is True
-    # сбой приёма после первой публикации новой страницы — повтор досбирает остальное
+    # сбой приёма после первой публикации новой страницы - повтор досбирает остальное
     graph.accounts[ACCOUNT][:0] = [image(n) for n in range(100, 103)]
     from app.integrations.context import RunContext
 
@@ -879,7 +879,7 @@ def test_acceptance_limit_no_endless_loop(client, configured, graph, run_worker,
     c = connector(client)
     assert c["status"] == "rate_limited"
     graph.mock.calls.clear()
-    for minutes in (5, 30, 55):  # такты воркера до next_run_at — без обращений к Graph API
+    for minutes in (5, 30, 55):  # такты воркера до next_run_at - без обращений к Graph API
         run_worker(now=now + timedelta(minutes=minutes))
     assert not graph.graph_calls()
     graph.page_errors.clear()

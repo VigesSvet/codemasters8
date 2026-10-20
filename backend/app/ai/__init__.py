@@ -1,13 +1,13 @@
-"""ИИ-модуль SAQ Qurylys (ТЗ §6): детерминированный офлайн-анализ публикаций на сервере, без внешних API и ключей.
+"""ИИ-модуль SAQ Qurylys(ТЗ §6): детерминированный офлайн-анализ публикаций на сервере, без внешних API и ключей.
 
-- ocr.py — распознавание скриншота (Tesseract LSTM, rus+kaz+eng) с предобработкой;
-- terms.py — условия оплаты (бронь, депозит, взнос, рассрочка, ДДУ, цена…) с дословной цитатой и уверенностью;
-- matching.py — гипотезы «публикация ↔ ЖК» по названию (в т. ч. транслитерация KZ/RU/Latin), адресу, аккаунту,
+- ocr.py - распознавание скриншота(Tesseract LSTM, rus+kaz+eng) с предобработкой;
+- terms.py - условия оплаты(бронь, депозит, взнос, рассрочка, ДДУ, цена…) с дословной цитатой и уверенностью;
+- matching.py - гипотезы "публикация ↔ ЖК" по названию(в т. ч. транслитерация KZ/RU/Latin), адресу, аккаунту,
   телефону, истории аккаунта и району;
-- evaluate.py — прогон на новых текстах shared/ai_cases.json (T-25).
+- evaluate.py - прогон на новых текстах shared/ai_cases.json(T-25).
 
-Всё, что выдаёт модуль, — гипотезы: привязку к ЖК фактом делает аналитик (linkConfirmedBy), решение по условиям оплаты —
-тоже аналитик (termsReview). Юридического вердикта модуль не выносит. Одинаковый вход → одинаковый результат.
+Всё, что выдаёт модуль, - гипотезы: привязку к ЖК фактом делает аналитик(linkConfirmedBy), решение по условиям оплаты -
+тоже аналитик(termsReview). Юридического вердикта модуль не выносит. Одинаковый вход → одинаковый результат.
 """
 import json
 from functools import lru_cache
@@ -26,8 +26,8 @@ ENGINE = "saq-ai-1"
 def analyze(cat: Catalog, text: Optional[str], ocr: Optional[str] = None, account: Optional[str] = None,
             platform: Optional[str] = None, url: Optional[str] = None, rejected: Iterable[str] = (),
             limit: Optional[int] = None) -> Obj:
-    """Analysis: условия оплаты, гипотезы ЖК (до hypothesesTop, без отклонённых аналитиком), сигналы словарей модели,
-    найденные телефоны и адреса. platform пока не влияет на результат (зарезервировано)."""
+    """Analysis: условия оплаты, гипотезы ЖК(до hypothesesTop, без отклонённых аналитиком), сигналы словарей модели,
+    найденные телефоны и адреса. platform пока не влияет на результат(зарезервировано)."""
     skip = set(rejected or ())
     found, info = hypotheses(cat, text, ocr, account, url)
     hidden = [h for h in found if h["complexId"] in skip]
@@ -49,13 +49,13 @@ def analyze(cat: Catalog, text: Optional[str], ocr: Optional[str] = None, accoun
 
 
 def all_hypotheses(cat: Catalog, ad: Obj) -> list:
-    """Все гипотезы по сохранённой публикации (без ограничения top и без учёта отклонённых) — для решения аналитика."""
+    """Все гипотезы по сохранённой публикации(без ограничения top и без учёта отклонённых) - для решения аналитика."""
     return hypotheses(cat, ad.get("text"), ad.get("ocr"), ad.get("account"), ad.get("url"))[0]
 
 
 @lru_cache(maxsize=1)
 def case_catalog() -> Catalog:
-    """Справочник кейсов проверки ИИ — catalog в shared/ai_cases.json (вымышленные ЖК, только для этой проверки):
+    """Справочник кейсов проверки ИИ - catalog в shared/ai_cases.json(вымышленные ЖК, только для этой проверки):
     воспроизводимо и не зависит от данных и решений в БД."""
     cat = json.loads((SHARED / "ai_cases.json").read_text(encoding="utf-8"))["catalog"]
     return build_catalog(cat["complexes"], cat["developers"], cat.get("history", []))

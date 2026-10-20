@@ -1,50 +1,50 @@
-"""Этап «llm» задания анализа (app.analysis): Claude (Anthropic) по тексту публикации и OCR — признаки продажи, суммы,
-кандидаты ЖК из переданного списка, все упомянутые ЖК (и вне списка — mentionedComplexes), стадия рекламируемого объекта
-(objectStage), нормы закона, к которым может относиться публикация (legalRefs), неясности и краткая сводка. Всё —
+"""Этап "llm" задания анализа(app.analysis): Claude(Anthropic) по тексту публикации и OCR - признаки продажи, суммы,
+кандидаты ЖК из переданного списка, все упомянутые ЖК(и вне списка - mentionedComplexes), стадия рекламируемого объекта
+(objectStage), нормы закона, к которым может относиться публикация(legalRefs), неясности и краткая сводка. Всё -
 гипотезы для аналитика.
 
-Порядок задания: файлы → кадры → речь в роликах → OCR → правила saq-ai-1 → этот этап (если задан ANTHROPIC_API_KEY) →
-журнал. Модели уходит только нужное: текст публикации, OCR (с расшифровкой речи роликов — абзацы «Речь в ролике: …»,
-помеченные в системном промпте как речь, а не надпись), площадка и аккаунт (у заявки жителя — без аккаунта и ссылки: его слова
-не доказательство, D20) и ограниченный список ЖК (гипотезы правил первыми, всего не больше CATALOG_MAX: id, название,
-застройщик, адрес). Материал — данные, а не инструкции: он стоит в user-сообщении внутри размеченных блоков, системный
-промпт велит игнорировать указания внутри материала, а ответ модели не может задать решения аналитика (статус,
-привязку, подтверждение, вердикт) — этап пишет только llm_analyses и журнал. Баллы R1–R6 считает прежний движок.
+Порядок задания: файлы → кадры → речь в роликах → OCR → правила saq-ai-1 → этот этап(если задан ANTHROPIC_API_KEY) →
+журнал. Модели уходит только нужное: текст публикации, OCR(с расшифровкой речи роликов - абзацы "Речь в ролике: …",
+помеченные в системном промпте как речь, а не надпись), площадка и аккаунт(у заявки жителя - без аккаунта и ссылки: его слова
+не доказательство, D20) и ограниченный список ЖК(гипотезы правил первыми, всего не больше CATALOG_MAX: id, название,
+застройщик, адрес). Материал - данные, а не инструкции: он стоит в user-сообщении внутри размеченных блоков, системный
+промпт велит игнорировать указания внутри материала, а ответ модели не может задать решения аналитика(статус,
+привязку, подтверждение, вердикт) - этап пишет только llm_analyses и журнал. Баллы R1-R6 считает прежний движок.
 
-Ответ проверяется на сервере независимо от модели: валидный JSON ещё не правда. Цитата — дословный фрагмент
-отправленного текста или OCR (сравнение без учёта регистра и пробелов), complexId — из отправленного списка, сумма —
-конечное неотрицательное число, название упомянутого ЖК — есть в материале, его адрес — дословно из материала (иначе
-пустой), стадия — с дословной цитатой (иначе unknown), ссылка на норму (legalRefs) — статья из правового контекста
-(shared/law.json: ст. 7, 8, 18, 23) и дословная цитата публикации, пункт — номер вида «6» или «1-1» (иначе пустой); не
-прошедшее проверку отбрасывается и считается (dropped).
-Упомянутые ЖК, которых нет ни в справочнике, ни в открытом реестре, становятся объектами из рекламы (app.discovery).
-Тот же материал с той же моделью и версией промпта повторно не отправляется (ключ — хеш материала, модель,
+Ответ проверяется на сервере независимо от модели: валидный JSON ещё не правда. Цитата - дословный фрагмент
+отправленного текста или OCR(сравнение без учёта регистра и пробелов), complexId - из отправленного списка, сумма -
+конечное неотрицательное число, название упомянутого ЖК - есть в материале, его адрес - дословно из материала(иначе
+пустой), стадия - с дословной цитатой(иначе unknown), ссылка на норму(legalRefs) - статья из правового контекста
+(shared/law.json: ст. 7, 8, 18, 23) и дословная цитата публикации, пункт - номер вида "6" или "1-1"(иначе пустой); не
+прошедшее проверку отбрасывается и считается(dropped).
+Упомянутые ЖК, которых нет ни в справочнике, ни в открытом реестре, становятся объектами из рекламы(app.discovery).
+Тот же материал с той же моделью и версией промпта повторно не отправляется(ключ - хеш материала, модель,
 PROMPT_VERSION).
 
-Сбой — «анализ ИИ не выполнен», никогда не «риск отсутствует». Сеть, 429 и 5xx — повтор задания анализа с паузой
-(jobs.backoff, но не раньше retry-after), не больше ATTEMPTS попыток; 401/403 — подключение «истёк доступ» / «нет
-доступа», дальше этап пропускается до смены ключа или успешной проверки; 400 — «не выполнен» без повтора. Дневной
-бюджет: перед запросом атомарно резервируется наихудшая стоимость (вход по оценке + ANTHROPIC_MAX_TOKENS на выходе),
-после ответа — поправка до оценки по response.usage; не хватает — этап пропускается с пояснением (без повторов).
-Сеть — без открытой транзакции записи; каждая запись — в своей короткой сессии.
+Сбой - "анализ ИИ не выполнен", никогда не "риск отсутствует". Сеть, 429 и 5xx - повтор задания анализа с паузой
+(jobs.backoff, но не раньше retry-after), не больше ATTEMPTS попыток; 401/403 - подключение "истёк доступ" / "нет
+доступа", дальше этап пропускается до смены ключа или успешной проверки; 400 - "не выполнен" без повтора. Дневной
+бюджет: перед запросом атомарно резервируется наихудшая стоимость(вход по оценке + ANTHROPIC_MAX_TOKENS на выходе),
+после ответа - поправка до оценки по response.usage; не хватает - этап пропускается с пояснением(без повторов).
+Сеть - без открытой транзакции записи; каждая запись - в своей короткой сессии.
 
-Дозапрос старых публикаций (backfill, такт лидера воркера): собранные публикации с текстом или OCR, у которых нет ответа
-модели по текущей PROMPT_VERSION (любой модели — смена ANTHROPIC_MODEL не отправляет заново всё), получают задание
-анализа — новые первыми, не больше ANTHROPIC_BACKFILL_BATCH за проход, раз в ANTHROPIC_BACKFILL_INTERVAL_MIN и в пределах
-остатка дневного бюджета по наихудшей стоимости. Публикация, у которой сегодня (день бюджета — по Усть-Каменогорску) был
-пропуск или сбой, задание дозапроса или которая ждёт повтора, ждёт следующего дня — цикла повторов нет.
+Дозапрос старых публикаций(backfill, такт лидера воркера): собранные публикации с текстом или OCR, у которых нет ответа
+модели по текущей PROMPT_VERSION(любой модели - смена ANTHROPIC_MODEL не отправляет заново всё), получают задание
+анализа - новые первыми, не больше ANTHROPIC_BACKFILL_BATCH за проход, раз в ANTHROPIC_BACKFILL_INTERVAL_MIN и в пределах
+остатка дневного бюджета по наихудшей стоимости. Публикация, у которой сегодня(день бюджета - по Усть-Каменогорску) был
+пропуск или сбой, задание дозапроса или которая ждёт повтора, ждёт следующего дня - цикла повторов нет.
 
-Смена PROMPT_VERSION (saq-llm-1 → saq-llm-2: упомянутые ЖК и стадия) — дозапрос тех же публикаций в пределах дневного
-бюджета; ответы прежней версии остаются строками истории и показываются, пока нет нового. saq-llm-3 — правовой
-контекст в системном промпте (выдержки и пересказ ст. 7, 8, 18, 23 Закона РК «О долевом участии в жилищном
-строительстве» из shared/law.json) и legalRefs: тот же дозапрос в пределах бюджета (резерв считает длину промпта с
+Смена PROMPT_VERSION(saq-llm-1 → saq-llm-2: упомянутые ЖК и стадия) - дозапрос тех же публикаций в пределах дневного
+бюджета; ответы прежней версии остаются строками истории и показываются, пока нет нового. saq-llm-3 - правовой
+контекст в системном промпте(выдержки и пересказ ст. 7, 8, 18, 23 Закона РК "О долевом участии в жилищном
+строительстве" из shared/law.json) и legalRefs: тот же дозапрос в пределах бюджета(резерв считает длину промпта с
 правовым контекстом). Пояснение о речи в роликах
-(правило 7, T-60) версию не меняет: у публикации с расшифровкой и так новый материал (OCR изменился — новый ключ), а
+(правило 7, T-60) версию не меняет: у публикации с расшифровкой и так новый материал(OCR изменился - новый ключ), а
 публикациям без видео дозапрос не нужен.
 
-Повторный анализ («Проанализировать ещё раз», force): тот же материал той же моделью отправляется снова. Прежний ответ
-остаётся строкой истории — её ключ материала заменяется производным (meta.materialHash — исходный), а результат нового
-запроса пишется новой строкой под исходным ключом. Пропуск повторного анализа (бюджет, ключ) прежний ответ не трогает.
+Повторный анализ("Проанализировать ещё раз", force): тот же материал той же моделью отправляется снова. Прежний ответ
+остаётся строкой истории - её ключ материала заменяется производным(meta.materialHash - исходный), а результат нового
+запроса пишется новой строкой под исходным ключом. Пропуск повторного анализа(бюджет, ключ) прежний ответ не трогает.
 """
 import hashlib
 import json
@@ -76,19 +76,19 @@ ATTEMPTS = 3  # попыток при сетевых ошибках, 429 и 5xx
 RETRY_MAX_S = 6 * 3600
 CATALOG_MAX = 30
 LIST_MAX = 20  # элементов в каждом списке ответа
-QUOTE_MIN = 3  # символов в цитате после нормализации — короче не доказательство
+QUOTE_MIN = 3  # символов в цитате после нормализации - короче не доказательство
 QUOTE_MAX = 500
 SUMMARY_MAX = 400
 UNCERTAINTY_MAX = 10
 UNCERTAINTY_LEN = 300
 FIELD_LEN = 200  # поле справочника ЖК в промпте
-MICRO = 1_000_000  # расход в quota_counters — целые микродоллары
+MICRO = 1_000_000  # расход в quota_counters - целые микродоллары
 BUDGET_PREFIX = "anthropic-usd:"
-CHARS_PER_TOKEN = 2  # оценка входа для резерва: с запасом (кириллица — 2–3 символа на токен)
+CHARS_PER_TOKEN = 2  # оценка входа для резерва: с запасом(кириллица - 2-3 символа на токен)
 SCHEMA_TOKENS = 1100
-BACKFILL_PRIORITY = -1  # задания дозапроса — после нового содержимого (analyze — 0); по нему же видно «уже пробовали»
-REANALYZE_PRIORITY = 1  # «Проанализировать ещё раз» — раньше очереди анализа
-BACKFILL_SCAN = 4  # кандидатов из БД на одно место в партии (остальных отсеивает проверка backlog)
+BACKFILL_PRIORITY = -1  # задания дозапроса - после нового содержимого(analyze - 0); по нему же видно "уже пробовали"
+REANALYZE_PRIORITY = 1  # "Проанализировать ещё раз" - раньше очереди анализа
+BACKFILL_SCAN = 4  # кандидатов из БД на одно место в партии(остальных отсеивает проверка backlog)
 
 SIGNAL_TYPES = ("sale", "presale", "booking", "installment", "down_payment", "ddu", "price", "discount",
                 "keys_handover", "other")
@@ -103,10 +103,10 @@ ADDRESS_MAX = 300
 LAW_ARTICLES = tuple(law.ARTICLES)  # статьи правового контекста: ("7", "8", "18", "23")
 LEGAL_MAX = 5  # ссылок на нормы в ответе
 WHY_MAX = 300
-_PART = re.compile(r"^\d{1,2}(-\d{1,2})?$")  # пункт статьи: «6», «1-1»
-# quote — цитата не найдена; complex — ЖК не из справочника; amount — сумма не число; limit — сверх предела; name —
-# названия упомянутого ЖК нет в материале; address — адреса нет в материале (адрес очищен, ЖК оставлен); stage — цитаты
-# о стадии нет в материале (стадия — unknown); article — статья не из правового контекста
+_PART = re.compile(r"^\d{1,2}(-\d{1,2})?$")  # пункт статьи: "6", "1-1"
+# quote - цитата не найдена; complex - ЖК не из справочника; amount - сумма не число; limit - сверх предела; name -
+# названия упомянутого ЖК нет в материале; address - адреса нет в материале(адрес очищен, ЖК оставлен); stage - цитаты
+# о стадии нет в материале(стадия - unknown); article - статья не из правового контекста
 DROP_REASONS = ("quote", "complex", "amount", "limit", "name", "address", "stage", "article")
 
 # ---------- схема ответа ----------
@@ -194,16 +194,16 @@ class _Stage(_Strict):
 
 
 class _LegalRef(_Strict):
-    article: str  # статья из LAW_ARTICLES — сверяется в verify (не из контекста — отбрасывается)
+    article: str  # статья из LAW_ARTICLES - сверяется в verify(не из контекста - отбрасывается)
     part: str
     why: str
     quote: str
 
 
 class Output(_Strict):
-    """Ответ модели по SCHEMA (проверка pydantic — своя, независимо от гарантий structured outputs). Поля версий
-    saq-llm-2 (mentionedComplexes, objectStage) и saq-llm-3 (legalRefs) необязательны при разборе: их отсутствие — «нет
-    упоминаний», «стадия не указана» и «нормы не названы», а не негодный ответ."""
+    """Ответ модели по SCHEMA(проверка pydantic - своя, независимо от гарантий structured outputs). Поля версий
+    saq-llm-2(mentionedComplexes, objectStage) и saq-llm-3(legalRefs) необязательны при разборе: их отсутствие - "нет
+    упоминаний", "стадия не указана" и "нормы не названы", а не негодный ответ."""
     saleSignals: list[_Signal]
     amounts: list[_Amount]
     complexCandidates: list[_Candidate]
@@ -217,13 +217,13 @@ class Output(_Strict):
 # ---------- материал и промпт ----------
 
 _TAGS = ("publication_metadata", "publication_text", "ocr_text", "complex_catalog")  # блоки user-сообщения
-# обезвреживаются и теги правового контекста системного промпта: материал не может «дописать» нормы
+# обезвреживаются и теги правового контекста системного промпта: материал не может "дописать" нормы
 _TAG_RE = re.compile(r"<(\s*/?\s*)(%s)" % "|".join(_TAGS + ("legal_context",)), re.I)
 
 
 def neutralize(text: Optional[str]) -> str:
-    """Материал внутри размеченных блоков: теги-разделители в нём обезврежены («<ocr_text>» → «‹ocr_text>»), NUL
-    убран. Цитаты сверяются именно с этим (отправленным) текстом."""
+    """Материал внутри размеченных блоков: теги-разделители в нём обезврежены("<ocr_text>" → "‹ocr_text>"), NUL
+    убран. Цитаты сверяются именно с этим(отправленным) текстом."""
     return _TAG_RE.sub(r"‹\1\2", (text or "").replace("\x00", ""))
 
 
@@ -234,7 +234,7 @@ def _line(v: Any, limit: int = FIELD_LEN) -> str:
 
 @dataclass(frozen=True)
 class Material:
-    """Что отправляется модели. account None — не передаётся (заявка жителя: его слова не доказательство, D20)."""
+    """Что отправляется модели. account None - не передаётся(заявка жителя: его слова не доказательство, D20)."""
     platform: str
     account: Optional[str]
     bot: bool
@@ -256,7 +256,7 @@ def _natural(cid: str) -> tuple:
 
 
 def build_material(db: Session, ad: models.Ad, hypotheses: list) -> Material:
-    """Материал публикации: текст и OCR (как в БД — уже в пределах AD_TEXT_MAX), площадка, аккаунт (кроме заявки
+    """Материал публикации: текст и OCR(как в БД - уже в пределах AD_TEXT_MAX), площадка, аккаунт(кроме заявки
     жителя) и список ЖК: гипотезы правил первыми, затем остальные по порядку id, без отклонённых аналитиком."""
     bot = ad.source == "bot"
     rejected = set(ad.rejected_links or [])
@@ -369,16 +369,16 @@ _QUOTE_CHARS = dict.fromkeys(map(ord, "«»\"'“”„‟‘’‚`´"), " ")
 
 
 def _bare(s: str) -> str:
-    """Для сверки названий и адресов: без регистра, кавычек и лишних пробелов («ЖК «Nova»» ≈ «жк nova»)."""
+    """Для сверки названий и адресов: без регистра, кавычек и лишних пробелов("ЖК "Nova"" ≈ "жк nova")."""
     return " ".join((s or "").translate(_QUOTE_CHARS).casefold().split())
 
 
 def verify(out: Output, m: Material) -> tuple[dict, dict]:
-    """Результат по проверенным элементам и счёт отброшенных: цитата не найдена в отправленном тексте/OCR (quote),
-    ЖК не из отправленного списка (complex), сумма не конечное неотрицательное число (amount), сверх предела (limit),
-    названия упомянутого ЖК нет в материале (name), его адреса нет в материале (address — адрес очищается, ЖК остаётся),
-    цитаты о стадии нет в материале (stage — стадия «unknown»), статья ссылки на норму не из правового контекста
-    (article; пункт не номер — очищается, ссылка остаётся). Названия и адреса сверяются без регистра и кавычек."""
+    """Результат по проверенным элементам и счёт отброшенных: цитата не найдена в отправленном тексте/OCR(quote),
+    ЖК не из отправленного списка(complex), сумма не конечное неотрицательное число(amount), сверх предела(limit),
+    названия упомянутого ЖК нет в материале(name), его адреса нет в материале(address - адрес очищается, ЖК остаётся),
+    цитаты о стадии нет в материале(stage - стадия "unknown"), статья ссылки на норму не из правового контекста
+    (article; пункт не номер - очищается, ссылка остаётся). Названия и адреса сверяются без регистра и кавычек."""
     sources = {"text": _norm(m.text), "ocr": _norm(m.ocr)}
     dropped = {k: 0 for k in DROP_REASONS}
 
@@ -500,7 +500,7 @@ def verify(out: Output, m: Material) -> tuple[dict, dict]:
 # ---------- бюджет ----------
 
 def budget_key(now: datetime) -> str:
-    """Счётчик расхода за день по Усть-Каменогорску (UTC+5)."""
+    """Счётчик расхода за день по Усть-Каменогорску(UTC+5)."""
     return BUDGET_PREFIX + models.as_utc(now).astimezone(ALMATY).date().isoformat()
 
 
@@ -515,26 +515,26 @@ def _micro(usd: float) -> int:
 
 
 def worst_cost(s: Settings, chars: int) -> float:
-    """Наихудшая стоимость запроса: вход по оценке (символы / CHARS_PER_TOKEN + схема) и весь ANTHROPIC_MAX_TOKENS
-    на выходе — по цене запрошенной модели."""
+    """Наихудшая стоимость запроса: вход по оценке(символы / CHARS_PER_TOKEN + схема) и весь ANTHROPIC_MAX_TOKENS
+    на выходе - по цене запрошенной модели."""
     return claude.cost_usd(s.anthropic_model, chars // CHARS_PER_TOKEN + SCHEMA_TOKENS, int(s.anthropic_max_tokens))
 
 
 def budget_exhausted(db: Session, s: Settings, now: datetime) -> bool:
-    """Дневного бюджета не хватит даже на запрос с пустым материалом (для статуса подключения и дозапроса)."""
+    """Дневного бюджета не хватит даже на запрос с пустым материалом(для статуса подключения и дозапроса)."""
     limit = _micro(s.anthropic_daily_budget_usd)
     used = _micro(spent_today(db, now))
     return used + _micro(worst_cost(s, len(SYSTEM_PROMPT))) > limit
 
 
 def request_cost(db: Session, s: Settings, ad: models.Ad) -> int:
-    """Наихудшая стоимость запроса по публикации, микродоллары (оценка до правил: справочник — без их гипотез)."""
+    """Наихудшая стоимость запроса по публикации, микродоллары(оценка до правил: справочник - без их гипотез)."""
     system, user = prompt(build_material(db, ad, []))
     return _micro(worst_cost(s, len(system) + len(user)))
 
 
 def budget_problem(db: Session, s: Settings, ad: models.Ad, now: datetime) -> Optional[str]:
-    """Хватит ли остатка дневного бюджета на запрос по публикации. None — хватит, иначе пояснение по-русски."""
+    """Хватит ли остатка дневного бюджета на запрос по публикации. None - хватит, иначе пояснение по-русски."""
     budget = float(s.anthropic_daily_budget_usd)
     need = request_cost(db, s, ad)
     used = _micro(spent_today(db, now))
@@ -545,7 +545,7 @@ def budget_problem(db: Session, s: Settings, ad: models.Ad, now: datetime) -> Op
 
 
 def day_start(now: datetime) -> datetime:
-    """Начало дня бюджета (полночь по Усть-Каменогорску) в UTC."""
+    """Начало дня бюджета(полночь по Усть-Каменогорску) в UTC."""
     local = models.as_utc(now).astimezone(ALMATY)
     return datetime(local.year, local.month, local.day, tzinfo=ALMATY).astimezone(timezone.utc)
 
@@ -564,14 +564,14 @@ def _find(db: Session, ad_id: str, key: str, model: str) -> Optional[models.LlmA
 
 
 def archived_hash(key: str, row_id: int) -> str:
-    """Ключ строки истории: прежний ответ по тому же материалу после повторного анализа (уникальный ключ не занят)."""
+    """Ключ строки истории: прежний ответ по тому же материалу после повторного анализа(уникальный ключ не занят)."""
     return hashlib.sha256(f"{key}:{row_id}".encode()).hexdigest()
 
 
 def _save(ad_id: str, key: str, model: str, values: dict, now: datetime, archive: Optional[int] = None) -> int:
-    """Строка анализа (вставка или обновление по ключу) в своей сессии. Новая строка снимает ожидание повтора у
-    прежних строк публикации (их материал устарел). archive — строка прежнего ответа по этому ключу (повторный анализ):
-    в той же транзакции она уходит в историю (производный ключ, meta.materialHash — исходный), и результат пишется
+    """Строка анализа(вставка или обновление по ключу) в своей сессии. Новая строка снимает ожидание повтора у
+    прежних строк публикации(их материал устарел). archive - строка прежнего ответа по этому ключу(повторный анализ):
+    в той же транзакции она уходит в историю(производный ключ, meta.materialHash - исходный), и результат пишется
     новой строкой."""
     L = models.LlmAnalysis
     values = {k: v for k, v in values.items() if k in _UPDATABLE}
@@ -601,7 +601,7 @@ def _save(ad_id: str, key: str, model: str, values: dict, now: datetime, archive
 
 
 def _touch(row_id: int, now: datetime) -> None:
-    """Результат снова в силе (тот же материал): он — последний анализ публикации."""
+    """Результат снова в силе(тот же материал): он - последний анализ публикации."""
     with SessionLocal() as db:
         db.execute(update(models.LlmAnalysis).where(models.LlmAnalysis.id == row_id)
                    .values(updated_at=models.as_utc(now)).execution_options(synchronize_session=False))
@@ -610,7 +610,7 @@ def _touch(row_id: int, now: datetime) -> None:
 
 def _connector(status: str, detail: Optional[str], now: datetime, *, audit: bool, error: Optional[str] = None,
                key_fp: bool = False) -> None:
-    """Состояние подключения «anthropic» по итогу запроса (своя сессия); сбой записи статуса не роняет анализ."""
+    """Состояние подключения "anthropic" по итогу запроса(своя сессия); сбой записи статуса не роняет анализ."""
     from .integrations import service
 
     try:
@@ -632,8 +632,8 @@ def _connector(status: str, detail: Optional[str], now: datetime, *, audit: bool
 
 
 def _key_blocked(db: Session) -> Optional[str]:
-    """Ключ уже отклонён (401/403) и с тех пор не менялся — запрос не отправляется до замены ключа или успешной
-    «Проверить подключение»."""
+    """Ключ уже отклонён(401/403) и с тех пор не менялся - запрос не отправляется до замены ключа или успешной
+    "Проверить подключение"."""
     from .integrations import registry, service
 
     r = db.get(models.Collector, CODE)
@@ -656,7 +656,7 @@ def _num(v: Any) -> str:
 
 
 def done_text(result: dict, dropped: dict, bot: bool) -> str:
-    """Событие журнала по готовому анализу: признаки, суммы, кандидаты — как гипотезы."""
+    """Событие журнала по готовому анализу: признаки, суммы, кандидаты - как гипотезы."""
     parts = []
     sigs = result.get("saleSignals") or []
     if sigs:
@@ -699,7 +699,7 @@ def done_text(result: dict, dropped: dict, bot: bool) -> str:
 
 def event_for(status: str, result: Optional[dict], dropped: Optional[dict], error: Optional[str], meta: dict,
               bot: bool) -> Optional[tuple[str, str]]:
-    """(вид события, текст) по итогу анализа; None — событие не нужно (ожидание повтора, нечего анализировать)."""
+    """(вид события, текст) по итогу анализа; None - событие не нужно(ожидание повтора, нечего анализировать)."""
     if status == "done":
         return "ai", done_text(result or {}, dropped or {}, bot)
     if status == "refused":
@@ -719,8 +719,8 @@ def event_for(status: str, result: Optional[dict], dropped: Optional[dict], erro
 
 @dataclass
 class Outcome:
-    """Итог этапа для задания анализа: fresh — результат получен (или изменился) в этом запуске; event — что
-    записать в журнал публикации; retry_at — когда повторить (задание анализа ставится к этому сроку)."""
+    """Итог этапа для задания анализа: fresh - результат получен(или изменился) в этом запуске; event - что
+    записать в журнал публикации; retry_at - когда повторить(задание анализа ставится к этому сроку)."""
     status: str
     fresh: bool = False
     row_id: Optional[int] = None
@@ -740,19 +740,19 @@ class Outcome:
 
 
 def answered(row: models.LlmAnalysis) -> bool:
-    """Модель ответила (результат, отказ, неполный или негодный ответ — запрос оплачен): тот же материал повторно не
+    """Модель ответила(результат, отказ, неполный или негодный ответ - запрос оплачен): тот же материал повторно не
     отправляется, а публикация не ждёт дозапроса."""
     return row.status in ("done", "refused") or (row.status == "failed" and not (row.meta or {}).get("errorKind"))
 
 
 def _answered_sql():
-    """answered() в SQL: у строки «модель ответила, но ответ негоден» есть served_model, у сбоя без ответа — нет."""
+    """answered() в SQL: у строки "модель ответила, но ответ негоден" есть served_model, у сбоя без ответа - нет."""
     L = models.LlmAnalysis
     return or_(L.status.in_(("done", "refused")), and_(L.status == "failed", L.served_model.is_not(None)))
 
 
 def _waiting(row: models.LlmAnalysis, now: datetime) -> bool:
-    """Строка без ответа модели ждёт: повтора по сроку или следующего дня бюджета (пропуск или сбой сегодня)."""
+    """Строка без ответа модели ждёт: повтора по сроку или следующего дня бюджета(пропуск или сбой сегодня)."""
     if row.retry_at is not None and models.as_utc(row.retry_at) > now:
         return True
     return row.status in ("failed", "skipped") and row.updated_at is not None \
@@ -760,8 +760,8 @@ def _waiting(row: models.LlmAnalysis, now: datetime) -> bool:
 
 
 def backlog(ad: models.Ad, rows: list, now: datetime) -> bool:
-    """Публикация ждёт дозапроса Claude: есть текст или OCR, ответа модели по текущей версии промпта нет (никакой
-    модели — смена ANTHROPIC_MODEL не отправляет заново всё), строки без ответа не ждут повтора или следующего дня."""
+    """Публикация ждёт дозапроса Claude: есть текст или OCR, ответа модели по текущей версии промпта нет(никакой
+    модели - смена ANTHROPIC_MODEL не отправляет заново всё), строки без ответа не ждут повтора или следующего дня."""
     if not ((ad.text or "").strip() or (ad.ocr or "").strip()):
         return False
     mine = [r for r in rows if r.prompt_version == PROMPT_VERSION]
@@ -772,7 +772,7 @@ def backlog(ad: models.Ad, rows: list, now: datetime) -> bool:
 
 def due(db: Session, ad_id: str, now: datetime) -> bool:
     """Этап llm нужно выполнить, хотя версия публикации уже проанализирована: срок повтора наступил или публикация ждёт
-    дозапроса (backlog) — задание анализа её не пропускает. Без ключа — False."""
+    дозапроса(backlog) - задание анализа её не пропускает. Без ключа - False."""
     if get_settings().missing(claude.KEY_ENV):
         return False
     now = models.as_utc(now)
@@ -785,8 +785,8 @@ def due(db: Session, ad_id: str, now: datetime) -> bool:
 
 
 def unavailable(db: Session, s: Settings) -> Optional[tuple[int, str]]:
-    """Почему запрос к Claude сейчас не отправить: (HTTP-код для API, пояснение по-русски); None — можно. 503 — не
-    настроено на сервере (нет ключа или пакета SDK), 409 — ключ отклонён или бюджет 0."""
+    """Почему запрос к Claude сейчас не отправить: (HTTP-код для API, пояснение по-русски); None - можно. 503 - не
+    настроено на сервере(нет ключа или пакета SDK), 409 - ключ отклонён или бюджет 0."""
     if s.missing(claude.KEY_ENV):
         return 503, f"Анализ ИИ не настроен: задайте {claude.KEY_ENV} на сервере"
     if claude.anthropic is None:
@@ -800,11 +800,11 @@ def unavailable(db: Session, s: Settings) -> Optional[tuple[int, str]]:
 
 
 def backfill(db: Session, now: datetime) -> list[str]:
-    """Дозапрос старых публикаций (такт лидера воркера): задания analyze для собранных публикаций, которые ждут
-    дозапроса (backlog), — новые первыми, не больше ANTHROPIC_BACKFILL_BATCH вместе с ещё не выполненными заданиями
+    """Дозапрос старых публикаций(такт лидера воркера): задания analyze для собранных публикаций, которые ждут
+    дозапроса(backlog), - новые первыми, не больше ANTHROPIC_BACKFILL_BATCH вместе с ещё не выполненными заданиями
     дозапроса и в пределах остатка дневного бюджета по наихудшей стоимости каждого запроса. Публикация с активным
     заданием анализа или уже получавшая задание дозапроса сегодня пропускается. Бюджет исчерпан, ключа нет, ключ
-    отклонён — ничего не ставится. В сессии db, без commit; возвращает id публикаций."""
+    отклонён - ничего не ставится. В сессии db, без commit; возвращает id публикаций."""
     from . import ingest, jobs
 
     s = get_settings()
@@ -844,7 +844,7 @@ def backfill(db: Session, now: datetime) -> list[str]:
         if not backlog(ad, rows.get(ad.id, []), now):
             continue
         cost = request_cost(db, s, ad)
-        if cost > left:  # остаток бюджета не покроет и этот запрос — дальше после полуночи
+        if cost > left:  # остаток бюджета не покроет и этот запрос - дальше после полуночи
             break
         left -= cost
         ingest.enqueue_analysis(db, ad.id, item, payload={"backfill": True}, priority=BACKFILL_PRIORITY)
@@ -854,16 +854,16 @@ def backfill(db: Session, now: datetime) -> list[str]:
 
 def run_stage(ad_id: str, item_id: Optional[int], version: Optional[int], hypotheses: list, *,
               now: datetime, force: bool = False) -> Optional[Outcome]:
-    """Этап «llm» для публикации. None — ANTHROPIC_API_KEY не задан (этап не выполняется, ничего не пишется).
-    force — повторный анализ: запрос уходит, даже если этот материал этой моделью уже проанализирован (прежний ответ —
-    в историю). Исключения наружу не выходят: внутренняя ошибка — «анализ ИИ не выполнен»."""
+    """Этап "llm" для публикации. None - ANTHROPIC_API_KEY не задан(этап не выполняется, ничего не пишется).
+    force - повторный анализ: запрос уходит, даже если этот материал этой моделью уже проанализирован(прежний ответ -
+    в историю). Исключения наружу не выходят: внутренняя ошибка - "анализ ИИ не выполнен"."""
     s = get_settings()
     if s.missing(claude.KEY_ENV):
         return None
     now = models.as_utc(now) or models.utcnow()
     try:
         return _run(s, ad_id, item_id, version, hypotheses or [], now, force)
-    except Exception:  # noqa: BLE001 — сбой этапа ИИ не роняет анализ публикации
+    except Exception:  # noqa: BLE001 - сбой этапа ИИ не роняет анализ публикации
         log.exception("Анализ ИИ публикации %s: внутренняя ошибка этапа", ad_id)
         return Outcome("failed", fresh=True, model=s.anthropic_model,
                        event=("system", "Анализ ИИ не выполнен: внутренняя ошибка этапа — подробности в "
@@ -892,8 +892,8 @@ def _run(s: Settings, ad_id: str, item_id: Optional[int], version: Optional[int]
     archive = None  # повторный анализ: строка прежнего ответа уходит в историю при записи нового итога
     if prev is not None:
         st = prev["status"]
-        # модель ответила (результат, отказ, неполный или негодный ответ) — тот же материал повторно не отправляется;
-        # ответа не было (ключ, сеть, 4xx/5xx — errorKind) или запрос пропущен — новая попытка при следующем анализе
+        # модель ответила(результат, отказ, неполный или негодный ответ) - тот же материал повторно не отправляется;
+        # ответа не было(ключ, сеть, 4xx/5xx - errorKind) или запрос пропущен - новая попытка при следующем анализе
         replied = st in ("done", "refused") or (st == "failed" and not prev["meta"].get("errorKind"))
         if replied and force:
             archive = prev["id"]
@@ -901,15 +901,15 @@ def _run(s: Settings, ad_id: str, item_id: Optional[int], version: Optional[int]
             _touch(prev["id"], now)
             return Outcome(st, row_id=prev["id"], model=model, dropped=prev["dropped"],
                            event=event_for(st, prev["result"], prev["dropped"], prev["error"], prev["meta"], mat.bot))
-        elif st == "failed" and prev["retry_at"] is not None and not force:  # повторный анализ — новая серия попыток
+        elif st == "failed" and prev["retry_at"] is not None and not force:  # повторный анализ - новая серия попыток
             if prev["retry_at"] > now:
                 return Outcome(st, row_id=prev["id"], model=model, retry_at=prev["retry_at"])
-            attempts = prev["attempts"]  # повтор по сроку — та же серия попыток
+            attempts = prev["attempts"]  # повтор по сроку - та же серия попыток
 
     def skip(code: str, reason: str) -> Outcome:
         meta = {"skipCode": code, "catalogSize": len(mat.catalog)}
         event = event_for("skipped", None, None, reason, meta, mat.bot)
-        if archive is not None:  # повторный анализ пропущен: прежний ответ остаётся в силе, пропуск — только в журнале
+        if archive is not None:  # повторный анализ пропущен: прежний ответ остаётся в силе, пропуск - только в журнале
             return Outcome("skipped", fresh=True, row_id=archive, model=model, event=event)
         rid = _save(ad_id, key, model, {**base, "status": "skipped", "error": reason, "retry_at": None,
                                          "attempts": attempts, "meta": meta}, now)
@@ -941,7 +941,7 @@ def _run(s: Settings, ad_id: str, item_id: Optional[int], version: Optional[int]
     try:
         reply = claude.send(s, request)
     except claude.CallError as e:
-        service.adjust_quota(bkey, -reserve, now)  # ответа нет — запрос не оплачивается
+        service.adjust_quota(bkey, -reserve, now)  # ответа нет - запрос не оплачивается
         return _failed(e, s, ad_id, key, model, base, attempts + 1, mat, now, archive)
     service.adjust_quota(bkey, _micro(reply.cost_usd) - reserve, now)
     return _answered(reply, s, ad_id, key, model, base, attempts + 1, mat, now, archive)
@@ -949,7 +949,7 @@ def _run(s: Settings, ad_id: str, item_id: Optional[int], version: Optional[int]
 
 def _failed(e: "claude.CallError", s: Settings, ad_id: str, key: str, model: str, base: dict, attempts: int,
             mat: Material, now: datetime, archive: Optional[int] = None) -> Outcome:
-    """Ошибка запроса: повтор (сеть, 429, 5xx — пока есть попытки) или «не выполнен» со статусом подключения."""
+    """Ошибка запроса: повтор(сеть, 429, 5xx - пока есть попытки) или "не выполнен" со статусом подключения."""
     meta = {"errorKind": e.kind, "httpStatus": e.status, "catalogSize": len(mat.catalog)}
     vals = {**base, "status": "failed", "attempts": attempts, "request_id": e.request_id, "meta": meta,
             "served_model": None, "result": None}
@@ -978,7 +978,7 @@ def _failed(e: "claude.CallError", s: Settings, ad_id: str, key: str, model: str
 
 
 def _discover(ad_id: str, result: Optional[dict], now: datetime) -> None:
-    """Упомянутые ЖК, которых нет в справочнике и открытом реестре, — объекты из рекламы (app.discovery, своя сессия).
+    """Упомянутые ЖК, которых нет в справочнике и открытом реестре, - объекты из рекламы(app.discovery, своя сессия).
     Сбой учёта не роняет анализ: результат Claude уже записан."""
     try:
         from . import discovery
@@ -989,7 +989,7 @@ def _discover(ad_id: str, result: Optional[dict], now: datetime) -> None:
 
 
 def _connector_note(detail: str, now: datetime) -> None:
-    """429 при анализе: статус подключения не меняется (повторит задание), видна последняя ошибка."""
+    """429 при анализе: статус подключения не меняется(повторит задание), видна последняя ошибка."""
     try:
         with SessionLocal() as db:
             r = db.get(models.Collector, CODE)
@@ -1002,9 +1002,9 @@ def _connector_note(detail: str, now: datetime) -> None:
 
 def _answered(reply: "claude.Reply", s: Settings, ad_id: str, key: str, model: str, base: dict, attempts: int,
               mat: Material, now: datetime, archive: Optional[int] = None) -> Outcome:
-    """Ответ получен (HTTP 200): сначала stop_reason, потом разбор JSON, проверка схемы и сверка с материалом.
-    served_model есть у каждого ответа (нет в ответе — запрошенная модель): по нему SQL дозапроса видит «модель
-    ответила»."""
+    """Ответ получен(HTTP 200): сначала stop_reason, потом разбор JSON, проверка схемы и сверка с материалом.
+    served_model есть у каждого ответа(нет в ответе - запрошенная модель): по нему SQL дозапроса видит "модель
+    ответила"."""
     tokens = reply.tokens or {}
     meta = {"stopReason": reply.stop_reason, "refusalCategory": reply.refusal_category, "fallback": reply.fallback,
             "effort": s.anthropic_effort, "catalogSize": len(mat.catalog)}
@@ -1045,7 +1045,7 @@ def _answered(reply: "claude.Reply", s: Settings, ad_id: str, key: str, model: s
         pass
     from .integrations.base import when_text
 
-    # ответ получен — ключ рабочий: его отпечаток запоминается (смена ключа не висит «не проверен»)
+    # ответ получен - ключ рабочий: его отпечаток запоминается(смена ключа не висит "не проверен")
     _connector("working", f"Последний анализ: {when_text(now)}, модель {reply.served_model or model}{spent_note}",
                now, audit=False, key_fp=True)
     return Outcome(status, fresh=True, row_id=rid, model=model, cost_usd=reply.cost_usd, dropped=dropped,

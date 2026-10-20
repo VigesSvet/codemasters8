@@ -1,21 +1,21 @@
-"""OLX.kz (Partner API · OAuth) — подключение собственного аккаунта (integration-spec §12.7, план §10).
+"""OLX.kz(Partner API · OAuth) - подключение собственного аккаунта(integration-spec §12.7, план §10).
 
-Старт (администратор, POST /api/integrations/olx/start) создаёт одноразовый state: 256 бит случайности, в БД — только
-SHA-256, срок 10 минут, привязка к отпечатку токена администратора (проверяется при возврате). Возврат
-(GET /api/integrations/olx/callback — единственный путь, открытый через публичный адрес ngrok) проверяет state, срок и
-ошибку провайдера, сервером обменивает код на токены, проверяет свой аккаунт (users/me, «Version: 2.0») и показывает
-простую страницу без токенов и скриптов. Токены хранятся только в БД (без шифрования — см. документацию), браузеру не
-отдаются; обновляются заранее (меньше часа до истечения) плановой проверкой раз в сутки, новый refresh token
-сохраняется атомарно (UPDATE … WHERE rev = :rev).
+Старт(администратор, POST /api/integrations/olx/start) создаёт одноразовый state: 256 бит случайности, в БД - только
+SHA-256, срок 10 минут, привязка к отпечатку токена администратора(проверяется при возврате). Возврат
+(GET /api/integrations/olx/callback - единственный путь, открытый через публичный адрес ngrok) проверяет state, срок и
+ошибку провайдера, сервером обменивает код на токены, проверяет свой аккаунт(users/me, "Version: 2.0") и показывает
+простую страницу без токенов и скриптов. Токены хранятся только в БД(без шифрования - см. документацию), браузеру не
+отдаются; обновляются заранее(меньше часа до истечения) плановой проверкой раз в сутки, новый refresh token
+сохраняется атомарно(UPDATE … WHERE rev = :rev).
 
-Подключение (поколение) — момент выдачи разрешения obtained_at: меняется только при новом подключении (save_token), не
-при обновлении токена. Сведения об аккаунте (подпись, facts.account) пишутся только условным UPDATE … WHERE obtained_at =
+Подключение(поколение) - момент выдачи разрешения obtained_at: меняется только при новом подключении(save_token), не
+при обновлении токена. Сведения об аккаунте(подпись, facts.account) пишутся только условным UPDATE … WHERE obtained_at =
 поколение того токена, которым проверяли: переподключение или отключение во время запроса к OLX не получает сведений о
-прежнем аккаунте. Строка токена блокируется первой, строка подключения — после (один порядок везде).
+прежнем аккаунте. Строка токена блокируется первой, строка подключения - после(один порядок везде).
 
-Граница возможностей: Partner API даёт доступ только к ресурсам авторизованного аккаунта. Успешный OAuth — не сбор
-чужих объявлений, поэтому статус «подключено · ограничено», а не «работает»; сбора публикаций у подключения нет.
-Каждое значение кода, state и токенов регистрируется для маскирования (logs.register_secret) и в журналы не попадает.
+Граница возможностей: Partner API даёт доступ только к ресурсам авторизованного аккаунта. Успешный OAuth - не сбор
+чужих объявлений, поэтому статус "подключено · ограничено", а не "работает"; сбора публикаций у подключения нет.
+Каждое значение кода, state и токенов регистрируется для маскирования(logs.register_secret) и в журналы не попадает.
 """
 import hashlib
 import hmac
@@ -56,7 +56,7 @@ API_VERSION = "2.0"
 STATE_TTL = timedelta(minutes=10)
 REFRESH_TTL = timedelta(days=30)  # срок refresh token OLX
 REFRESH_BEFORE = timedelta(hours=1)  # обновлять токен доступа, когда до истечения меньше часа
-HEALTH_MIN_GAP = timedelta(minutes=15)  # проверка «токен скоро истечёт» — не чаще (неудачная не зацикливается)
+HEALTH_MIN_GAP = timedelta(minutes=15)  # проверка "токен скоро истечёт" - не чаще(неудачная не зацикливается)
 STATE_MAX = 512
 CODE_MAX = 2048
 TEXT_MAX = 300
@@ -107,7 +107,7 @@ def _clip(value: Any, limit: int = TEXT_MAX) -> str:
 
 
 def parse_json(resp: httpx.Response) -> dict:
-    """Тело ответа OLX как JSON-объект. OLX отдаёт JSON с Content-Type text/html — заголовок не учитывается."""
+    """Тело ответа OLX как JSON-объект. OLX отдаёт JSON с Content-Type text/html - заголовок не учитывается."""
     try:
         data = json.loads(resp.content.decode("utf-8-sig")) if resp.content else None
     except (ValueError, UnicodeDecodeError):
@@ -120,7 +120,7 @@ def parse_json(resp: httpx.Response) -> dict:
 
 def _error(resp: httpx.Response) -> tuple[str, str]:
     """(код ошибки, описание) из ответа OLX: {"error": "...", "error_description": "..."} или
-    {"error": {"title": "...", "detail": "..."}}; тело не JSON — пусто."""
+    {"error": {"title": "...", "detail": "..."}}; тело не JSON - пусто."""
     try:
         data = parse_json(resp)
     except SourceError:
@@ -139,7 +139,7 @@ def _transport_error(e: Exception, what: str) -> SourceError:
 
 
 def _status_error(resp: httpx.Response, what: str) -> ConnectorError:
-    """Неуспешный ответ OLX → типизированная ошибка подключения (без тела запроса и токенов)."""
+    """Неуспешный ответ OLX → типизированная ошибка подключения(без тела запроса и токенов)."""
     code, desc = _error(resp)
     status = resp.status_code
     suffix = f": {desc or code}" if desc or code else ""
@@ -165,7 +165,7 @@ def _expires_in(value: Any) -> Optional[int]:
 
 
 def _token_request(client: httpx.Client, body: dict, *, what: str, invalid_grant: str) -> dict:
-    """POST на адрес выдачи токенов OLX (JSON). invalid_grant → AuthExpired(invalid_grant), неверные ключи
+    """POST на адрес выдачи токенов OLX(JSON). invalid_grant → AuthExpired(invalid_grant), неверные ключи
     приложения → AccessDenied. Возвращает ответ с access_token; значения токенов регистрируются для маскирования."""
     try:
         resp = client.post(TOKEN, json=body, headers={"Accept": "application/json"})
@@ -188,7 +188,7 @@ def _token_request(client: httpx.Client, body: dict, *, what: str, invalid_grant
 
 
 def exchange_code(client: httpx.Client, code: str, s: Settings) -> dict:
-    """Код авторизации → токены (обмен выполняет сервер, секрет приложения браузеру не передаётся)."""
+    """Код авторизации → токены(обмен выполняет сервер, секрет приложения браузеру не передаётся)."""
     register_secret(code)
     body = {"grant_type": "authorization_code", "client_id": s.olx_client_id,
             "client_secret": s.olx_client_secret.get(), "code": code, "scope": s.olx_scopes,
@@ -197,7 +197,7 @@ def exchange_code(client: httpx.Client, code: str, s: Settings) -> dict:
 
 
 def _token_values(data: dict, now: datetime, *, initial: bool) -> dict:
-    """Поля integration_tokens из ответа OLX. initial — первичная выдача: refresh token заменяется всегда; при
+    """Поля integration_tokens из ответа OLX. initial - первичная выдача: refresh token заменяется всегда; при
     обновлении прежний остаётся, если OLX не прислал новый."""
     expires = _expires_in(data.get("expires_in"))
     values: dict = {"access_token": data["access_token"],
@@ -239,8 +239,8 @@ def token_expired(tok: Optional[models.IntegrationToken], now: datetime) -> bool
 
 def refresh(db: Session, client: httpx.Client, s: Settings, *,
             now: Optional[datetime] = None) -> models.IntegrationToken:
-    """Обновить токен доступа по refresh token. Транзакция сессии завершается до сетевого запроса; запись — условным
-    UPDATE … WHERE rev = :rev (одновременное обновление другим процессом не затирается). invalid_grant —
+    """Обновить токен доступа по refresh token. Транзакция сессии завершается до сетевого запроса; запись - условным
+    UPDATE … WHERE rev = :rev(одновременное обновление другим процессом не затирается). invalid_grant -
     AuthExpired, если токен за это время не обновил кто-то другой."""
     T = models.IntegrationToken
     now = models.as_utc(now) or models.utcnow()
@@ -250,7 +250,7 @@ def refresh(db: Session, client: httpx.Client, s: Settings, *,
         raise NotConfigured(NOT_CONNECTED)
     refresh_token, rev = tok.refresh_token, tok.rev or 0
     expired = token_expired(tok, now) or not refresh_token
-    db.commit()  # сеть — без открытой транзакции
+    db.commit()  # сеть - без открытой транзакции
     if expired:
         raise AuthExpired(EXPIRED)
     register_secret(refresh_token)
@@ -262,7 +262,7 @@ def refresh(db: Session, client: httpx.Client, s: Settings, *,
         fresh = db.get(T, PROVIDER, populate_existing=True)
         db.commit()
         if fresh is not None and (fresh.rev or 0) != rev and not token_expired(fresh, now):
-            return fresh  # токен уже обновил другой процесс — старый refresh token больше не действует
+            return fresh  # токен уже обновил другой процесс - старый refresh token больше не действует
         raise
     res = db.execute(update(T).where(T.provider == PROVIDER, T.rev == rev)
                      .values(**_token_values(data, now, initial=False), rev=T.rev + 1)
@@ -279,7 +279,7 @@ def refresh(db: Session, client: httpx.Client, s: Settings, *,
 
 def _ensure(db: Session, client: httpx.Client, s: Settings, *,
             now: Optional[datetime] = None) -> tuple[str, datetime]:
-    """(действующий токен доступа, поколение подключения obtained_at): до истечения меньше часа — сначала обновить.
+    """(действующий токен доступа, поколение подключения obtained_at): до истечения меньше часа - сначала обновить.
     Токен и поколение читаются из одной строки."""
     now = models.as_utc(now) or models.utcnow()
     tok = db.get(models.IntegrationToken, PROVIDER, populate_existing=True)
@@ -300,13 +300,13 @@ def _ensure(db: Session, client: httpx.Client, s: Settings, *,
 
 
 def ensure_token(db: Session, client: httpx.Client, s: Settings, *, now: Optional[datetime] = None) -> str:
-    """Действующий токен доступа: до истечения меньше часа — сначала обновить."""
+    """Действующий токен доступа: до истечения меньше часа - сначала обновить."""
     return _ensure(db, client, s, now=now)[0]
 
 
 def _label_grant(db: Session, grant: Optional[datetime], label: Optional[str], now: datetime) -> bool:
-    """Подпись аккаунта — в строку токена, только если подключение то же (obtained_at = grant: не переподключали и не
-    отключали). UPDATE блокирует строку токена до конца транзакции — отключение и новое подключение ждут её. False —
+    """Подпись аккаунта - в строку токена, только если подключение то же(obtained_at = grant: не переподключали и не
+    отключали). UPDATE блокирует строку токена до конца транзакции - отключение и новое подключение ждут её. False -
     подключение заменено или удалено: сведения о прежнем аккаунте никуда не пишутся. Без commit."""
     if grant is None:
         return False
@@ -322,9 +322,9 @@ def _without_account(facts: Optional[dict]) -> dict:
 
 
 def users_me(client: httpx.Client, token: str) -> dict:
-    """Свой аккаунт: GET users/me (Authorization: Bearer, Version: 2.0, без Content-Type) → data. 401 — токен не
-    принят (TokenRejected), кроме insufficient_scope: по документации OLX это тоже 401, но обновление токена и повторное
-    подключение с теми же правами не помогут — «нет доступа» с подсказкой про OLX_SCOPES."""
+    """Свой аккаунт: GET users/me(Authorization: Bearer, Version: 2.0, без Content-Type) → data. 401 - токен не
+    принят(TokenRejected), кроме insufficient_scope: по документации OLX это тоже 401, но обновление токена и повторное
+    подключение с теми же правами не помогут - "нет доступа" с подсказкой про OLX_SCOPES."""
     register_secret(token)
     try:
         resp = client.get(API + "users/me", headers={"Authorization": f"Bearer {token}", "Version": API_VERSION,
@@ -345,13 +345,13 @@ def users_me(client: httpx.Client, token: str) -> dict:
 
 
 def account_label(me: dict) -> str:
-    """«{имя} (id {id})» — без e-mail и телефона."""
+    """"{имя} (id {id})" - без e-mail и телефона."""
     name = _clip(me.get("name"), 120) or "без имени"
     return f"{name} (id {_clip(me.get('id'), 32)})"
 
 
 def _key_fps(s: Settings) -> dict:
-    """Отпечатки ключей, с которыми подключён аккаунт: их смена на сервере видна как «не проверен»."""
+    """Отпечатки ключей, с которыми подключён аккаунт: их смена на сервере видна как "не проверен"."""
     return {name: s.key_fp(name) for name in CONNECTOR.required_env if s.key_fp(name)}
 
 
@@ -362,8 +362,8 @@ def _hash(state: str) -> str:
 
 
 def start(db: Session, admin: auth.Admin, author: str) -> tuple[str, datetime]:
-    """Начать подключение: одноразовый state (в БД — только SHA-256 и отпечаток токена администратора) и адрес
-    авторизации OLX. Просроченные state удаляются. Без commit. Нет ключей — NotConfigured."""
+    """Начать подключение: одноразовый state(в БД - только SHA-256 и отпечаток токена администратора) и адрес
+    авторизации OLX. Просроченные state удаляются. Без commit. Нет ключей - NotConfigured."""
     s = get_settings()
     missing = CONNECTOR.missing(s)
     if missing:
@@ -386,9 +386,9 @@ def start(db: Session, admin: auth.Admin, author: str) -> tuple[str, datetime]:
 
 def consume_state(db: Session, state: str, current_admin_fp: Optional[str], *,
                   now: Optional[datetime] = None) -> models.OAuthState:
-    """Погасить state: условный UPDATE used_at (ровно одна строка: свой провайдер, не использован, не истёк), затем
-    сверить отпечаток текущего токена администратора. Любая неудача — ValueError с одним текстом (state, погашенный
-    до смены токена администратора, остаётся погашенным — вызывающий фиксирует транзакцию). Без commit."""
+    """Погасить state: условный UPDATE used_at(ровно одна строка: свой провайдер, не использован, не истёк), затем
+    сверить отпечаток текущего токена администратора. Любая неудача - ValueError с одним текстом(state, погашенный
+    до смены токена администратора, остаётся погашенным - вызывающий фиксирует транзакцию). Без commit."""
     if not state or len(state) > STATE_MAX:
         raise ValueError(BAD_STATE)
     S = models.OAuthState
@@ -425,7 +425,7 @@ class OlxConnector(Connector):
                   "собрать.")
 
     def computed_status(self, db, row, now) -> Optional[tuple[str, str]]:
-        """Ключи есть, токена нет — «не подключён»; токен не обновить — «истёк доступ»; иначе — хранимый статус."""
+        """Ключи есть, токена нет - "не подключён"; токен не обновить - "истёк доступ"; иначе - хранимый статус."""
         if db is None:
             return None
         tok = db.get(models.IntegrationToken, PROVIDER)
@@ -436,8 +436,8 @@ class OlxConnector(Connector):
         return None
 
     def health_due(self, db, row, now) -> bool:
-        """Плановая проверка: аккаунт подключён и (последней проверке больше суток или токен истекает меньше чем через
-        час — но не чаще раза в 15 минут). Лимит частоты OLX: до next_run_at не проверять, после — проверить снова (не
+        """Плановая проверка: аккаунт подключён и(последней проверке больше суток или токен истекает меньше чем через
+        час - но не чаще раза в 15 минут). Лимит частоты OLX: до next_run_at не проверять, после - проверить снова(не
         чаще раза в 15 минут). Истёкший доступ и отказ не проверяются по расписанию."""
         if db is None or self.missing(get_settings(), row):
             return False
@@ -459,10 +459,10 @@ class OlxConnector(Connector):
         return exp is not None and exp - now < REFRESH_BEFORE and checked <= now - HEALTH_MIN_GAP
 
     def check(self, ctx: "RunContext") -> CheckResult:
-        """Токен (обновить, если скоро истечёт) → users/me; 401 — обновить токен один раз и повторить; снова 401 —
-        «Доступ OLX истёк»; 401 insufficient_scope — «нет доступа» без обновления. Подпись аккаунта пишется только в то
-        подключение, чей токен проверялся: переподключили или отключили во время запроса — проверяется текущее
-        подключение (один раз; отключено — «не подключён»), снова сменилось — ошибка без сведений об аккаунте.
+        """Токен(обновить, если скоро истечёт) → users/me; 401 - обновить токен один раз и повторить; снова 401 -
+        "Доступ OLX истёк"; 401 insufficient_scope - "нет доступа" без обновления. Подпись аккаунта пишется только в то
+        подключение, чей токен проверялся: переподключили или отключили во время запроса - проверяется текущее
+        подключение(один раз; отключено - "не подключён"), снова сменилось - ошибка без сведений об аккаунте.
         Сбора публикаций нет: Partner API не даёт чужих объявлений."""
         s = ctx.settings
         if self.missing(s):
@@ -483,7 +483,7 @@ class OlxConnector(Connector):
 
 
 def _verify(ctx: "RunContext", client: httpx.Client, s: Settings) -> tuple[dict, datetime]:
-    """users/me действующим токеном; 401 — обновить токен один раз и повторить, снова 401 — AuthExpired.
+    """users/me действующим токеном; 401 - обновить токен один раз и повторить, снова 401 - AuthExpired.
     → (данные аккаунта, поколение подключения того токена, который OLX принял)."""
     with SessionLocal() as db:
         token, grant = _ensure(db, client, s, now=ctx.now())
@@ -513,7 +513,7 @@ router = APIRouter(tags=["integrations"])
 
 
 def _page(text: str, status: int) -> HTMLResponse:
-    """Страница возврата OAuth: только текст (экранирован), без скриптов и стилей, без токенов; не кэшируется."""
+    """Страница возврата OAuth: только текст(экранирован), без скриптов и стилей, без токенов; не кэшируется."""
     body = ("<!doctype html><html lang=\"ru\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
             f"<title>{escape(PAGE_TITLE)}</title></head><body><h1>{escape(PAGE_TITLE)}</h1>"
@@ -532,9 +532,9 @@ def _fail_status(e: ConnectorError) -> str:
 
 
 def _account_failed(e: ConnectorError, now: datetime) -> None:
-    """Токен сохранён (поколение now), но users/me не прошёл: причина — в статус подключения (сбой не выглядит
-    успехом), сведения о прежнем аккаунте убираются. Лимит частоты — пауза до Retry-After, как у jobs._finish.
-    Подключение за это время заменено или отключено — его статус не трогается."""
+    """Токен сохранён(поколение now), но users/me не прошёл: причина - в статус подключения(сбой не выглядит
+    успехом), сведения о прежнем аккаунте убираются. Лимит частоты - пауза до Retry-After, как у jobs._finish.
+    Подключение за это время заменено или отключено - его статус не трогается."""
     from . import service
 
     with SessionLocal() as db:
@@ -554,8 +554,8 @@ def _account_failed(e: ConnectorError, now: datetime) -> None:
 
 
 def _connected(label: str, me: dict, author: str, now: datetime, s: Settings) -> bool:
-    """Аккаунт подтверждён: подпись в строке токена, статус «подключено · ограничено», событие журнала от автора.
-    now — поколение, записанное save_token; подключение за это время заменено или отключено — False, ничего не
+    """Аккаунт подтверждён: подпись в строке токена, статус "подключено · ограничено", событие журнала от автора.
+    now - поколение, записанное save_token; подключение за это время заменено или отключено - False, ничего не
     пишется."""
     from ..ads_service import _event
     from . import service
@@ -578,7 +578,7 @@ def _connected(label: str, me: dict, author: str, now: datetime, s: Settings) ->
              responses={409: {"description": "Ключей OLX нет на сервере"}})
 def olx_start(body: schemas.AdminActionIn, admin: auth.Admin = Depends(auth.require_admin),
               db: Session = Depends(get_db)):
-    """«Подключить аккаунт OLX» (администратор): адрес авторизации OLX с одноразовым state на 10 минут."""
+    """"Подключить аккаунт OLX"(администратор): адрес авторизации OLX с одноразовым state на 10 минут."""
     try:
         url, expires = start(db, admin, body.author)
     except NotConfigured as e:
@@ -593,10 +593,10 @@ def olx_start(body: schemas.AdminActionIn, admin: auth.Admin = Depends(auth.requ
                        502: {"description": "OLX не выдал токен или не подтвердил аккаунт"}})
 def olx_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None,
                  error_description: Optional[str] = None):
-    """Возврат из OLX (публичный адрес): state → ошибка провайдера → обмен кода сервером → users/me → статус и журнал.
-    Ответ — простая страница без токенов. Код и state регистрируются для маскирования только после проверки state
+    """Возврат из OLX(публичный адрес): state → ошибка провайдера → обмен кода сервером → users/me → статус и журнал.
+    Ответ - простая страница без токенов. Код и state регистрируются для маскирования только после проверки state
     (адрес публичный: чужие значения не должны расти списком секретов); в журнале запросов параметры code и state
-    маскируются по имени (logs.redact)."""
+    маскируются по имени(logs.redact)."""
     s = get_settings()
     now = models.utcnow()
     admin_secret = s.admin_token.get()
@@ -605,7 +605,7 @@ def olx_callback(code: Optional[str] = None, state: Optional[str] = None, error:
         try:
             st = consume_state(db, state or "", current_fp, now=now)
         except ValueError:
-            db.commit()  # погашенный state (смена токена администратора) остаётся погашенным
+            db.commit()  # погашенный state(смена токена администратора) остаётся погашенным
             return _page(BAD_STATE, 400)
         author = st.created_by
         db.commit()
@@ -650,8 +650,8 @@ def olx_callback(code: Optional[str] = None, state: Optional[str] = None, error:
 @router.post("/api/integrations/olx/disconnect", response_model=schemas.ConnectorOut, response_model_by_alias=True)
 def olx_disconnect(body: schemas.AdminActionIn, admin: auth.Admin = Depends(auth.require_admin),
                    db: Session = Depends(get_db)):
-    """Отключить аккаунт OLX (администратор): токены удаляются из БД, статус «не подключён», запись в журнал. Сведения
-    об аккаунте убираются всегда, даже если токена уже нет (повтор чинит остатки)."""
+    """Отключить аккаунт OLX(администратор): токены удаляются из БД, статус "не подключён", запись в журнал. Сведения
+    об аккаунте убираются всегда, даже если токена уже нет(повтор чинит остатки)."""
     from ..ads_service import _event
     from . import service
 
@@ -661,7 +661,7 @@ def olx_disconnect(body: schemas.AdminActionIn, admin: auth.Admin = Depends(auth
     if tok is not None:
         label = tok.account_label or "без подписи"
         db.delete(tok)
-        db.flush()  # строка токена — первой: тот же порядок блокировок, что у возврата из OLX и проверки
+        db.flush()  # строка токена - первой: тот же порядок блокировок, что у возврата из OLX и проверки
     r = service.row(db, CONNECTOR.code, create=tok is not None)
     if r is not None:
         r.facts = _without_account(r.facts)

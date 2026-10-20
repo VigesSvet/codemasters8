@@ -1,22 +1,22 @@
-"""Задания воркера в таблице jobs (integration-spec §9.1, §9.3, §9.4): сбор (collect), проверка подключения (test),
-анализ публикации (analyze), отправка предупреждения жителям (alert, app.alerts). Не больше одного активного задания
-на dedupe_key (частичный уникальный индекс): гонка двух постановок решается INSERT … ON CONFLICT DO NOTHING и повторным
+"""Задания воркера в таблице jobs(integration-spec §9.1, §9.3, §9.4): сбор(collect), проверка подключения(test),
+анализ публикации(analyze), отправка предупреждения жителям(alert, app.alerts). Не больше одного активного задания
+на dedupe_key(частичный уникальный индекс): гонка двух постановок решается INSERT … ON CONFLICT DO NOTHING и повторным
 чтением, без SAVEPOINT.
 
-Захват: на PostgreSQL — SELECT … FOR UPDATE SKIP LOCKED, на SQLite — условный UPDATE по прочитанному id (повтор до трёх
-раз). Анализ публикации, по которой уже идёт анализ, не захватывается; у захваченного анализа dedupe_key обнуляется —
+Захват: на PostgreSQL - SELECT … FOR UPDATE SKIP LOCKED, на SQLite - условный UPDATE по прочитанному id(повтор до трёх
+раз). Анализ публикации, по которой уже идёт анализ, не захватывается; у захваченного анализа dedupe_key обнуляется -
 новая версия публикации ставит новое задание, пока идёт прежнее.
 
-execute: сессия S1 (задание и запуск — «выполняется») фиксируется и закрывается ДО обработчика — сеть, OCR и ffmpeg идут
+execute: сессия S1(задание и запуск - "выполняется") фиксируется и закрывается ДО обработчика - сеть, OCR и ffmpeg идут
 без открытой транзакции записи; итог применяется в новой сессии. Итог обработчика определяет статус запуска и подключения
-(таблица §9.4): сбой никогда не выглядит как «нет новых», платный сбор после ошибки останавливается до ручной проверки.
-Обработчики импортируют реестр, сервис, контекст и анализ лениво (порядок импорта §2.1).
+(таблица §9.4): сбой никогда не выглядит как "нет новых", платный сбор после ошибки останавливается до ручной проверки.
+Обработчики импортируют реестр, сервис, контекст и анализ лениво(порядок импорта §2.1).
 
-Итог пишется, только если задание всё ещё у того же захвата (fence: выполняется, тот же воркер, то же число попыток):
+Итог пишется, только если задание всё ещё у того же захвата(fence: выполняется, тот же воркер, то же число попыток):
 задание, которое recover_stale или requeue_own отдали другому воркеру, прежний исполнитель уже не перезапишет. Время
-итога (повтор, отсрочка, пауза частоты, следующий сбор) — момент итога, а не захвата: долгий запуск не делает паузу
-прошедшей ещё до записи. Брошенное задание (попытки исчерпаны в recover_stale / requeue_own) получает тот же итог
-ошибки, что и обычный сбой: подключение — «ошибка», платный сбор остановлен, анализ — событие «не выполнен».
+итога(повтор, отсрочка, пауза частоты, следующий сбор) - момент итога, а не захвата: долгий запуск не делает паузу
+прошедшей ещё до записи. Брошенное задание(попытки исчерпаны в recover_stale / requeue_own) получает тот же итог
+ошибки, что и обычный сбой: подключение - "ошибка", платный сбор остановлен, анализ - событие "не выполнен".
 """
 import hashlib
 import logging
@@ -39,7 +39,7 @@ log = logging.getLogger("saq.jobs")
 PRIORITY = {"test": 10, "alert": 8, "collect": 5, "analyze": 0}
 SOFT_DEADLINE_S = 1200  # RunContext.time_left(): мягкий срок одного выполнения задания
 ACTIVE = ("queued", "running")
-MAX_DEFERRALS = 240  # отсрочек одного задания (Deferred), дальше — ошибка
+MAX_DEFERRALS = 240  # отсрочек одного задания(Deferred), дальше - ошибка
 BACKOFF_BASE_S = 60
 BACKOFF_MAX_S = 3600
 CLAIM_TRIES = 3
@@ -48,7 +48,7 @@ INTERNAL = "Внутренняя ошибка сборщика — подроб�
 PAID_STOP = "Платный сбор остановлен после ошибки — запустите проверку вручную"
 SCHEDULABLE = frozenset({"ready", "working", "partial", "error", "rate_limited"})
 DETAIL_MAX = 500
-MONOTONIC: Callable[[], float] = time.monotonic  # время выполнения задания (тесты подменяют)
+MONOTONIC: Callable[[], float] = time.monotonic  # время выполнения задания(тесты подменяют)
 
 
 # ---------- постановка ----------
@@ -59,7 +59,7 @@ def _active(db: Session, dedupe_key: str) -> Optional[models.Job]:
 
 
 def active(db: Session, dedupe_key: str) -> Optional[models.Job]:
-    """Активное (в очереди или выполняется) задание с этим ключом."""
+    """Активное(в очереди или выполняется) задание с этим ключом."""
     return _active(db, dedupe_key)
 
 
@@ -67,9 +67,9 @@ def enqueue(db: Session, kind: str, *, dedupe_key: Optional[str] = None, collect
             run_id: Optional[int] = None, ad_id: Optional[str] = None, content_version: Optional[int] = None,
             payload: Optional[dict] = None, run_after: Optional[datetime] = None, priority: Optional[int] = None,
             max_attempts: int = 5) -> tuple[models.Job, bool]:
-    """Задание в очередь (в сессии db, без commit). С dedupe_key: активное задание с тем же ключом уже есть —
-    возвращается оно (created=False); для analyze его content_version поднимается до новой версии.
-    Возвращает (задание, создано ли)."""
+    """Задание в очередь(в сессии db, без commit). С dedupe_key: активное задание с тем же ключом уже есть -
+    возвращается оно(created=False); для analyze его content_version поднимается до новой версии.
+    Возвращает(задание, создано ли)."""
     now = models.utcnow()
     values = {"kind": kind, "status": "queued", "priority": PRIORITY.get(kind, 0) if priority is None else priority,
               "collector": collector, "run_id": run_id, "ad_id": ad_id, "content_version": content_version,
@@ -80,7 +80,7 @@ def enqueue(db: Session, kind: str, *, dedupe_key: Optional[str] = None, collect
         db.add(job)
         db.flush()
         return job, True
-    for _ in range(3):  # активное задание могло завершиться между INSERT и SELECT — вставка пройдёт со второго раза
+    for _ in range(3):  # активное задание могло завершиться между INSERT и SELECT - вставка пройдёт со второго раза
         created = models.insert_ignore(db, models.Job, values, ("dedupe_key",), where=text(models.ACTIVE_JOB))
         job = _active(db, dedupe_key)
         if job is None:
@@ -95,21 +95,21 @@ def enqueue(db: Session, kind: str, *, dedupe_key: Optional[str] = None, collect
 # ---------- захват ----------
 
 def _claimable(now: datetime):
-    """Условие «можно захватить»: в очереди, срок наступил; анализ — только если по этой публикации анализ не идёт."""
+    """Условие "можно захватить": в очереди, срок наступил; анализ - только если по этой публикации анализ не идёт."""
     J, R = models.Job, aliased(models.Job)
     busy = exists().where(R.kind == "analyze", R.status == "running", R.ad_id == J.ad_id, R.id != J.id)
     return and_(J.status == "queued", J.run_after <= models.as_utc(now), not_(and_(J.kind == "analyze", busy)))
 
 
 def _ad_lock_key(ad_id: str) -> int:
-    """Ключ рекомендательной блокировки PostgreSQL «анализ публикации ad_id» (64 бита со знаком)."""
+    """Ключ рекомендательной блокировки PostgreSQL "анализ публикации ad_id"(64 бита со знаком)."""
     return int.from_bytes(hashlib.sha256(f"analyze:{ad_id}".encode()).digest()[:8], "big", signed=True)
 
 
 def _try_claim(db: Session, job_id: int, worker_id: str, now: datetime) -> bool:
-    """Условный UPDATE одного задания (в сессии db, без commit): True — захвачено этим воркером.
-    Анализ на PostgreSQL: сначала блокировка «анализ этой публикации» до конца транзакции — два воркера, захватывающие
-    одновременно два задания одной публикации, идут по очереди, и условие «анализ не идёт» второго (новый снимок
+    """Условный UPDATE одного задания(в сессии db, без commit): True - захвачено этим воркером.
+    Анализ на PostgreSQL: сначала блокировка "анализ этой публикации" до конца транзакции - два воркера, захватывающие
+    одновременно два задания одной публикации, идут по очереди, и условие "анализ не идёт" второго(новый снимок
     оператора UPDATE в READ COMMITTED) видит зафиксированный захват первого. На SQLite запись и так последовательна."""
     J = models.Job
     found = db.execute(select(J.kind, J.ad_id).where(J.id == job_id)).one_or_none()
@@ -126,8 +126,8 @@ def _try_claim(db: Session, job_id: int, worker_id: str, now: datetime) -> bool:
 
 
 def claim(db: Session, worker_id: str, now: datetime) -> Optional[models.Job]:
-    """Следующее задание (приоритет, срок, id) → «выполняется» у этого воркера; фиксирует транзакцию. None — нечего
-    делать. PostgreSQL: FOR UPDATE SKIP LOCKED; SQLite: условный UPDATE, при гонке — до трёх попыток."""
+    """Следующее задание(приоритет, срок, id) → "выполняется" у этого воркера; фиксирует транзакцию. None - нечего
+    делать. PostgreSQL: FOR UPDATE SKIP LOCKED; SQLite: условный UPDATE, при гонке - до трёх попыток."""
     J = models.Job
     pg = db.get_bind().dialect.name == "postgresql"
     for _ in range(CLAIM_TRIES):
@@ -168,7 +168,7 @@ def cancel(db: Session, job: models.Job) -> None:
 
 
 def retry(db: Session, job: models.Job, error: Optional[str], *, now: datetime) -> bool:
-    """Повтор с паузой (backoff): задание снова в очереди. False — попытки исчерпаны (вызывающий завершает ошибкой)."""
+    """Повтор с паузой(backoff): задание снова в очереди. False - попытки исчерпаны(вызывающий завершает ошибкой)."""
     job.last_error = redact(error)
     if (job.attempts or 0) >= (job.max_attempts or 1):
         return False
@@ -178,8 +178,8 @@ def retry(db: Session, job: models.Job, error: Optional[str], *, now: datetime) 
 
 
 def defer(db: Session, job: models.Job, seconds: float, payload_update: Optional[dict], *, now: datetime) -> bool:
-    """Отсрочка без расхода попытки (ожидание внешнего запуска): в очередь через seconds с, payload дополняется.
-    False — отсрочек больше MAX_DEFERRALS: задание дальше не откладывается (вызывающий завершает ошибкой)."""
+    """Отсрочка без расхода попытки(ожидание внешнего запуска): в очередь через seconds с, payload дополняется.
+    False - отсрочек больше MAX_DEFERRALS: задание дальше не откладывается(вызывающий завершает ошибкой)."""
     payload = {**(job.payload or {}), **(payload_update or {})}
     payload["deferrals"] = int(payload.get("deferrals") or 0) + 1
     job.payload = payload
@@ -193,17 +193,17 @@ def defer(db: Session, job: models.Job, seconds: float, payload_update: Optional
 
 def fence(db: Session, job_id: int, worker_id: Optional[str], attempts: Optional[int], *,
           what: str = "итог не записан") -> Optional[models.Job]:
-    """Задание всё ещё у этого захвата (выполняется, тот же воркер, то же число попыток)? Условный UPDATE-«замок»
-    (на PostgreSQL блокирует строку до конца транзакции, на SQLite берёт запись) и чтение свежей строки; None —
+    """Задание всё ещё у этого захвата(выполняется, тот же воркер, то же число попыток)? Условный UPDATE-"замок"
+    (на PostgreSQL блокирует строку до конца транзакции, на SQLite берёт запись) и чтение свежей строки; None -
     задание уже вернули в очередь, завершили или отдали другому воркеру: итог этого исполнителя не записывается.
-    worker_id None — без проверки (прямой вызов)."""
+    worker_id None - без проверки(прямой вызов)."""
     J = models.Job
     if worker_id is None:
         return db.get(J, job_id)
     res = db.execute(update(J).where(J.id == job_id, J.status == "running", J.locked_by == worker_id,
                                      J.attempts == (attempts or 0)).values(locked_by=worker_id)
                      .execution_options(synchronize_session=False))
-    if res.rowcount != 1:  # без отката: в той же транзакции могут быть чужие изменения (такт лидера)
+    if res.rowcount != 1:  # без отката: в той же транзакции могут быть чужие изменения(такт лидера)
         log.warning("Задание №%s уже не у воркера %s (возвращено в очередь или выполнено другим) — %s",
                     job_id, worker_id, what)
         return None
@@ -211,8 +211,8 @@ def fence(db: Session, job_id: int, worker_id: Optional[str], attempts: Optional
 
 
 def _requeue(db: Session, job: models.Job, now: datetime, reason: str) -> Optional[str]:
-    """Задание, которое перестал выполнять воркер: снова в очередь (попытка уже израсходована) или итог ошибки, если
-    попыток больше нет. Возвращает новый статус; None — задание тем временем завершилось или его уже забрали
+    """Задание, которое перестал выполнять воркер: снова в очередь(попытка уже израсходована) или итог ошибки, если
+    попыток больше нет. Возвращает новый статус; None - задание тем временем завершилось или его уже забрали
     (условный UPDATE по прочитанному захвату не совпал)."""
     if fence(db, job.id, job.locked_by, job.attempts, what="повторно не возвращается") is None:
         return None
@@ -225,10 +225,10 @@ def _requeue(db: Session, job: models.Job, now: datetime, reason: str) -> Option
 
 
 def _abandoned(db: Session, job: models.Job, now: datetime, reason: str) -> None:
-    """Задание брошено окончательно (попытки исчерпаны, воркер упал или завис). Сбор и проверка — итог как у сбоя без
-    повтора (§9.4): запуск «ошибка», подключение «ошибка» с паузой, платный сбор остановлен — иначе расписание сразу
-    начало бы новый платный запуск. Анализ — «не выполнен» с событием в журнале публикации (§8 п. 11). Предупреждение
-    жителям — итог отправки по доставкам (app.alerts.abandoned): «не отправлено» или «частично» с причиной."""
+    """Задание брошено окончательно(попытки исчерпаны, воркер упал или завис). Сбор и проверка - итог как у сбоя без
+    повтора(§9.4): запуск "ошибка", подключение "ошибка" с паузой, платный сбор остановлен - иначе расписание сразу
+    начало бы новый платный запуск. Анализ - "не выполнен" с событием в журнале публикации(§8 п. 11). Предупреждение
+    жителям - итог отправки по доставкам(app.alerts.abandoned): "не отправлено" или "частично" с причиной."""
     if job.kind in ("collect", "test"):
         from .integrations import registry
 
@@ -263,7 +263,7 @@ def _abandoned(db: Session, job: models.Job, now: datetime, reason: str) -> None
 
 
 def recover_stale(db: Session, now: datetime, lease_s: int) -> int:
-    """Выполняемые задания без продления блокировки дольше lease_s (воркер упал или завис) → снова в очередь (или
+    """Выполняемые задания без продления блокировки дольше lease_s(воркер упал или завис) → снова в очередь(или
     итог ошибки, если попытки исчерпаны). Без commit."""
     J = models.Job
     cutoff = models.as_utc(now) - timedelta(seconds=lease_s)
@@ -278,7 +278,7 @@ def recover_stale(db: Session, now: datetime, lease_s: int) -> int:
 
 
 def requeue_own(db: Session, worker_id: str) -> int:
-    """Старт воркера: его же задания в статусе «выполняется» (прошлый процесс с этим SAQ_WORKER_ID упал) → в очередь
+    """Старт воркера: его же задания в статусе "выполняется"(прошлый процесс с этим SAQ_WORKER_ID упал) → в очередь
     (или итог ошибки, если попытки исчерпаны). Без commit."""
     J = models.Job
     now = models.utcnow()
@@ -290,8 +290,8 @@ def requeue_own(db: Session, worker_id: str) -> int:
 
 @dataclass
 class JobInfo:
-    """Снимок задания на момент запуска: обработчик работает без открытой сессии. worker_id и attempts — захват,
-    по которому итог проверяется (fence); base + прошедшее с started — время итога (now())."""
+    """Снимок задания на момент запуска: обработчик работает без открытой сессии. worker_id и attempts - захват,
+    по которому итог проверяется(fence); base + прошедшее с started - время итога(now())."""
     id: int
     kind: str
     collector: Optional[str]
@@ -306,15 +306,15 @@ class JobInfo:
     started: float = field(default_factory=lambda: MONOTONIC())
 
     def now(self) -> datetime:
-        """Текущее время задания (UTC): время, переданное воркером (захват), плюс прошедшее с начала выполнения."""
+        """Текущее время задания(UTC): время, переданное воркером(захват), плюс прошедшее с начала выполнения."""
         base = self.base if self.base is not None else models.utcnow()
         return base + timedelta(seconds=MONOTONIC() - self.started)
 
 
 def execute(job_id: int, *, worker_id: str, now: Optional[datetime] = None,
             stop: Optional[threading.Event] = None) -> None:
-    """Выполнить захваченное задание. S1 (задание и запуск — «выполняется») фиксируется до обработчика; итог —
-    в новой сессии и только пока задание у этого захвата. Исключения обработчика сюда не выходят (кроме ошибок БД
+    """Выполнить захваченное задание. S1(задание и запуск - "выполняется") фиксируется до обработчика; итог -
+    в новой сессии и только пока задание у этого захвата. Исключения обработчика сюда не выходят(кроме ошибок БД
     при записи итога)."""
     started = MONOTONIC()
     now = models.as_utc(now) or models.utcnow()
@@ -350,7 +350,7 @@ class _Failure:
     """Ошибка подключения для итога: код ошибки запуска, статус запуска и подключения, текст, повторять ли."""
     error_code: str
     run_status: str
-    status: Optional[str]  # None — статус подключения не меняется (вычисляется)
+    status: Optional[str]  # None - статус подключения не меняется(вычисляется)
     detail: str
     retryable: bool = False
     exc: Optional[BaseException] = None
@@ -373,7 +373,7 @@ def _failure(e: BaseException) -> _Failure:
         return _Failure("bad_config", "failed", "error", e.detail)
     if isinstance(e, base.ConnectorError):
         return _Failure(e.code or "source_error", "failed", "error", e.detail, retryable=bool(e.retryable))
-    if isinstance(e, http.DownloadError):  # клиент подключения отклонил запрос (чужой хост) или сеть
+    if isinstance(e, http.DownloadError):  # клиент подключения отклонил запрос(чужой хост) или сеть
         return _Failure("source_error", "failed", "error", e.detail, retryable=e.retryable)
     import httpx
 
@@ -408,7 +408,7 @@ def _connector_job(info: JobInfo, *, now: datetime, stop: Optional[threading.Eve
         ext = run.external_run_id if run is not None else None
         db.commit()
     missing = conn.missing(s, row)
-    if missing:  # ключей нет на сервере: статус «не настроен» вычисляется, хранимый статус не меняется
+    if missing:  # ключей нет на сервере: статус "не настроен" вычисляется, хранимый статус не меняется
         detail = conn.missing_detail(s, row) or f"Нет на сервере: {', '.join(missing)}"
         _finish(info, conn, _Failure("not_configured", "not_configured", None, detail))
         return
@@ -428,7 +428,7 @@ def _connector_job(info: JobInfo, *, now: datetime, stop: Optional[threading.Eve
             _collect_ok(info, conn, ctx)
     except base.Deferred as d:
         _deferred(info, conn, d)
-    except Exception as e:  # noqa: BLE001 — любой сбой подключения — итог запуска, не падение воркера
+    except Exception as e:  # noqa: BLE001 - любой сбой подключения - итог запуска, не падение воркера
         f = _failure(e)
         if f.error_code == "internal":
             log.exception("Подключение %s: необработанная ошибка в задании №%s", code, info.id)
@@ -459,7 +459,7 @@ def _deferred(info: JobInfo, conn, d) -> None:
         before = (job.payload or {}).get("phase")
         if defer(db, job, d.seconds, d.payload, now=now):
             phase = (job.payload or {}).get("phase")
-            if job.payload.get("deferrals") == 1 or phase != before:  # заметка — на первую отсрочку и смену этапа
+            if job.payload.get("deferrals") == 1 or phase != before:  # заметка - на первую отсрочку и смену этапа
                 _note(db, info.run_id, f"Ожидание источника — продолжение после {local_time(job.run_after)}"
                       + (f" (этап: {phase})" if phase else ""), now=now)
             db.commit()
@@ -470,14 +470,14 @@ def _deferred(info: JobInfo, conn, d) -> None:
 
 
 def _paid_stop(row, f: _Failure) -> str:
-    """Платный сбор после ошибки: остановлен до успешной ручной проверки (D19)."""
+    """Платный сбор после ошибки: остановлен до успешной ручной проверки(D19)."""
     row.facts = {**(row.facts or {}), "stopped": True, "stoppedCode": f.error_code}
     return f"{f.detail}. {PAID_STOP}" if f.detail else PAID_STOP
 
 
 def _finish(info: JobInfo, conn, f: _Failure) -> None:
-    """Ошибка задания сбора/проверки: повтор (если можно и попытки остались) или итог запуска и подключения — только
-    пока задание у этого захвата; время — момент итога."""
+    """Ошибка задания сбора/проверки: повтор(если можно и попытки остались) или итог запуска и подключения - только
+    пока задание у этого захвата; время - момент итога."""
     with SessionLocal() as db:
         job = fence(db, info.id, info.worker_id, info.attempts)
         if job is None:
@@ -488,8 +488,8 @@ def _finish(info: JobInfo, conn, f: _Failure) -> None:
 
 def _failure_outcome(db: Session, job: models.Job, conn, f: _Failure, now: datetime, *,
                      retry_ok: bool = True) -> None:
-    """Итог ошибки задания сбора/проверки в сессии db (без commit), таблица §9.4: повтор (retry_ok, повторяемая
-    ошибка и попытки остались) или итог задания, запуска и подключения (пауза, остановка платного сбора, переход
+    """Итог ошибки задания сбора/проверки в сессии db(без commit), таблица §9.4: повтор(retry_ok, повторяемая
+    ошибка и попытки остались) или итог задания, запуска и подключения(пауза, остановка платного сбора, переход
     статуса)."""
     from .integrations import service
     from .integrations.base import local_time
@@ -530,9 +530,9 @@ def _key_fps(conn, s) -> dict:
 
 
 def _test_ok(info: JobInfo, conn, check) -> None:
-    """Проверка прошла. Ручная проверка (администратор) снимает остановку сбора; плановая («Система») — нет:
+    """Проверка прошла. Ручная проверка(администратор) снимает остановку сбора; плановая("Система") - нет:
     остановку после ошибки настроек или платного сбора снимают изменение настроек или проверка администратором
-    (плановая проверка остановленного подключения и не ставится, это — на случай, если её поставили до остановки)."""
+    (плановая проверка остановленного подключения и не ставится, это - на случай, если её поставили до остановки)."""
     from .integrations import service
     from .settings import get_settings
 
@@ -571,8 +571,8 @@ def _summary(name: str, run: models.CollectionRun) -> str:
 
 
 def _collect_ok(info: JobInfo, conn, ctx) -> None:
-    """Сбор завершился без исключения: все записи с ошибкой — ошибка; есть ошибки записей/файлов или отметки
-    «частично» — частично; иначе — успешно."""
+    """Сбор завершился без исключения: все записи с ошибкой - ошибка; есть ошибки записей/файлов или отметки
+    "частично" - частично; иначе - успешно."""
     from .ads_service import _event
     from .integrations import service
 
@@ -637,12 +637,12 @@ def _analyze(info: JobInfo, *, now: datetime, stop: Optional[threading.Event] = 
     from .ads_service import _event
 
     try:
-        # force — «Проанализировать ещё раз» (POST /api/ads/{id}/reanalyze): Claude запрашивается снова; rulesOnly —
-        # пересчёт правил после создания карточки ЖК по рекламе (app.discovery), без запроса к Claude
+        # force - "Проанализировать ещё раз"(POST /api/ads/{id}/reanalyze): Claude запрашивается снова; rulesOnly -
+        # пересчёт правил после создания карточки ЖК по рекламе(app.discovery), без запроса к Claude
         p = info.payload or {}
         result = analysis.run_analysis(info.id, info.ad_id, now=now, force=bool(p.get("force")),
                                        rules_only=bool(p.get("rulesOnly")), reason=p.get("reason"))
-    except Exception as e:  # noqa: BLE001 — сбой анализа — повтор, затем «анализ не выполнен», не падение воркера
+    except Exception as e:  # noqa: BLE001 - сбой анализа - повтор, затем "анализ не выполнен", не падение воркера
         log.exception("Анализ публикации %s (задание №%s) не выполнен", info.ad_id, info.id)
         error = redact(str(e) or type(e).__name__, limit=300)
         I = models.IngestItem

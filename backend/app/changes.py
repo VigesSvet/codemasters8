@@ -1,19 +1,19 @@
-"""«Удалено в источнике» и история изменений собранных публикаций — по уже хранимым данным, без новых таблиц.
+""""Удалено в источнике" и история изменений собранных публикаций - по уже хранимым данным, без новых таблиц.
 
-Удаление в источнике (source_status) — по отсутствию в сборах. Сборщики Instagram и TikTok берут у каждого аккаунта
-окно последних публикаций (Instagram Graph — последние N медиа аккаунта), каждый запуск обновляет у увиденной публикации
-last_run_id. Публикация считается удалённой (deleted), если:
-- позже её аккаунт собирался успешно (у других его публикаций last_run_id новее) — аккаунт в сборе есть;
-- она не старше самой старой публикации аккаунта, увиденной в последнем таком запуске, — то есть была бы в окне сбора;
-- после неё прошло не меньше MIN_MISSED запусков этого подключения (один пропуск — ещё не удаление: сбой ответа).
-Иначе — present (видели в последнем сборе аккаунта) или unknown с причиной: вытеснена из окна новыми публикациями,
-аккаунт позже не собирался, пропущена в одном запуске, площадка без окна по аккаунту. Krisha — всегда unknown: выдача —
-первые страницы поиска (порядок меняется, объявление может уйти дальше), карточки закрыты проверкой доступа (HTTP 468),
-поэтому ни отсутствие в выдаче, ни запрос карточки снятия не доказывают. Ручные и демо-публикации — unknown.
-Копия сохранена: текст, файлы и версии остаются в БД; savedAt — когда получена последняя версия.
+Удаление в источнике(source_status) - по отсутствию в сборах. Сборщики Instagram и TikTok берут у каждого аккаунта
+окно последних публикаций(Instagram Graph - последние N медиа аккаунта), каждый запуск обновляет у увиденной публикации
+last_run_id. Публикация считается удалённой(deleted), если:
+- позже её аккаунт собирался успешно(у других его публикаций last_run_id новее) - аккаунт в сборе есть;
+- она не старше самой старой публикации аккаунта, увиденной в последнем таком запуске, - то есть была бы в окне сбора;
+- после неё прошло не меньше MIN_MISSED запусков этого подключения(один пропуск - ещё не удаление: сбой ответа).
+Иначе - present(видели в последнем сборе аккаунта) или unknown с причиной: вытеснена из окна новыми публикациями,
+аккаунт позже не собирался, пропущена в одном запуске, площадка без окна по аккаунту. Krisha - всегда unknown: выдача -
+первые страницы поиска(порядок меняется, объявление может уйти дальше), карточки закрыты проверкой доступа(HTTP 468),
+поэтому ни отсутствие в выдаче, ни запрос карточки снятия не доказывают. Ручные и демо-публикации - unknown.
+Копия сохранена: текст, файлы и версии остаются в БД; savedAt - когда получена последняя версия.
 
-Изменения (recent_changes) — пары соседних версий ingest_versions: цена, удалённые и добавленные фрагменты текста
-(пословный diff по LCS), удалённые условия оплаты (словарь markers.money модели риска и суммы), смена файлов.
+Изменения(recent_changes) - пары соседних версий ingest_versions: цена, удалённые и добавленные фрагменты текста
+(пословный diff по LCS), удалённые условия оплаты(словарь markers.money модели риска и суммы), смена файлов.
 """
 import re
 from datetime import datetime, timedelta, timezone
@@ -28,11 +28,11 @@ from .db import get_db
 from .risk_model import MARKERS
 
 Obj = Dict[str, Any]
-MIN_MISSED = 2  # запусков подключения без публикации, после которых отсутствие — удаление
+MIN_MISSED = 2  # запусков подключения без публикации, после которых отсутствие - удаление
 WINDOWED = ("instagram", "tiktok")  # сборщики с окном последних публикаций по аккаунту
 FRAGMENT_MAX = 160
 FRAGMENTS = 5
-DIFF_CELLS = 1_000_000  # предел таблицы LCS: длиннее — середина целиком «удалено → добавлено»
+DIFF_CELLS = 1_000_000  # предел таблицы LCS: длиннее - середина целиком "удалено → добавлено"
 _TOKEN = re.compile(r"\S+|\s+")
 _MONEY = re.compile(r"\d[\d\s  ]*(?:[.,]\d+)?\s*(?:₸|тг|тенге|млн|тыс|%|\$)", re.I)
 TERMS = [*MARKERS["money"], "старт продаж", "скидк", "акци"]
@@ -46,8 +46,8 @@ def tokens(text: Optional[str]) -> List[str]:
 
 
 def diff_words(a: Optional[str], b: Optional[str]) -> List[Tuple[str, str]]:
-    """Пословный diff: [(op, текст)], op — eq | del | add; соседние куски одного вида склеены. Пробелы сравниваются
-    как слова, но разница только в пробелах — eq. LCS по таблице; общие начало и конец отрезаются заранее."""
+    """Пословный diff: [(op, текст)], op - eq | del | add; соседние куски одного вида склеены. Пробелы сравниваются
+    как слова, но разница только в пробелах - eq. LCS по таблице; общие начало и конец отрезаются заранее."""
     ta, tb = tokens(a), tokens(b)
     key = lambda t: " " if t.isspace() else t  # noqa: E731
     ka, kb = [key(t) for t in ta], [key(t) for t in tb]
@@ -86,7 +86,7 @@ def diff_words(a: Optional[str], b: Optional[str]) -> List[Tuple[str, str]]:
 
 
 def _merge(ops: Iterable[Tuple[str, str]]) -> List[Tuple[str, str]]:
-    """Склеить соседние куски одного вида; пробел между двумя удалёнными (добавленными) словами — к ним же."""
+    """Склеить соседние куски одного вида; пробел между двумя удалёнными(добавленными) словами - к ним же."""
     ops = list(ops)
     out: List[Tuple[str, str]] = []
     for k, (op, t) in enumerate(ops):
@@ -109,7 +109,7 @@ def fragments(ops: Sequence[Tuple[str, str]], op: str) -> List[str]:
 
 
 def hunks(ops: Sequence[Tuple[str, str]], context: int = 4, limit: int = FRAGMENTS) -> List[Obj]:
-    """Правки с контекстом: {before, removed, added, after} — до context слов совпадающего текста с каждой стороны."""
+    """Правки с контекстом: {before, removed, added, after} - до context слов совпадающего текста с каждой стороны."""
     out: List[Obj] = []
     k = 0
     while k < len(ops) and len(out) < limit:
@@ -131,7 +131,7 @@ def hunks(ops: Sequence[Tuple[str, str]], context: int = 4, limit: int = FRAGMEN
 
 
 def terms_in(text: str) -> List[str]:
-    """Условия оплаты и суммы во фрагменте: маркеры словаря и суммы («200 000 ₸», «30%»)."""
+    """Условия оплаты и суммы во фрагменте: маркеры словаря и суммы("200 000 ₸", "30%")."""
     low = text.lower()
     found = [w for w in TERMS if w.lower() in low]
     found = [w for w in found if not any(o != w and w.lower() in o.lower() for o in found)]
@@ -139,7 +139,7 @@ def terms_in(text: str) -> List[str]:
 
 
 def change_of(prev: Obj, cur: Obj) -> Obj:
-    """Что изменилось между версиями: цена, удалённые и добавленные фрагменты, правки с контекстом (hunks), удалённые
+    """Что изменилось между версиями: цена, удалённые и добавленные фрагменты, правки с контекстом(hunks), удалённые
     условия, файлы."""
     ops = diff_words(prev.get("text"), cur.get("text"))
     removed, added = fragments(ops, "del"), fragments(ops, "add")
@@ -184,9 +184,9 @@ def _iso(v: Any) -> Optional[str]:
 
 
 def classify(item: Obj, siblings: List[Obj], runs: List[Obj]) -> Obj:
-    """Статус в источнике по данным сбора (без сети). item / siblings — {collector, account, lastRunId, publishedAt,
-    collectedAt}; siblings — публикации того же подключения и аккаунта (вместе с item или без); runs — запуски этого
-    подключения {id, status, trigger, finishedAt, createdAt}. Ответ — {status, how, checkedAt, lastSeenAt, missedRuns}."""
+    """Статус в источнике по данным сбора(без сети). item / siblings - {collector, account, lastRunId, publishedAt,
+    collectedAt}; siblings - публикации того же подключения и аккаунта(вместе с item или без); runs - запуски этого
+    подключения {id, status, trigger, finishedAt, createdAt}. Ответ - {status, how, checkedAt, lastSeenAt, missedRuns}."""
     seen = _iso(item.get("collectedAt"))
     base = {"lastSeenAt": seen, "missedRuns": 0}
     col = item.get("collector") or ""
@@ -252,7 +252,7 @@ def _saved(db: Session, item_ids: List[int]) -> Dict[int, Obj]:
 
 
 def statuses(db: Session, items: Optional[List[models.IngestItem]] = None) -> Dict[str, Obj]:
-    """Статус в источнике публикаций приёма: {ad_id: {...}}; items — по каким (иначе все)."""
+    """Статус в источнике публикаций приёма: {ad_id: {...}}; items - по каким(иначе все)."""
     I = models.IngestItem
     rows = items if items is not None else list(db.scalars(select(I)))
     if not rows:
@@ -289,7 +289,7 @@ def _version_obj(v: models.IngestVersion) -> Obj:
 
 
 def recent_changes(db: Session, days: int = 30, limit: int = 100, now: Optional[datetime] = None) -> Obj:
-    """Изменения содержимого (пары соседних версий) и удалённые в источнике публикации за days дней, новые первыми."""
+    """Изменения содержимого(пары соседних версий) и удалённые в источнике публикации за days дней, новые первыми."""
     now = now or datetime.now(timezone.utc)
     since = now - timedelta(days=days)
     I, V, A = models.IngestItem, models.IngestVersion, models.Ad
@@ -347,5 +347,5 @@ def ad_source_status(aid: str, db: Session = Depends(get_db)):
 
 @router.get("/api/changes")
 def changes(days: int = Query(30, ge=1, le=3650), limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_db)):
-    """Недавние изменения содержимого собранных публикаций (цена, условия, текст) и удалённые в источнике."""
+    """Недавние изменения содержимого собранных публикаций(цена, условия, текст) и удалённые в источнике."""
     return recent_changes(db, days=days, limit=limit)

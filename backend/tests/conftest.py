@@ -10,9 +10,9 @@ import socket
 import sys
 import tempfile
 
-# Временная SQLite — до импорта app (engine создаётся при импорте app.db)
+# Временная SQLite - до импорта app(engine создаётся при импорте app.db)
 _TMP = tempfile.mkdtemp(prefix="saq-test-")
-# SAQ_TEST_DATABASE_URL — прогон на другой БД (например, PostgreSQL из docker compose; её таблицы приложения пересоздаются)
+# SAQ_TEST_DATABASE_URL - прогон на другой БД(например, PostgreSQL из docker compose; её таблицы приложения пересоздаются)
 os.environ["DATABASE_URL"] = os.getenv("SAQ_TEST_DATABASE_URL") or f"sqlite:///{_TMP}/test.db"
 os.environ["SAQ_ENV_FILE"] = ""  # не читать .env репозитория
 os.environ["MEDIA_ROOT"] = f"{_TMP}/media"
@@ -31,18 +31,18 @@ _logs.install(handler=False)  # фабрика записей с маскиро�
 
 import pytest  # noqa: E402
 
-import demo_seed as _demo_seed  # noqa: E402 — демо-набор только для тестов (shared/testdata)
+import demo_seed as _demo_seed  # noqa: E402 - демо-набор только для тестов(shared/testdata)
 from app import seed as _seed  # noqa: E402
 
 TMP = _TMP
 FAKE_ADMIN_TOKEN = "t-admin-0123456789abcdef0123"
-# Пустая БД тестов получает демо-набор, а не стартовый набор приложения (shared/snapshot — его проверяет test_snapshot.py)
+# Пустая БД тестов получает демо-набор, а не стартовый набор приложения(shared/snapshot - его проверяет test_snapshot.py)
 _seed.START = _demo_seed.start
 
 
 @pytest.fixture(autouse=True)
 def _demo_start():
-    """Старт пустой БД — демо-набор; тест может переключить его (demo_seed.live(), monkeypatch) — после теста прежний."""
+    """Старт пустой БД - демо-набор; тест может переключить его(demo_seed.live(), monkeypatch) - после теста прежний."""
     _seed.START = _demo_seed.start
     yield
     _seed.START = _demo_seed.start
@@ -50,8 +50,8 @@ def _demo_start():
 
 @pytest.fixture(autouse=True)
 def _no_asr(monkeypatch):
-    """Распознавание речи в тестах — «faster-whisper не установлен»: модель не скачивается и не загружается, даже если
-    пакет стоит в .venv. Тесты речи подменяют speech.available и движок сами (test_speech.py)."""
+    """Распознавание речи в тестах - "faster-whisper не установлен": модель не скачивается и не загружается, даже если
+    пакет стоит в .venv. Тесты речи подменяют speech.available и движок сами(test_speech.py)."""
     from app import speech
 
     monkeypatch.setattr(speech, "available", lambda: False)
@@ -64,8 +64,8 @@ def pytest_configure(config):
 
 @pytest.fixture(autouse=True)
 def _admin_reads(request, monkeypatch):
-    """Чтение подключений и запусков в тестах — с полными сведениями, как у администратора: тесты проверяют пояснения,
-    ошибки, факты и заметки. Вид для посетителя (без токена) проверяют тесты с меткой visitor."""
+    """Чтение подключений и запусков в тестах - с полными сведениями, как у администратора: тесты проверяют пояснения,
+    ошибки, факты и заметки. Вид для посетителя(без токена) проверяют тесты с меткой visitor."""
     if request.node.get_closest_marker("visitor"):
         return
     from app import auth
@@ -75,7 +75,7 @@ def _admin_reads(request, monkeypatch):
 
 @pytest.fixture
 def client():
-    """Клиент API на чистой пересеянной БД — у каждого теста своя."""
+    """Клиент API на чистой пересеянной БД - у каждого теста своя."""
     from fastapi.testclient import TestClient
 
     from app.main import app
@@ -90,7 +90,7 @@ def client():
 
 @pytest.fixture
 def env():
-    """set_env(NAME=value, …) → переменные окружения на время теста (None — удалить) и свежие настройки.
+    """set_env(NAME=value, …) → переменные окружения на время теста(None - удалить) и свежие настройки.
     После теста окружение восстанавливается и настройки перечитываются."""
     with pytest.MonkeyPatch.context() as mp:
         def set_env(**kv):
@@ -141,7 +141,7 @@ def _raiser(what: str):
 
 
 def _optional_module(name: str):
-    """Модуль приложения, если он уже есть (часть модулей появляется на следующих шагах фундамента)."""
+    """Модуль приложения, если он уже есть(часть модулей появляется на следующих шагах фундамента)."""
     try:
         return importlib.import_module(name)
     except ModuleNotFoundError as e:
@@ -152,8 +152,8 @@ def _optional_module(name: str):
 
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch):
-    """Реальная сеть в тестах запрещена: TRANSPORT/RESOLVER падают, sleep мгновенный, сокеты — только loopback/AF_UNIX
-    (прогон на PostgreSQL подключается к localhost); фабрики клиентов Telegram и Anthropic и браузера Krisha —
+    """Реальная сеть в тестах запрещена: TRANSPORT/RESOLVER падают, sleep мгновенный, сокеты - только loopback/AF_UNIX
+    (прогон на PostgreSQL подключается к localhost); фабрики клиентов Telegram и Anthropic и браузера Krisha -
     заглушки-ошибки."""
     real_connect = socket.socket.connect
     real_connect_ex = socket.socket.connect_ex
@@ -190,25 +190,25 @@ def _offline(monkeypatch):
         monkeypatch.setattr(http, "TRANSPORT", httpx.MockTransport(lambda r: _net_fail(r.url.host)))
         monkeypatch.setattr(http, "RESOLVER", lambda host, port: _net_fail(host))
         monkeypatch.setattr(http, "SLEEP", lambda s: None)
-    _optional_module("app.integrations.registry")  # модули подключений загружены — их фабрики подменяются ниже
+    _optional_module("app.integrations.registry")  # модули подключений загружены - их фабрики подменяются ниже
     for mod_name, attr, what in (("app.integrations.telegram", "CLIENT_FACTORY", "Клиент Telegram"),
                                  ("app.integrations.krisha", "BROWSER_FACTORY", "Браузер Krisha"),
                                  ("app.integrations.analyzer_anthropic", "CLIENT_FACTORY", "Клиент Anthropic")):
         mod = sys.modules.get(mod_name)
         if mod is not None and hasattr(mod, attr):
             monkeypatch.setattr(mod, attr, _raiser(what))
-    monkeypatch.setenv("SAQ_GALLERY_SYNC_HOURS", "0")  # фото Homeportal воркером — только в тестах app.gallery
+    monkeypatch.setenv("SAQ_GALLERY_SYNC_HOURS", "0")  # фото Homeportal воркером - только в тестах app.gallery
     service = sys.modules.get("app.integrations.service")
     if service is not None and hasattr(service, "_REJECT_AT"):
-        service._REJECT_AT.clear()  # ограничение частоты записи отказов — своё у каждого теста
+        service._REJECT_AT.clear()  # ограничение частоты записи отказов - своё у каждого теста
     _settings.reload_settings()
     yield
 
 
 class HttpMock:
-    """Ответы внешних сервисов в тестах: .on(method, url_or_regex, …) — правило; позже добавленное правило проверяется
-    первым (переопределяет прежнее), times=N — правило срабатывает N раз. url — точный адрес (с query или без) или
-    re.Pattern (search по полному адресу). .calls — все запросы, .resolve(host, ip) — что вернёт RESOLVER."""
+    """Ответы внешних сервисов в тестах: .on(method, url_or_regex, …) - правило; позже добавленное правило проверяется
+    первым(переопределяет прежнее), times=N - правило срабатывает N раз. url - точный адрес(с query или без) или
+    re.Pattern(search по полному адресу). .calls - все запросы, .resolve(host, ip) - что вернёт RESOLVER."""
 
     def __init__(self):
         self.rules: list[dict] = []
@@ -276,7 +276,7 @@ def http_mock(monkeypatch):
 @pytest.fixture
 def run_ctx(client):
     """make(code, *, config=None, state=None, trigger="manual", payload=None, now=None) → RunContext настоящего запуска:
-    строка подключения (config/state записаны), запуск «выполняется» и задание — счётчики, заметки и фазы пишутся в БД."""
+    строка подключения(config/state записаны), запуск "выполняется" и задание - счётчики, заметки и фазы пишутся в БД."""
     from app import models
     from app.db import SessionLocal
     from app.integrations import registry, service
@@ -309,7 +309,7 @@ def run_ctx(client):
 
 
 class Acceptance:
-    """Приёмка по §14 плана (integration-spec §16.5): снимок счётчиков, видимость сбоя, отсутствие автоподтверждения,
+    """Приёмка по §14 плана(integration-spec §16.5): снимок счётчиков, видимость сбоя, отсутствие автоподтверждения,
     файл доступен после закрытия исходной вкладки."""
 
     def __init__(self, client):
@@ -332,7 +332,7 @@ class Acceptance:
         return next(c for c in r.json()["connectors"] if c["code"] == code)
 
     def assert_failure_visible(self, code: str, run_id=None) -> dict:
-        """Сбой не выглядит пустой выдачей: запуск не «успешно», подключение не «работает», причина видна."""
+        """Сбой не выглядит пустой выдачей: запуск не "успешно", подключение не "работает", причина видна."""
         if run_id is not None:
             run = self.client.get(f"/api/collection-runs/{run_id}").json()
             assert run["status"] != "succeeded", run
@@ -362,7 +362,7 @@ def accept(client):
 
 @pytest.fixture
 def run_worker(client):
-    """run(now=None, max_jobs=50) → число выполненных заданий (worker.run_once от имени воркера «test»)."""
+    """run(now=None, max_jobs=50) → число выполненных заданий(worker.run_once от имени воркера "test")."""
     from app import worker
 
     def run(*, now=None, max_jobs: int = 50) -> int:
@@ -373,7 +373,7 @@ def run_worker(client):
 
 @pytest.fixture
 def ocr_stub(monkeypatch):
-    """OCR без Tesseract: «OCR <sha8>» по байтам; ffmpeg «не установлен»."""
+    """OCR без Tesseract: "OCR <sha8>" по байтам; ffmpeg "не установлен"."""
     from app import analysis, video
 
     def recognize(raw: bytes, content_type=None):
@@ -387,7 +387,7 @@ def ocr_stub(monkeypatch):
 # ---------- файлы для тестов ----------
 
 def png_bytes(color=(200, 30, 30)) -> bytes:
-    """PNG 8×8 заданного цвета (у разных цветов разный sha256)."""
+    """PNG 8×8 заданного цвета(у разных цветов разный sha256)."""
     from PIL import Image
 
     buf = io.BytesIO()
@@ -396,6 +396,6 @@ def png_bytes(color=(200, 30, 30)) -> bytes:
 
 
 def mp4_bytes(size: int = 256) -> bytes:
-    """Минимальная «MP4» для проверки сигнатуры (ftyp isom); не воспроизводится."""
+    """Минимальная "MP4" для проверки сигнатуры(ftyp isom); не воспроизводится."""
     head = b"\x00\x00\x00\x18ftypisom" + b"\x00\x00\x02\x00isomiso2"
     return head + b"\x00" * max(size - len(head), 0)

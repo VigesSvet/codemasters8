@@ -1,18 +1,18 @@
-"""Кто продаёт: связанные продавцы (T-73), аномальная цена (T-74, app.prices), связи застройщика (T-75, app.affiliations).
+"""Кто продаёт: связанные продавцы(T-73), аномальная цена(T-74, app.prices), связи застройщика(T-75, app.affiliations).
 
-Контакты публикации (contacts) — из текста, OCR картинок и речи роликов (абзацы OCR «Речь в ролике:» — источник
-speech): казахстанские телефоны (ai.nlp.phones: «+7 777 700 77 33», «8 (777) 700-77-33», «87777007733» → 10 цифр без
-кода страны), WhatsApp-ссылки (wa.me/…, api.whatsapp.com/send?phone=…) — тот же номер, упоминания @аккаунтов, БИН / БСН
-с подписью рядом и верной контрольной цифрой (bin_valid). У каждого контакта — дословный фрагмент вокруг находки.
+Контакты публикации(contacts) - из текста, OCR картинок и речи роликов(абзацы OCR "Речь в ролике:" - источник
+speech): казахстанские телефоны(ai.nlp.phones: "+7 777 700 77 33", "8(777) 700-77-33", "87777007733" → 10 цифр без
+кода страны), WhatsApp-ссылки(wa.me/…, api.whatsapp.com/send?phone=…) - тот же номер, упоминания @аккаунтов, БИН / БСН
+с подписью рядом и верной контрольной цифрой(bin_valid). У каждого контакта - дословный фрагмент вокруг находки.
 
-Аккаунт — площадка + имя аккаунта (без регистра). У Krisha «специалист», «хозяин», «агент» — тип продавца, а не
-аккаунт: такая публикация — отдельный аккаунт «krisha.kz / специалист · AD-…». Продавец (группа) — связная компонента
-аккаунтов по общим признакам (links): один телефон или WhatsApp, один БИН, одно имя @аккаунта на разных площадках,
-упоминание @аккаунта из наших данных, одна и та же картинка (dHash 64 бита, расстояние Хэмминга ≤ IMAGE_MAX_DISTANCE;
+Аккаунт - площадка + имя аккаунта(без регистра). У Krisha "специалист", "хозяин", "агент" - тип продавца, а не
+аккаунт: такая публикация - отдельный аккаунт "krisha.kz / специалист · AD-…". Продавец(группа) - связная компонента
+аккаунтов по общим признакам(links): один телефон или WhatsApp, один БИН, одно имя @аккаунта на разных площадках,
+упоминание @аккаунта из наших данных, одна и та же картинка(dHash 64 бита, расстояние Хэмминга ≤ IMAGE_MAX_DISTANCE;
 однотонные и почти пустые картинки не сравниваются). Хэши картинок кэшируются по SHA-256 файла в JSON рядом с
-хранилищем (image_hashes.json): файл по хэшу не меняется, схема БД не трогается.
+хранилищем(image_hashes.json): файл по хэшу не меняется, схема БД не трогается.
 
-Это гипотеза для проверки, а не вывод: общий номер бывает у агентства, которое продаёт несколько ЖК, картинка — у
+Это гипотеза для проверки, а не вывод: общий номер бывает у агентства, которое продаёт несколько ЖК, картинка - у
 застройщика и перепродающего агента. Ни в балл риска, ни в решения аналитика группа не попадает.
 """
 import json
@@ -41,8 +41,8 @@ Obj = Dict[str, Any]
 
 NOTE = ("Связь по номеру телефона, БИН, имени аккаунта или общей картинке — гипотеза для проверки, а не вывод о "
         "нарушении: общий номер бывает у агентства, которое продаёт несколько ЖК. В балл риска не входит.")
-IMAGE_MAX_DISTANCE = 6  # dHash: до 6 из 64 бит — та же картинка после пережатия, обрезки подписи, смены размера
-IMAGE_MIN_STDDEV = 12.0  # однотонный фон, почти пустой кадр — у таких dHash совпадает случайно
+IMAGE_MAX_DISTANCE = 6  # dHash: до 6 из 64 бит - та же картинка после пережатия, обрезки подписи, смены размера
+IMAGE_MIN_STDDEV = 12.0  # однотонный фон, почти пустой кадр - у таких dHash совпадает случайно
 QUOTE_SIDE = 60
 EVIDENCE_MAX = 30  # фрагментов на признак
 KRISHA_TYPES = {"специалист", "хозяин", "агент", "застройщик", "собственник"}
@@ -56,15 +56,15 @@ LINK_LABEL = {"phone": "телефон", "wa": "WhatsApp", "bin": "БИН", "han
 @dataclass
 class Contact:
     kind: str  # phone | wa | bin | mention
-    value: str  # ключ: 10 цифр телефона, 12 цифр БИН, имя аккаунта без «@»
-    shown: str  # как показать: «+7 777 700 77 33», «БИН 201040022748», «@an.groups»
+    value: str  # ключ: 10 цифр телефона, 12 цифр БИН, имя аккаунта без "@"
+    shown: str  # как показать: "+7 777 700 77 33", "БИН 201040022748", "@an.groups"
     raw: str  # как в тексте
     source: str  # text | ocr | speech
     quote: str
 
 
 def fmt_phone(d10: str) -> str:
-    """'7777007733' → '+7 777 700 77 33'; городской 7232xxxxxx — так же по группам 3-3-2-2."""
+    """'7777007733' → '+7 777 700 77 33'; городской 7232xxxxxx - так же по группам 3-3-2-2."""
     d = re.sub(r"\D", "", d10 or "")[-10:]
     if len(d) != 10:
         return d10
@@ -76,14 +76,14 @@ def norm_phone(raw: str) -> Optional[str]:
     d = re.sub(r"\D", "", raw or "")
     if len(d) == 11 and d[0] in "78":
         d = d[1:]
-    elif len(d) == 12 and d.startswith("77"):  # «+77 …» — лишняя 7 при наборе
+    elif len(d) == 12 and d.startswith("77"):  # "+77 …" - лишняя 7 при наборе
         d = d[2:] if d[2] == "7" else d[1:]
     return d if len(d) == 10 and d[0] == "7" else None
 
 
 def bin_valid(b: str) -> bool:
-    """Контрольная цифра ИИН/БИН РК: сумма цифр 1–11 с весами 1…11 по модулю 11; 10 — повтор с весами 3…11, 1, 2;
-    снова 10 — номер недействителен."""
+    """Контрольная цифра ИИН/БИН РК: сумма цифр 1-11 с весами 1…11 по модулю 11; 10 - повтор с весами 3…11, 1, 2;
+    снова 10 - номер недействителен."""
     if not re.fullmatch(r"\d{12}", b or ""):
         return False
     d = [int(x) for x in b]
@@ -94,7 +94,7 @@ def bin_valid(b: str) -> bool:
 
 
 def quote_at(text: str, a: int, b: int, side: int = QUOTE_SIDE) -> str:
-    """Дословный фрагмент вокруг [a, b): до side символов с каждой стороны по границе слова, переводы строк — пробел."""
+    """Дословный фрагмент вокруг [a, b): до side символов с каждой стороны по границе слова, переводы строк - пробел."""
     lo, hi = max(0, a - side), min(len(text), b + side)
     if lo > 0:
         sp = text.find(" ", lo, a)
@@ -107,7 +107,7 @@ def quote_at(text: str, a: int, b: int, side: int = QUOTE_SIDE) -> str:
 
 
 def segments(text: Optional[str], ocr: Optional[str]) -> List[Tuple[str, str]]:
-    """Текст публикации, OCR картинок и речь роликов — отдельно: абзац OCR «Речь в ролике: …» — источник speech."""
+    """Текст публикации, OCR картинок и речь роликов - отдельно: абзац OCR "Речь в ролике: …" - источник speech."""
     out = [("text", plain(text))] if text else []
     if ocr:
         pics, speech = [], []
@@ -127,7 +127,7 @@ _EMAIL_TAIL = re.compile(r"^\.(?:kz|ru|com|net|org)\b", re.I)
 
 
 def contacts(text: Optional[str], ocr: Optional[str]) -> List[Contact]:
-    """Контакты публикации по источникам; один и тот же контакт в одном источнике — один раз (первая находка)."""
+    """Контакты публикации по источникам; один и тот же контакт в одном источнике - один раз(первая находка)."""
     out: List[Contact] = []
     seen = set()
 
@@ -162,7 +162,7 @@ def contacts(text: Optional[str], ocr: Optional[str]) -> List[Contact]:
 # ---------- аккаунты ----------
 
 def account_key(platform: str, account: str, ad_id: str) -> str:
-    """Ключ аккаунта: «instagram:@an.groups»; тип продавца Krisha («специалист») — аккаунт одной публикации."""
+    """Ключ аккаунта: "instagram:@an.groups"; тип продавца Krisha("специалист") - аккаунт одной публикации."""
     acc = (account or "").strip().lower()
     kind = acc.split("/", 1)[1].strip() if "/" in acc else acc
     if platform == "krisha" and kind in KRISHA_TYPES:
@@ -171,25 +171,25 @@ def account_key(platform: str, account: str, ad_id: str) -> str:
 
 
 def account_label(key: str, account: str) -> str:
-    """Подпись аккаунта: у типа продавца Krisha — с номером публикации («krisha.kz / специалист · AD-1FD95B8E»)."""
+    """Подпись аккаунта: у типа продавца Krisha - с номером публикации("krisha.kz / специалист · AD-1FD95B8E")."""
     return f"{account} · AD-{key.split('#', 1)[1].upper()}" if "#" in key else account
 
 
 def handle_of(account: str) -> Optional[str]:
-    """Имя аккаунта соцсети без «@» и регистра: «@An.Groups» → «an.groups»; у Krisha имени нет."""
+    """Имя аккаунта соцсети без "@" и регистра: "@An.Groups" → "an.groups"; у Krisha имени нет."""
     a = (account or "").strip()
     return a[1:].lower() if a.startswith("@") and len(a) > 1 else None
 
 
 def slug(key: str) -> str:
-    """Ключ группы для адреса (/sellers?key=…): «instagram:@an.groups» → «instagram-an.groups»."""
+    """Ключ группы для адреса(/sellers?key=…): "instagram:@an.groups" → "instagram-an.groups"."""
     return re.sub(r"[^\w.]+", "-", key.lower()).strip("-")
 
 
 # ---------- хэши картинок ----------
 
 def dhash(path: Path) -> Optional[int]:
-    """dHash 64 бита: оттенки серого 9×8, бит — «левый пиксель ярче правого». Однотонная картинка → None."""
+    """dHash 64 бита: оттенки серого 9×8, бит - "левый пиксель ярче правого". Однотонная картинка → None."""
     from PIL import Image, ImageStat
 
     with Image.open(path) as im:
@@ -211,11 +211,11 @@ def _cache_path() -> Path:
 
 
 def image_hashes(db: Session) -> Dict[str, List[Tuple]]:
-    """Публикация → [(dHash, sha256, ID файла)] её загруженных картинок и кадров видео. Кэш по SHA-256 — в image_hashes.json;
-    файл, которого нет на диске (стартовый набор без медиа), пропускается."""
+    """Публикация → [(dHash, sha256, ID файла)] её загруженных картинок и кадров видео. Кэш по SHA-256 - в image_hashes.json;
+    файл, которого нет на диске(стартовый набор без медиа), пропускается."""
     try:
         import PIL  # noqa: F401
-    except ImportError:  # pragma: no cover — Pillow в зависимостях
+    except ImportError:  # pragma: no cover - Pillow в зависимостях
         return {}
     path = _cache_path()
     try:
@@ -286,9 +286,9 @@ def _day(d: Optional[str]) -> Optional[str]:
 
 def build(ads: Iterable[Obj], hashes: Optional[Dict[str, List[Tuple]]] = None,
           developers: Iterable[Obj] = ()) -> List[Obj]:
-    """Группы продавцов по публикациям — чистая функция. Публикация: {id, platform, account, date, text, ocr, url?,
-    complexId?, complexName?, linkConfirmed?}; hashes — публикация → [(dHash, sha256, ID файла?)]; developers — {id, name, bin}
-    (БИН из рекламы называет застройщика). Группы — по числу аккаунтов, затем публикаций."""
+    """Группы продавцов по публикациям - чистая функция. Публикация: {id, platform, account, date, text, ocr, url?,
+    complexId?, complexName?, linkConfirmed?}; hashes - публикация → [(dHash, sha256, ID файла?)]; developers - {id, name, bin}
+    (БИН из рекламы называет застройщика). Группы - по числу аккаунтов, затем публикаций."""
     ads = list(ads)
     hashes = hashes or {}
     dev_by_bin = {d["bin"]: d for d in developers if d.get("bin")}
@@ -332,9 +332,9 @@ def build(ads: Iterable[Obj], hashes: Optional[Dict[str, List[Tuple]]] = None,
         if targets - ln.accounts:
             ln.accounts |= targets
         else:
-            del links[(kind, value)]  # упомянут аккаунт вне наших данных или сам себя — связи нет
+            del links[(kind, value)]  # упомянут аккаунт вне наших данных или сам себя - связи нет
     # одна картинка у разных аккаунтов
-    # (dHash, sha256, публикация, аккаунт, ID файла — для превью /api/media/{id}; в тестах его может не быть)
+    # (dHash, sha256, публикация, аккаунт, ID файла - для превью /api/media/{id}; в тестах его может не быть)
     flat = [(x[0], x[1], ad_id, by_ad[ad_id], x[2] if len(x) > 2 else None)
             for ad_id, hs in hashes.items() if ad_id in by_ad for x in hs]
     for i in range(len(flat)):
@@ -428,7 +428,7 @@ def stats(groups: List[Obj]) -> Obj:
 
 
 def find(groups: List[Obj], key: str) -> Optional[Obj]:
-    """Группа по своему ключу или по ключу любого её аккаунта (ссылка на аккаунт не устаревает при слиянии групп)."""
+    """Группа по своему ключу или по ключу любого её аккаунта(ссылка на аккаунт не устаревает при слиянии групп)."""
     k = slug(key)
     for g in groups:
         if g["key"] == k or any(slug(a["key"]) == k for a in g["accounts"]):
@@ -437,8 +437,8 @@ def find(groups: List[Obj], key: str) -> Optional[Obj]:
 
 
 def graph(g: Obj) -> Obj:
-    """Узлы и рёбра для схемы: аккаунты ↔ телефоны / БИН ↔ ЖК; связи «одно имя», «упоминание», «картинка» — ребро
-    аккаунт — аккаунт."""
+    """Узлы и рёбра для схемы: аккаунты ↔ телефоны / БИН ↔ ЖК; связи "одно имя", "упоминание", "картинка" - ребро
+    аккаунт - аккаунт."""
     nodes = [{"id": a["key"], "kind": "account", "label": a["account"], "platform": a["platform"], "weight": a["ads"]}
              for a in g["accounts"]]
     edges = []
@@ -462,7 +462,7 @@ def graph(g: Obj) -> Obj:
 
 
 def ad_hint(groups: List[Obj], ad_id: str) -> Optional[Obj]:
-    """Для разбора публикации: её группа и номера — в скольких ещё публикациях и аккаунтах встречается каждый."""
+    """Для разбора публикации: её группа и номера - в скольких ещё публикациях и аккаунтах встречается каждый."""
     g = next((g for g in groups if ad_id in g["adIds"]), None)
     if g is None:
         return None
@@ -489,7 +489,7 @@ def sellers_list(linked: bool = Query(False, description="только груп�
 
 @router.get("/api/sellers/by-ad/{ad_id}")
 def sellers_by_ad(ad_id: str, db: Session = Depends(get_db)):
-    """Подсказка разбора публикации: группа продавца, номера и где ещё они встречаются; аномальная цена (app.prices)."""
+    """Подсказка разбора публикации: группа продавца, номера и где ещё они встречаются; аномальная цена(app.prices)."""
     from . import prices
 
     if db.get(models.Ad, ad_id) is None:
@@ -518,7 +518,7 @@ def sellers_one(key: str, db: Session = Depends(get_db)):
 @router.get("/api/price-anomalies")
 def price_anomalies(all: bool = Query(False, description="все публикации с ценой за м², а не только ниже рынка"),
                     db: Session = Depends(get_db)):
-    """Аномальная цена: цена за м² ниже медианы города на 30% и больше, отметка «100% оплата» — контекст, не балл."""
+    """Аномальная цена: цена за м² ниже медианы города на 30% и больше, отметка "100% оплата" - контекст, не балл."""
     from . import prices
 
     return prices.report(prices.analyze(ad_rows(db)), include_all=all)

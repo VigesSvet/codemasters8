@@ -1,8 +1,8 @@
-"""Реестр подключений (integration-spec §10.6): код → объект подключения, в порядке страницы «Подключения».
+"""Реестр подключений(integration-spec §10.6): код → объект подключения, в порядке страницы "Подключения".
 
-Каждый модуль подключения импортируется отдельно, в try/except: модуль, который не загрузился (ошибка в коде
-подключения, нет зависимости), становится BrokenConnector со статусом «ошибка» и пояснением, остальные работают. Модули
-подключений импортируют только base, http, media и помощники приёма; сервис (service) — лениво, внутри функций: реестр
+Каждый модуль подключения импортируется отдельно, в try/except: модуль, который не загрузился(ошибка в коде
+подключения, нет зависимости), становится BrokenConnector со статусом "ошибка" и пояснением, остальные работают. Модули
+подключений импортируют только base, http, media и помощники приёма; сервис(service) - лениво, внутри функций: реестр
 загружается при импорте service, и ранний импорт service из модуля подключения был бы циклическим.
 """
 import importlib
@@ -15,7 +15,7 @@ from .base import Connector
 
 log = logging.getLogger("saq.integrations")
 
-# код → модуль; порядок — порядок на странице
+# код → модуль; порядок - порядок на странице
 MODULES = {"instagram": "instagram", "telegram": "telegram", "tiktok": "tiktok", "krisha": "krisha",
            "telegram_bot": "telegram_bot", "intake": "intake_api", "dgis": "dgis", "anthropic": "analyzer_anthropic",
            "olx": "olx"}
@@ -35,7 +35,7 @@ _FALLBACK = {"instagram": ("collector", "collectors", "Instagram"),
 
 
 class BrokenConnector(Connector):
-    """Подключение, модуль которого не загрузился: статус «ошибка», действия недоступны."""
+    """Подключение, модуль которого не загрузился: статус "ошибка", действия недоступны."""
 
     capabilities = {"test": False, "collect": False, "toggle": False, "configure": False, "connect": False}
     via = "модуль не загрузился"
@@ -64,7 +64,7 @@ def load(importer: Callable[[str], object] = importlib.import_module) -> tuple[d
             router = getattr(mod, "router", None)
             if router is not None and not isinstance(router, APIRouter):
                 raise TypeError(f"router модуля {module} — не APIRouter")
-        except Exception:  # noqa: BLE001 — сломанный модуль не должен ронять API и воркер
+        except Exception:  # noqa: BLE001 - сломанный модуль не должен ронять API и воркер
             log.exception("Подключение %s: модуль %s не загрузился", code, module)
             connectors[code] = BrokenConnector(code)
             continue
@@ -78,7 +78,7 @@ CONNECTORS, _ROUTERS = load()
 
 
 def get(code: str) -> Connector:
-    """Подключение по коду; нет такого — KeyError (маршруты отвечают 404 «Подключение не найдено»)."""
+    """Подключение по коду; нет такого - KeyError(маршруты отвечают 404 "Подключение не найдено")."""
     return CONNECTORS[code]
 
 
@@ -87,5 +87,5 @@ def find(code: str) -> Optional[Connector]:
 
 
 def routers() -> list[APIRouter]:
-    """Маршрутизаторы модулей подключений (бот заявок, 2ГИС, OLX)."""
+    """Маршрутизаторы модулей подключений(бот заявок, 2ГИС, OLX)."""
     return list(_ROUTERS)

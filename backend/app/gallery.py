@@ -1,17 +1,17 @@
-"""Фото объекта для списка «Новостройки» и карточки ЖК: откуда снимки дома и чья это обложка.
+"""Фото объекта для списка "Новостройки" и карточки ЖК: откуда снимки дома и чья это обложка.
 
-Источники — по порядку обложки (gallery[0]):
-- operator — фото, которое оператор загрузил сам (POST /api/complexes/{id}/gallery): MediaAsset origin_ref «gallery»,
-  source_key «gallery:{ЖК}:{uuid}», meta {complexId, by, at, note?};
-- site — датированные снимки площадки фото-мониторинга (complexes.photos, app.verification), новые первыми;
-- homeportal — фото карточки ЖК на Homeportal (api.homeportal.kz, objects-detail / illegal-objects) — фото или
-  визуализация застройщика, не снимок площадки: MediaAsset origin_ref «homeportal:{id объекта}», source_key
-  «homeportal:{ЖК}:{id фото}». Загружает POST /api/complexes/{id}/gallery/fetch или python -m app.gallery fetch;
-- ad — изображения публикаций, отнесённых к ЖК «Проверкой по рекламе» (подтверждённая привязка — фактом, остальные —
-  гипотезой: hypothesis = true), — тоже может быть визуализация из рекламы.
-Обложку можно закрепить (POST /api/complexes/{id}/cover: src одного из фото; пустой — снова автоматическая) — это поле
-complexes.cover. Фото на риск и «Проверку по рекламе» не влияют: снимок площадки с датой и активностью — отдельный путь
-(POST /api/complexes/{id}/photos). Каждое действие — событие журнала объекта вида «данные» от имени сотрудника.
+Источники - по порядку обложки(gallery[0]):
+- operator - фото, которое оператор загрузил сам(POST /api/complexes/{id}/gallery): MediaAsset origin_ref "gallery",
+  source_key "gallery:{ЖК}:{uuid}", meta {complexId, by, at, note?};
+- site - датированные снимки площадки фото-мониторинга(complexes.photos, app.verification), новые первыми;
+- homeportal - фото карточки ЖК на Homeportal(api.homeportal.kz, objects-detail / illegal-objects) - фото или
+  визуализация застройщика, не снимок площадки: MediaAsset origin_ref "homeportal:{id объекта}", source_key
+  "homeportal:{ЖК}:{id фото}". Загружает POST /api/complexes/{id}/gallery/fetch или python -m app.gallery fetch;
+- ad - изображения публикаций, отнесённых к ЖК "Проверкой по рекламе"(подтверждённая привязка - фактом, остальные -
+  гипотезой: hypothesis = true), - тоже может быть визуализация из рекламы.
+Обложку можно закрепить(POST /api/complexes/{id}/cover: src одного из фото; пустой - снова автоматическая) - это поле
+complexes.cover. Фото на риск и "Проверку по рекламе" не влияют: снимок площадки с датой и активностью - отдельный путь
+(POST /api/complexes/{id}/photos). Каждое действие - событие журнала объекта вида "данные" от имени сотрудника.
 """
 import argparse
 import logging
@@ -60,7 +60,7 @@ def _ads_by_complex(attributed: Dict[str, List[Tuple[str, str]]]) -> Dict[str, L
 
 def collect(db: Session, complexes: Iterable[models.Complex],
             attributed: Optional[Dict[str, List[Tuple[str, str]]]] = None) -> Dict[str, List[Obj]]:
-    """ЖК → фото объекта (GalleryPhotoOut), обложка первой: закреплённая, иначе по порядку источников."""
+    """ЖК → фото объекта(GalleryPhotoOut), обложка первой: закреплённая, иначе по порядку источников."""
     cxs = list(complexes)
     ids = {c.id for c in cxs}
     A = models.MediaAsset
@@ -107,7 +107,7 @@ def collect(db: Session, complexes: Iterable[models.Complex],
                 items.append({"src": a.url, "kind": "ad", "source": who or "Реклама", "date": (ad.date or "")[:10] or None,
                               "adId": ad.id, "hypothesis": not confirmed, "mediaId": a.id})
                 n += 1
-        # homeportal: отмеченное источником главным — первым среди своих
+        # homeportal: отмеченное источником главным - первым среди своих
         items.sort(key=lambda x: (KIND_ORDER[x["kind"]], not x.get("featured")))
         seen, uniq = set(), []
         for x in items:
@@ -117,7 +117,7 @@ def collect(db: Session, complexes: Iterable[models.Complex],
         pinned = (c.cover or "").strip()
         if pinned:
             hit = next((x for x in uniq if x["src"] == pinned), None)
-            if hit is None:  # обложка демо-набора или прежняя ссылка — своим пунктом
+            if hit is None:  # обложка демо-набора или прежняя ссылка - своим пунктом
                 hit = {"src": pinned, "kind": "operator", "source": "Обложка карточки"}
             else:
                 uniq.remove(hit)
@@ -158,7 +158,7 @@ def _form_author(author: Optional[str], note: Optional[str]) -> schemas.GalleryU
                         429: {"description": "Слишком много загрузок"}, 507: {"description": "Мало места"}})
 def upload(cid: str, file: UploadFile = File(...), author: Optional[str] = Form(None), note: Optional[str] = Form(None),
            db: Session = Depends(get_db)):
-    """Фото объекта от оператора (multipart: file, author, note?): те же пределы, что у скриншота (10 МБ, JPEG / PNG /
+    """Фото объекта от оператора(multipart: file, author, note?): те же пределы, что у скриншота(10 МБ, JPEG / PNG /
     WEBP / GIF по сигнатуре, часовой лимит ручных загрузок). Без закреплённой обложки новое фото становится обложкой."""
     body = _form_author(author, note)
     _complex(db, cid)
@@ -192,7 +192,7 @@ def upload(cid: str, file: UploadFile = File(...), author: Optional[str] = Form(
 @router.post("/api/complexes/{cid}/cover", response_model=schemas.ComplexListOut, response_model_by_alias=True,
              responses={422: {"description": NOT_IN_GALLERY}})
 def set_cover(cid: str, body: schemas.CoverIn, db: Session = Depends(get_db)):
-    """Закрепить обложку (src — одно из фото объекта) или вернуть автоматическую (src пустой)."""
+    """Закрепить обложку(src - одно из фото объекта) или вернуть автоматическую(src пустой)."""
     c = _complex(db, cid, lock=True)
     src = (body.src or "").strip()
     if src:
@@ -217,7 +217,7 @@ def set_cover(cid: str, body: schemas.CoverIn, db: Session = Depends(get_db)):
 @router.delete("/api/complexes/{cid}/gallery/{mid}", response_model=schemas.ComplexListOut,
                response_model_by_alias=True, responses={404: {"description": "Фото не найдено"}})
 def remove(cid: str, mid: str, body: schemas.AuthorIn, db: Session = Depends(get_db)):
-    """Убрать фото оператора (по ошибке не тот дом): запись файла удаляется, файл — уборкой хранилища."""
+    """Убрать фото оператора(по ошибке не тот дом): запись файла удаляется, файл - уборкой хранилища."""
     a = db.get(models.MediaAsset, mid)
     if a is None or a.origin_ref != OPERATOR or _key_cid(a.source_key or "") != cid:
         raise HTTPException(404, "Фото оператора не найдено")
@@ -233,7 +233,7 @@ def remove(cid: str, mid: str, body: schemas.AuthorIn, db: Session = Depends(get
 @router.post("/api/complexes/{cid}/gallery/fetch", response_model=schemas.ComplexListOut, response_model_by_alias=True,
              responses={422: {"description": NO_HOMEPORTAL}, 502: {"description": "Homeportal не ответил"}})
 def fetch_route(cid: str, body: schemas.AuthorIn, db: Session = Depends(get_db)):
-    """Подгрузить фото карточки ЖК с Homeportal (по ссылкам записей открытого реестра)."""
+    """Подгрузить фото карточки ЖК с Homeportal(по ссылкам записей открытого реестра)."""
     c = _complex(db, cid)
     pages = homeportal_pages(db, c)
     if not pages:
@@ -261,7 +261,7 @@ def _attributed(db: Session, cid: str) -> Dict[str, List[Tuple[str, str]]]:
 # ---------- Homeportal ----------
 
 def homeportal_pages(db: Session, c: models.Complex) -> List[str]:
-    """Ссылки на карточки Homeportal из записей открытого реестра этого ЖК (projects/{id}, Illegal-projects/{id})."""
+    """Ссылки на карточки Homeportal из записей открытого реестра этого ЖК(projects/{id}, Illegal-projects/{id})."""
     from . import screening
     _, rs = screening.registry_groups(db, [c])[c.id]
     out: List[str] = []
@@ -291,7 +291,7 @@ def _quote_url(url: str) -> str:
 
 
 def fetch_homeportal(db: Session, c: models.Complex, pages: List[str]) -> Obj:
-    """Фото карточек Homeportal → хранилище и MediaAsset (без commit). Уже загруженные (тот же id фото) пропускаются."""
+    """Фото карточек Homeportal → хранилище и MediaAsset(без commit). Уже загруженные(тот же id фото) пропускаются."""
     from .integrations import http
 
     A = models.MediaAsset
@@ -307,7 +307,7 @@ def fetch_homeportal(db: Session, c: models.Complex, pages: List[str]) -> Obj:
                 r = cl.get(f"{HP_API}/{path}")
                 r.raise_for_status()
                 images = ((r.json() or {}).get("data") or {}).get("images") or []
-            except Exception as e:  # noqa: BLE001 — источник недоступен: причина в отчёт
+            except Exception as e:  # noqa: BLE001 - источник недоступен: причина в отчёт
                 rep["errors"].append(f"{page}: {type(e).__name__}")
                 continue
             for n, im in enumerate(images[:HP_MAX]):
@@ -337,8 +337,8 @@ def fetch_homeportal(db: Session, c: models.Complex, pages: List[str]) -> Obj:
 
 
 def fetch_all(db: Session, only: Optional[List[str]] = None, *, missing_only: bool = False) -> List[Tuple[str, Obj]]:
-    """Фото карточек Homeportal по всем ЖК с такими записями (only — только эти); missing_only — только ЖК, у которых
-    фото Homeportal ещё нет (такт воркера: новые карточки реестра получают фото сами). Каждый ЖК — своей транзакцией."""
+    """Фото карточек Homeportal по всем ЖК с такими записями(only - только эти); missing_only - только ЖК, у которых
+    фото Homeportal ещё нет(такт воркера: новые карточки реестра получают фото сами). Каждый ЖК - своей транзакцией."""
     A = models.MediaAsset
     have = {_key_cid(k) for k in db.scalars(select(A.source_key).where(A.source_key.like("homeportal:%")))} if missing_only else set()
     out = []

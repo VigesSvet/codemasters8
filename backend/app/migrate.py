@@ -1,11 +1,11 @@
 """Обновление схемы БД на месте: цепочка шагов от базовой версии к models.SCHEMA_VERSION.
 
-Правила для шагов: каждый шаг идемпотентен и только добавляет (новые таблицы, новые nullable-столбцы или столбцы с
-константным server_default) или ослабляет ограничение (NOT NULL → NULL, relax_not_null) — ничего не удаляет и данные
+Правила для шагов: каждый шаг идемпотентен и только добавляет(новые таблицы, новые nullable-столбцы или столбцы с
+константным server_default) или ослабляет ограничение(NOT NULL → NULL, relax_not_null) - ничего не удаляет и данные
 не переписывает. Новая версия схемы = новый шаг в конце STEPS.
-Перед шагами файловая SQLite копируется (sqlite3 backup API) в «<db>.bak-<старая версия>-<UTC>»; резервную копию
-PostgreSQL делает оператор (pg_dump, см. документацию). Неизвестная версия схемы обрабатывается в seed.init_db:
-пересоздание таблиц — только если в базе нет собранных и внесённых данных (durable_rows).
+Перед шагами файловая SQLite копируется(sqlite3 backup API) в "<db>.bak-<старая версия>-<UTC>"; резервную копию
+PostgreSQL делает оператор(pg_dump, см. документацию). Неизвестная версия схемы обрабатывается в seed.init_db:
+пересоздание таблиц - только если в базе нет собранных и внесённых данных(durable_rows).
 """
 import logging
 import re
@@ -40,7 +40,7 @@ class SchemaError(RuntimeError):
 
 
 def add_column(conn: Connection, table_name: str, col: Column) -> bool:
-    """ALTER TABLE … ADD COLUMN, если столбца нет (inspect); только nullable или с константным server_default. Идемпотентно."""
+    """ALTER TABLE … ADD COLUMN, если столбца нет(inspect); только nullable или с константным server_default. Идемпотентно."""
     present = {c["name"] for c in inspect(conn).get_columns(table_name)}
     if col.name in present:
         return False
@@ -61,24 +61,24 @@ def add_column(conn: Connection, table_name: str, col: Column) -> bool:
 
 
 def _intake_1(conn: Connection) -> None:
-    """2026.10-intake-1: таблицы сбора публикаций и время получения публикации (ads.collected_at)."""
+    """2026.10-intake-1: таблицы сбора публикаций и время получения публикации(ads.collected_at)."""
     for name in NEW_TABLES:
         Base.metadata.tables[name].create(conn, checkfirst=True)
     add_column(conn, "ads", models.Ad.__table__.c.collected_at)
 
 
 def _llm_1(conn: Connection) -> None:
-    """2026.10-llm-1: результаты анализа ИИ — таблица llm_analyses. Строка прежнего анализатора (только
-    статус) в collectors не удаляется (шаги только добавляют): её кода в реестре нет, её никто не читает."""
+    """2026.10-llm-1: результаты анализа ИИ - таблица llm_analyses. Строка прежнего анализатора(только
+    статус) в collectors не удаляется(шаги только добавляют): её кода в реестре нет, её никто не читает."""
     for name in LLM_TABLES:
         Base.metadata.tables[name].create(conn, checkfirst=True)
 
 
 def relax_not_null(conn: Connection, table_name: str, names: tuple) -> bool:
-    """Снять NOT NULL со столбцов names таблицы приложения (идемпотентно; True — что-то изменено). PostgreSQL —
-    ALTER COLUMN … DROP NOT NULL. SQLite так не умеет: таблица пересобирается по текущей модели (CREATE … → INSERT …
-    SELECT → DROP → RENAME, индексы — заново) в транзакции шага; внешние ключи SQLite приложение не включает, ссылки
-    других таблиц остаются по имени. Столбцы, которых нет в модели, — ошибка (их данные иначе пропали бы)."""
+    """Снять NOT NULL со столбцов names таблицы приложения(идемпотентно; True - что-то изменено). PostgreSQL -
+    ALTER COLUMN … DROP NOT NULL. SQLite так не умеет: таблица пересобирается по текущей модели(CREATE … → INSERT …
+    SELECT → DROP → RENAME, индексы - заново) в транзакции шага; внешние ключи SQLite приложение не включает, ссылки
+    других таблиц остаются по имени. Столбцы, которых нет в модели, - ошибка(их данные иначе пропали бы)."""
     cols = {c["name"]: c for c in inspect(conn).get_columns(table_name)}
     need = [n for n in names if n in cols and not cols[n]["nullable"]]
     if not need:
@@ -88,7 +88,7 @@ def relax_not_null(conn: Connection, table_name: str, names: tuple) -> bool:
         for n in need:
             conn.execute(text(f"ALTER TABLE {prep.quote(table_name)} ALTER COLUMN {prep.quote(n)} DROP NOT NULL"))
         return True
-    if conn.dialect.name != "sqlite":  # pragma: no cover — приложение работает только с SQLite и PostgreSQL
+    if conn.dialect.name != "sqlite":  # pragma: no cover - приложение работает только с SQLite и PostgreSQL
         raise NotImplementedError(f"relax_not_null: диалект {conn.dialect.name} не поддерживается")
     t = Base.metadata.tables[table_name]
     extra = sorted(set(cols) - set(t.c.keys()))
@@ -97,7 +97,7 @@ def relax_not_null(conn: Connection, table_name: str, names: tuple) -> bool:
     tmp = f"{table_name}__relax"
     head = f"CREATE TABLE {prep.quote(table_name)} "
     ddl = str(CreateTable(t).compile(dialect=conn.dialect)).strip()
-    if not ddl.startswith(head):  # pragma: no cover — формат CREATE TABLE SQLAlchemy
+    if not ddl.startswith(head):  # pragma: no cover - формат CREATE TABLE SQLAlchemy
         raise RuntimeError(f"Неожиданный CREATE TABLE для {table_name}")
     conn.execute(text(f"DROP TABLE IF EXISTS {prep.quote(tmp)}"))
     conn.execute(text(f"CREATE TABLE {prep.quote(tmp)} " + ddl[len(head):]))
@@ -111,16 +111,16 @@ def relax_not_null(conn: Connection, table_name: str, names: tuple) -> bool:
 
 
 def _discovery_1(conn: Connection) -> None:
-    """2026.10-discovery-1: объекты из рекламы (discovered_objects, discovered_mentions) и ЖК без координат
-    (complexes.lat/lng допускают NULL: объект реестра без координат, ЖК по рекламе — точка после сверки 2ГИС)."""
+    """2026.10-discovery-1: объекты из рекламы(discovered_objects, discovered_mentions) и ЖК без координат
+    (complexes.lat/lng допускают NULL: объект реестра без координат, ЖК по рекламе - точка после сверки 2ГИС)."""
     for name in DISCOVERY_TABLES:
         Base.metadata.tables[name].create(conn, checkfirst=True)
     relax_not_null(conn, "complexes", ("lat", "lng"))
 
 
 def _verification_1(conn: Connection) -> None:
-    """2026.10-verification-1: сверка сведений аналитиком — перечень ГАСК и «обращений нет — сверено» у ЖК
-    (complexes.published_list_check, appeals_check), кто внёс и кто проверил обращение (appeals.*)."""
+    """2026.10-verification-1: сверка сведений аналитиком - перечень ГАСК и "обращений нет - сверено" у ЖК
+    (complexes.published_list_check, appeals_check), кто внёс и кто проверил обращение(appeals.*)."""
     for name in ("published_list_check", "appeals_check"):
         add_column(conn, "complexes", models.Complex.__table__.c[name])
     for name in ("comment", "created_by", "created_at", "decided_by", "decision_comment"):
@@ -128,15 +128,15 @@ def _verification_1(conn: Connection) -> None:
 
 
 def _decisions_1(conn: Connection) -> None:
-    """2026.10-decisions-1: решения аналитика по «Проверке по рекламе» — «Объект сдан» и «Проверено — замечаний нет»
+    """2026.10-decisions-1: решения аналитика по "Проверке по рекламе" - "Объект сдан" и "Проверено - замечаний нет"
     (таблица screening_decisions; история отменённых и заменённых решений остаётся)."""
     for name in DECISION_TABLES:
         Base.metadata.tables[name].create(conn, checkfirst=True)
 
 
 def _alerts_1(conn: Connection) -> None:
-    """2026.10-alerts-1: предупреждения жителям — тексты и согласование (resident_alerts), доставки в канал ГАСК и
-    подписчикам (alert_deliveries), подписки жителей на районы от бота заявок (alert_subscriptions)."""
+    """2026.10-alerts-1: предупреждения жителям - тексты и согласование(resident_alerts), доставки в канал ГАСК и
+    подписчикам(alert_deliveries), подписки жителей на районы от бота заявок(alert_subscriptions)."""
     for name in ALERT_TABLES:
         Base.metadata.tables[name].create(conn, checkfirst=True)
 
@@ -144,7 +144,7 @@ def _alerts_1(conn: Connection) -> None:
 STEPS: list[Step] = [("2026.10-intake-1", _intake_1), ("2026.10-llm-1", _llm_1), ("2026.10-discovery-1", _discovery_1),
                      ("2026.10-verification-1", _verification_1), ("2026.10-decisions-1", _decisions_1),
                      ("2026.10-alerts-1", _alerts_1)]
-# Таблицы, которые создаёт шаг: набор (app.snapshot) прежней версии схемы их не содержит — загружаются пустыми
+# Таблицы, которые создаёт шаг: набор(app.snapshot) прежней версии схемы их не содержит - загружаются пустыми
 STEP_TABLES: dict[str, tuple] = {"2026.10-intake-1": NEW_TABLES, "2026.10-llm-1": LLM_TABLES,
                                  "2026.10-discovery-1": DISCOVERY_TABLES, "2026.10-decisions-1": DECISION_TABLES,
                                  "2026.10-alerts-1": ALERT_TABLES}
@@ -152,7 +152,7 @@ assert STEPS[-1][0] == models.SCHEMA_VERSION, "SCHEMA_VERSION должна со�
 
 
 def chain_from(version: Optional[str]) -> Optional[list[Step]]:
-    """Шаги от version до текущей схемы; None — от этой версии обновления нет (неизвестная/старая)."""
+    """Шаги от version до текущей схемы; None - от этой версии обновления нет(неизвестная/старая)."""
     if version == BASELINE:
         return list(STEPS)
     names = [name for name, _ in STEPS]
@@ -162,7 +162,7 @@ def chain_from(version: Optional[str]) -> Optional[list[Step]]:
 
 
 def tables_after(version: Optional[str]) -> set:
-    """Таблицы, которые добавили шаги после version (version — из цепочки; иначе — пусто): в данных этой версии их нет."""
+    """Таблицы, которые добавили шаги после version(version - из цепочки; иначе - пусто): в данных этой версии их нет."""
     return {t for name, _ in chain_from(version) or [] for t in STEP_TABLES.get(name, ())}
 
 
@@ -177,8 +177,8 @@ def _sqlite_file(eng: Engine) -> Optional[Path]:
 
 
 def backup_sqlite(eng: Engine, old_version: Optional[str], reason: str = "перед обновлением схемы") -> Optional[Path]:
-    """Файловая SQLite: копия sqlite3 backup API (согласована при WAL) в «<db>.bak-<old>-<UTC YYYYmmddTHHMMSSZ>»;
-    :memory: и PostgreSQL → None. Лог: «Резервная копия БД перед обновлением схемы: {path}» (reason — другой повод,
+    """Файловая SQLite: копия sqlite3 backup API(согласована при WAL) в "<db>.bak-<old>-<UTC YYYYmmddTHHMMSSZ>";
+    :memory: и PostgreSQL → None. Лог: "Резервная копия БД перед обновлением схемы: {path}"(reason - другой повод,
     например удаление демо-данных)."""
     src_path = _sqlite_file(eng)
     if src_path is None:
@@ -209,8 +209,8 @@ def _current_version(conn: Connection) -> Optional[str]:
 
 
 def upgrade(eng: Engine, version: Optional[str]) -> None:
-    """backup_sqlite → шаги в одной транзакции (eng.begin()); на PostgreSQL первым запросом pg_advisory_xact_lock(724001);
-    затем UPDATE meta schema_version. Лог: «Схема БД обновлена: {old} → {new}, данные сохранены»."""
+    """backup_sqlite → шаги в одной транзакции(eng.begin()); на PostgreSQL первым запросом pg_advisory_xact_lock(724001);
+    затем UPDATE meta schema_version. Лог: "Схема БД обновлена: {old} → {new}, данные сохранены"."""
     steps = chain_from(version)
     if steps is None:
         raise SchemaError(f"Нет шагов обновления схемы БД от версии {version or 'без версии'}")
@@ -219,7 +219,7 @@ def upgrade(eng: Engine, version: Optional[str]) -> None:
         if conn.dialect.name == "postgresql":
             conn.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": ADVISORY_LOCK})
         elif conn.dialect.name == "sqlite":
-            # pysqlite не открывает транзакцию перед DDL — явный BEGIN делает шаги атомарными и берёт блокировку записи
+            # pysqlite не открывает транзакцию перед DDL - явный BEGIN делает шаги атомарными и берёт блокировку записи
             conn.exec_driver_sql("BEGIN IMMEDIATE")
         now_ver = _current_version(conn)
         if now_ver == models.SCHEMA_VERSION:  # другой процесс уже обновил, пока мы ждали блокировку
@@ -240,11 +240,11 @@ DURABLE_TABLES = ("ingest_items", "media_assets", "integration_tokens", "bot_sub
 
 def durable_rows(eng: Engine, present_tables: set) -> dict[str, int]:
     """Ненулевые счётчики невосстановимых данных: ingest_items, media_assets, integration_tokens, bot_submissions,
-    geo_checks, llm_analyses (оплаченные результаты анализа ИИ), discovered_objects (объекты из рекламы и решения по ним),
-    screening_decisions (решения аналитика «сдан» / «проверено — замечаний нет»), resident_alerts (предупреждения жителям
-    и кто их согласовал), alert_subscriptions (подписки жителей от бота); collectors с updated_by IS NOT NULL; ads с
-    origin IN ('collected','analyst'); appeals с origin = 'analyst'
-    и audit_events вида data не от «Системы» (сверка сведений аналитиком, app.verification) — только если таблица/столбец
+    geo_checks, llm_analyses(оплаченные результаты анализа ИИ), discovered_objects(объекты из рекламы и решения по ним),
+    screening_decisions(решения аналитика "сдан" / "проверено - замечаний нет"), resident_alerts(предупреждения жителям
+    и кто их согласовал), alert_subscriptions(подписки жителей от бота); collectors с updated_by IS NOT NULL; ads с
+    origin IN('collected','analyst'); appeals с origin = 'analyst'
+    и audit_events вида data не от "Системы"(сверка сведений аналитиком, app.verification) - только если таблица/столбец
     есть."""
     out: dict[str, int] = {}
     insp = inspect(eng)
@@ -278,7 +278,7 @@ def durable_rows(eng: Engine, present_tables: set) -> dict[str, int]:
             if n:
                 out["appeals"] = int(n)
         if "audit_events" in present_tables and {"kind", "who"} <= cols("audit_events"):
-            # сверка сведений аналитиком хранится в полях ЖК (основание, готовность, перечень) — её след — события «данные»
+            # сверка сведений аналитиком хранится в полях ЖК(основание, готовность, перечень) - её след - события "данные"
             t = table("audit_events", column("kind"), column("who"))
             n = conn.execute(select(func.count()).select_from(t)
                              .where(t.c.kind == "data", t.c.who != "Система")).scalar() or 0

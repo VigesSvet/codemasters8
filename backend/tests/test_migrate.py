@@ -1,5 +1,5 @@
-"""Схема БД: обновление на месте (migrate), защита собранных данных, новые таблицы, JSON со слежением, помощники
-моделей (as_utc, insert_ignore) и новые поля схем API (AdOut, HumanName, приём публикаций)."""
+"""Схема БД: обновление на месте(migrate), защита собранных данных, новые таблицы, JSON со слежением, помощники
+моделей(as_utc, insert_ignore) и новые поля схем API(AdOut, HumanName, приём публикаций)."""
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -17,7 +17,7 @@ AD = {"platform": "instagram", "account": "@test_dev", "text": "Старт пр�
 
 
 def _ad(client, aid: str):
-    """Публикация из списка GET /api/ads (отдельного GET /api/ads/{id} в API нет)."""
+    """Публикация из списка GET /api/ads(отдельного GET /api/ads/{id} в API нет)."""
     return next((a for a in client.get("/api/ads").json() if a["id"] == aid), None)
 
 
@@ -30,7 +30,7 @@ def _set_meta(value: str) -> None:
         conn.execute(text("UPDATE meta SET value = :v WHERE key = 'schema_version'"), {"v": value})
 
 
-# Столбцы шага 2026.10-verification-1 (сверка сведений аналитиком)
+# Столбцы шага 2026.10-verification-1(сверка сведений аналитиком)
 VERIFICATION_COLUMNS = {"complexes": ("published_list_check", "appeals_check"),
                         "appeals": ("comment", "created_by", "created_at", "decided_by", "decision_comment")}
 
@@ -112,7 +112,7 @@ def test_baseline_upgrade_keeps_data(client):
         for f in new:
             f.unlink()
 
-    # повторный запуск — ничего не меняется
+    # повторный запуск - ничего не меняется
     init_db(engine)
     assert len(client.get("/api/ads").json()) == 13
     assert _backups() == before
@@ -120,7 +120,7 @@ def test_baseline_upgrade_keeps_data(client):
 
 def test_intake_upgrade_adds_llm_table_and_keeps_data(client):
     """2026.10-intake-1 → 2026.10-llm-1: таблица llm_analyses добавляется на месте, собранные публикации, файлы,
-    решения аналитика и строка прежнего анализатора в collectors (кода нет в реестре) сохраняются."""
+    решения аналитика и строка прежнего анализатора в collectors(кода нет в реестре) сохраняются."""
     with SessionLocal() as db:
         aid = _collected_ad(db)
         db.add(models.Collector(code="openai", status="off", status_detail="только статус"))  # строка прежней версии
@@ -156,12 +156,12 @@ def test_intake_upgrade_adds_llm_table_and_keeps_data(client):
         assert len(new) == 1 and next(iter(new)).name.startswith(f"{_sqlite_file().name}.bak-2026.10-intake-1-")
         for f in new:
             f.unlink()
-    with SessionLocal() as db:  # оплаченные результаты — невосстановимые данные
+    with SessionLocal() as db:  # оплаченные результаты - невосстановимые данные
         assert migrate.durable_rows(engine, set(inspect(engine).get_table_names()))["llm_analyses"] == 1
 
 
 def _coords_not_null() -> None:
-    """complexes.lat/lng — NOT NULL, как до 2026.10-discovery-1 (SQLite — пересборкой таблицы по прежнему DDL)."""
+    """complexes.lat/lng - NOT NULL, как до 2026.10-discovery-1(SQLite - пересборкой таблицы по прежнему DDL)."""
     with engine.begin() as conn:
         if conn.dialect.name == "postgresql":
             conn.execute(text("ALTER TABLE complexes ALTER COLUMN lat SET NOT NULL"))
@@ -182,7 +182,7 @@ def _nullable(table_name: str) -> dict:
 
 def test_discovery_upgrade_keeps_data_and_allows_missing_coords(client):
     """2026.10-llm-1 → 2026.10-discovery-1: таблицы объектов из рекламы добавляются, у complexes.lat/lng снимается
-    NOT NULL (SQLite — пересборкой таблицы в транзакции шага), ЖК, публикации, решения аналитика и ответы Claude прежней
+    NOT NULL(SQLite - пересборкой таблицы в транзакции шага), ЖК, публикации, решения аналитика и ответы Claude прежней
     версии промпта сохраняются и показываются."""
     with SessionLocal() as db:
         aid = _collected_ad(db, media=False)
@@ -211,7 +211,7 @@ def test_discovery_upgrade_keeps_data_and_allows_missing_coords(client):
     assert after_cx == before_cx
     a1 = _ad(client, "a1")
     assert (a1["complexId"], a1["linkConfirmedBy"]) == ("c3", "Тест")
-    got = _ad(client, aid)["llm"]  # ответ прежней версии промпта — как был
+    got = _ad(client, aid)["llm"]  # ответ прежней версии промпта - как был
     assert (got["promptVersion"], got["summary"], got["mentionedComplexes"], got["objectStage"]) == (
         "saq-llm-1", "ответ v1", [], None)
     with SessionLocal() as db:  # ЖК без координат теперь можно сохранить
@@ -232,8 +232,8 @@ def test_discovery_upgrade_keeps_data_and_allows_missing_coords(client):
 
 
 def test_verification_upgrade_adds_columns_and_keeps_data(client):
-    """2026.10-discovery-1 → 2026.10-verification-1: у ЖК — сверка перечня ГАСК и «обращений нет — сверено», у
-    обращений — кто внёс и кто проверил; ЖК, основание, обращения и журнал сохраняются, сверка сразу работает."""
+    """2026.10-discovery-1 → 2026.10-verification-1: у ЖК - сверка перечня ГАСК и "обращений нет - сверено", у
+    обращений - кто внёс и кто проверил; ЖК, основание, обращения и журнал сохраняются, сверка сразу работает."""
     before_cx = {c["id"]: (c["basis"], c["inPublishedList"]) for c in client.get("/api/complexes").json()}
     before_ap = client.get("/api/appeals").json()
     _drop_verification_columns()
@@ -256,7 +256,7 @@ def test_verification_upgrade_adds_columns_and_keeps_data(client):
     ap = client.post("/api/complexes/c14/appeals", json={"author": "Тест", "date": "2026-10-01", "subject": "Тема",
                                                          "source": "eOtinish"})
     assert ap.status_code == 201 and ap.json()["createdBy"] == "Тест"
-    # сверка аналитика — невосстановимые данные: пересоздание схемы её бы стёрло
+    # сверка аналитика - невосстановимые данные: пересоздание схемы её бы стёрло
     assert migrate.durable_rows(engine, set(inspect(engine).get_table_names())) == {"appeals": 1, "audit_events": 2}
     with engine.begin() as conn:
         assert migrate.add_column(conn, "appeals", models.Appeal.__table__.c.created_by) is False  # идемпотентно
@@ -268,7 +268,7 @@ def test_verification_upgrade_adds_columns_and_keeps_data(client):
 
 
 def test_decisions_upgrade_adds_table_and_keeps_data(client):
-    """2026.10-verification-1 → 2026.10-decisions-1: таблица решений аналитика по «Проверке по рекламе» добавляется на
+    """2026.10-verification-1 → 2026.10-decisions-1: таблица решений аналитика по "Проверке по рекламе" добавляется на
     месте; ЖК, стадии, оценки и журнал сохраняются, решения сразу работают и защищены от пересоздания схемы."""
     before = {c["id"]: (c["stage"], c["screening"]["status"]) for c in client.get("/api/complexes").json()}
     with engine.begin() as conn:
@@ -407,7 +407,7 @@ def test_upgrade_rechecks_version_and_rolls_back(client, monkeypatch):
         migrate.upgrade(engine, migrate.BASELINE)
     with engine.connect() as conn:
         assert _meta(conn) == migrate.BASELINE  # версия не сдвинулась
-    assert "half_done" not in inspect(engine).get_table_names()  # шаги — в одной транзакции
+    assert "half_done" not in inspect(engine).get_table_names()  # шаги - в одной транзакции
     monkeypatch.undo()
     for f in _backups():
         f.unlink()

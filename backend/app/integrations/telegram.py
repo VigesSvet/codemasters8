@@ -1,19 +1,19 @@
-"""Telegram-каналы: сбор публичных каналов через MTProto (Telethon) от выделенного аккаунта (integration-spec §12.2,
+"""Telegram-каналы: сбор публичных каналов через MTProto(Telethon) от выделенного аккаунта(integration-spec §12.2,
 план §7.1).
 
-Сессия Telegram — секрет: текст StringSession в TG_SESSION_PATH (файл 0600, каталог 0700, владелец — этот
+Сессия Telegram - секрет: текст StringSession в TG_SESSION_PATH(файл 0600, каталог 0700, владелец - этот
 пользователь); значение регистрируется для маскирования в логах. Один процесс с сессией за раз: воркер, вход и проверка
-берут неблокирующую блокировку «<путь>.lock». API файла сессии не видит (у него нет тома с сессией) — о её наличии
-сообщает воркер (report → collectors.state.report).
+берут неблокирующую блокировку "<путь>.lock". API файла сессии не видит(у него нет тома с сессией) - о её наличии
+сообщает воркер(report → collectors.state.report).
 
-Сбор: первый запуск — последние TG_HISTORY_LIMIT сообщений канала, дальше — только новые после сохранённой позиции
-(lastId, сохраняется после каждой принятой публикации — рестарт не теряет позицию и не создаёт дубликатов) плюс правки
-среди последних TG_EDIT_WINDOW сообщений. Сообщения альбома объединяются в одну публикацию (внешний ID —
-«{id канала}:{id первого сообщения}»); альбом на границе выборки дочитывается по соседним ID. Файлы скачиваются только
-те, что ещё нужны (ключ файла включает ID файла Telegram — замена файла правкой загружается заново); не скачавшиеся
-повторяются в следующих запусках (до трёх попыток). FloodWait — пауза источника (rate_limited) без повторов внутри
-запуска; сбой серверов Telegram — повтор задания; закрытый или неизвестный канал — «частично» с причиной (ни одного
-доступного — ошибка настроек). Исходный ответ Telegram сохраняется белым списком полей (объекты Telethon не JSON).
+Сбор: первый запуск - последние TG_HISTORY_LIMIT сообщений канала, дальше - только новые после сохранённой позиции
+(lastId, сохраняется после каждой принятой публикации - рестарт не теряет позицию и не создаёт дубликатов) плюс правки
+среди последних TG_EDIT_WINDOW сообщений. Сообщения альбома объединяются в одну публикацию(внешний ID -
+"{id канала}:{id первого сообщения}"); альбом на границе выборки дочитывается по соседним ID. Файлы скачиваются только
+те, что ещё нужны(ключ файла включает ID файла Telegram - замена файла правкой загружается заново); не скачавшиеся
+повторяются в следующих запусках(до трёх попыток). FloodWait - пауза источника(rate_limited) без повторов внутри
+запуска; сбой серверов Telegram - повтор задания; закрытый или неизвестный канал - "частично" с причиной(ни одного
+доступного - ошибка настроек). Исходный ответ Telegram сохраняется белым списком полей(объекты Telethon не JSON).
 """
 import asyncio
 import fcntl
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from ..models import Collector
     from .context import RunContext
 
-# Фабрика клиента Telethon (session, api_id, api_hash) → клиент; тесты подменяют её заглушкой
+# Фабрика клиента Telethon(session, api_id, api_hash) → клиент; тесты подменяют её заглушкой
 CLIENT_FACTORY: Optional[Callable[[str, int, str], Any]] = None
 LOGIN_HINT = ("Нет авторизованной сессии Telegram: выполните вход — python -m app.integrations.telegram_login "
               "--send-code, затем --code <код> (в Docker: docker compose run --rm worker python -m "
@@ -41,24 +41,24 @@ SESSION_INVALID = "Сессия Telegram недействительна — по
 SESSION_BUSY = "Сессия Telegram занята другим процессом"
 TIME_UP = "Время запуска истекло — продолжим в следующий раз"
 PRIVATE_CHANNEL = "Закрытые каналы не поддерживаются — укажите публичный канал (t.me/имя)"
-NEW_MAX = 500  # новых сообщений канала за один запуск; остальные — в следующий
-ALBUM_SPAN = 9  # альбом — до 10 сообщений подряд: дочитываются ID first−9 … last+9
+NEW_MAX = 500  # новых сообщений канала за один запуск; остальные - в следующий
+ALBUM_SPAN = 9  # альбом - до 10 сообщений подряд: дочитываются ID first−9 … last+9
 RETRY_MAX = 100  # публикаций канала, файлы которых ждут повторной загрузки
-# ValueError Telethon при поиске по имени, означающие «имени нет» (users.py: _get_entity_from_string)
+# ValueError Telethon при поиске по имени, означающие "имени нет"(users.py: _get_entity_from_string)
 _NOT_FOUND = ("No user has ", "Cannot find any entity")
-# ValueError Telethon после исчерпанных повторов (без raise_last_call_error) — временный сбой Telegram
+# ValueError Telethon после исчерпанных повторов(без raise_last_call_error) - временный сбой Telegram
 _UNSUCCESSFUL = "Request was unsuccessful"
 _CHANNEL =re.compile(r"^[A-Za-z][A-Za-z0-9_]{3,31}$")
 _LINK = re.compile(r"^(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me|telegram\.dog)/", re.I)
 
 
 class SessionBusy(Exception):
-    """Файл сессии занят другим процессом (воркер, вход, проверка)."""
+    """Файл сессии занят другим процессом(воркер, вход, проверка)."""
 
 
 class _Unavailable(Exception):
-    """Канал не читается (не найден, закрыт, не канал): запуск «частично» с причиной, сбор продолжается с другими
-    каналами; не читается ни один — ошибка настроек."""
+    """Канал не читается(не найден, закрыт, не канал): запуск "частично" с причиной, сбор продолжается с другими
+    каналами; не читается ни один - ошибка настроек."""
 
     def __init__(self, text: str):
         super().__init__(text)
@@ -72,9 +72,9 @@ class _TimeUp(Exception):
 # ---------- клиент и файл сессии ----------
 
 def make_client(session: str, api_id: int, api_hash: str):
-    """Клиент Telethon на StringSession: без приёма обновлений; FloodWait до 30 с Telethon выжидает сам, дольше —
-    FloodWaitError (пауза источника). raise_last_call_error: исчерпав повторы, Telethon бросает последнюю ошибку
-    Telegram (ServerError, TimedOutError…), а не безликий ValueError — сбой Telegram не похож на «канал не найден»."""
+    """Клиент Telethon на StringSession: без приёма обновлений; FloodWait до 30 с Telethon выжидает сам, дольше -
+    FloodWaitError(пауза источника). raise_last_call_error: исчерпав повторы, Telethon бросает последнюю ошибку
+    Telegram(ServerError, TimedOutError…), а не безликий ValueError - сбой Telegram не похож на "канал не найден"."""
     from telethon import TelegramClient
     from telethon.sessions import StringSession
 
@@ -83,15 +83,15 @@ def make_client(session: str, api_id: int, api_hash: str):
 
 
 def new_client(session: str, s: Settings):
-    """Клиент через CLIENT_FACTORY (тесты) или make_client. Ключи — только из настроек сервера."""
+    """Клиент через CLIENT_FACTORY(тесты) или make_client. Ключи - только из настроек сервера."""
     factory = CLIENT_FACTORY or make_client
     return factory(session, int(s.tg_api_id or 0), s.tg_api_hash.get())
 
 
 @contextmanager
 def session_lock(path: Path) -> Iterator[None]:
-    """Неблокирующая монопольная блокировка «<path>.lock» (0600): один процесс с сессией за раз;
-    занято — SessionBusy."""
+    """Неблокирующая монопольная блокировка "<path>.lock"(0600): один процесс с сессией за раз;
+    занято - SessionBusy."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock = Path(f"{path}.lock")
@@ -110,7 +110,7 @@ def session_lock(path: Path) -> Iterator[None]:
 
 
 def _checked(path: Path) -> Optional[os.stat_result]:
-    """stat файла сессии или None (нет файла); чужой владелец или доступ группе/всем — NotConfigured."""
+    """stat файла сессии или None(нет файла); чужой владелец или доступ группе/всем - NotConfigured."""
     try:
         st = path.stat()
     except FileNotFoundError:
@@ -122,7 +122,7 @@ def _checked(path: Path) -> Optional[os.stat_result]:
 
 
 def read_private(path: Path) -> Optional[str]:
-    """Текст закрытого файла (сессия, ожидание кода) или None (файла нет или он пустой); права и владелец
+    """Текст закрытого файла(сессия, ожидание кода) или None(файла нет или он пустой); права и владелец
     проверяются."""
     path = Path(path)
     st = _checked(path)
@@ -136,7 +136,7 @@ def read_private(path: Path) -> Optional[str]:
 
 
 def read_session(path: Path) -> Optional[str]:
-    """Текст StringSession или None (файла нет или он пустой). Старый формат (SQLite), чужие права — NotConfigured.
+    """Текст StringSession или None(файла нет или он пустой). Старый формат(SQLite), чужие права - NotConfigured.
     Значение регистрируется как секрет."""
     value = read_private(path)
     if value:
@@ -145,7 +145,7 @@ def read_session(path: Path) -> Optional[str]:
 
 
 def write_private(path: Path, value: str) -> None:
-    """Атомарная запись закрытого файла: каталог 0700, временный файл 0600 (O_EXCL) → fsync → os.replace."""
+    """Атомарная запись закрытого файла: каталог 0700, временный файл 0600(O_EXCL) → fsync → os.replace."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(path.parent, 0o700)
@@ -171,13 +171,13 @@ def write_private(path: Path, value: str) -> None:
 
 
 def write_session(path: Path, value: str) -> None:
-    """Сохранить StringSession (0600, каталог 0700, атомарно)."""
+    """Сохранить StringSession(0600, каталог 0700, атомарно)."""
     logs.register_secret(value)
     write_private(path, value)
 
 
 def session_problem(path: Path) -> Optional[str]:
-    """Почему файл сессии не годится (права, владелец, старый формат) или None — файла нет или он в порядке.
+    """Почему файл сессии не годится(права, владелец, старый формат) или None - файла нет или он в порядке.
     Без сети; читается только начало файла."""
     path = Path(path)
     try:
@@ -196,7 +196,7 @@ def session_problem(path: Path) -> Optional[str]:
 
 
 def session_present(path: Path) -> bool:
-    """Файл сессии есть, не пустой, права и владелец в порядке (без сети и без чтения содержимого)."""
+    """Файл сессии есть, не пустой, права и владелец в порядке(без сети и без чтения содержимого)."""
     try:
         st = _checked(Path(path))
     except NotConfigured:
@@ -209,8 +209,8 @@ def session_present(path: Path) -> bool:
 # ---------- каналы и сообщения ----------
 
 def normalize_channel(s: str) -> str:
-    """«x», «@x», «t.me/x», «https://t.me/x», «https://t.me/s/x», «t.me/x/123» → «x» (без регистра). Ссылки-приглашения
-    («t.me/+…», «joinchat», «t.me/c/…») — ValueError: закрытые каналы не читаются."""
+    """"x", "@x", "t.me/x", "https://t.me/x", "https://t.me/s/x", "t.me/x/123" → "x"(без регистра). Ссылки-приглашения
+    ("t.me/+…", "joinchat", "t.me/c/…") - ValueError: закрытые каналы не читаются."""
     raw = (s or "").strip()
     v = _LINK.sub("", raw)
     linked = v != raw
@@ -230,14 +230,14 @@ def normalize_channel(s: str) -> str:
 
 
 def external_id(channel_id: int, first_msg_id: int) -> str:
-    """Внешний ID публикации: «{id канала}:{id первого сообщения}» (положительный ID канала Telethon)."""
+    """Внешний ID публикации: "{id канала}:{id первого сообщения}"(положительный ID канала Telethon)."""
     return f"{int(channel_id)}:{int(first_msg_id)}"
 
 
 def media_key(channel_id: int, m) -> str:
-    """Ключ файла сообщения: «tg:{id канала}:{id сообщения}:{id файла}». ID файла (photo.id / document.id) меняется,
-    когда правка заменяет фото или видео (editMessageMedia): новый файл загружается, прежний перестаёт быть текущим.
-    Без ID файла — «tg:{канал}:{сообщение}»."""
+    """Ключ файла сообщения: "tg:{id канала}:{id сообщения}:{id файла}". ID файла(photo.id / document.id) меняется,
+    когда правка заменяет фото или видео(editMessageMedia): новый файл загружается, прежний перестаёт быть текущим.
+    Без ID файла - "tg:{канал}:{сообщение}"."""
     f = getattr(m, "photo", None)
     if f is None:
         f = getattr(m, "document", None)
@@ -247,7 +247,7 @@ def media_key(channel_id: int, m) -> str:
 
 
 def group_messages(msgs) -> list[list[Any]]:
-    """Сообщения → публикации: по возрастанию ID, сообщения одного альбома (grouped_id) — вместе, повторы ID убраны."""
+    """Сообщения → публикации: по возрастанию ID, сообщения одного альбома(grouped_id) - вместе, повторы ID убраны."""
     by_id = {m.id: m for m in msgs if m is not None}
     out: list[list[Any]] = []
     albums: dict[int, list[Any]] = {}
@@ -266,7 +266,7 @@ def group_messages(msgs) -> list[list[Any]]:
 
 
 def _media_kind(m) -> Optional[str]:
-    """«image» / «video» для фото и документов-изображений/видео; предпросмотр ссылки и прочие файлы — None."""
+    """"image" / "video" для фото и документов-изображений/видео; предпросмотр ссылки и прочие файлы - None."""
     if getattr(m, "web_preview", None) is not None:
         return None
     if getattr(m, "photo", None) is not None:
@@ -290,7 +290,7 @@ def _iso(dt) -> Optional[str]:
 
 
 def _me_label(me) -> str:
-    """«@username» или «id …» — без номера телефона."""
+    """"@username" или "id …" - без номера телефона."""
     username = getattr(me, "username", None)
     return f"@{username}" if username else f"id {getattr(me, 'id', '?')}"
 
@@ -306,14 +306,14 @@ def _auth_errors() -> tuple:
 
 
 def _fatal_errors() -> tuple:
-    """Ошибки, которые останавливают запуск целиком (не ошибка одного файла или канала)."""
+    """Ошибки, которые останавливают запуск целиком(не ошибка одного файла или канала)."""
     from telethon import errors
 
     return (errors.FloodError, ConnectionError) + _auth_errors()
 
 
 def map_error(e: BaseException) -> BaseException:
-    """Исключение Telethon/сети → типизированная ошибка подключения (integration-spec §10.1); прочее — как есть."""
+    """Исключение Telethon/сети → типизированная ошибка подключения(integration-spec §10.1); прочее - как есть."""
     from telethon import errors
 
     if isinstance(e, ConnectorError):
@@ -333,7 +333,7 @@ def map_error(e: BaseException) -> BaseException:
         return SourceError(f"Telegram отклонил запрос ({type(e).__name__})", retryable=False)
     if isinstance(e, ValueError) and str(e).startswith(_UNSUCCESSFUL):
         return SourceError("Telegram временно не отвечает (повторы запроса исчерпаны)", retryable=True)
-    if isinstance(e, PermissionError):  # каталог сессии или блокировка — не сеть
+    if isinstance(e, PermissionError):  # каталог сессии или блокировка - не сеть
         return NotConfigured("Нет доступа к файлу или каталогу сессии Telegram — проверьте права и владельца")
     if isinstance(e, (ConnectionError, OSError)):
         return SourceError(f"Нет связи с Telegram ({type(e).__name__})", retryable=True)
@@ -341,9 +341,9 @@ def map_error(e: BaseException) -> BaseException:
 
 
 def _channel_problem(e: BaseException, name: str, *, resolving: bool = True) -> Optional[str]:
-    """Ошибка уровня канала → текст причины; None — ошибка не про канал (сеть, сбой Telegram — повтор задания).
-    ValueError — «не найден» только при поиске канала по имени и только с текстом Telethon «имени нет»; прочие
-    ValueError (например, повторы запроса исчерпаны) — не про канал."""
+    """Ошибка уровня канала → текст причины; None - ошибка не про канал(сеть, сбой Telegram - повтор задания).
+    ValueError - "не найден" только при поиске канала по имени и только с текстом Telethon "имени нет"; прочие
+    ValueError(например, повторы запроса исчерпаны) - не про канал."""
     from telethon import errors
 
     if isinstance(e, (errors.UsernameNotOccupiedError, errors.UsernameInvalidError)) \
@@ -400,7 +400,7 @@ class TelegramConnector(Connector):
         return session_problem(s.tg_session_path) or self._report(row).get("problem") or LOGIN_HINT
 
     def report(self, s: Settings) -> Optional[dict]:
-        """Воркер сообщает API, есть ли сессия (у API нет тома с сессией); без сети."""
+        """Воркер сообщает API, есть ли сессия(у API нет тома с сессией); без сети."""
         out = {"sessionPresent": session_present(s.tg_session_path), "checkedAt": models.iso(models.utcnow())}
         problem = session_problem(s.tg_session_path)
         if problem:
@@ -413,7 +413,7 @@ class TelegramConnector(Connector):
         except ValueError as e:
             raise ConfigError(field_name, str(e), value) from None
 
-    # --- работа (воркер) ---
+    # --- работа(воркер) ---
 
     def check(self, ctx: "RunContext") -> CheckResult:
         return self._run(ctx, self._check)
@@ -422,7 +422,7 @@ class TelegramConnector(Connector):
         self._run(ctx, self._collect)
 
     def _run(self, ctx: "RunContext", body: Callable):
-        """Сессия под блокировкой → asyncio.run(подключение → body → отключение); ошибки Telethon — типизированные."""
+        """Сессия под блокировкой → asyncio.run(подключение → body → отключение); ошибки Telethon - типизированные."""
         s = ctx.settings
         path = Path(s.tg_session_path)
         try:
@@ -433,7 +433,7 @@ class TelegramConnector(Connector):
                 return asyncio.run(self._session(ctx, session, body))
         except SessionBusy:
             raise SourceError(SESSION_BUSY, retryable=True) from None
-        except Exception as e:  # noqa: BLE001 — сопоставление ошибок Telethon
+        except Exception as e:  # noqa: BLE001 - сопоставление ошибок Telethon
             mapped = map_error(e)
             if mapped is e:
                 raise
@@ -450,7 +450,7 @@ class TelegramConnector(Connector):
         finally:
             try:
                 await client.disconnect()
-            except Exception:  # noqa: BLE001 — отключение не меняет итог запуска
+            except Exception:  # noqa: BLE001 - отключение не меняет итог запуска
                 pass
 
     # --- проверка ---
@@ -478,7 +478,7 @@ class TelegramConnector(Connector):
         return CheckResult(True, detail, {"account": account, "channels": len(names), "channelsOk": ok})
 
     async def _peer(self, ctx: "RunContext", client, name: str, chans: dict, *, verify: bool = False):
-        """Адрес канала: сохранённые id/accessHash (без поиска по имени) или get_entity(имя) один раз — сохраняется."""
+        """Адрес канала: сохранённые id/accessHash(без поиска по имени) или get_entity(имя) один раз - сохраняется."""
         from telethon.tl.types import InputPeerChannel
 
         st = chans.get(name) or {}
@@ -489,17 +489,17 @@ class TelegramConnector(Connector):
                     await client.get_entity(peer)
                 return peer
             ent = await client.get_entity(name)
-        except Exception as e:  # noqa: BLE001 — разбор ниже
+        except Exception as e:  # noqa: BLE001 - разбор ниже
             text = _channel_problem(e, name)
             if text is None:
                 raise
-            if st.get("accessHash") is not None:  # сохранённый адрес не годится — в следующий раз искать по имени
+            if st.get("accessHash") is not None:  # сохранённый адрес не годится - в следующий раз искать по имени
                 chans[name] = {k: v for k, v in st.items() if k != "accessHash"}
                 ctx.save_state(channels=chans)
             raise _Unavailable(text) from None
         if getattr(ent, "access_hash", None) is None or not getattr(ent, "broadcast", False):
             raise _Unavailable(f"@{name} — не публичный канал (группа или пользователь)")
-        if st.get("id") and int(st["id"]) != int(ent.id):  # имя перешло к другому каналу — позиция не переносится
+        if st.get("id") and int(st["id"]) != int(ent.id):  # имя перешло к другому каналу - позиция не переносится
             st = {}
         chans[name] = {**st, "id": int(ent.id), "accessHash": int(ent.access_hash),
                        "title": str(getattr(ent, "title", "") or "")[:255]}
@@ -509,9 +509,9 @@ class TelegramConnector(Connector):
     # --- сбор ---
 
     async def _collect(self, ctx: "RunContext", client) -> None:
-        """Каналы по очереди. Недоступный канал — причина «частично» (ctx.mark_partial), а не запись с ошибкой: сбор
-        инкрементальный, и при тихом здоровом канале «запись с ошибкой» оказалась бы единственной — запуск выглядел бы
-        ошибкой целиком (и откладывал бы расписание здорового канала)."""
+        """Каналы по очереди. Недоступный канал - причина "частично"(ctx.mark_partial), а не запись с ошибкой: сбор
+        инкрементальный, и при тихом здоровом канале "запись с ошибкой" оказалась бы единственной - запуск выглядел бы
+        ошибкой целиком(и откладывал бы расписание здорового канала)."""
         names = list(ctx.config.get("channels") or [])
         if not names:
             raise BadConfig("Список каналов пуст — добавьте каналы в настройках")
@@ -530,13 +530,13 @@ class TelegramConnector(Connector):
                     continue
                 try:
                     await self._channel(ctx, client, name, peer, chans)
-                except Exception as e:  # noqa: BLE001 — канал закрыли или удалили между запусками
+                except Exception as e:  # noqa: BLE001 - канал закрыли или удалили между запусками
                     text = _channel_problem(e, name, resolving=False)
                     if text is None:
                         raise
                     st = chans.get(name) or {}
                     chans[name] = {k: v for k, v in st.items() if k != "accessHash"}
-                    ctx.save_state(channels=chans)  # в следующий раз канал ищется по имени; позиция — если тот же id
+                    ctx.save_state(channels=chans)  # в следующий раз канал ищется по имени; позиция - если тот же id
                     ctx.mark_partial(text)
                     bad.append(text)
         except _TimeUp:
@@ -555,7 +555,7 @@ class TelegramConnector(Connector):
         st = chans[name]
         ch_id = int(st["id"])
         last = st.get("lastId")
-        old: list[list[Any]] = []  # правки и повторные загрузки (ID не больше lastId)
+        old: list[list[Any]] = []  # правки и повторные загрузки(ID не больше lastId)
         if last is None:
             batch = [m async for m in client.iter_messages(peer, limit=s.tg_history_limit)]
             batch.reverse()
@@ -571,7 +571,7 @@ class TelegramConnector(Connector):
                     if max(m.id for m in g) <= last and _edited(g):
                         old.append(g)
         new = await self._complete(client, peer, batch)
-        if last is not None:  # альбом, начатый до lastId и дополненный после, — уже в new
+        if last is not None:  # альбом, начатый до lastId и дополненный после, - уже в new
             new_first = {g[0].id for g in new}
             old = [g for g in old if g[0].id not in new_first]
         retry = dict(st.get("retry") or {})
@@ -583,7 +583,7 @@ class TelegramConnector(Connector):
                 got = await client.get_messages(peer, ids=ids)
                 by_id = {m.id: m for m in (got or []) if m is not None}
                 for key, v in sorted(want.items(), key=lambda kv: int(kv[0])):
-                    if int(key) not in by_id:  # первое сообщение публикации удалено в канале — повторять нечего:
+                    if int(key) not in by_id:  # первое сообщение публикации удалено в канале - повторять нечего:
                         retry.pop(key, None)   # остаток альбома под ID другого сообщения стал бы дубликатом
                         continue
                     old.append([by_id[int(i)] for i in v if int(i) in by_id])
@@ -612,8 +612,8 @@ class TelegramConnector(Connector):
         return {k: retry[k] for k in keys}
 
     async def _complete(self, client, peer, batch: list, *, need: Optional[Callable] = None) -> list[list[Any]]:
-        """Группы выборки; альбомы на границе выборки дочитываются по соседним ID (get_messages). need — какие
-        группы на границе стоит дочитывать (окно правок — только изменённые)."""
+        """Группы выборки; альбомы на границе выборки дочитываются по соседним ID(get_messages). need - какие
+        группы на границе стоит дочитывать(окно правок - только изменённые)."""
         batch = [m for m in batch if m is not None]
         groups = group_messages(batch)
         if not groups:
@@ -635,8 +635,8 @@ class TelegramConnector(Connector):
         return group_messages(batch + extra) if extra else groups
 
     async def _publish(self, ctx: "RunContext", client, name: str, ch_id: int, peer, group: list, retry: dict) -> None:
-        """Группа сообщений → публикация → единый приём; файлы — только те, что ещё нужны (ключ файла включает ID файла
-        Telegram — замена фото или видео правкой сообщения загружается заново)."""
+        """Группа сообщений → публикация → единый приём; файлы - только те, что ещё нужны(ключ файла включает ID файла
+        Telegram - замена фото или видео правкой сообщения загружается заново)."""
         from ..ingest import ATTEMPTS_MAX
 
         msgs = [m for m in group if getattr(m, "action", None) is None]
@@ -646,11 +646,11 @@ class TelegramConnector(Connector):
         eid = external_id(ch_id, first.id)
         text = next((m.message for m in msgs if (getattr(m, "message", None) or "").strip()), "")
         with_media = [(m, k) for m in msgs if (k := _media_kind(m))]
-        if not text.strip() and not with_media:  # опрос, голосовое, файл без подписи — не публикация
+        if not text.strip() and not with_media:  # опрос, голосовое, файл без подписи - не публикация
             retry.pop(str(first.id), None)
             return
         k = ctx.known(eid)
-        foreign = k is not None and k.collector != ctx.code  # принята другим источником — не перезаписывается
+        foreign = k is not None and k.collector != ctx.code  # принята другим источником - не перезаписывается
         role = "slide" if len(with_media) > 1 else None
         items: list[MediaIn] = []
         for m, kind in with_media:
@@ -686,8 +686,8 @@ class TelegramConnector(Connector):
 
     async def _download(self, ctx: "RunContext", client, peer, ch_id: int, m, key: str, kind: str,
                         role: Optional[str], *, again: bool = False) -> MediaIn:
-        """Файл сообщения → хранилище. Фото — в память; видео и документы — во временный файл по явному пути (не
-        каталог); больше TG_MAX_VIDEO_MB — пропуск; срок TG_DOWNLOAD_TIMEOUT_S. Ошибка файла — MediaIn «failed»."""
+        """Файл сообщения → хранилище. Фото - в память; видео и документы - во временный файл по явному пути(не
+        каталог); больше TG_MAX_VIDEO_MB - пропуск; срок TG_DOWNLOAD_TIMEOUT_S. Ошибка файла - MediaIn "failed"."""
         from telethon import errors
 
         s = ctx.settings
@@ -711,7 +711,7 @@ class TelegramConnector(Connector):
             path = ctx.temp_path(".bin")
             got = await asyncio.wait_for(client.download_media(m, file=str(path)), timeout)
             target = Path(got) if got else path
-            if target.parent.resolve() != path.parent.resolve():  # не во временном каталоге хранилища — не берём
+            if target.parent.resolve() != path.parent.resolve():  # не во временном каталоге хранилища - не берём
                 Path(target).unlink(missing_ok=True)
                 return MediaIn(key=key, kind=kind, role=role, status="failed", origin_ref=ref,
                                error="Файл сохранён не во временный каталог — отклонён")
@@ -735,7 +735,7 @@ class TelegramConnector(Connector):
             return await self._download(ctx, client, peer, ch_id, fresh, key, kind, role, again=True)
         except _fatal_errors():
             raise
-        except Exception as e:  # noqa: BLE001 — сбой одного файла не останавливает сбор
+        except Exception as e:  # noqa: BLE001 - сбой одного файла не останавливает сбор
             return MediaIn(key=key, kind=kind, role=role, status="failed", origin_ref=ref,
                            error=f"Файл не загружен из Telegram ({type(e).__name__})")
         finally:

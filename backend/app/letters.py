@@ -1,13 +1,13 @@
-"""Проект запроса сведений по ЖК в ЖАО (МИО) ВКО, Единому оператору жилищного строительства или ГАСК ВКО (T-78).
+"""Проект запроса сведений по ЖК в ЖАО(МИО) ВКО, Единому оператору жилищного строительства или ГАСК ВКО(T-78).
 
 Письмо собирается из данных карточки ЖК: застройщик и БИН, стадия, документы-основания с источником и датой сверки
-(или «не проверялся»), сведения открытых данных, привязанные публикации с цитатами, ссылками и временем фиксации,
-нормы ст. 7, 8, 18, 23 Закона РК № 486-V дословно (app.law, shared/law.json), перечень приложений, блок подписи с
-должностью (без имён), дата и место под исходящий номер. Это черновик для внутреннего маршрута: автоматической
-отправки нет, в журнал объекта пишется «Сформирован проект запроса в …» (kind = request).
+(или "не проверялся"), сведения открытых данных, привязанные публикации с цитатами, ссылками и временем фиксации,
+нормы ст. 7, 8, 18, 23 Закона РК № 486-V дословно(app.law, shared/law.json), перечень приложений, блок подписи с
+должностью(без имён), дата и место под исходящий номер. Это черновик для внутреннего маршрута: автоматической
+отправки нет, в журнал объекта пишется "Сформирован проект запроса в …"(kind = request).
 
-Форматы: PDF (reportlab, шрифт и вспомогательные функции app.pdf) и DOCX — WordprocessingML собирается вручную
-(zipfile + XML) без python-docx: файл открывают Word, LibreOffice и «Страницы».
+Форматы: PDF(reportlab, шрифт и вспомогательные функции app.pdf) и DOCX - WordprocessingML собирается вручную
+(zipfile + XML) без python-docx: файл открывают Word, LibreOffice и "Страницы".
 """
 import re
 import zipfile
@@ -68,7 +68,7 @@ TOPIC_ASKS = {
 SENDER = "Департамент экономических расследований по Восточно-Казахстанской области (ДЭР ВКО)"
 DRAFT_NOTE = "Черновик для внутреннего маршрута — автоматической отправки нет"
 DOC_STATE = {"yes": "есть", "no": "нет", "unknown": "нет данных"}
-AD_LIMIT = 10  # публикаций в письме; остальные — в приложении «по запросу»
+AD_LIMIT = 10  # публикаций в письме; остальные - в приложении "по запросу"
 QUOTE_MAX = 260
 EXCERPT_MAX = 700
 
@@ -94,8 +94,8 @@ def _cut(t: Any, limit: int) -> str:
 
 
 def _signer(db: Session, author: str) -> str:
-    """Должность для подписи по учётной записи автора («Ведущий аналитик · ДЭР ВКО» → «Ведущий аналитик ДЭР ВКО»);
-    имени в письме нет. Неизвестный автор — место под должность."""
+    """Должность для подписи по учётной записи автора("Ведущий аналитик · ДЭР ВКО" → "Ведущий аналитик ДЭР ВКО");
+    имени в письме нет. Неизвестный автор - место под должность."""
     a = db.scalar(select(models.Analyst).where(models.Analyst.name == author).limit(1))
     return a.role.replace(" · ", " ") if a else "Должность: ____________________"
 
@@ -131,7 +131,7 @@ def _ad_line(ad: Obj, risk: Obj) -> str:
 
 
 def _law_refs(addressee: str) -> List[Obj]:
-    """Нормы письма: ссылки факторов R1–R3 и документа основания адресата, по статьям 7, 8, 18, 23 по порядку."""
+    """Нормы письма: ссылки факторов R1-R3 и документа основания адресата, по статьям 7, 8, 18, 23 по порядку."""
     parts: Dict[str, set] = {}
     for code in ("R1", "R2", "R3", ADDRESSEES[addressee]["doc"]):
         for r in law.refs(code):
@@ -142,7 +142,7 @@ def _law_refs(addressee: str) -> List[Obj]:
 
 
 def _law_lines(refs: List[Obj]) -> List[str]:
-    """Дословные выдержки по пунктам; название статьи — у первого пункта статьи."""
+    """Дословные выдержки по пунктам; название статьи - у первого пункта статьи."""
     out = []
     for r in refs:
         a = law.ARTICLES[r["article"]]
@@ -165,7 +165,7 @@ def law_intro() -> str:
 
 
 def build(db: Session, cid: str, body: LetterIn, now: Optional[datetime] = None) -> Obj:
-    """Письмо как структура: blocks [{type, text|lines}] — для PDF, DOCX и предпросмотра; text — плоский текст."""
+    """Письмо как структура: blocks [{type, text|lines}] - для PDF, DOCX и предпросмотра; text - плоский текст."""
     c_row = db.get(models.Complex, cid)
     if c_row is None:
         raise registry.not_found(db, cid)
@@ -175,7 +175,7 @@ def build(db: Session, cid: str, body: LetterIn, now: Optional[datetime] = None)
     dev = w.developers.get(c["developerId"])
     risk = w.risk(c)
     docs = next((f["items"] for f in risk["factors"] if f["code"] == "R1"), []) or []
-    if not docs:  # введённый объект: R1 не применяется — документы-основания тем же движком
+    if not docs:  # введённый объект: R1 не применяется - документы-основания тем же движком
         docs = factor_r1({**c, "stage": None})["items"]
     sc = screening.compute(db)
     permit, scr = sc.permits.get(cid), sc.complexes.get(cid)
@@ -274,7 +274,7 @@ def build(db: Session, cid: str, body: LetterIn, now: Optional[datetime] = None)
 
 
 def schemas_topics(topics: List[str]) -> List[str]:
-    """Темы в порядке списка (как в журнале и окне запроса), без повторов."""
+    """Темы в порядке списка(как в журнале и окне запроса), без повторов."""
     order = ["basis", "readiness", "appeals", "list", "other"]
     return [t for t in order if t in topics]
 
@@ -369,7 +369,7 @@ def render_pdf(letter: Obj) -> bytes:
     return buf.getvalue()
 
 
-# ---------- DOCX (WordprocessingML без зависимостей) ----------
+# ---------- DOCX(WordprocessingML без зависимостей) ----------
 
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _CT = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -402,7 +402,7 @@ _STYLES = (f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xm
 
 
 def _xml(s: Any) -> str:
-    # управляющие символы (кроме \t \n) в XML 1.0 недопустимы — Word не откроет файл
+    # управляющие символы(кроме \t \n) в XML 1.0 недопустимы - Word не откроет файл
     return escape("".join(ch for ch in str(s) if ch in "\t\n" or ord(ch) >= 0x20))
 
 
@@ -496,7 +496,7 @@ def letter_preview(cid: str, body: LetterIn, db: Session = Depends(get_db)):
              responses={200: {"content": {"application/pdf": {}, DOCX_MIME: {}},
                               "description": "Проект запроса (черновик, без отправки)"}})
 def letter_file(cid: str, body: LetterIn, fmt: Fmt = Query("pdf", alias="format"), db: Session = Depends(get_db)):
-    """Проект запроса в PDF или DOCX; в журнал объекта — «Сформирован проект запроса в …» (kind = request)."""
+    """Проект запроса в PDF или DOCX; в журнал объекта - "Сформирован проект запроса в …"(kind = request)."""
     now = datetime.now(timezone.utc)
     letter = build(db, cid, body, now)
     data = render_pdf(letter) if fmt == "pdf" else render_docx(letter, now)

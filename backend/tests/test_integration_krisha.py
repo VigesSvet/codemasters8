@@ -1,4 +1,4 @@
-"""Сборщик Krisha.kz (integration-spec §12.6, §16.3 krisha, §16.5): без сети — httpx.MockTransport и синтетические
+"""Сборщик Krisha.kz(integration-spec §12.6, §16.3 krisha, §16.5): без сети - httpx.MockTransport и синтетические
 страницы tests/fixtures/krisha/ (написаны вручную, данные вымышленные)."""
 import contextlib
 import hashlib
@@ -27,8 +27,8 @@ ROBOTS = "User-agent: *\nDisallow: /ajax/\nDisallow: /a/show-map/\nDisallow: /ca
 IDS = ["900000001", "900000002", "900000003"]
 CARD = re.compile(r"^https://krisha\.kz/a/show/(\d+)$")
 PHOTO = re.compile(r"^https://(?:photos\.kcdn\.kz|krisha-photos\.kcdn\.online)/")
-LIVE_CDN = "https://krisha-photos.kcdn.online/webp/90/"  # CDN фото живой выдачи (window.data.photoHost)
-PREVIEW = LIVE_CDN + "900000001/1-280x175.webp"  # превью объявления 900000001 в выдаче (search.html)
+LIVE_CDN = "https://krisha-photos.kcdn.online/webp/90/"  # CDN фото живой выдачи(window.data.photoHost)
+PREVIEW = LIVE_CDN + "900000001/1-280x175.webp"  # превью объявления 900000001 в выдаче(search.html)
 HTML = {"content-type": "text/html; charset=utf-8"}
 SECRETS = ("FAKE-APP-TOKEN", "FAKE-CONFIG-SECRET", "FAKE-CENTRIFUGE-TOKEN", "FAKE-SESSION-KEY", "Тестовый Пользователь",
            "fake-user@example.invalid", "+7 700 000 00 00", "+7 700 111 22 33", "203.0.113.7", "не сохранять")
@@ -43,12 +43,12 @@ def card_html(eid: str = IDS[0]) -> str:
 
 
 def card_photo(name) -> str:
-    """Фото карточки 900000001 на CDN (card.html: 1-, 2-, 3-750x470.webp)."""
+    """Фото карточки 900000001 на CDN(card.html: 1-, 2-, 3-750x470.webp)."""
     return LIVE_CDN + f"900000001/{name}-750x470.webp"
 
 
 def photo(request: httpx.Request) -> httpx.Response:
-    """Фото CDN: свой PNG для каждой ссылки (разный sha256)."""
+    """Фото CDN: свой PNG для каждой ссылки(разный sha256)."""
     h = hashlib.sha256(str(request.url).encode()).digest()
     return httpx.Response(200, content=png_bytes((h[0], h[1], h[2])), headers={"content-type": "image/png"})
 
@@ -61,7 +61,7 @@ def kr():
 
 
 class Site:
-    """Krisha.kz в тестах: robots.txt, выдача, карточки (200 — card.html с нужным ID, 468 — проверка доступа), фото."""
+    """Krisha.kz в тестах: robots.txt, выдача, карточки(200 - card.html с нужным ID, 468 - проверка доступа), фото."""
 
     def __init__(self, mock):
         self.mock = mock
@@ -166,7 +166,7 @@ def run_notes(run_id: int) -> list[str]:
 
 
 def db_dump() -> str:
-    """Все строки всех таблиц приложения одной строкой (поиск утечек)."""
+    """Все строки всех таблиц приложения одной строкой(поиск утечек)."""
     out = []
     with SessionLocal() as db:
         for table in models.Base.metadata.sorted_tables:
@@ -180,10 +180,10 @@ def db_dump() -> str:
 def test_window_data_parsed_without_js_and_sanitized(kr):
     html = page("search.html")
     raw = kr.extract_window_data(html)
-    # «window.data == null» и «window.data.search.nbTotal = 999» — не присваивания: JS не выполнялся
+    # "window.data == null" и "window.data.search.nbTotal = 999" - не присваивания: JS не выполнялся
     assert raw["search"]["nbTotal"] == "3" and raw["appToken"] == "FAKE-APP-TOKEN"
     clean = kr.sanitize_window_data(raw)
-    assert set(clean) == {"search", "adverts"}  # photoHost, user, config, app*… — не сохраняются
+    assert set(clean) == {"search", "adverts"}  # photoHost, user, config, app*… - не сохраняются
     assert clean["search"] == {"nbTotal": 3, "ids": IDS, "page": 1}
     assert clean["adverts"] == [{"id": 900000003, "userType": "company", "isHot": False}]
     dumped = json.dumps(clean, ensure_ascii=False)
@@ -196,7 +196,7 @@ def test_window_data_parsed_without_js_and_sanitized(kr):
 
 
 def test_nb_total_with_digit_grouping(kr):
-    """Живая выдача: nbTotal — строка с разделителем разрядов; общее число не теряется, мусор не принимается."""
+    """Живая выдача: nbTotal - строка с разделителем разрядов; общее число не теряется, мусор не принимается."""
     for value, expected in (("1 234", 1234), ("12\u00a0345", 12345), ("1\u202f000", 1000), (" 7 ", 7), (42, 42),
                             ("²", None), ("12a", None), ("", None), (True, None)):
         got = kr.sanitize_window_data({"search": {"nbTotal": value}})["search"].get("nbTotal")
@@ -227,12 +227,12 @@ def test_parse_search_fields_hot_and_dedupe(kr):
                      "complex": "Ульба Ривер", "sellerType": "complex",
                      "photo": LIVE_CDN + "900000001/1-280x175.webp", "hot": True}
     assert [c["hot"] for c in cards] == [True, False, False]
-    # тип продавца: класс user-<тип> подвала (1, 2), window.data.adverts (3)
+    # тип продавца: класс user-<тип> подвала(1, 2), window.data.adverts(3)
     assert [c["sellerType"] for c in cards] == ["complex", "owner", "company"]
     assert [c["complex"] for c in cards] == ["Ульба Ривер", None, None]
-    assert cards[1]["photo"] == "https://photos.kcdn.kz/test/900000002-0-280x175.jpg"  # ленивая загрузка (data-src)
+    assert cards[1]["photo"] == "https://photos.kcdn.kz/test/900000002-0-280x175.jpg"  # ленивая загрузка(data-src)
     assert cards[2]["photo"] is None and cards[2]["price"] == "от 21 000 000 ₸"
-    # блок «горячих» сверху повторяет карточку — она одна
+    # блок "горячих" сверху повторяет карточку - она одна
     start = html.index('<div class="a-card a-storage-live ddl_product" data-id="900000002"')
     block = html[start:html.index('<div class="a-card a-storage-live ddl_product" data-id="900000003"')]
     _, again = kr.parse_search(html.replace('<section class="a-list">', '<section class="a-list">' + block))
@@ -241,8 +241,8 @@ def test_parse_search_fields_hot_and_dedupe(kr):
 
 
 def test_parse_search_live_seller_and_complex_markup(kr):
-    """Разметка живой выдачи (только имена классов): тип продавца — класс user-<тип> у подвала, ЖК — ссылка в блоке
-    a-card__complex-info; подпись «Новостройка» — не название ЖК; без ссылки — текст блока без подписи и застройщика."""
+    """Разметка живой выдачи(только имена классов): тип продавца - класс user-<тип> у подвала, ЖК - ссылка в блоке
+    a-card__complex-info; подпись "Новостройка" - не название ЖК; без ссылки - текст блока без подписи и застройщика."""
     def one(footer: str) -> dict:
         html = ('<script>window.data = {"search": {"ids": [900000041]}};</script>'
                 '<div class="a-card" data-id="900000041"><a class="a-card__title">Квартира</a>'
@@ -266,7 +266,7 @@ def test_parse_search_live_seller_and_complex_markup(kr):
         c = one(f'<div class="a-card__footer {cls}"><div class="a-card__owner user-title-pro user-label-x">'
                 '<span class="a-card__owner-label">Подпись</span></div></div>')
         assert kr._account(kr._summary(c)) == f"krisha.kz / {label}"
-    # классы user-* у вложенных элементов (user-title-pro, user-label-owner) типом продавца не считаются
+    # классы user-* у вложенных элементов(user-title-pro, user-label-owner) типом продавца не считаются
     c = one('<div class="a-card__footer"><div class="a-card__owner user-title-pro user-label-owner"></div></div>')
     assert c["sellerType"] is None and kr._account(kr._summary(c)) == "krisha.kz / продавец не указан"
 
@@ -292,13 +292,13 @@ def test_detect_block(kr):
     assert kr.detect_block(429, {}, "<p>Please solve the CAPTCHA</p>") == "HTTP 429, CAPTCHA"
     assert kr.detect_block(503, httpx.Headers([("set-cookie", "sl-session=abc; Path=/")]), "") == "HTTP 503, SafeLine"
     assert kr.detect_block(200, {}, challenge) == "HTTP 200, SafeLine"
-    # обычные страницы: слово captcha в скрипте входа при наличии window.data — не проверка
+    # обычные страницы: слово captcha в скрипте входа при наличии window.data - не проверка
     normal = page("search.html")
     assert kr.detect_block(200, httpx.Headers(), normal) is None
     assert kr.detect_block(200, {}, normal + "<script>loadRecaptcha()</script>") is None
     assert kr.detect_block(200, httpx.Headers([("set-cookie", "sl-session=x")]), normal) is None
     assert kr.detect_block(404, {}, challenge) is None
-    # robots.txt со строкой «Disallow: /captcha» и cookie sl-session — не проверка доступа
+    # robots.txt со строкой "Disallow: /captcha" и cookie sl-session - не проверка доступа
     assert kr.detect_block(200, httpx.Headers([("set-cookie", "sl-session=x")]), ROBOTS) is None
     assert kr.detect_block(403, {}, "<html>Forbidden</html>") is None
 
@@ -346,7 +346,7 @@ def test_check_smoke_ephemeral(client, kr, site):
 
 
 def test_check_without_total_does_not_invent_it(client, kr, site):
-    """Нет nbTotal (или он не разобран) — в итоге проверки не выдаётся число карточек страницы за общее число выдачи."""
+    """Нет nbTotal(или он не разобран) - в итоге проверки не выдаётся число карточек страницы за общее число выдачи."""
     from app.integrations.context import RunContext
 
     site.setup(cards="block")
@@ -408,7 +408,7 @@ def test_cards_ok_versions_documents_and_no_flip_flop(client, kr, site, run_work
     site.setup(cards="ok")
     configure()
     r = run(run_worker)
-    # карточка получена в том же запуске: новая публикация сразу с данными карточки — одна версия, учтена один раз
+    # карточка получена в том же запуске: новая публикация сразу с данными карточки - одна версия, учтена один раз
     assert (r.status, r.items_seen, r.items_new, r.items_updated) == ("succeeded", 3, 3, 0)
     assert change_events() == 0
     vs = versions(IDS[0])
@@ -419,7 +419,7 @@ def test_cards_ok_versions_documents_and_no_flip_flop(client, kr, site, run_work
         "Разрешение на строительство № ТЕСТ-0001 (заявлено продавцом)", "Договор долевого участия"]
     assert (vs[0].extra["createdAt"], vs[0].extra["addedAt"]) == ("2026-09-01", "2026-10-10")
     assert item(IDS[0]).published_at is None
-    # превью выдачи (krisha:{id}:c:…) и фото карточки (krisha:{id}:p:…) в порядке галереи — разные файлы, хотя превью —
+    # превью выдачи(krisha:{id}:c:…) и фото карточки(krisha:{id}:p:…) в порядке галереи - разные файлы, хотя превью -
     # тот же снимок, что и фото 1: главное фото карточки загружено, превью не подменяет его
     cover, slides = kr.photo_key(IDS[0], PREVIEW, cover=True), [kr.photo_key(IDS[0], card_photo(n)) for n in (1, 2, 3)]
     assert vs[0].media_keys == [cover] + slides
@@ -429,9 +429,9 @@ def test_cards_ok_versions_documents_and_no_flip_flop(client, kr, site, run_work
         (card_photo(n), "slide", n) for n in (1, 2, 3)]
     assert all(x.status == "downloaded" for x in got.values())
     assert card_photo(1) in site.photo_urls()
-    assert a.image == f"/api/media/{got[slides[0]].id}"  # изображение публикации — фото карточки
+    assert a.image == f"/api/media/{got[slides[0]].id}"  # изображение публикации - фото карточки
     assert vs[0].extra["developer"] == "ТОО «Тестовый застройщик»" and vs[0].extra["price"] == "31 500 000 ₸"
-    # второй сбор подряд (выдача и карточки — 200): всё без изменений, версий по-прежнему 1
+    # второй сбор подряд(выдача и карточки - 200): всё без изменений, версий по-прежнему 1
     cards_before = len(site.requests(r"/a/show/"))
     r2 = run(run_worker)
     assert (r2.status, r2.items_seen, r2.items_new, r2.items_updated, r2.items_unchanged) == ("succeeded", 3, 0, 0, 3)
@@ -450,9 +450,9 @@ def test_cards_ok_versions_documents_and_no_flip_flop(client, kr, site, run_work
 
 
 def test_search_change_one_version_per_run(client, kr, site, run_worker, ocr_stub):
-    """Заголовок изменился в выдаче: карточка доступна — одна новая версия с новым заголовком; карточка закрыта —
-    одна версия из выдачи, текст собран из нового заголовка и сохранённого описания (а не «старый текст + новый
-    extra»)."""
+    """Заголовок изменился в выдаче: карточка доступна - одна новая версия с новым заголовком; карточка закрыта -
+    одна версия из выдачи, текст собран из нового заголовка и сохранённого описания(а не "старый текст + новый
+    extra")."""
     site.setup(cards="ok")
     configure()
     run(run_worker)
@@ -464,7 +464,7 @@ def test_search_change_one_version_per_run(client, kr, site, run_worker, ocr_stu
     assert [(v.version, v.extra["source"]) for v in vs] == [(1, "card"), (2, "card")]
     assert vs[1].text.splitlines()[0] == new and vs[1].extra["title"] == new
     assert "Продаётся просторная квартира" in vs[1].text
-    # карточки закрыты: выдача снова изменилась → одна версия «выдача + сохранённая карточка»
+    # карточки закрыты: выдача снова изменилась → одна версия "выдача + сохранённая карточка"
     site.cards = "block"
     newer = "3-комнатная квартира · 88 м² · 5/9 этаж"
     site.search(page("search.html").replace(old, newer).replace("Тестовая улица 1", "Тестовая улица 1А"))
@@ -475,7 +475,7 @@ def test_search_change_one_version_per_run(client, kr, site, run_worker, ocr_stu
     assert vs[2].text.splitlines()[:2] == [newer, "Усть-Каменогорск, Тестовая улица 1А"]
     assert vs[2].text.splitlines()[2:] == vs[1].text.splitlines()[2:]  # описание карточки сохранено
     assert (vs[2].extra["title"], vs[2].extra["source"], vs[2].media_keys) == (newer, "card", vs[1].media_keys)
-    # карточки снова доступны, выдача та же: сводка совпадает — карточка не перечитывается, версий не добавляется
+    # карточки снова доступны, выдача та же: сводка совпадает - карточка не перечитывается, версий не добавляется
     site.cards = "ok"
     before = len(site.requests(r"/a/show/"))
     r = run(run_worker)
@@ -496,15 +496,15 @@ def test_card_urls_do_not_starve_search_only(client, kr, site, run_worker, ocr_s
     assert [versions(i)[-1].extra["source"] for i in IDS + ["900000099"]] == ["card"] * 4
 
 
-# ---------- 6а. продавец заменил или удалил фото: ключ файла — само фото, а не его место ----------
+# ---------- 6а. продавец заменил или удалил фото: ключ файла - само фото, а не его место ----------
 
 def test_photo_key_is_photo_identity_not_position(kr):
     key = kr.photo_key
-    # тот же снимок в другом размере, формате, на другом CDN или с query — тот же ключ
+    # тот же снимок в другом размере, формате, на другом CDN или с query - тот же ключ
     same = [card_photo(1), card_photo(1).replace("-750x470", "-full"), PREVIEW,
             "https://photos.kcdn.kz/jpg/90/900000001/1-750x470.jpg?v=2"]
     assert len({key(IDS[0], u) for u in same}) == 1
-    # другой снимок, другое объявление, превью выдачи — другие ключи
+    # другой снимок, другое объявление, превью выдачи - другие ключи
     assert len({key(IDS[0], card_photo(1)), key(IDS[0], card_photo(2)), key(IDS[0], card_photo("9-NEW")),
                 key(IDS[1], card_photo(1)), key(IDS[0], PREVIEW, cover=True)}) == 5
     assert re.fullmatch(r"krisha:900000001:p:[0-9a-f]{16}", key(IDS[0], card_photo(1)))
@@ -518,9 +518,9 @@ def drop_card_photo(html: str, name: str) -> str:
 
 
 def test_card_photo_replaced_or_deleted_is_new_version(client, kr, site, run_worker, ocr_stub):
-    """Карточка из настроек (перечитывается каждый запуск): продавец заменил фото 1, потом удалил фото 2. Каждая правка —
-    новая версия; новое фото загружено, заменённое и удалённое — не текущие; оставшиеся не перезагружаются и остаются
-    текущими со своими байтами (а не байтами соседнего фото)."""
+    """Карточка из настроек(перечитывается каждый запуск): продавец заменил фото 1, потом удалил фото 2. Каждая правка -
+    новая версия; новое фото загружено, заменённое и удалённое - не текущие; оставшиеся не перезагружаются и остаются
+    текущими со своими байтами(а не байтами соседнего фото)."""
     eid = IDS[0]
     site.setup(cards="ok")
     configure(cardUrls=[f"https://krisha.kz/a/show/{eid}"])
@@ -541,7 +541,7 @@ def test_card_photo_replaced_or_deleted_is_new_version(client, kr, site, run_wor
     assert not got[p[1]].current and (got[p[9]].status, got[p[9]].current, got[p[9]].position) == ("downloaded", True, 1)
     assert got[p[9]].origin_url == card_photo(9) and got[p[9]].sha256 != first[p[1]].sha256
     assert all(got[k].current and got[k].sha256 == first[k].sha256 for k in (cover, p[2], p[3]))
-    assert ad(eid).image == f"/api/media/{got[p[9]].id}"  # изображение публикации — новое главное фото
+    assert ad(eid).image == f"/api/media/{got[p[9]].id}"  # изображение публикации - новое главное фото
     assert change_events() == 1
 
     site.card_pages[eid] = drop_card_photo(card_html(eid).replace(card_photo(1), card_photo(9)), "2")
@@ -555,16 +555,16 @@ def test_card_photo_replaced_or_deleted_is_new_version(client, kr, site, run_wor
     assert (got[p[3]].sha256, got[p[3]].position, got[p[3]].origin_url) == (first[p[3]].sha256, 2, card_photo(3))
     # история: прежние версии по-прежнему ссылаются на свои файлы
     assert vs[0].media_keys == [cover, p[1], p[2], p[3]] and got[p[1]].status == got[p[2]].status == "downloaded"
-    # повтор без правок — без версий и загрузок
+    # повтор без правок - без версий и загрузок
     site.mock.calls.clear()
     r = run(run_worker)
     assert (r.items_updated, r.items_unchanged) == (0, 3) and not site.photo_urls() and len(versions(eid)) == 3
 
 
 def test_search_preview_replaced_cards_blocked_is_new_version(client, kr, site, run_worker, ocr_stub):
-    """Карточки закрыты проверкой доступа (живая ситуация), продавец заменил главное фото — в выдаче новое превью: новая
+    """Карточки закрыты проверкой доступа(живая ситуация), продавец заменил главное фото - в выдаче новое превью: новая
     версия, новое превью загружено, прежнее не текущее, объявление первым в очереди карточек. Тот же снимок в другом
-    размере — не правка."""
+    размере - не правка."""
     eid = IDS[0]
     site.setup(cards="block")
     configure()
@@ -576,7 +576,7 @@ def test_search_preview_replaced_cards_blocked_is_new_version(client, kr, site, 
     r = run(run_worker)
     assert (r.status, r.items_updated, r.items_unchanged) == ("partial", 1, 2)
     assert site.photo_urls() == [new_url]
-    assert site.requests(r"/a/show/") == [f"https://krisha.kz/a/show/{eid}"]  # карточка — на перечитывание
+    assert site.requests(r"/a/show/") == [f"https://krisha.kz/a/show/{eid}"]  # карточка - на перечитывание
     vs = versions(eid)
     assert [(v.version, v.media_keys) for v in vs] == [(1, [old]), (2, [new])]
     got = assets(eid)
@@ -590,9 +590,9 @@ def test_search_preview_replaced_cards_blocked_is_new_version(client, kr, site, 
 
 
 def test_search_preview_replaced_refetches_card(client, kr, site, run_worker, ocr_stub):
-    """Объявление найдено поиском, версия карточки есть, сводка выдачи прежняя; продавец заменил главное фото — в
+    """Объявление найдено поиском, версия карточки есть, сводка выдачи прежняя; продавец заменил главное фото - в
     выдаче новое превью: карточка перечитывается, одна новая версия с новым превью и новым фото карточки. Карточки
-    закрыты — одна версия из выдачи: новое превью, фото и описание карточки прежние."""
+    закрыты - одна версия из выдачи: новое превью, фото и описание карточки прежние."""
     eid = IDS[0]
     site.setup(cards="ok")
     configure()
@@ -654,7 +654,7 @@ def test_empty_search_is_succeeded_with_zero(client, kr, site, run_worker):
                 '<aside><a href="/a/show/900000031">Похожее объявление</a></aside>')
     configure()
     r = run(run_worker)
-    assert (r.status, r.items_seen) == ("succeeded", 0)  # «нет новых» — только когда выдача правда пуста
+    assert (r.status, r.items_seen) == ("succeeded", 0)  # "нет новых" - только когда выдача правда пуста
 
 
 def test_pagination_keeps_query_and_stops(client, kr, site, run_worker, ocr_stub, env):
@@ -734,7 +734,7 @@ def test_config_validation(client, kr, admin_headers):
                        "https://krisha.kz/ajax/prodazha/", "https://krisha.kz/a/show/1009924986",
                        "https://krisha.kz:8443/prodazha/kvartiry/", "https://user@krisha.kz/prodazha/kvartiry/",
                        "https://krisha.kz/prodazha/kvartiry/?utm_source=x",
-                       # сегменты «.»/«..»: httpx схлопывает их при запросе — раздел и robots.txt проверялись бы не там
+                       # сегменты "."/"..": httpx схлопывает их при запросе - раздел и robots.txt проверялись бы не там
                        "https://krisha.kz/prodazha/../my/", "https://krisha.kz/prodazha/%2e%2e/my/",
                        "https://krisha.kz/arenda/%2E%2E%2Fmy/", "https://krisha.kz/prodazha/./kvartiry/",
                        "https://krisha.kz/prodazha/..\\my/"],
@@ -748,7 +748,7 @@ def test_config_validation(client, kr, admin_headers):
     r = patch({"searchUrls": ["https://krisha.kz/prodazha/../my/"]})
     assert r.json()["detail"][0]["msg"] == ("Ссылка Krisha с «.» или «..» в пути не принимается: "
                                             "https://krisha.kz/prodazha/../my/")
-    # точки внутри имени сегмента — обычная ссылка
+    # точки внутри имени сегмента - обычная ссылка
     assert patch({"searchUrls": ["https://krisha.kz/prodazha/kvartiry/ust-kamenogorsk/..x/"]}).status_code == 200
     six = [f"https://krisha.kz/prodazha/kvartiry/?page={n}" for n in range(6)]
     r = patch({"searchUrls": six})
@@ -784,7 +784,7 @@ def test_robots_unavailable_retries_and_404_allows(client, kr, site, run_worker,
     site.mock.on("GET", ROBOTS_URL, status=503)
     configure()
     r = run(run_worker)
-    assert r.status == "running"  # 5xx robots.txt — повтор задания, выдача не запрашивалась
+    assert r.status == "running"  # 5xx robots.txt - повтор задания, выдача не запрашивалась
     assert site.requests() == [ROBOTS_URL]
     site.mock.on("GET", ROBOTS_URL, status=404)
     r = run(run_worker, now=models.utcnow() + timedelta(minutes=10))
@@ -819,7 +819,7 @@ def test_delays_redirects_cookies_and_user_agent(client, kr, site, run_worker, o
     for c in krisha_calls:
         assert "cookie" not in c.headers
         assert c.headers["user-agent"] == get_settings().user_agent and c.headers["accept-language"] == "ru"
-    # перенаправление на чужой хост и с https на http — не выполняется
+    # перенаправление на чужой хост и с https на http - не выполняется
     for target in ("https://evil.example/prodazha/", "http://krisha.kz/prodazha/kvartiry/ust-kamenogorsk/"):
         site.mock.on("GET", moved, status=302, headers={"location": target})
         r = run(run_worker)
@@ -846,7 +846,7 @@ def test_request_budget_per_run(client, kr, site, run_worker, ocr_stub, env):
     assert row().status_detail == f"Достигнут предел запросов к Krisha за запуск ({kr.MAX_REQUESTS}) — продолжим в " \
                                   "следующий раз"
     assert r.items_new == kr.MAX_REQUESTS - 1  # robots.txt + 29 страниц выдачи
-    # в синтетической выдаче нет подвала с типом продавца: предупреждение о разметке — одно на запуск
+    # в синтетической выдаче нет подвала с типом продавца: предупреждение о разметке - одно на запуск
     assert run_notes(r.id).count(kr.NO_SELLER_MARKUP) == 1
     assert ad("910000001").account == "krisha.kz / продавец не указан"
 
@@ -862,7 +862,7 @@ def test_time_up_marks_partial(client, kr, site, run_worker, monkeypatch):
     assert site.requests() == [ROBOTS_URL]
 
 
-# ---------- 11. Playwright (необязательный) ----------
+# ---------- 11. Playwright(необязательный) ----------
 
 class FakeRoute:
     def __init__(self, url: str):
@@ -886,7 +886,7 @@ class FakeResponse:
 
 
 class FakeBrowser:
-    """Браузер-заглушка: ответ навигации задаёт тест; страница «после проверки» (content) — уже обычная карточка."""
+    """Браузер-заглушка: ответ навигации задаёт тест; страница "после проверки"(content) - уже обычная карточка."""
 
     def __init__(self, status: int = 468, body: str = "", final_url=None):
         self.status, self.body, self.final_url = status, body or page("safeline_468.html"), final_url
@@ -927,7 +927,7 @@ class FakeBrowser:
 
 
 class _ImportTrap:
-    """Ловушка импорта: любая попытка импортировать playwright записывается (и не удаётся, как без пакета)."""
+    """Ловушка импорта: любая попытка импортировать playwright записывается(и не удаётся, как без пакета)."""
 
     def __init__(self):
         self.attempts: list[str] = []
@@ -951,10 +951,10 @@ def test_playwright_not_imported_when_off(client, kr, site, run_worker, ocr_stub
     assert r.status == "partial" and trap.attempts == [] and "playwright" not in sys.modules
     notes = run_notes(r.id)
     assert not any("Playwright" in n or "браузер" in n for n in notes), notes
-    # проверка: тот же путь карточки — факт «не выполнялась», без импорта
+    # проверка: тот же путь карточки - факт "не выполнялась", без импорта
     run(run_worker, trigger="test")
     assert trap.attempts == [] and row().facts["playwright"] == "не выполнялась"
-    # ловушка работает: при KRISHA_PLAYWRIGHT=1 попытка импорта видна и даёт заметку «не установлен»
+    # ловушка работает: при KRISHA_PLAYWRIGHT=1 попытка импорта видна и даёт заметку "не установлен"
     env(KRISHA_PLAYWRIGHT="1")
     r = run(run_worker)
     assert trap.attempts == ["playwright"]
@@ -1014,7 +1014,7 @@ def test_playwright_ok_card_and_redirect_refused(client, kr, site, run_worker, o
     site.setup(cards="block")
     configure()
     r = run(run_worker)
-    # первая карточка: HTTP 468 → браузер 200 — карточка принята; вторая — сразу браузером, но ответ не её ID
+    # первая карточка: HTTP 468 → браузер 200 - карточка принята; вторая - сразу браузером, но ответ не её ID
     assert "Продаётся просторная квартира" in ad(IDS[0]).text
     assert len(site.requests(r"/a/show/")) == 1 and len(browser.gotos) == 2
     assert r.items_failed == 1 and r.status == "partial"
@@ -1027,7 +1027,7 @@ def test_playwright_ok_card_and_redirect_refused(client, kr, site, run_worker, o
     assert r2.status == "partial" and "перенаправление на https://evil.example/a/show/900000002" in row().status_detail
 
 
-# ---------- приёмка по §14 плана (integration-spec §16.5) ----------
+# ---------- приёмка по §14 плана(integration-spec §16.5) ----------
 
 def test_acceptance_repeat_no_duplicate(client, kr, site, run_worker, ocr_stub, accept):
     site.setup(cards="ok")
@@ -1070,7 +1070,7 @@ def test_acceptance_restart_keeps_position(client, kr, site, run_worker, ocr_stu
     r = run(run_worker)
     assert r.status == "running" and count(models.IngestItem) == 1  # задание ждёт повтора
     r = run(run_worker, now=models.utcnow() + timedelta(minutes=10))
-    # счётчики запуска общие для попыток: 1 до сбоя + 2 после; первая при повторе — без изменений
+    # счётчики запуска общие для попыток: 1 до сбоя + 2 после; первая при повторе - без изменений
     assert (r.status, r.items_new, r.items_unchanged) == ("succeeded", 3, 1)
     assert accept.snapshot()["ingest_items"] == 3 and accept.snapshot()["ingest_versions"] == 3
     assert [item(i).version for i in IDS] == [1, 1, 1]
@@ -1092,7 +1092,7 @@ def test_acceptance_not_confirmed_automatically(client, kr, site, run_worker, oc
     site.setup(cards="block")
     configure()
     run(run_worker)
-    ad_id = item(IDS[0]).ad_id  # текст называет демо-ЖК «Ульба Ривер»
+    ad_id = item(IDS[0]).ad_id  # текст называет демо-ЖК "Ульба Ривер"
     accept.assert_not_confirmed(ad_id)
     r = client.post(f"/api/ads/{ad_id}/hypotheses/accept", json={"author": AUTHOR, "complexId": "c3"})
     assert r.status_code == 200, r.text
@@ -1124,11 +1124,11 @@ def test_acceptance_limit_no_endless_loop(client, kr, site, run_worker, ocr_stub
     r = run(run_worker, now=now)
     assert r.status == "rate_limited" and site.requests() == [ROBOTS_URL, SEARCH_URL]
     calls = len(site.mock.calls)
-    for minutes in (1, 5, 9):  # такты воркера до next_run_at — без обращений к сайту
+    for minutes in (1, 5, 9):  # такты воркера до next_run_at - без обращений к сайту
         run_worker(now=now + timedelta(minutes=minutes))
         assert len(site.mock.calls) == calls
     site.setup(cards="block")
-    run_worker(now=now + timedelta(minutes=11))  # пауза прошла — плановый сбор
+    run_worker(now=now + timedelta(minutes=11))  # пауза прошла - плановый сбор
     assert len(site.mock.calls) > calls and count(models.IngestItem) == 3
     with SessionLocal() as db:
         assert db.execute(text("SELECT count(*) FROM collection_runs WHERE collector = 'krisha'")).scalar() == 2

@@ -1,7 +1,7 @@
-"""Модель риска по ТЗ §5: контрольные кейсы A/B/C, границы зон, факторы R1–R6, наблюдения, оценка публикации, эталон.
+"""Модель риска по ТЗ §5: контрольные кейсы A/B/C, границы зон, факторы R1-R6, наблюдения, оценка публикации, эталон.
 
-Только чистые функции (app.risk / app.risk_model / app.golden) — без API и БД.
-Синтетические входы — shared/testdata/risk_fixtures.json; ожидания ниже записаны явно, а не берутся из эталона.
+Только чистые функции(app.risk / app.risk_model / app.golden) - без API и БД.
+Синтетические входы - shared/testdata/risk_fixtures.json; ожидания ниже записаны явно, а не берутся из эталона.
 """
 import copy
 import itertools
@@ -78,16 +78,16 @@ def test_zone_thresholds():
 def test_rule_thresholds():
     assert (T["readinessGap"], T["idleDays"], T["idlePhotosMin"], T["overdueDays"], T["idleShortDays"]) == (20, 90, 2, 180, 30)
     assert T["idleActivities"] == ["нет", "низкая"]
-    # пороги ИИ-анализа — только для показа гипотез, в балл не входят
+    # пороги ИИ-анализа - только для показа гипотез, в балл не входят
     assert (T["lowConfidence"], T["hypothesisMin"], T["hypothesesTop"]) == (0.5, 0.3, 3)
     assert 0 < T["hypothesisMin"] < T["lowConfidence"] < 1
 
 
-# Порога «уверенность ≥ N% — факт» больше нет: привязка — факт только после подтверждения аналитиком (ТЗ §5, §6)
+# Порога "уверенность ≥ N% - факт" больше нет: привязка - факт только после подтверждения аналитиком(ТЗ §5, §6)
 REMOVED_THRESHOLDS = ("linkConfirmed", "autoLinkConfidence")
 _THRESHOLD_USE = re.compile(r"""(?:\bT|thresholds)(?:\.|\[\s*["'])(?:linkConfirmed|autoLinkConfidence)\b|autoLinkConfidence""")
 APP = Path(risk.__file__).resolve().parent
-FRONT = SHARED.parent / "frontend" / "src"  # в образе бэкенда фронтенда нет — тогда проверяется только бэкенд
+FRONT = SHARED.parent / "frontend" / "src"  # в образе бэкенда фронтенда нет - тогда проверяется только бэкенд
 
 
 def test_removed_link_thresholds_absent_from_model_and_engines():
@@ -100,7 +100,7 @@ def test_removed_link_thresholds_absent_from_model_and_engines():
 
 
 def test_removed_link_thresholds_unused_anywhere():
-    """Ни бэкенд, ни фронтенд не читают удалённые пороги (иначе KeyError / undefined вместо правила привязки)."""
+    """Ни бэкенд, ни фронтенд не читают удалённые пороги(иначе KeyError / undefined вместо правила привязки)."""
     files = sorted(APP.rglob("*.py")) + sorted(p for p in FRONT.rglob("*.ts*")  # тесты проверяют как раз отсутствие
                                                if p.suffix in (".ts", ".tsx") and ".test." not in p.name)
     used = [f"{p.parent.name}/{p.name}" for p in files if _THRESHOLD_USE.search(p.read_text(encoding="utf-8"))]
@@ -119,7 +119,7 @@ def test_control_cases_declared():
         assert sum(FACTORS[h]["weight"] for h in c["hits"]) == c["score"]
 
 
-# Все ключи пояснений, которые использует risk.py. Добавили ветку в движок — добавьте текст в модель и сюда.
+# Все ключи пояснений, которые использует risk.py. Добавили ветку в движок - добавьте текст в модель и сюда.
 REASONS = {
     "R1": {"built", "ok_guarantee", "ok_guarantee_no_mio", "ok_mio", "absent", "absent_unsourced", "mio_without_bank", "unknown"},
     "R2": {"built", "offer", "offer_unlinked", "offer_rejected", "none"},
@@ -141,7 +141,7 @@ def test_reason_texts_complete():
         f = FACTORS[c]
         assert f["title"] and f["short"] and f["when"] and f["source"] and f["example"], c
         assert all(t.strip() for t in f["reasons"].values()), c
-        # вариант — другая формулировка существующей причины, не новая причина
+        # вариант - другая формулировка существующей причины, не новая причина
         for k, t in f.get("variants", {}).items():
             assert t.strip() and any(k.startswith(x + "_") for x in f["reasons"]) and k not in f["reasons"], (c, k)
 
@@ -155,7 +155,7 @@ def test_reasons_used_in_engine_exist():
         assert reason in FACTORS[code]["reasons"] or reason in MODEL["ad"]["reasons"], (code, reason)
     for a, b in re.findall(r'\("(\w+)", "(\w+)"\) if code == "R2"', src) + re.findall(r'else \("(\w+)", "(\w+)"\)', src):
         assert {a, b} <= set(FACTORS["R2"]["reasons"]) | set(FACTORS["R3"]["reasons"])
-    # вето аналитика — только для R2 (R3 не затрагивается)
+    # вето аналитика - только для R2(R3 не затрагивается)
     for reason in re.findall(r'_factor\(code, "(?:hit|clear|unknown)", "(\w+)"', src):
         assert reason in FACTORS["R2"]["reasons"], reason
         assert reason == "offer_rejected" or reason in FACTORS["R3"]["reasons"], reason
@@ -205,7 +205,7 @@ ABSENT, VERIFIED, MISMATCH, IDLE = ("hit", "absent"), ("hit", "verified"), ("hit
 UNLINKED, ADS_UNLINKED, REJECTED = ("unknown", "offer_unlinked"), ("unknown", "ads_unlinked"), ("clear", "offer_rejected")
 BUILT_ALL = {c: ("clear", "built") for c in ["R1", "R2", "R3", "R5", "R6"]}
 
-# имя → (балл, зона, «нужна проверка», отличия факторов от DEFAULT)
+# имя → (балл, зона, "нужна проверка", отличия факторов от DEFAULT)
 EXPECT = {
     "case_a": (35, "yellow", True, {"R1": ("unknown", "unknown"), "R2": OFFER, "R3": ADS}),
     "case_b": (70, "red", False, {"R1": ABSENT, "R2": OFFER, "R3": ADS}),
@@ -283,26 +283,26 @@ EXPECT = {
     "o2_young_developer_flag": (0, "green", False, {}),
     "o2_developer_unknown": (0, "green", False, {}),
 }
-# Карточка ЖК из открытого реестра (origin «registry»): основание, готовность и снимки — «нет сведений»; обращения не
-# сверены — пустой список не значит «обращений нет» (R4 unchecked), пока аналитик не отметит «Обращений нет — сверено»
+# Карточка ЖК из открытого реестра(origin "registry"): основание, готовность и снимки - "нет сведений"; обращения не
+# сверены - пустой список не значит "обращений нет"(R4 unchecked), пока аналитик не отметит "Обращений нет - сверено"
 REG_UNKNOWN = {"R1": ("unknown", "unknown"), "R4": ("unknown", "unchecked"), "R5": ("unknown", "incomplete"),
                "R6": ("unknown", "no_photos")}
 APPEALS_CHECKED = ("clear", "none_checked")
 EXPECT |= {
-    # без проверенных сведений риск не оценивается: балл 0, факторы — справочно (просрочка из реестра — hit без балла)
+    # без проверенных сведений риск не оценивается: балл 0, факторы - справочно(просрочка из реестра - hit без балла)
     "registry_not_assessed": (0, "green", True, REG_UNKNOWN),
     "registry_hypothesis_not_assessed": (0, "green", True, {**REG_UNKNOWN, "R2": UNLINKED, "R3": ADS_UNLINKED,
                                                             "R4": ("unknown", "pending")}),
     "registry_overdue_not_assessed": (0, "green", True, {**REG_UNKNOWN, "R6": ("hit", "overdue")}),
     "registry_dismissed_link_not_assessed": (0, "green", True, REG_UNKNOWN),
     "registry_unsourced_basis_not_assessed": (0, "green", True, {**REG_UNKNOWN, "R1": ("unknown", "absent_unsourced")}),
-    # проверенные сведения есть — обычный расчёт только по подтверждённым фактам
+    # проверенные сведения есть - обычный расчёт только по подтверждённым фактам
     "registry_confirmed_link_assessed": (35, "yellow", True, {**REG_UNKNOWN, "R2": OFFER, "R3": ADS}),
     "registry_sourced_basis_assessed": (35, "yellow", True, {**REG_UNKNOWN, "R1": ABSENT}),
     "registry_verified_appeal_assessed": (15, "green", True, {**REG_UNKNOWN, "R4": VERIFIED}),
     "registry_photo_assessed": (0, "green", True, {"R1": ("unknown", "unknown"), "R4": ("unknown", "unchecked"),
                                                    "R5": ("unknown", "incomplete")}),
-    # «Обращений нет — сверено» (источник и дата): R4 снят; без даты — не сверено; сама сверка риск не открывает
+    # "Обращений нет - сверено"(источник и дата): R4 снят; без даты - не сверено; сама сверка риск не открывает
     "registry_appeals_checked_assessed": (35, "yellow", True, {**REG_UNKNOWN, "R1": ABSENT, "R4": APPEALS_CHECKED}),
     "registry_appeals_check_undated_assessed": (35, "yellow", True, {**REG_UNKNOWN, "R1": ABSENT}),
     "registry_appeals_check_only_not_assessed": (0, "green", True, {**REG_UNKNOWN, "R4": APPEALS_CHECKED}),
@@ -313,7 +313,7 @@ OBS_EXPECT = {
     "r6_idle_89_clear": {"O3": "flag"},
     "o2_young_developer_flag": {"O1": "flag", "O2": "flag"},
     "o2_developer_unknown": {"O1": "unknown", "O2": "unknown"},
-    # застройщик из реестра: портфель не получен — профиль неизвестен
+    # застройщик из реестра: портфель не получен - профиль неизвестен
     **{n: {"O1": "unknown", "O2": "unknown"} for n in EXPECT if n.startswith("registry_")},
 }
 
@@ -335,7 +335,7 @@ def test_complex_fixture(name):
     assert r["assessed"] is (name not in NOT_ASSESSED)
     if r["assessed"]:
         assert ("Нужна проверка" in r["summary"]) == needs
-    else:  # вместо итога — «риск не оценивается»
+    else:  # вместо итога - "риск не оценивается"
         assert r["summary"] == MODEL["notAssessed"]["summary"]
 
 
@@ -369,7 +369,7 @@ def test_case_c_guarantee_without_mio_is_not_r1():
 
 @pytest.mark.parametrize("src", ["fixture", "seed_c3"])
 def test_guarantee_with_unknown_mio_claims_nothing_about_mio(src):
-    """Гарантия есть, по МИО «нет данных» — не R1, но и не «отсутствие МИО»: его никто не устанавливал."""
+    """Гарантия есть, по МИО "нет данных" - не R1, но и не "отсутствие МИО": его никто не устанавливал."""
     r1 = fac(run("r1_guarantee_mio_unknown_clear") if src == "fixture" else run_seed("c3"), "R1")
     assert (r1["state"], r1["reason"]) == ("clear", "ok_guarantee")
     assert r1["evidence"] == "Действующая гарантия ЕО подтверждена" and "МИО" not in r1["evidence"]
@@ -391,19 +391,19 @@ def test_r1_evidence_documents():
     assert ok["items"][0]["quote"].startswith("Гарантия ЕО №")
 
 
-# ---------- R1: провенанс по документам (basis.sources) ----------
+# ---------- R1: провенанс по документам(basis.sources) ----------
 
 KZHK = ("Реестр гарантий КЖК, homeportal.kz (демо)", "2026-10-09", "https://homeportal.kz")
 MIO = ("Реестр разрешений МИО, elicense.kz (демо)", "2026-10-08", "https://elicense.kz")
 
 
 def _docs(r):
-    """ref документа → (источник, дата, ссылка) из доказательств R1; нет поля — None."""
+    """ref документа → (источник, дата, ссылка) из доказательств R1; нет поля - None."""
     return {i["ref"]: (i.get("source"), i.get("date"), i.get("url")) for i in fac(r, "R1")["items"]}
 
 
 def test_r1_absent_per_document_text_and_items():
-    """Свои записи документов важнее общей сверки: текст и доказательства — по документу, со ссылкой."""
+    """Свои записи документов важнее общей сверки: текст и доказательства - по документу, со ссылкой."""
     r1 = fac(run("r1_absent_per_doc_hit"), "R1")
     assert r1["evidence"] == ("Проверкой установлено: гарантии ЕО нет (Реестр гарантий КЖК, homeportal.kz (демо), 09.10.2026); "
                               "разрешения МИО нет (Реестр разрешений МИО, elicense.kz (демо), 08.10.2026)")
@@ -415,12 +415,12 @@ def test_r1_absent_per_document_text_and_items():
 def test_r1_absent_per_document_without_general_check():
     r = run("r1_absent_per_doc_no_general_hit")
     assert fac(r, "R1")["evidence"].startswith("Проверкой установлено: гарантии ЕО нет (Реестр гарантий КЖК")
-    # пустая ссылка не выводится; документ без записи и без общей сверки — без источника и даты
+    # пустая ссылка не выводится; документ без записи и без общей сверки - без источника и даты
     assert _docs(r) == {"guarantee": KZHK, "mio": MIO[:2] + (None,), "bvu": (None, None, None)}
 
 
 def test_r1_absent_mixed_fallback():
-    """Своя запись только у гарантии — МИО (и банк) берут общую сверку; у каждого документа свой источник в тексте."""
+    """Своя запись только у гарантии - МИО(и банк) берут общую сверку; у каждого документа свой источник в тексте."""
     r = run("r1_absent_mixed_fallback_hit")
     assert fac(r, "R1")["evidence"] == ("Проверкой установлено: гарантии ЕО нет (Реестр гарантий КЖК, homeportal.kz (демо), "
                                         "09.10.2026); разрешения МИО нет (Картотека ГАСК (демо), 05.10.2026)")
@@ -430,7 +430,7 @@ def test_r1_absent_mixed_fallback():
 
 @pytest.mark.parametrize("name", ["case_b", "r1_absent_sourced_hit", "r1_absent_general_only_hit", "r1_absent_same_source_per_doc_hit"])
 def test_r1_absent_same_source_short_text(name):
-    """Один источник и одна дата (по выводу) у обоих документов — короткий текст, как у общей сверки."""
+    """Один источник и одна дата(по выводу) у обоих документов - короткий текст, как у общей сверки."""
     r1 = fac(run(name), "R1")
     assert (r1["state"], r1["reason"]) == ("hit", "absent")
     assert r1["evidence"] == "Проверкой установлено: гарантии ЕО нет и разрешения МИО нет (Картотека ГАСК (демо), 09.10.2026)"
@@ -459,8 +459,8 @@ def test_r1_guarantee_only_sourced_items():
 
 @pytest.mark.parametrize("name", ["r1_unknown_doc_without_source", "r1_unknown_doc_with_general_check"])
 def test_r1_unknown_document_without_source(name):
-    """Документ «нет данных» не сверялся: в доказательствах ни источника, ни даты, ни ссылки — даже при общей сверке
-    и даже при своей записи (у банка во втором случае). Сверенный документ (гарантия) — со своим провенансом."""
+    """Документ "нет данных" не сверялся: в доказательствах ни источника, ни даты, ни ссылки - даже при общей сверке
+    и даже при своей записи(у банка во втором случае). Сверенный документ(гарантия) - со своим провенансом."""
     r1 = fac(run(name), "R1")
     assert (r1["state"], r1["reason"]) == ("unknown", "unknown")
     unknown = [i for i in r1["items"] if i["value"] == "unknown"]
@@ -470,8 +470,8 @@ def test_r1_unknown_document_without_source(name):
 
 
 def test_r1_general_check_only_for_checked_documents():
-    """Общая сверка подписывает только документы «да/нет» без своей записи: у c6 гарантия «нет данных» не получает
-    источник «Реестр разрешений МИО», у c12 гарантия и МИО — ответ банка."""
+    """Общая сверка подписывает только документы "да/нет" без своей записи: у c6 гарантия "нет данных" не получает
+    источник "Реестр разрешений МИО", у c12 гарантия и МИО - ответ банка."""
     assert _docs(run("r1_guarantee_mio_unknown_clear"))["mio"] == (None, None, None)
     assert _docs(run("r1_guarantee_no_mio_clear"))["mio"] == ("Реестр гарантий ЕО (демо)", "2026-10-05", None)
     assert _docs(run_seed("c6"))["guarantee"] == (None, None, None)
@@ -480,7 +480,7 @@ def test_r1_general_check_only_for_checked_documents():
 
 @pytest.mark.parametrize("cid", ["c2", "c4", "c11"])
 def test_seed_r1_by_document(cid):
-    """Сид: у каждого документа в состоянии «да/нет» своя запись — R1 и ссылки в доказательствах по документу."""
+    """Сид: у каждого документа в состоянии "да/нет" своя запись - R1 и ссылки в доказательствах по документу."""
     b = SEED_CX[cid]["basis"]
     r1 = fac(run_seed(cid), "R1")
     g, m = b["sources"]["guarantee"], b["sources"]["mio"]
@@ -492,7 +492,7 @@ def test_seed_r1_by_document(cid):
 
 
 def test_seed_document_provenance():
-    """Сид: документ «да/нет» — своя запись, без неё общая сверка; документ «нет данных» — без источника и даты."""
+    """Сид: документ "да/нет" - своя запись, без неё общая сверка; документ "нет данных" - без источника и даты."""
     for cid, c in SEED_CX.items():
         b = c["basis"]
         for key, prov in _docs(run_seed(cid)).items():  # у введённых R1 без доказательств
@@ -509,7 +509,7 @@ def test_seed_document_provenance():
 @pytest.mark.parametrize("name", ["link_hypothesis_079_unknown", "link_high_confidence_unconfirmed_unknown",
                                   "link_blank_confirmed_by_unknown"])
 def test_link_hypothesis_evidence(name):
-    """Гипотеза ИИ — «нужна проверка» без порога-факта в тексте: уверенность, даже 95–97%, фактом не делает."""
+    """Гипотеза ИИ - "нужна проверка" без порога-факта в тексте: уверенность, даже 95-97%, фактом не делает."""
     r = run(name)
     assert fac(r, "R2")["evidence"] == \
         "Предложение внести деньги найдено в публикациях: 1, но привязка к ЖК — гипотеза ИИ, аналитик её не подтвердил — нужна проверка"
@@ -531,7 +531,7 @@ def test_link_confirmed_by_analyst_regardless_of_confidence():
 
 
 def test_link_mixed_counts_only_confirmed():
-    """Подтверждённая аналитиком привязка с уверенностью 0.6 — факт; гипотеза ИИ с уверенностью 0.9 — нет."""
+    """Подтверждённая аналитиком привязка с уверенностью 0.6 - факт; гипотеза ИИ с уверенностью 0.9 - нет."""
     f = CX_FX["link_mixed_counts_confirmed_only"]
     confirmed = [a["id"] for a in f["ads"] if a.get("linkConfirmedBy")]
     assert len(confirmed) == 1 and [a["matchConfidence"] for a in f["ads"]] == [0.9, 0.6]
@@ -542,20 +542,20 @@ def test_link_mixed_counts_only_confirmed():
     assert fac(r, "R3")["evidence"] == "Реклама продажи до ввода объекта: публикаций 1"
 
 
-# ---------- решение аналитика по условиям оплаты (вето R2) ----------
+# ---------- решение аналитика по условиям оплаты(вето R2) ----------
 
 def test_r2_terms_rejected_veto():
     r = run("r2_terms_rejected_clear")
     r2, r3 = fac(r, "R2"), fac(r, "R3")
     assert (r2["state"], r2["reason"], r2["points"]) == ("clear", "offer_rejected", 25)
     assert r2["evidence"] == "Аналитик отклонил условия оплаты в публикациях: 1 — это не предложение внести деньги, в балл не входит"
-    # отклонённая публикация остаётся в доказательствах — видно, что и почему не засчитано
+    # отклонённая публикация остаётся в доказательствах - видно, что и почему не засчитано
     assert [(i["ref"], i["marker"], i["quote"]) for i in r2["items"]] == [("fxa33", "бронь", "Платная бронь квартиры от 500 000 ₸.")]
     assert (r3["state"], [i["ref"] for i in r3["items"]]) == ("hit", ["fxa33"]), "R3 решение по условиям оплаты не затрагивает"
 
 
 def test_r2_terms_rejected_breaks_red_zone():
-    """Кейс B с отклонённым аналитиком депозитом: R1 + R3 = 45 — без R2 красной зоны нет."""
+    """Кейс B с отклонённым аналитиком депозитом: R1 + R3 = 45 - без R2 красной зоны нет."""
     base, vetoed = run("case_b"), run("r2_terms_rejected_case_b_yellow")
     assert (base["score"], base["zone"]) == (70, "red")
     assert (vetoed["score"], vetoed["zone"], hit_codes(vetoed)) == (45, "yellow", ["R1", "R3"])
@@ -573,27 +573,27 @@ def test_r2_terms_rejected_on_hypothesis_needs_no_r2_check():
     r = run("r2_terms_rejected_hypothesis_clear")
     assert (fac(r, "R2")["state"], fac(r, "R3")["state"]) == ("clear", "unknown")
     assert r["summary"].endswith("Нужна проверка: R3.")
-    # привязка-гипотеза — не факт: отклонённая публикация к этому ЖК не относится и в его R2 не показывается
+    # привязка-гипотеза - не факт: отклонённая публикация к этому ЖК не относится и в его R2 не показывается
     assert (fac(r, "R2")["reason"], fac(r, "R2")["items"]) == ("none", [])
     assert [i["ref"] for i in fac(r, "R3")["items"]] == ["fxa37"]
 
 
 def test_r2_terms_rejected_counts_only_confirmed_links():
-    """Отклонены условия у публикации с привязкой-гипотезой (свежее) и у привязанной фактом: «отклонено аналитиком»
-    считает и показывает только вторую — первая к ЖК не привязана, в доказательства объекта (карточка, сигнал, PDF) не идёт."""
+    """Отклонены условия у публикации с привязкой-гипотезой(свежее) и у привязанной фактом: "отклонено аналитиком"
+    считает и показывает только вторую - первая к ЖК не привязана, в доказательства объекта(карточка, сигнал, PDF) не идёт."""
     r = run("r2_terms_rejected_hypothesis_not_counted")
     r2 = fac(r, "R2")
     assert (r2["state"], r2["reason"], [i["ref"] for i in r2["items"]]) == ("clear", "offer_rejected", ["fxa45"])
     assert r2["evidence"] == "Аналитик отклонил условия оплаты в публикациях: 1 — это не предложение внести деньги, в балл не входит"
     assert (fac(r, "R3")["state"], [i["ref"] for i in fac(r, "R3")["items"]]) == ("hit", ["fxa45"])
-    # та же публикация-гипотеза без решения аналитика давала бы «нужна проверка» — решение её снимает, но фактом не делает
+    # та же публикация-гипотеза без решения аналитика давала бы "нужна проверка" - решение её снимает, но фактом не делает
     f = CX_FX["r2_terms_rejected_hypothesis_not_counted"]
     plain = score_complex(f["complex"], f["developer"], [_without_review(f["ads"][0]), f["ads"][1]], [], AS_OF)
     assert (fac(plain, "R2")["state"], [i["ref"] for i in fac(plain, "R2")["items"]]) == ("unknown", ["fxa44"])
 
 
 def test_r2_terms_rejected_seed_hypothesis_not_in_complex_evidence():
-    """Сид: a4 привязана к c8 гипотезой (71%), a8 — фактом. Отклонены условия у обеих → в R2 ЖК только a8."""
+    """Сид: a4 привязана к c8 гипотезой(71%), a8 - фактом. Отклонены условия у обеих → в R2 ЖК только a8."""
     ads = [{**a, "termsReview": "rejected"} if a["id"] in ("a4", "a8") else a for a in SEED["ads"]]
     c = SEED_CX["c8"]
     r2 = fac(score_complex(c, DEVS.get(c["developerId"]), ads, SEED["appeals"], AS_OF), "R2")
@@ -630,7 +630,7 @@ def test_terms_rejected():
 
 
 def _all_ads():
-    """Все публикации сида и фикстур со своим ЖК (для свойств модели)."""
+    """Все публикации сида и фикстур со своим ЖК(для свойств модели)."""
     yield from ((a, SEED_CX.get(a.get("complexId") or "")) for a in SEED["ads"])
     yield from ((f["ad"], f["complex"]) for f in FX["ad"])
     yield from ((a, f["complex"] if a.get("complexId") == f["complex"]["id"] else None) for f in FX["complex"] for a in f["ads"])
@@ -638,7 +638,7 @@ def _all_ads():
 
 @pytest.mark.parametrize("review", ["rejected", "accepted", None])
 def test_terms_review_touches_only_r2(review):
-    """Отклонение условий оплаты снимает только R2 (по ЖК и по публикации); подтверждение и «нет решения» ничего не меняют."""
+    """Отклонение условий оплаты снимает только R2(по ЖК и по публикации); подтверждение и "нет решения" ничего не меняют."""
     for cid, c in SEED_CX.items():
         ads = [{**_without_review(a), "termsReview": review} for a in SEED["ads"]]
         base = run_seed(cid)
@@ -661,7 +661,7 @@ def test_terms_review_touches_only_r2(review):
 
 
 def test_evidence_order_newest_first():
-    """Доказательства: свежие первыми, при равной дате — по id как строке (так же сортирует фронтенд)."""
+    """Доказательства: свежие первыми, при равной дате - по id как строке(так же сортирует фронтенд)."""
     r = run("link_order_newest_first")
     assert [i["ref"] for i in fac(r, "R2")["items"]] == ["fxt2", "fxt3"]
     assert [i["ref"] for i in fac(r, "R3")["items"]] == ["fxt10", "fxt2", "fxt3"]
@@ -688,7 +688,7 @@ def test_r5_evidence():
 
 
 @pytest.mark.parametrize("name,text", [
-    # 32.3 − 12.3 = 19.999999999999996 во float: без округления это было бы «меньше порога»
+    # 32.3 − 12.3 = 19.999999999999996 во float: без округления это было бы "меньше порога"
     ("r5_float_diff_20_hit", "Заявлено 32.3%, подтверждено 12.3%: разница 20 п.п. (порог 20 п.п.)"),
     ("r5_float_diff_20_2_hit", "Заявлено 62.5%, подтверждено 42.3%: разница 20.2 п.п. (порог 20 п.п.)"),
     ("r5_float_diff_19_95_clear", "Заявлено 32.35%, подтверждено 12.4%: разница 19.95 п.п. — меньше порога 20 п.п."),
@@ -721,7 +721,7 @@ def test_r6_evidence():
 
 
 def test_r6_idle_needs_inactive_photos():
-    """Простой подтверждают только датированные снимки «нет»/«низкая»; период — по ним, доказательства — вся серия."""
+    """Простой подтверждают только датированные снимки "нет"/"низкая"; период - по ним, доказательства - вся серия."""
     active = fac(run("r6_idle_120_active_photos_unknown"), "R6")
     assert (active["state"], active["reason"]) == ("unknown", "idle_unconfirmed")
     assert [i["value"] for i in active["items"]] == ["есть", "есть"]
@@ -797,7 +797,7 @@ def test_ad_fixture(name):
 def test_ad_texts():
     assert fac(run_ad("ad_link_060"), "R1")["evidence"] == \
         "Привязка к ЖК — гипотеза ИИ (уверенность 60%), аналитик её не подтвердил — основание объекта не учитывается"
-    # уверенность ИИ — информативно: и 97% без подтверждения аналитиком остаются гипотезой
+    # уверенность ИИ - информативно: и 97% без подтверждения аналитиком остаются гипотезой
     assert fac(run_ad("ad_high_confidence_unconfirmed"), "R1")["evidence"] == \
         "Привязка к ЖК — гипотеза ИИ (уверенность 97%), аналитик её не подтвердил — основание объекта не учитывается"
     assert fac(run_ad("ad_money_basis_absent_red"), "R2")["evidence"] == "В публикации есть предложение внести деньги"
@@ -817,7 +817,7 @@ def test_ad_ocr_quote():
 
 @pytest.mark.parametrize("name", ["r2_offer_from_ocr_hit", "ad_quote_from_ocr"])
 def test_quote_from_marks_screenshot(name):
-    """Цитата со скриншота помечена quoteFrom = 'ocr', из текста публикации — 'text' (T-24)."""
+    """Цитата со скриншота помечена quoteFrom = 'ocr', из текста публикации - 'text' (T-24)."""
     r = run(name) if name in CX_FX else run_ad(name)
     r2, r3 = fac(r, "R2")["items"][0], fac(r, "R3")["items"][0]
     assert (r2["marker"], r2["quote"], r2["quoteFrom"]) == ("первый взнос", "ПЕРВЫЙ ВЗНОС 20% · ДДУ · ФИКСИРУЕМ ЦЕНУ", "ocr")
@@ -871,7 +871,7 @@ def test_quote():
 
 
 def test_link_confirmed():
-    """Факт — только после решения аналитика (linkConfirmedBy или подтверждённая публикация); уверенность ИИ не в счёт."""
+    """Факт - только после решения аналитика(linkConfirmedBy или подтверждённая публикация); уверенность ИИ не в счёт."""
     for conf in [0.79, 0.8, 0.97, 1]:
         assert not link_confirmed({"matchConfidence": conf, "status": "new"}), conf
         assert not link_confirmed({"matchConfidence": conf, "status": "in_review", "linkConfirmedBy": None}), conf
@@ -880,7 +880,7 @@ def test_link_confirmed():
     assert link_confirmed({"status": "confirmed", "linkConfirmedBy": None})
     assert not link_confirmed({"status": "in_review"})
     assert not link_confirmed({})
-    # пустое имя — не подтверждение (пробелы как в Python str.strip — их же отрезает фронтенд); одна дата — тоже
+    # пустое имя - не подтверждение(пробелы как в Python str.strip - их же отрезает фронтенд); одна дата - тоже
     for blank in ["", "  ", "\u00a0\u3000\t\n"]:
         assert not link_confirmed({"status": "new", "linkConfirmedBy": blank}), repr(blank)
     assert not link_confirmed({"status": "new", "linkConfirmedAt": "2026-10-11T10:00:00+05:00"})
@@ -912,7 +912,7 @@ def test_unknown_never_becomes_r1(g, m, k, src, chk):
     assert (state == "hit") == (g == "no" and m == "no" and src and chk)
     if g == "yes" or (m == "yes" and k == "yes"):
         assert state == "clear"
-    if g == "yes":  # «отсутствие МИО не является R1» — только при установленном отсутствии МИО
+    if g == "yes":  # "отсутствие МИО не является R1" - только при установленном отсутствии МИО
         assert fac(r, "R1")["reason"] == ("ok_guarantee_no_mio" if m == "no" else "ok_guarantee")
     if "unknown" in (g, m) and g != "yes" and not (m == "yes" and k == "yes"):
         assert state == "unknown"
@@ -927,7 +927,7 @@ OWN = {"full": {"source": "Реестр (демо)", "url": "https://example.kz"
 
 @pytest.mark.parametrize("own_g,own_m,general", list(itertools.product(OWN, OWN, [True, False])))
 def test_r1_absent_requires_provenance_of_both_documents(own_g, own_m, general):
-    """Гарантии и МИО нет: R1 ⇔ у каждого из двух документов есть источник и дата — своя запись целиком, а без неё общая сверка."""
+    """Гарантии и МИО нет: R1 ⇔ у каждого из двух документов есть источник и дата - своя запись целиком, а без неё общая сверка."""
     f = _clean()
     basis = {"guarantee": "no", "mio": "no", "bvu": "no", "sources": {}}
     for key, own in (("guarantee", own_g), ("mio", own_m)):
@@ -950,7 +950,7 @@ def test_r1_absent_requires_provenance_of_both_documents(own_g, own_m, general):
 @pytest.mark.parametrize("conf", [0, 0.31, 0.5, 0.79, 0.8, 0.95, 1])
 @pytest.mark.parametrize("status", ["new", "needs_check", "in_review"])
 def test_link_hypothesis_never_becomes_r2_r3(conf, status):
-    """Без подтверждения аналитиком привязка — гипотеза при любой уверенности ИИ."""
+    """Без подтверждения аналитиком привязка - гипотеза при любой уверенности ИИ."""
     f = _clean()
     ad = copy.deepcopy(CX_FX["case_b"]["ads"][0]) | {"matchConfidence": conf, "status": status, "complexId": f["complex"]["id"],
                                                      "linkConfirmedBy": None, "linkConfirmedAt": None}
@@ -961,7 +961,7 @@ def test_link_hypothesis_never_becomes_r2_r3(conf, status):
     r1 = fac(score_ad(ad, absent), "R1")
     assert (r1["state"], r1["reason"]) == ("unknown", "R1_link_unconfirmed")
     assert f"(уверенность {math.floor(conf * 100 + 0.5)}%)" in r1["evidence"]
-    # то же с подтверждением аналитика — факт при любой уверенности
+    # то же с подтверждением аналитика - факт при любой уверенности
     confirmed = ad | {"linkConfirmedBy": "Тестова А. (демо)", "linkConfirmedAt": "2026-10-11T10:00:00+05:00"}
     r = score_complex(f["complex"], f["developer"], [confirmed], [], AS_OF)
     assert hit_codes(r) == ["R2", "R3"] and (r["score"], r["needsCheck"]) == (35, False)
@@ -977,7 +977,7 @@ def _all_results():
 
 
 def _templates(code, reason, is_ad):
-    """Шаблоны текста причины: основной и её варианты (ключ «<причина>_<вариант>» в factors[].variants)."""
+    """Шаблоны текста причины: основной и её варианты(ключ "<причина>_<вариант>" в factors[].variants)."""
     if is_ad and reason in MODEL["ad"]["reasons"]:
         return [MODEL["ad"]["reasons"][reason]]
     variants = FACTORS[code].get("variants", {})
@@ -989,13 +989,13 @@ def _matches(tpl, text):
 
 
 def test_formula_and_texts_hold_for_every_result():
-    """Для всего сида и всех синтетических случаев: формула §5, зона, «нужна проверка», тексты из модели."""
+    """Для всего сида и всех синтетических случаев: формула §5, зона, "нужна проверка", тексты из модели."""
     for name, r, is_ad in _all_results():
         hit = hit_codes(r)
         if r.get("assessed", True):
             assert r["score"] == min(100, sum(FACTORS[c]["weight"] for c in hit)), name
             assert r["zone"] == zone_for(r["score"], hit), name
-        else:  # карточка из реестра без проверенных сведений: балла и зоны нет (0 / green — только для формы ответа)
+        else:  # карточка из реестра без проверенных сведений: балла и зоны нет(0 / green - только для формы ответа)
             assert (r["score"], r["zone"], r["summary"]) == (0, "green", MODEL["notAssessed"]["summary"]), name
         assert r["needsCheck"] == bool(unknown_codes(r)), name
         assert ("R2" not in hit) or ("R3" in hit), f"{name}: предложение денег — это и реклама продажи (кейсы A/B)"
@@ -1076,7 +1076,7 @@ def test_seed_traffic_light():
 
 
 def test_seed_link_confirmations():
-    """В сиде привязки подтверждены аналитиками явно; a4, a9, a12 — гипотезы ИИ (баллы сида от этого не меняются)."""
+    """В сиде привязки подтверждены аналитиками явно; a4, a9, a12 - гипотезы ИИ(баллы сида от этого не меняются)."""
     confirmed = {a["id"] for a in SEED["ads"] if link_confirmed(a)}
     assert confirmed == {"a1", "a2", "a3", "a5", "a6", "a7", "a8", "a10", "a11"}
     for a in SEED["ads"]:
@@ -1089,8 +1089,8 @@ def test_seed_link_confirmations():
 
 
 def test_seed_without_analyst_confirmations():
-    """Сотрите подтверждения аналитиков — и высокая уверенность ИИ (0.83–0.99) не даст ни R2, ни R3:
-    фактом остаётся только привязка публикации, по которой аналитик подтвердил нарушение (a6 → c11)."""
+    """Сотрите подтверждения аналитиков - и высокая уверенность ИИ(0.83-0.99) не даст ни R2, ни R3:
+    фактом остаётся только привязка публикации, по которой аналитик подтвердил нарушение(a6 → c11)."""
     ads = [{**a, "linkConfirmedBy": None, "linkConfirmedAt": None} for a in SEED["ads"]]
     by_status = {a["complexId"] for a in ads if a.get("status") == "confirmed"}
     assert by_status == {"c11"}
@@ -1124,7 +1124,7 @@ def test_fixtures_shape():
         assert f["asOf"] == AS_OF and isinstance(f["ads"], list) and isinstance(f["appeals"], list), f["name"]
     for f in FX["ad"]:
         assert {"id", "text", "matchConfidence", "status", "linkConfirmedBy"} <= set(f["ad"]), f["name"]
-    for f in FX["complex"]:  # подтверждение привязки задано явно (строка или null) у каждой публикации
+    for f in FX["complex"]:  # подтверждение привязки задано явно(строка или null) у каждой публикации
         assert all("linkConfirmedBy" in a and "linkConfirmedAt" in a for a in f["ads"]), f["name"]
 
 
@@ -1150,7 +1150,7 @@ def test_as_of_accepts_datetime_and_string():
 
 
 def _frozen_now(utc):
-    """Подмена datetime в app.risk: now(tz) отдаёт заданный момент UTC; без tz — «наивное» UTC (будто процесс в UTC)."""
+    """Подмена datetime в app.risk: now(tz) отдаёт заданный момент UTC; без tz - "наивное" UTC(будто процесс в UTC)."""
     class Frozen(datetime):
         @classmethod
         def now(cls, tz=None):
@@ -1160,7 +1160,7 @@ def _frozen_now(utc):
 
 @pytest.mark.parametrize("utc,day", [
     (datetime(2026, 10, 15, 18, 59, tzinfo=timezone.utc), "2026-10-15"),  # 23:59 в Усть-Каменогорске
-    (datetime(2026, 10, 15, 19, 0, tzinfo=timezone.utc), "2026-10-16"),   # 00:00 — по UTC ещё 15-е
+    (datetime(2026, 10, 15, 19, 0, tzinfo=timezone.utc), "2026-10-16"),   # 00:00 - по UTC ещё 15-е
     (datetime(2026, 10, 15, 23, 30, tzinfo=timezone.utc), "2026-10-16"),
 ])
 def test_default_as_of_is_today_utc5(monkeypatch, utc, day):

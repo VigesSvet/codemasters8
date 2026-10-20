@@ -1,5 +1,5 @@
-"""API подключений (integration-spec §10.4–§10.8, §11.1, §5.3, §16.2 test_connectors_api): состояние без секретов,
-права администратора, настройки, запуски, «Обновить всё», изоляция модулей, защита публичного адреса."""
+"""API подключений(integration-spec §10.4-§10.8, §11.1, §5.3, §16.2 test_connectors_api): состояние без секретов,
+права администратора, настройки, запуски, "Обновить всё", изоляция модулей, защита публичного адреса."""
 import json
 import re
 from datetime import timedelta
@@ -97,7 +97,7 @@ def test_admin_check(client, env):
     assert client.get("/api/admin/check", headers=admin()).json() == {"ok": True}
     assert client.get("/api/admin/check", headers={"Authorization": f"Bearer {FAKE_ADMIN_TOKEN}"}).status_code == 200
     assert connectors(client)["adminConfigured"] is True
-    env(SERVICE_API_TOKEN=FAKE_ADMIN_TOKEN)  # совпадает с сервисным — администратор не настроен
+    env(SERVICE_API_TOKEN=FAKE_ADMIN_TOKEN)  # совпадает с сервисным - администратор не настроен
     assert client.get("/api/admin/check", headers=admin()).status_code == 503
     assert connectors(client)["adminConfigured"] is False
 
@@ -105,7 +105,7 @@ def test_admin_check(client, env):
 # ---------- настройки ----------
 
 class StrictIg(Connector):
-    """Instagram с проверкой формата аккаунта (как настоящий модуль)."""
+    """Instagram с проверкой формата аккаунта(как настоящий модуль)."""
     code = "instagram"
     kind = "collector"
     platform = "instagram"
@@ -140,7 +140,7 @@ def test_patch_auth_and_validation(client, env, monkeypatch):
         assert [(e.kind, e.who, e.what) for e in what] == [
             ("data", AUTHOR, "Настройки источника «Instagram» изменены: аккаунты: +@tumar.group.astana, +@altai.build")]
         assert service.row(db, "instagram").updated_by == AUTHOR
-    # «Система» — зарезервированное имя
+    # "Система" - зарезервированное имя
     r = client.patch("/api/sources/instagram", headers=admin(), json={"author": "система", "enabled": False})
     assert r.status_code == 422 and "зарезервировано" in r.text
     # формат элемента проверяет подключение → 422 с полем config
@@ -150,12 +150,12 @@ def test_patch_auth_and_validation(client, env, monkeypatch):
     assert r.status_code == 422
     err = r.json()["detail"][0]
     assert err["loc"] == ["body", "config", "accounts"] and err["msg"].startswith("Неверный аккаунт Instagram")
-    # параметра, которого у подключения нет, — 422; неизвестного поля схемы — 422
+    # параметра, которого у подключения нет, - 422; неизвестного поля схемы - 422
     assert client.patch("/api/sources/instagram", headers=admin(),
                         json={"author": AUTHOR, "config": {"channels": ["x"]}}).status_code == 422
     assert client.patch("/api/sources/instagram", headers=admin(),
                         json={"author": AUTHOR, "config": {"token": "x"}}).status_code == 422
-    # включить ненастроенное — 409 с именами переменных
+    # включить ненастроенное - 409 с именами переменных
     r = client.patch("/api/sources/instagram", headers=admin(), json={"author": AUTHOR, "enabled": True})
     assert (r.status_code, r.json()["detail"]) == (409, "Сначала настройте подключение на сервере: "
                                                         "META_USER_ACCESS_TOKEN")
@@ -188,8 +188,8 @@ def test_enable_queues_test_and_disable_cancels(client, env):
 
 
 def test_disable_keeps_deferred_paid_run(client, env):
-    """Платный сбор ждёт между фазами (Deferred: задание снова «в очереди», внешний запуск Apify уже идёт): выключение
-    его не отменяет — иначе оплаченный запуск не дочитать и стоимость не записать. Новых по расписанию не будет."""
+    """Платный сбор ждёт между фазами(Deferred: задание снова "в очереди", внешний запуск Apify уже идёт): выключение
+    его не отменяет - иначе оплаченный запуск не дочитать и стоимость не записать. Новых по расписанию не будет."""
     env(SAQ_ADMIN_TOKEN=FAKE_ADMIN_TOKEN, APIFY_TOKEN=SECRETS["APIFY_TOKEN"])
     with SessionLocal() as db:
         r = service.row(db, "tiktok", create=True)
@@ -207,7 +207,7 @@ def test_disable_keeps_deferred_paid_run(client, env):
     with SessionLocal() as db:
         job = db.scalars(select(models.Job).where(models.Job.run_id == run_id)).one()
         assert job.status == "queued" and db.get(models.CollectionRun, run_id).status == "queued"
-    # без внешнего запуска — отменяется, как обычно
+    # без внешнего запуска - отменяется, как обычно
     r = client.patch("/api/sources/tiktok", headers=admin(), json={"author": AUTHOR, "enabled": True})
     assert r.status_code == 200, r.text
     with SessionLocal() as db:
@@ -226,8 +226,8 @@ NOTE = "страница 2: 503 от сервера krisha.kz"
 
 
 def _detailed() -> int:
-    """Подключение и запуск со всеми подробностями (пояснение, ошибка, настройки, факты, автор, стоимость, заметки) и
-    живой воркер с ID — то, что посетитель видеть не должен."""
+    """Подключение и запуск со всеми подробностями(пояснение, ошибка, настройки, факты, автор, стоимость, заметки) и
+    живой воркер с ID - то, что посетитель видеть не должен."""
     now = models.utcnow()
     with SessionLocal() as db:
         r = service.row(db, "krisha", create=True)
@@ -246,7 +246,7 @@ def _detailed() -> int:
 
 @pytest.mark.visitor
 def test_visitor_sees_only_status_and_counts(client, env):
-    """Без токена администратора (и с неверным): статусы, расписание и счётчики есть; способа подключения, имён
+    """Без токена администратора(и с неверным): статусы, расписание и счётчики есть; способа подключения, имён
     ключей, списков источников, пояснений, ошибок, фактов, автора, стоимости, заметок и ID воркера нет."""
     env(SAQ_ADMIN_TOKEN=FAKE_ADMIN_TOKEN)
     run_id = _detailed()
@@ -294,7 +294,7 @@ def test_admin_token_gets_full_view(client, env):
     assert ig["missing"] == ["META_USER_ACCESS_TOKEN"]
     got = client.get(f"/api/collection-runs/{run_id}", headers={"Authorization": f"Bearer {FAKE_ADMIN_TOKEN}"})
     assert got.json()["notes"][0]["text"] == NOTE
-    # администрирование не настроено — подробностей нет никому
+    # администрирование не настроено - подробностей нет никому
     env(SAQ_ADMIN_TOKEN=None)
     body = client.get("/api/sources/connectors", headers=admin()).json()
     assert (body["admin"], body["adminConfigured"]) == (False, False)
@@ -383,11 +383,11 @@ def test_not_connector_object_is_broken():
     assert isinstance(conns["dgis"], registry.BrokenConnector) and conns["dgis"].kind == "geo"
 
 
-# ---------- публичный адрес (§5.3) ----------
+# ---------- публичный адрес(§5.3) ----------
 
 def test_not_configured_409_names_real_problem(client, env):
-    """Регрессия: у Telegram без сессии 409 советовал задать TG_SESSION_PATH (её задаёт compose) — нужен вход, и
-    подсказку о входе подключение уже знает (missing_detail)."""
+    """Регрессия: у Telegram без сессии 409 советовал задать TG_SESSION_PATH(её задаёт compose) - нужен вход, и
+    подсказку о входе подключение уже знает(missing_detail)."""
     from app.settings import get_settings
 
     env(SAQ_ADMIN_TOKEN=FAKE_ADMIN_TOKEN, TG_API_ID="123456", TG_API_HASH=SECRETS["TG_API_HASH"])
@@ -399,7 +399,7 @@ def test_not_configured_409_names_real_problem(client, env):
     for r in (client.post("/api/sources/telegram/test", headers=admin(), json={"author": AUTHOR}),
               client.patch("/api/sources/telegram", headers=admin(), json={"author": AUTHOR, "enabled": True})):
         assert (r.status_code, r.json()["detail"]) == (409, hint)
-    env(TG_API_ID=None)  # нет переменной окружения — по-прежнему её имя
+    env(TG_API_ID=None)  # нет переменной окружения - по-прежнему её имя
     r = client.post("/api/sources/telegram/test", headers=admin(), json={"author": AUTHOR})
     assert (r.status_code, r.json()["detail"]) == (409, "Сначала настройте подключение на сервере: TG_API_ID")
 
@@ -414,12 +414,12 @@ def test_public_host_guard(client, env):
     assert r.status_code != 404 or r.json() != {"detail": "Не найдено"}
     assert client.get("/api/ads", headers={"X-Forwarded-Host": "X.ngrok-free.dev:443"}).status_code == 404
     assert client.get("/api/ads", headers={"Host": "x.ngrok-free.dev:443"}).status_code == 404
-    # регрессия: хост с конечной точкой — тот же хост, API через туннель не открывается
+    # регрессия: хост с конечной точкой - тот же хост, API через туннель не открывается
     for headers in ({"Host": "x.ngrok-free.dev."}, {"Host": "X.ngrok-free.dev.:443"},
                     {"X-Forwarded-Host": "x.ngrok-free.dev."}):
         for path in ("/api/ads", "/docs", "/openapi.json", "/api/health"):
             assert client.get(path, headers=headers).status_code == 404, (headers, path)
-    assert client.get("/api/ads").status_code == 200  # обычный адрес — как раньше
+    assert client.get("/api/ads").status_code == 200  # обычный адрес - как раньше
     env(OLX_REDIRECT_URI=None)
     assert client.get("/api/ads", headers=host).status_code == 200
 

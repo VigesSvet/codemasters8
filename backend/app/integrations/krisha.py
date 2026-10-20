@@ -1,30 +1,30 @@
-"""Krisha.kz — HTML-сборщик выдачи (integration-spec §12.6, план §9). API для сбора у Krisha нет.
+"""Krisha.kz - HTML-сборщик выдачи(integration-spec §12.6, план §9). API для сбора у Krisha нет.
 
-Страница читается обычным HTTP-запросом с честным User-Agent из настроек, без cookie (cookie «sl-session» защиты
+Страница читается обычным HTTP-запросом с честным User-Agent из настроек, без cookie(cookie "sl-session" защиты
 SafeLine не сохраняется и не отправляется), с паузой KRISHA_MIN_DELAY_S + 0…2 с перед каждым запросом после первого,
-не больше MAX_REQUESTS запросов за запуск; перенаправления — вручную и только на https://krisha.kz/…; robots.txt сайта
-соблюдается (разбирается из ответа клиента подключения, кэш — сутки в состоянии подключения).
+не больше MAX_REQUESTS запросов за запуск; перенаправления - вручную и только на https://krisha.kz/…; robots.txt сайта
+соблюдается(разбирается из ответа клиента подключения, кэш - сутки в состоянии подключения).
 
-Данные страницы: присваивание `window.data = {…}` разбирается JSON-декодером — JavaScript не выполняется. Из снимка
-отбрасываются сведения пользователя, настройки и служебные токены (user, config, ipInfo, app*, centrifuge…), остальное —
-по белому списку. Поля карточек выдачи — из DOM (div.a-card[data-id]); описание, ЖК, застройщик и блок документов
-карточки объявления — из DOM, остальное — из белого списка блока advert.
+Данные страницы: присваивание `window.data = {…}` разбирается JSON-декодером - JavaScript не выполняется. Из снимка
+отбрасываются сведения пользователя, настройки и служебные токены(user, config, ipInfo, app*, centrifuge…), остальное -
+по белому списку. Поля карточек выдачи - из DOM(div.a-card[data-id]); описание, ЖК, застройщик и блок документов
+карточки объявления - из DOM, остальное - из белого списка блока advert.
 
-Если сайт отвечает проверкой доступа (HTTP 468 SafeLine, CAPTCHA, JS-challenge), это не пустая выдача: страница поиска —
-AccessBlocked (сбор остановлен до ручного действия), карточка — запуск «частично» с данными из выдачи. Обход проверок не
+Если сайт отвечает проверкой доступа(HTTP 468 SafeLine, CAPTCHA, JS-challenge), это не пустая выдача: страница поиска -
+AccessBlocked(сбор остановлен до ручного действия), карточка - запуск "частично" с данными из выдачи. Обход проверок не
 выполняется: ни подмены браузера, ни повторной отправки cookie, ни решения проверок, ни прокси. Необязательный Playwright
-(KRISHA_PLAYWRIGHT=1) открывает закрытую карточку с выключенным JavaScript (скрипт проверки не выполняется никогда) и
-берёт только ответ самой навигации: проверка доступа в нём — та же остановка.
+(KRISHA_PLAYWRIGHT=1) открывает закрытую карточку с выключенным JavaScript(скрипт проверки не выполняется никогда) и
+берёт только ответ самой навигации: проверка доступа в нём - та же остановка.
 
-Документы на странице — заявление продавца, не проверенное основание: они хранятся только в extra/raw («documents»),
-в текст публикации не попадают; createdAt/addedAt — отдельными полями, не как время публикации.
+Документы на странице - заявление продавца, не проверенное основание: они хранятся только в extra/raw("documents"),
+в текст публикации не попадают; createdAt/addedAt - отдельными полями, не как время публикации.
 
-Публикации выдачи принимаются после прохода карточек: карточка получена — одна публикация с её данными (новая
-публикация сразу с текстом карточки, без промежуточной версии «из выдачи»), не получена — данные выдачи. За запуск у
+Публикации выдачи принимаются после прохода карточек: карточка получена - одна публикация с её данными(новая
+публикация сразу с текстом карточки, без промежуточной версии "из выдачи"), не получена - данные выдачи. За запуск у
 объявления не больше одной новой версии, и каждое объявление учитывается в счётчиках запуска один раз.
 
-Ключ файла — само фото (photo_key: путь ссылки без размера и расширения), а не его место в галерее: продавец заменил
-или удалил фото — новая версия, новое фото загружается, прежнее перестаёт быть текущим. Превью в выдаче заменено —
+Ключ файла - само фото(photo_key: путь ссылки без размера и расширения), а не его место в галерее: продавец заменил
+или удалил фото - новая версия, новое фото загружается, прежнее перестаёт быть текущим. Превью в выдаче заменено -
 новая версия и перечитывание карточки.
 """
 import contextlib
@@ -52,20 +52,20 @@ log = logging.getLogger("saq.integrations.krisha")
 
 HOST = "krisha.kz"
 BASE = f"https://{HOST}"
-# Фото выдачи и карточек: живая выдача отдаёт их с krisha-photos.kcdn.online (window.data.photoHost), kcdn.kz — прежний
-# CDN Krisha. Поддомены разрешены (http.host_allowed)
+# Фото выдачи и карточек: живая выдача отдаёт их с krisha-photos.kcdn.online(window.data.photoHost), kcdn.kz - прежний
+# CDN Krisha. Поддомены разрешены(http.host_allowed)
 PHOTO_HOSTS = ("kcdn.online", "kcdn.kz", "krisha.kz")
 BROWSER_HOSTS = ("krisha.kz", "kcdn.online", "kcdn.kz")
 DEFAULT_SEARCH = "https://krisha.kz/prodazha/kvartiry/ust-kamenogorsk/"
 CONTROL_CARD = "https://krisha.kz/a/show/1009924986"
 ROBOTS_URL = f"{BASE}/robots.txt"
-# Служебные и запрещённые robots.txt параметры/разделы — в настройках не принимаются
+# Служебные и запрещённые robots.txt параметры/разделы - в настройках не принимаются
 DISALLOWED = ("till=", "sub_cat", "raion=", "utm_source", "gclid=", "from=adwords", "/a/show-map/", "/ajax/", "/captcha")
 SUMMARY = ("title", "price", "address", "complex", "sellerType")
 SELLER_LABELS = {"complex": "застройщик/ЖК", "company": "агентство", "owner": "хозяин", "specialist": "специалист"}
 NO_SELLER = "продавец не указан"
 
-MAX_REQUESTS = 30  # запросов к Krisha за один запуск (robots.txt, страницы поиска, карточки)
+MAX_REQUESTS = 30  # запросов к Krisha за один запуск(robots.txt, страницы поиска, карточки)
 MAX_REDIRECTS = 3
 TIMEOUT_S = 20.0
 BODY_MAX = 5 * 1024 * 1024
@@ -79,8 +79,8 @@ BROWSER_TIMEOUT_MS = 30000
 HEADERS = {"Accept": "text/html,application/xhtml+xml", "Accept-Language": "ru"}
 REDIRECTS = (301, 302, 303, 307, 308)
 
-# Фабрика браузера: вызов возвращает контекстный менеджер с объектом браузера Playwright (sync API). None — Playwright
-# из окружения (импорт — только внутри функции, когда KRISHA_PLAYWRIGHT=1); тесты подменяют её заглушкой
+# Фабрика браузера: вызов возвращает контекстный менеджер с объектом браузера Playwright(sync API). None - Playwright
+# из окружения(импорт - только внутри функции, когда KRISHA_PLAYWRIGHT=1); тесты подменяют её заглушкой
 BROWSER_FACTORY: Optional[Callable[[], Any]] = None
 
 BLOCKED = ("Krisha.kz отвечает проверкой доступа ({reason}) — автоматический сбор остановлен, нужен ручной шаг; "
@@ -109,7 +109,7 @@ _DEVELOPER_TAIL = re.compile(r"(?:^|\s)от\s+застройщика(?:\s|$).*$"
 _COMPLEX_PREFIX = re.compile(r"^\s*(?:ЖК|жилой комплекс)\s+", re.I)
 _BLOCK_MARKERS = (("safelinechallenge", "SafeLine"), ("/.safeline/", "SafeLine"), ("safeline", "SafeLine"),
                   ("captcha", "CAPTCHA"))
-_PHOTO_SIZE = re.compile(r"-(?:\d{2,5}x\d{2,5}|full)$", re.I)  # «1-750x470», «1-280x175», «1-full»
+_PHOTO_SIZE = re.compile(r"-(?:\d{2,5}x\d{2,5}|full)$", re.I)  # "1-750x470", "1-280x175", "1-full"
 _PHOTO_FORMATS = frozenset({"webp", "jpg", "jpeg", "png", "avif"})  # каталог формата: /webp/90/…, /jpg/90/…
 _DROP_KEYS = {"user", "config", "ipinfo", "centrifuge", "views", "cookiedomain"}
 
@@ -123,11 +123,11 @@ SCALAR_MAX = 2000
 
 
 class _Exhausted(Exception):
-    """Предел запросов за запуск исчерпан (MAX_REQUESTS)."""
+    """Предел запросов за запуск исчерпан(MAX_REQUESTS)."""
 
 
 class _Budget:
-    """Счётчик запросов запуска и пауза между ними (crawl-delay из robots.txt — если больше KRISHA_MIN_DELAY_S);
+    """Счётчик запросов запуска и пауза между ними(crawl-delay из robots.txt - если больше KRISHA_MIN_DELAY_S);
     заметки, которые пишутся в запуск один раз."""
 
     def __init__(self) -> None:
@@ -150,7 +150,7 @@ def _budget(ctx: "RunContext") -> _Budget:
 # ---------- разбор страниц ----------
 
 def _clean(s: Any, limit: int = 500) -> Optional[str]:
-    """Однострочный текст: пробелы (включая неразрывные) схлопнуты; пусто — None."""
+    """Однострочный текст: пробелы(включая неразрывные) схлопнуты; пусто - None."""
     if s is None:
         return None
     t = _SPACES.sub(" ", str(s)).strip()
@@ -158,7 +158,7 @@ def _clean(s: Any, limit: int = 500) -> Optional[str]:
 
 
 def _price(v: Any) -> Optional[str]:
-    """Цена одинаково для выдачи и карточки: «58 194 600 ₸» (знак тенге Krisha «〒» → «₸»)."""
+    """Цена одинаково для выдачи и карточки: "58 194 600 ₸"(знак тенге Krisha "〒" → "₸")."""
     if v is None or isinstance(v, bool):
         return None
     if isinstance(v, (int, float)):
@@ -197,9 +197,9 @@ def _has_window_data(body: str) -> bool:
 
 
 def detect_block(status: int, headers: Any, body: str) -> Optional[str]:
-    """Причина проверки доступа или None. HTTP 468 — SafeLine всегда; 403/429/503 — признаки SafeLine/CAPTCHA в ответе
-    или cookie sl-session; 200 — только HTML-страница с признаками проверки и без данных страницы (window.data): обычная
-    страница Krisha с cookie sl-session или словом captcha в скриптах и robots.txt со строкой «Disallow: /captcha» —
+    """Причина проверки доступа или None. HTTP 468 - SafeLine всегда; 403/429/503 - признаки SafeLine/CAPTCHA в ответе
+    или cookie sl-session; 200 - только HTML-страница с признаками проверки и без данных страницы(window.data): обычная
+    страница Krisha с cookie sl-session или словом captcha в скриптах и robots.txt со строкой "Disallow: /captcha" -
     не проверка."""
     if status == 468:
         return "HTTP 468, SafeLine"
@@ -223,7 +223,7 @@ def detect_block(status: int, headers: Any, body: str) -> Optional[str]:
 
 
 def _assignments(html: str) -> Iterator[int]:
-    """Позиции начала значения после каждого «window.data =» (не «==», не «window.data.x = …»)."""
+    """Позиции начала значения после каждого "window.data ="(не "==", не "window.data.x = …")."""
     i = html.find("window.data")
     while i >= 0:
         j = i + len("window.data")
@@ -238,8 +238,8 @@ def _assignments(html: str) -> Iterator[int]:
 
 
 def extract_window_data(html: str) -> Optional[dict]:
-    """Объект из присваивания `window.data = {…}` — JSON-декодером (raw_decode), без выполнения JavaScript: первое
-    присваивание, значение которого — JSON-объект. Нет — None."""
+    """Объект из присваивания `window.data = {…}` - JSON-декодером(raw_decode), без выполнения JavaScript: первое
+    присваивание, значение которого - JSON-объект. Нет - None."""
     text = html or ""
     decoder = json.JSONDecoder()
     for pos in _assignments(text):
@@ -253,7 +253,7 @@ def extract_window_data(html: str) -> Optional[dict]:
 
 
 def _advert(a: Any) -> dict:
-    """Объявление из window.data по белому списку: скалярные поля, адрес, координаты, ссылки фото (https)."""
+    """Объявление из window.data по белому списку: скалярные поля, адрес, координаты, ссылки фото(https)."""
     if not isinstance(a, dict):
         return {}
     out: dict = {}
@@ -296,7 +296,7 @@ def _ids(v: Any) -> list[str]:
 
 def sanitize_window_data(d: Any) -> dict:
     """Снимок window.data без сведений пользователя и служебных данных: user, config, ipInfo, app*, centrifuge, views,
-    cookieDomain отбрасываются, затем остаётся только белый список (search, advert, adverts)."""
+    cookieDomain отбрасываются, затем остаётся только белый список(search, advert, adverts)."""
     if not isinstance(d, dict):
         return {}
     kept = {k: v for k, v in d.items()
@@ -311,7 +311,7 @@ def sanitize_window_data(d: Any) -> dict:
                 if "ids" in search:
                     s["ids"] = _ids(v)
                 continue
-            if isinstance(v, str):  # живая выдача: nbTotal — строка с разделителями разрядов («1 234»)
+            if isinstance(v, str):  # живая выдача: nbTotal - строка с разделителями разрядов("1 234")
                 digits = _SPACES.sub("", v)
                 v = int(digits) if _DIGITS.match(digits) else None
             if isinstance(v, int) and not isinstance(v, bool):
@@ -328,8 +328,8 @@ def sanitize_window_data(d: Any) -> dict:
 
 
 def markup_error(html: str, search: dict, cards: list) -> Optional[SourceError]:
-    """Объявления на странице есть (ids/nbTotal в window.data, а если их там нет — ссылки /a/show/…), а карточек a-card
-    не разобрано — разметка изменилась: это ошибка, а не пустая выдача. Пустые ids/nbTotal 0 — выдача правда пуста."""
+    """Объявления на странице есть(ids/nbTotal в window.data, а если их там нет - ссылки /a/show/…), а карточек a-card
+    не разобрано - разметка изменилась: это ошибка, а не пустая выдача. Пустые ids/nbTotal 0 - выдача правда пуста."""
     if cards:
         return None
     n = len(search.get("ids") or []) or int(search.get("nbTotal") or 0)
@@ -360,8 +360,8 @@ def _first(root, selectors: Iterable[str]):
 
 
 def _seller_type(el) -> Optional[str]:
-    """Тип продавца карточки выдачи: класс user-<тип> у подвала div.a-card__footer (complex, owner, company,
-    specialist — разметка живой выдачи), затем атрибут data-user-type."""
+    """Тип продавца карточки выдачи: класс user-<тип> у подвала div.a-card__footer(complex, owner, company,
+    specialist - разметка живой выдачи), затем атрибут data-user-type."""
     for footer in el.select(".a-card__footer"):
         for cls in footer.get("class") or []:
             m = _USER_TYPE.match(cls)
@@ -371,8 +371,8 @@ def _seller_type(el) -> Optional[str]:
 
 
 def _search_complex(el) -> Optional[str]:
-    """ЖК карточки выдачи. Живая разметка: блок .a-card__complex-info = подпись .a-card__complex-label («Новостройка» —
-    не название), ссылка «ЖК …» на /complex/show/… и «от застройщика «…»». Сначала текст ссылки, затем текст блока без
+    """ЖК карточки выдачи. Живая разметка: блок .a-card__complex-info = подпись .a-card__complex-label("Новостройка" -
+    не название), ссылка "ЖК …" на /complex/show/… и "от застройщика "…"". Сначала текст ссылки, затем текст блока без
     подписи и застройщика, затем прежние классы .a-card__complex / .a-card__complex-name."""
     info = el.select_one(".a-card__complex-info")
     if info is not None:
@@ -392,8 +392,8 @@ def _search_complex(el) -> Optional[str]:
 
 def parse_search(html: str) -> tuple[dict, list[dict]]:
     """Страница поиска → (очищенный window.data, карточки выдачи). Карточка: id, uuid, title, price, address, preview,
-    complex, sellerType, photo, hot; повторы (блок «горячих» сверху) — по id, первая в силе. Поля — из DOM карточки,
-    window.data (adverts) — запасной вариант."""
+    complex, sellerType, photo, hot; повторы(блок "горячих" сверху) - по id, первая в силе. Поля - из DOM карточки,
+    window.data(adverts) - запасной вариант."""
     data = sanitize_window_data(extract_window_data(html))
     by_id = {str(a["id"]): a for a in data.get("adverts", []) if a.get("id") is not None}
     cards: list[dict] = []
@@ -432,7 +432,7 @@ def parse_search(html: str) -> tuple[dict, list[dict]]:
 
 
 def _documents(soup) -> list[str]:
-    """Блок документов карточки (заявление продавца): тексты пунктов; элементы удаляются из дерева, чтобы не попасть
+    """Блок документов карточки(заявление продавца): тексты пунктов; элементы удаляются из дерева, чтобы не попасть
     в описание."""
     out: list[str] = []
     els = soup.select("[class*='documents__item'], [class*='documents-item'], [class*='documents'] li, "
@@ -455,7 +455,7 @@ def _description(soup) -> Optional[str]:
 
 
 def _params(soup) -> tuple[dict, Optional[str], Optional[str]]:
-    """Характеристики карточки {подпись: значение}, ЖК и застройщик (по data-name или подписи)."""
+    """Характеристики карточки {подпись: значение}, ЖК и застройщик(по data-name или подписи)."""
     params: dict[str, str] = {}
     complex_name = developer = None
     for item in soup.select(".offer__info-item, .offer__parameters dl"):
@@ -479,7 +479,7 @@ def _params(soup) -> tuple[dict, Optional[str], Optional[str]]:
 
 def parse_card(html: str) -> dict:
     """Карточка объявления → поля по белому списку блока advert с запасными вариантами из DOM; описание, ЖК, застройщик
-    и документы — из DOM. Документы — только в «documents» (в описание не попадают)."""
+    и документы - из DOM. Документы - только в "documents"(в описание не попадают)."""
     advert = sanitize_window_data(extract_window_data(html)).get("advert") or {}
     soup = _soup(html)
     documents = _documents(soup)
@@ -559,8 +559,8 @@ def _norm_url(field: str, value: str) -> str:
         host = HOST
     if p.scheme.lower() != "https" or host != HOST or "@" in p.netloc or port not in (None, 443):
         raise ConfigError(field, f"Нужна ссылка https://krisha.kz/…: {v[:80]}", value)
-    # «/prodazha/../my/» (в том числе %2e%2e): httpx схлопывает такие сегменты при запросе, а проверка раздела и
-    # robots.txt видели бы исходную строку — такие ссылки не принимаются
+    # "/prodazha/../my/"(в том числе %2e%2e): httpx схлопывает такие сегменты при запросе, а проверка раздела и
+    # robots.txt видели бы исходную строку - такие ссылки не принимаются
     path = unquote(p.path)
     if "\\" in path or any(seg in (".", "..") for seg in path.split("/")):
         raise ConfigError(field, f"Ссылка Krisha с «.» или «..» в пути не принимается: {v[:80]}", value)
@@ -611,8 +611,8 @@ def _read(resp: httpx.Response, url: str) -> bytes:
 
 
 def fetch(ctx: "RunContext", client: httpx.Client, url: str) -> httpx.Response:
-    """GET страницы Krisha: перенаправления вручную (не больше MAX_REDIRECTS, каждое — только на https://krisha.kz/…),
-    пауза и предел запросов; сеть — повторяемая SourceError. Cookie не сохраняются и не отправляются."""
+    """GET страницы Krisha: перенаправления вручную(не больше MAX_REDIRECTS, каждое - только на https://krisha.kz/…),
+    пауза и предел запросов; сеть - повторяемая SourceError. Cookie не сохраняются и не отправляются."""
     current = url
     for _ in range(MAX_REDIRECTS + 1):
         if not _is_krisha(current):
@@ -643,7 +643,7 @@ def fetch(ctx: "RunContext", client: httpx.Client, url: str) -> httpx.Response:
 
 
 def _status_error(resp: httpx.Response, what: str) -> Optional[Exception]:
-    """Ответ не 200 (проверка доступа уже исключена) → ошибка источника; 200 — None."""
+    """Ответ не 200(проверка доступа уже исключена) → ошибка источника; 200 - None."""
     code = resp.status_code
     if code == 200:
         return None
@@ -654,9 +654,9 @@ def _status_error(resp: httpx.Response, what: str) -> Optional[Exception]:
 
 
 def robots(ctx: "RunContext", client: httpx.Client) -> RobotFileParser:
-    """Правила robots.txt Krisha: GET через клиент подключения → RobotFileParser.parse (никогда .read()); текст
-    (не больше 32 КБ) кэшируется на сутки в состоянии подключения. 404/410 и другие 4xx — правил нет (RFC 9309);
-    5xx и сеть — ошибка с повтором (до получения правил сбор не идёт); проверка доступа — AccessBlocked."""
+    """Правила robots.txt Krisha: GET через клиент подключения → RobotFileParser.parse(никогда .read()); текст
+    (не больше 32 КБ) кэшируется на сутки в состоянии подключения. 404/410 и другие 4xx - правил нет(RFC 9309);
+    5xx и сеть - ошибка с повтором(до получения правил сбор не идёт); проверка доступа - AccessBlocked."""
     rp = RobotFileParser(ROBOTS_URL)
     cached = ctx.state.get("robots") if isinstance(ctx.state.get("robots"), dict) else None
     now = ctx.now()
@@ -687,7 +687,7 @@ def _allowed(ctx: "RunContext", rp: RobotFileParser, url: str) -> bool:
     return rp.can_fetch(ctx.settings.user_agent, url)
 
 
-# ---------- браузер (необязательно) ----------
+# ---------- браузер(необязательно) ----------
 
 def _browser_enabled(ctx: "RunContext") -> tuple[bool, Optional[str]]:
     """(включён ли Playwright, заметка если включён в настройках, но недоступен)."""
@@ -715,7 +715,7 @@ def _playwright_browser():
 
 
 def _route_guard(route) -> None:
-    """Браузер обращается только к BROWSER_HOSTS (krisha.kz, CDN фото и их поддомены); остальные запросы прерываются."""
+    """Браузер обращается только к BROWSER_HOSTS(krisha.kz, CDN фото и их поддомены); остальные запросы прерываются."""
     try:
         host = urlsplit(route.request.url).hostname or ""
     except ValueError:
@@ -727,8 +727,8 @@ def _route_guard(route) -> None:
 
 
 def browser_card(ctx: "RunContext", url: str) -> tuple[Optional[str], Optional[str]]:
-    """Карточка через Playwright: (html, None) или (None, причина). JavaScript выключен — скрипт проверки доступа не
-    выполняется; хранилище не сохраняется; используется только ответ самой навигации — проверка доступа в нём (или
+    """Карточка через Playwright: (html, None) или(None, причина). JavaScript выключен - скрипт проверки доступа не
+    выполняется; хранилище не сохраняется; используется только ответ самой навигации - проверка доступа в нём(или
     перенаправление с krisha.kz) означает остановку, содержимое после неё не берётся."""
     _count_request(ctx)
     factory = BROWSER_FACTORY or _playwright_browser
@@ -765,11 +765,11 @@ def _account(s: dict) -> str:
 
 
 def photo_key(eid: str, src: str, *, cover: bool = False) -> str:
-    """Ключ файла фото — по самому фото, а не по его месту в галерее: путь ссылки без хоста, query, каталога формата
-    (/webp/…), расширения и размера (-750x470, -280x175, -full). Продавец заменил или удалил фото — набор ключей
+    """Ключ файла фото - по самому фото, а не по его месту в галерее: путь ссылки без хоста, query, каталога формата
+    (/webp/…), расширения и размера(-750x470, -280x175, -full). Продавец заменил или удалил фото - набор ключей
     меняется: новая версия, новое фото загружается, прежнее перестаёт быть текущим; тот же снимок в другом размере или
-    на другом CDN — тот же ключ. Порядок фото — позиция файла в публикации. Превью выдачи (krisha:{id}:c:…) и фото
-    карточки (krisha:{id}:p:…) — разные файлы: это разные размеры одного снимка, превью не подменяет фото карточки."""
+    на другом CDN - тот же ключ. Порядок фото - позиция файла в публикации. Превью выдачи(krisha:{id}:c:…) и фото
+    карточки(krisha:{id}:p:…) - разные файлы: это разные размеры одного снимка, превью не подменяет фото карточки."""
     try:
         path = unquote(urlsplit(src).path)
     except ValueError:
@@ -785,7 +785,7 @@ def photo_key(eid: str, src: str, *, cover: bool = False) -> str:
 
 
 def _is_cover_key(eid: str, key: str) -> bool:
-    """Ключ превью выдачи; «krisha:{id}:0» — превью по прежней схеме ключей (по позиции)."""
+    """Ключ превью выдачи; "krisha:{id}:0" - превью по прежней схеме ключей(по позиции)."""
     return key.startswith(f"krisha:{eid}:c:") or key == f"krisha:{eid}:0"
 
 
@@ -836,7 +836,7 @@ class KrishaConnector(Connector):
                 if not _allowed(ctx, rp, search_url):
                     raise BadConfig(ROBOTS_DENIED.format(url=search_url))
                 resp = fetch(ctx, client, search_url)
-            except _Exhausted:  # pragma: no cover — проверка делает не больше трёх запросов
+            except _Exhausted:  # pragma: no cover - проверка делает не больше трёх запросов
                 raise SourceError(BUDGET_UP, retryable=False) from None
             reason = detect_block(resp.status_code, resp.headers, resp.text)
             if reason:
@@ -876,8 +876,8 @@ class KrishaConnector(Connector):
 
     def _fetch_card(self, ctx: "RunContext", client: httpx.Client, url: str,
                     facts: Optional[dict] = None, *, browser_first: bool = False) -> tuple[Optional[str], Optional[str]]:
-        """Карточка: (причина проверки доступа, None) | (None, html) | (None, None) — ошибка (в facts["cardError"]).
-        Закрыта проверкой — при KRISHA_PLAYWRIGHT=1 одна попытка через браузер с выключенным JavaScript."""
+        """Карточка: (причина проверки доступа, None) | (None, html) | (None, None) - ошибка(в facts["cardError"]).
+        Закрыта проверкой - при KRISHA_PLAYWRIGHT=1 одна попытка через браузер с выключенным JavaScript."""
         reason: Optional[str] = None
         if not browser_first:
             try:
@@ -907,7 +907,7 @@ class KrishaConnector(Connector):
             html, breason = browser_card(ctx, url)
         except _Exhausted:
             raise
-        except Exception as e:  # noqa: BLE001 — сбой браузера не меняет вывод: карточка закрыта
+        except Exception as e:  # noqa: BLE001 - сбой браузера не меняет вывод: карточка закрыта
             log.warning("Krisha: браузерная проверка карточки не выполнена (%s)", type(e).__name__)
             ctx.note(f"Проверка карточки через браузер не выполнена ({type(e).__name__})", "warn")
             return reason or "браузер недоступен", None
@@ -931,10 +931,10 @@ class KrishaConnector(Connector):
                     ctx.item_failed(ROBOTS_DENIED.format(url=u))
             if not allowed:
                 raise BadConfig(ROBOTS_DENIED.format(url=search_urls[0]))
-            found: dict[str, dict] = {}  # ID → карточка выдачи этого запуска (первое появление)
+            found: dict[str, dict] = {}  # ID → карточка выдачи этого запуска(первое появление)
             changed: list[str] = []  # новые и изменившиеся в выдаче
             search_only: list[str] = []  # без изменений, версии карточки ещё нет
-            # данные выдачи, отложенные до прохода карточек: Publication — принять, None — только «видели»
+            # данные выдачи, отложенные до прохода карточек: Publication - принять, None - только "видели"
             pending: dict[str, Optional[Publication]] = {}
             try:
                 try:
@@ -946,7 +946,7 @@ class KrishaConnector(Connector):
                 if not done:
                     return
                 # очередь карточек: изменившиеся в выдаче; ссылки из настроек, у которых ещё нет версии карточки;
-                # объявления только с данными выдачи; затем перечитывание ссылок из настроек — если хватит предела
+                # объявления только с данными выдачи; затем перечитывание ссылок из настроек - если хватит предела
                 watched: list[str] = []
                 for cid in configured:
                     k = ctx.known(cid)
@@ -959,7 +959,7 @@ class KrishaConnector(Connector):
                                     set(configured), pending)
                 except _Exhausted:
                     ctx.mark_partial(BUDGET_UP)
-            finally:  # прочитанная выдача принимается и при остановке запуска (предел, время, ошибка карточки)
+            finally:  # прочитанная выдача принимается и при остановке запуска(предел, время, ошибка карточки)
                 self._flush(ctx, pending)
 
     def _time_up(self, ctx: "RunContext") -> bool:
@@ -972,8 +972,8 @@ class KrishaConnector(Connector):
         return False
 
     def _flush(self, ctx: "RunContext", pending: dict) -> None:
-        """Отложенные данные выдачи (карточка в этом запуске не получена): приём публикаций и отметки «видели» в
-        порядке выдачи. Воркер останавливается — остальное будет прочитано в следующий раз."""
+        """Отложенные данные выдачи(карточка в этом запуске не получена): приём публикаций и отметки "видели" в
+        порядке выдачи. Воркер останавливается - остальное будет прочитано в следующий раз."""
         for eid in list(pending):
             if ctx.stopping():
                 self._time_up(ctx)
@@ -986,7 +986,7 @@ class KrishaConnector(Connector):
 
     def _search_pass(self, ctx: "RunContext", client: httpx.Client, rp: RobotFileParser, urls: list[str],
                      max_pages: int, found: dict, changed: list, search_only: list, pending: dict) -> bool:
-        """Страницы поиска 1…max_pages каждой ссылки. False — запуск остановлен (время)."""
+        """Страницы поиска 1…max_pages каждой ссылки. False - запуск остановлен(время)."""
         b = _budget(ctx)
         for url in urls:
             per_page = 0
@@ -1005,7 +1005,7 @@ class KrishaConnector(Connector):
                 if isinstance(err, RateLimited):
                     raise err
                 if err is not None:
-                    if page == 1:  # ссылка из настроек не открылась — ошибка записи (все ссылки — ошибка запуска)
+                    if page == 1:  # ссылка из настроек не открылась - ошибка записи(все ссылки - ошибка запуска)
                         ctx.item_failed(f"Поиск Krisha {http.redact_url(page_url)}: {err}")
                     else:
                         ctx.note(f"Страница {page} выдачи Krisha не загрузилась: {err}", "warn")
@@ -1013,7 +1013,7 @@ class KrishaConnector(Connector):
                 data, cards = parse_search(resp.text)
                 search = data.get("search")
                 fresh = [c for c in cards if c["id"] not in found]
-                if page > 1 and not fresh:  # выдача закончилась (или сайт вернул уже прочитанную страницу)
+                if page > 1 and not fresh:  # выдача закончилась(или сайт вернул уже прочитанную страницу)
                     break
                 if not isinstance(search, dict):
                     if page > 1:
@@ -1043,8 +1043,8 @@ class KrishaConnector(Connector):
         return True
 
     def _search_item(self, ctx: "RunContext", card: dict, search_url: str, pending: dict) -> Optional[str]:
-        """Карточка выдачи → отложенный приём (pending). Итог: «changed» — новая или изменилась (в том числе заменено
-        превью), «search_only» — без изменений, версии карточки ещё нет; None — без изменений при версии карточки или
+        """Карточка выдачи → отложенный приём(pending). Итог: "changed" - новая или изменилась(в том числе заменено
+        превью), "search_only" - без изменений, версии карточки ещё нет; None - без изменений при версии карточки или
         запись другого источника."""
         eid = card["id"]
         s = _summary(card)
@@ -1062,16 +1062,16 @@ class KrishaConnector(Connector):
                 return None
             pending[eid] = pub
             return "changed" if k is None or content_hash(pub) != k.content_hash else "search_only"
-        # превью заменено другим фото (не тот же снимок в другом размере) — у карточки, скорее всего, тоже новые фото:
-        # новое превью принимается сразу, карточка ставится в очередь на перечитывание. Превью в выдаче нет —
-        # сохранённое остаётся (как в проходе карточек)
+        # превью заменено другим фото(не тот же снимок в другом размере) - у карточки, скорее всего, тоже новые фото:
+        # новое превью принимается сразу, карточка ставится в очередь на перечитывание. Превью в выдаче нет -
+        # сохранённое остаётся(как в проходе карточек)
         cover = self._cover(ctx, eid, card.get("photo"))
         new_cover = bool(cover) and [m.key for m in cover] != [key for key in k.media_keys if _is_cover_key(eid, key)]
         if not new_cover and {f: k.extra.get(f) for f in SUMMARY} == s:
             pending[eid] = None
             return None
-        # выдача изменилась (цена, заголовок, адрес, превью…), а версия карточки уже есть: описание и фото карточки
-        # остаются, заголовок и адрес в тексте — новые (текст собирается так же, как в проходе карточек)
+        # выдача изменилась(цена, заголовок, адрес, превью…), а версия карточки уже есть: описание и фото карточки
+        # остаются, заголовок и адрес в тексте - новые(текст собирается так же, как в проходе карточек)
         text = _join(s.get("title"), s.get("address"), k.extra.get("description")) if "description" in k.extra \
             else k.text
         media = [MediaIn(key=key) for key in k.media_keys if not (new_cover and _is_cover_key(eid, key))]
@@ -1082,7 +1082,7 @@ class KrishaConnector(Connector):
 
     @staticmethod
     def _cover(ctx: "RunContext", eid: str, photo: Optional[str]) -> list[MediaIn]:
-        """Превью из выдачи: ключ krisha:{id}:c:… по самому фото (photo_key), роль cover."""
+        """Превью из выдачи: ключ krisha:{id}:c:… по самому фото(photo_key), роль cover."""
         if not photo:
             return []
         key = photo_key(eid, photo, cover=True)
@@ -1091,8 +1091,8 @@ class KrishaConnector(Connector):
 
     def _card_pass(self, ctx: "RunContext", client: httpx.Client, rp: RobotFileParser, ids: list[str],
                    found: dict, configured: set, pending: dict) -> None:
-        """Карточки объявлений: первая проверка доступа — «частично», карточки в этом запуске больше не запрашиваются.
-        Карточка получена — её публикация заменяет отложенные данные выдачи."""
+        """Карточки объявлений: первая проверка доступа - "частично", карточки в этом запуске больше не запрашиваются.
+        Карточка получена - её публикация заменяет отложенные данные выдачи."""
         robots_noted = False
         use_browser = False
         for eid in ids:
@@ -1112,7 +1112,7 @@ class KrishaConnector(Connector):
                 ctx.mark_partial(CARDS_BLOCKED.format(reason=reason))
                 return
             if facts.get("playwright") == "выполнялась":
-                use_browser = True  # обычный HTTP уже получил проверку доступа — дальше только браузер
+                use_browser = True  # обычный HTTP уже получил проверку доступа - дальше только браузер
             if html is None:
                 ctx.item_failed(f"Карточка Krisha {eid}: {facts.get('cardError') or 'не загрузилась'}")
                 continue
@@ -1125,9 +1125,9 @@ class KrishaConnector(Connector):
             pending.pop(eid, None)
 
     def _card_item(self, ctx: "RunContext", eid: str, card: dict, search_card: Optional[dict]) -> None:
-        """Публикация с данными карточки: сводка выдачи этого запуска (если объявление в ней было), описание, превью
+        """Публикация с данными карточки: сводка выдачи этого запуска(если объявление в ней было), описание, превью
         выдачи krisha:{id}:c:… (из этого запуска, иначе сохранённое) и фото карточки krisha:{id}:p:… в порядке галереи
-        (ключи — photo_key)."""
+        (ключи - photo_key)."""
         s = _summary(search_card) if search_card else _summary(card)
         k = ctx.known(eid)
         media = self._cover(ctx, eid, (search_card or {}).get("photo"))
@@ -1145,7 +1145,7 @@ class KrishaConnector(Connector):
         fields = {f: card[f] for f in ("developer", "documents", "createdAt", "addedAt", "params", "lat", "lon")
                   if card.get(f) not in (None, "", [], {})}
         raw = {"source": "card", "advert": card["advert"], "documents": card["documents"], "params": card["params"]}
-        # описание — и в extra: изменение выдачи без новой карточки пересобирает текст тем же способом
+        # описание - и в extra: изменение выдачи без новой карточки пересобирает текст тем же способом
         pub = Publication(platform="krisha", external_id=eid, account=_account(s), url=card_url(eid),
                           text=_join(s.get("title") or card.get("title"), s.get("address") or card.get("address"),
                                      card.get("description")),

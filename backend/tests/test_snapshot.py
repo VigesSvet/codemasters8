@@ -1,6 +1,6 @@
-"""Стартовый набор (app.snapshot): выгрузка и загрузка (SQLite и PostgreSQL — SAQ_TEST_DATABASE_URL), старт пустой БД,
+"""Стартовый набор(app.snapshot): выгрузка и загрузка(SQLite и PostgreSQL - SAQ_TEST_DATABASE_URL), старт пустой БД,
 отказ на непустой БД, первичные ключи и последовательности, файлы, исключённые таблицы, секреты, набор прежней версии
-схемы и сам набор в репозитории (shared/snapshot): состав, размер, файлы и ответы API для офлайн-режима фронтенда."""
+схемы и сам набор в репозитории(shared/snapshot): состав, размер, файлы и ответы API для офлайн-режима фронтенда."""
 import hashlib
 import io
 import json
@@ -41,7 +41,7 @@ def _jpeg(size=(1600, 900), color=(30, 120, 200)) -> bytes:
 
 
 def _start_snapshot(monkeypatch, src: Path = SNAP, files: bool = True) -> None:
-    """Пустая БД — как у приложения: стартовый набор src (а не демо-набор тестов)."""
+    """Пустая БД - как у приложения: стартовый набор src(а не демо-набор тестов)."""
     monkeypatch.setattr(seed, "START", partial(seed.start, src=src, files=files))
 
 
@@ -67,9 +67,9 @@ def test_compress_downscales_strips_and_keeps_small_jpeg():
     assert (mime, w, h) == ("image/jpeg", 1024, 512) and len(out) < len(big)
     with Image.open(io.BytesIO(out)) as im:
         assert im.size == (1024, 512) and not im.getexif()
-    # уже сжатый файл остаётся как есть — повторная выгрузка набора не меняет файлы
+    # уже сжатый файл остаётся как есть - повторная выгрузка набора не меняет файлы
     assert snapshot.compress(out, 1024, 75)[0] == out
-    # PNG — только если он меньше JPEG; прозрачность в JPEG — на белом
+    # PNG - только если он меньше JPEG; прозрачность в JPEG - на белом
     png = io.BytesIO()
     Image.new("RGBA", (64, 64), (0, 0, 0, 0)).save(png, format="PNG")
     data, mime, w, h = snapshot.compress(png.getvalue(), 1024, 75)
@@ -83,7 +83,7 @@ def test_leaks_detects_tokens_and_settings_secrets():
     assert snapshot.leaks("https://cdn.example/v.mp4?oh=***") == []
     assert snapshot.leaks("Authorization: Bearer abcdefghijklmnop1234") == ["Bearer-токен"]
     assert snapshot.leaks("значение QWERTY-12345678", ["QWERTY-12345678"]) == ["значение секрета из настроек"]
-    assert snapshot.leaks("коротко", ["1234567"]) == []  # короче 8 символов — не проверяется
+    assert snapshot.leaks("коротко", ["1234567"]) == []  # короче 8 символов - не проверяется
 
 
 # ---------- набор в репозитории ----------
@@ -94,7 +94,7 @@ def test_committed_snapshot_layout():
     assert MAN is not None, "нет shared/snapshot/manifest.json — выгрузите набор: python -m app.snapshot export"
     assert MAN["format"] == snapshot.FORMAT
     assert MAN["schemaVersion"] == models.SCHEMA_VERSION or migrate.chain_from(MAN["schemaVersion"]) is not None
-    # набор прежней версии схемы — без таблиц, которые добавили шаги migrate после неё (загружаются пустыми)
+    # набор прежней версии схемы - без таблиц, которые добавили шаги migrate после неё(загружаются пустыми)
     names = {s.name for s in snapshot.TABLES}
     assert set(MAN["tables"]) <= names and names - set(MAN["tables"]) <= migrate.tables_after(MAN["schemaVersion"])
     for name, info in MAN["tables"].items():
@@ -116,11 +116,11 @@ def test_committed_snapshot_layout():
             assert media.sniff(data[:64]) == r["mime"] and r["storage_key"] == media._key(r["sha256"], r["mime"])
     total = sum(p.stat().st_size for p in SNAP.rglob("*") if p.is_file())
     assert total <= 40 * 1024 * 1024, total
-    # подключения — без состояния проверки, фактов (ключи, аккаунты) и курсоров
+    # подключения - без состояния проверки, фактов(ключи, аккаунты) и курсоров
     for c in json.loads((SNAP / "collectors.json").read_text(encoding="utf-8")):
         assert (c["status"], c["facts"], c["state"], c["next_run_at"], c["last_error"]) == (
             "unchecked", {}, {}, None, None)
-    # кэш 2ГИС — не выгружен, решения — да
+    # кэш 2ГИС - не выгружен, решения - да
     assert all(g["candidates"] == [] and g["status"] != "candidates"
                for g in json.loads((SNAP / "geo_checks.json").read_text(encoding="utf-8")))
 
@@ -133,8 +133,8 @@ def test_committed_snapshot_has_no_secrets():
 
 
 def test_committed_snapshot_api_views():
-    """Ответы API для офлайн-режима: ЖК с «Проверкой по рекламе», реклама с анализом ИИ, объекты из рекламы, риск по
-    каждому ЖК; картинки — по карте media.json на файлы набора."""
+    """Ответы API для офлайн-режима: ЖК с "Проверкой по рекламе", реклама с анализом ИИ, объекты из рекламы, риск по
+    каждому ЖК; картинки - по карте media.json на файлы набора."""
     api = SNAP / "api"
     load = lambda n: json.loads((api / f"{n}.json").read_text(encoding="utf-8"))  # noqa: E731
     cxs, ads, risk, mm = load("complexes"), load("ads"), load("risk"), load("media")
@@ -170,12 +170,12 @@ def test_fresh_db_loads_snapshot(client, monkeypatch, caplog):
     assert len(ads) == 230 and all(a["llm"]["status"] in ("done", "skipped") for a in ads)
     assert len(client.get("/api/discovered").json()) == 15 and len(client.get("/api/analysts").json()) == 3
     assert client.get("/api/stats").json()["ads"] == 230
-    # файлы — в хранилище, байты те же, что в наборе
+    # файлы - в хранилище, байты те же, что в наборе
     mm = json.loads((SNAP / "api" / "media.json").read_text(encoding="utf-8"))
     some = ads[0]["image"].rsplit("/", 1)[1]
     r = client.get(f"/api/media/{some}")
     assert r.status_code == 200 and r.content == (SNAP / "media" / mm[some]).read_bytes()
-    # видео в набор не вошли — их строки «недоступно» с пояснением и ссылкой на оригинал
+    # видео в набор не вошли - их строки "недоступно" с пояснением и ссылкой на оригинал
     with SessionLocal() as db:
         v = db.scalar(select(models.MediaAsset).where(models.MediaAsset.kind == "video",
                                                       models.MediaAsset.error == snapshot.VIDEO_NOTE).limit(1))
@@ -187,13 +187,13 @@ def test_fresh_db_loads_snapshot(client, monkeypatch, caplog):
 
 
 def test_offline_views_match_api(client, monkeypatch):
-    """api/*.json набора — то, что отдаёт API нового развёртывания (код риска и «Проверки по рекламе» тот же). Упал —
+    """api/*.json набора - то, что отдаёт API нового развёртывания(код риска и "Проверки по рекламе" тот же). Упал -
     перевыгрузите набор: python -m app.snapshot export."""
     _start_snapshot(monkeypatch, files=False)
     seed.reset()
     as_of = MAN["api"]["asOf"]
     for name, path, dated in snapshot.VIEWS:
-        if name == "discovered":  # считается «на сегодня» — сравнивается состав, а не оценка
+        if name == "discovered":  # считается "на сегодня" - сравнивается состав, а не оценка
             got = client.get(path).json()
             want = json.loads((SNAP / "api" / f"{name}.json").read_text(encoding="utf-8"))
             assert [o["id"] for o in got] == [o["id"] for o in want]
@@ -225,11 +225,11 @@ def test_import_cli_into_empty_db(client, monkeypatch, capsys):
     assert snapshot.main(["import", "--dir", str(SNAP)]) == 0
     assert "Загружен стартовый набор" in capsys.readouterr().out
     assert _count(models.Ad) == 230 and _count(models.SourceRecord) == 103
-    assert snapshot.main(["import", "--dir", str(SNAP)]) == 2  # второй раз — отказ
+    assert snapshot.main(["import", "--dir", str(SNAP)]) == 2  # второй раз - отказ
 
 
 def test_sequences_continue_after_import(client, monkeypatch):
-    """Первичные ключи набора сохранены; новые строки (журнал, сигнал, запуск сбора) получают id за максимальным —
+    """Первичные ключи набора сохранены; новые строки(журнал, сигнал, запуск сбора) получают id за максимальным -
     на PostgreSQL последовательности переставлены."""
     _start_snapshot(monkeypatch, files=False)
     seed.reset()
@@ -286,7 +286,7 @@ def _work_db(client, env) -> dict:
     секретами, анализом ИИ, задания, заявка жителя, токены, квоты, подключение с состоянием, проверки 2ГИС."""
     env(ANTHROPIC_API_KEY=SECRET)
     with SessionLocal() as db:
-        demo.import_registry(db)  # карточки ЖК из реестра — как в рабочей БД (иначе загрузка создаст их заново)
+        demo.import_registry(db)  # карточки ЖК из реестра - как в рабочей БД(иначе загрузка создаст их заново)
         img = media.store_bytes(_jpeg())
         vid = media.store_bytes(mp4_bytes(4096))
         item = models.IngestItem(platform="instagram", external_id="ig-1", collector="instagram", ad_id="a1",
@@ -348,20 +348,20 @@ def test_export_import_roundtrip(client, env, monkeypatch, tmp_path):
     counts = {s.name: _count(s.model) for s in snapshot.TABLES}
     out = tmp_path / "snap"
     man = snapshot.export(engine, out, now=NOW)
-    # исключено: служебные таблицы, токены, квоты, заявки жителей, реестр (пересоздаётся из файла)
+    # исключено: служебные таблицы, токены, квоты, заявки жителей, реестр(пересоздаётся из файла)
     for name in snapshot.EXCLUDED:
         assert not (out / f"{name}.json").exists() and name not in man["tables"]
     assert man["schemaVersion"] == models.SCHEMA_VERSION and man["exportedAt"] == NOW.isoformat()
     assert man["registry"]["consistent"]
     rows = {s.name: json.loads((out / f"{s.name}.json").read_text(encoding="utf-8")) for s in snapshot.TABLES}
     assert man["tables"]["media_assets"]["rows"] == counts["media_assets"] - 1  # кадр видео не выгружен
-    assert man["tables"]["geo_checks"]["rows"] == counts["geo_checks"] - 1  # проверка без решения — тоже
+    assert man["tables"]["geo_checks"]["rows"] == counts["geo_checks"] - 1  # проверка без решения - тоже
     for name in ("ads", "complexes", "developers", "audit_events", "llm_analyses", "ingest_items", "analysts"):
         assert man["tables"][name]["rows"] == counts[name], name
-    # строки — по первичному ключу, время — ISO в UTC
+    # строки - по первичному ключу, время - ISO в UTC
     ev = rows["audit_events"]
     assert [e["id"] for e in ev] == sorted(e["id"] for e in ev) and ev[0]["at"].endswith("+00:00")
-    # изображение — сжато (1024 px), видео — «недоступно» с пояснением, кадра нет
+    # изображение - сжато(1024 px), видео - "недоступно" с пояснением, кадра нет
     media_rows = {r["id"]: r for r in rows["media_assets"]}
     im = media_rows[ids["image"]]
     assert im["sha256"] != ids["img_sha"] and im["meta"]["width"] == 1024
@@ -372,7 +372,7 @@ def test_export_import_roundtrip(client, env, monkeypatch, tmp_path):
     assert v["origin_url"] == "https://cdn.example/v.mp4"
     assert not any(r["kind"] == "frame" for r in rows["media_assets"])
     assert [p.name for p in (out / "media").iterdir()] == [Path(im["storage_key"]).name]
-    # снимок источника очищен, подключение — без состояния, ответы API — по набору
+    # снимок источника очищен, подключение - без состояния, ответы API - по набору
     raw = rows["ingest_items"][-1]["raw"]
     assert set(raw) == {"caption", "media_url", "note"} and raw["media_url"] == "https://cdn.example/p.jpg"
     assert SECRET not in json.dumps(rows, ensure_ascii=False)
@@ -386,7 +386,7 @@ def test_export_import_roundtrip(client, env, monkeypatch, tmp_path):
     assert len(api["ads"]) == counts["ads"] and len(api["complexes"]) == counts["complexes"]
     assert api["media"] == {ids["image"]: Path(im["storage_key"]).name}
 
-    # загрузка в новую (пустую) БД и повторная выгрузка — те же строки и файлы
+    # загрузка в новую(пустую) БД и повторная выгрузка - те же строки и файлы
     _start_snapshot(monkeypatch, src=out)
     seed.reset()
     assert _count(models.Job) == _count(models.BotSubmission) == _count(models.IntegrationToken) == 0
@@ -401,7 +401,7 @@ def test_export_import_roundtrip(client, env, monkeypatch, tmp_path):
 
 
 def test_export_aborts_on_leak_and_keeps_previous(client, tmp_path):
-    """Секрет там, где очистка его не видит (текст публикации), — выгрузка прерывается, прежний каталог не тронут."""
+    """Секрет там, где очистка его не видит(текст публикации), - выгрузка прерывается, прежний каталог не тронут."""
     out = tmp_path / "snap"
     snapshot.export(engine, out, now=NOW, views=False)
     before = (out / "ads.json").read_text(encoding="utf-8")
@@ -441,7 +441,7 @@ def test_older_schema_snapshot_loads_with_additive_columns(client, monkeypatch, 
     seed.reset()
     assert _count(models.Complex) == 14 + 15 and _count(models.Appeal) == 5
     with SessionLocal() as db:
-        assert db.get(models.Complex, "c1").appeals_check is None  # столбца в наборе не было — NULL, как после migrate
+        assert db.get(models.Complex, "c1").appeals_check is None  # столбца в наборе не было - NULL, как после migrate
 
 
 def test_unknown_or_newer_snapshot_refused(client, tmp_path):
@@ -463,7 +463,7 @@ def test_unknown_or_newer_snapshot_refused(client, tmp_path):
     (out / "media").mkdir()
     with SessionLocal() as db:
         assert snapshot.is_empty(db)
-    seed.reset()  # БД тестов — снова демо-набор
+    seed.reset()  # БД тестов - снова демо-набор
 
 
 def test_registry_check_reports_drift(client):

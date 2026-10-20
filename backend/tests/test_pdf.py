@@ -1,4 +1,4 @@
-"""PDF сигнальной карточки: много доказательств и длинные тексты переносятся постранично, формулировки — по данным."""
+"""PDF сигнальной карточки: много доказательств и длинные тексты переносятся постранично, формулировки - по данным."""
 import re
 from datetime import datetime, timezone
 
@@ -26,7 +26,7 @@ def _pages(data: bytes) -> int:
 
 
 def _text(x) -> str:
-    """Текст всех абзацев карточки (таблицы и KeepTogether — рекурсивно)."""
+    """Текст всех абзацев карточки(таблицы и KeepTogether - рекурсивно)."""
     if isinstance(x, (list, tuple)):
         return "\n".join(_text(i) for i in x)
     if isinstance(x, Paragraph):
@@ -75,11 +75,11 @@ def test_long_comment_and_author(client):
     assert r.status_code == 200 and len(r.json()["decisionComment"]) == 3999  # strip хвостового пробела
     _pdf(client, sid)
     text = _story_text(client, sid)
-    assert comment.strip() in text  # полный комментарий — в «Статусе проверки»
+    assert comment.strip() in text  # полный комментарий - в "Статусе проверки"
     event = pdf.line(f"Сигнал подтверждён. {comment}", 300)  # в журнале событие обрезано
     assert event in text and event.endswith("…") and len(event) <= 300
 
-    # комментарий из множества строк и одного «слова» без пробелов; автор с переводами строк
+    # комментарий из множества строк и одного "слова" без пробелов; автор с переводами строк
     sid = _create(client, "c2")["id"]
     comment = "строка\n" * 400 + "ж" * 1000
     author = "\n".join(["Тест"] * 25)
@@ -89,18 +89,18 @@ def test_long_comment_and_author(client):
 
 
 def test_readiness_wording(client):
-    # c14: ни заявленной, ни подтверждённой готовности — «подтверждённая готовность» не печатается
+    # c14: ни заявленной, ни подтверждённой готовности - "подтверждённая готовность" не печатается
     client.post("/api/ads", json={"platform": "telegram", "account": "@sun", "complexId": "c14", "matchConfidence": 0.5,
                                   "text": "Солнечный квартал: бронь квартир"})
     text = _story_text(client, _create(client, "c14")["id"])
     assert "подтверждённая готовность" not in text.lower()
     assert "котлован; готовность по карточке объекта 3%, без источника" in text and "Подтверждено: нет данных" in text
-    # привязка публикации: факт (a10 — подтвердил аналитик, кто и когда) и гипотеза ИИ (50%) подписаны по-разному
+    # привязка публикации: факт(a10 - подтвердил аналитик, кто и когда) и гипотеза ИИ(50%) подписаны по-разному
     assert "привязка — факт (подтвердил Исаев Т., 09.10.2026 11:40)" in text
     assert "привязка — гипотеза ИИ 50%, в балл не входит" in text
     assert "Привязка к ЖК — факт только после подтверждения аналитиком; гипотеза ИИ (с уверенностью) в балл не входит" in text
 
-    # c1: подтверждённая готовность — из readiness.confirmed, с источником и датой
+    # c1: подтверждённая готовность - из readiness.confirmed, с источником и датой
     text = _story_text(client, _create(client, "c1")["id"])
     assert "каркас, подтверждённая готовность 58% — Фото-мониторинг, облёт (демо) · 15.08.2026" in text
     assert "Заявлено: 60% — Сайт ertis-invest.kz (демо) · 01.10.2026" in text
@@ -112,15 +112,15 @@ def test_readiness_wording(client):
 
 def test_time_in_almaty():
     assert pdf.when("2026-10-15T14:03:00+00:00") == "15.10.2026 19:03"
-    assert pdf.when(datetime(2026, 10, 15, 20, 30)) == "16.10.2026 01:30"  # наивное время сервера — UTC
-    assert pdf.when("2026-10-09T18:22") == "09.10.2026 18:22"  # дата публикации из источника — как есть
+    assert pdf.when(datetime(2026, 10, 15, 20, 30)) == "16.10.2026 01:30"  # наивное время сервера - UTC
+    assert pdf.when("2026-10-09T18:22") == "09.10.2026 18:22"  # дата публикации из источника - как есть
     assert pdf.when("2026-10-09") == "09.10.2026" and pdf.when(None) == "—"
     assert pdf.line("а  б\nв " * 100, 20) == "а б в а б в а б в…" and pdf.line("ж" * 50, 10) == "ж" * 9 + "…"
 
 
 def test_demo_marks_and_document_provenance(client):
-    """Демо-ЖК и демо-застройщик подписаны как вымышленные; у документов-оснований — источник, дата и ссылка по документу,
-    непроверенный документ — «не проверялся» (T-29, T-31)."""
+    """Демо-ЖК и демо-застройщик подписаны как вымышленные; у документов-оснований - источник, дата и ссылка по документу,
+    непроверенный документ - "не проверялся"(T-29, T-31)."""
     text = _story_text(client, _create(client, "c2")["id"])
     assert "ЖК «Алтай Резиденс» · вымышленный ЖК (демо)" in text
     assert "ТОО «Altai Build Group» · БИН 200540098761 · вымышленная организация (демо)" in text
@@ -131,8 +131,8 @@ def test_demo_marks_and_document_provenance(client):
     docs = pdf._document({"label": "Гарантия ЕО (КЖК)", "value": "yes", "source": "Реестр", "date": "2026-10-09",
                           "url": 'https://example.kz/a?b=1&c="x"'})
     assert '<a href="https://example.kz/a?b=1&amp;c=&quot;x&quot;"' in docs
-    assert pdf.link("javascript:alert(1)") == "javascript:alert(1)" and pdf.link(None) == ""  # не http(s) — без ссылки
+    assert pdf.link("javascript:alert(1)") == "javascript:alert(1)" and pdf.link(None) == ""  # не http(s) - без ссылки
     assert pdf._document({"label": "Разрешение МИО", "value": "unknown"}) == "<b>Разрешение МИО</b>: нет данных — не проверялся"
     assert pdf._document({"label": "Разрешение МИО", "value": "no"}).endswith("— источник не указан")
-    # снимок сигнала без поля origin (созданный до блока E) — тоже демо
+    # снимок сигнала без поля origin(созданный до блока E) - тоже демо
     assert pdf._demo({"name": "x"}) and not pdf._demo({"origin": "analyst"}) and not pdf._demo(None)

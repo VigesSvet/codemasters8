@@ -1,25 +1,25 @@
 """Объекты из рекламы: ЖК, которые реклама называет, а в справочнике ЖК и открытом реестре их нет.
 
-Откуда: после каждого проверенного ответа Claude (app.llm, mentionedComplexes) упомянутые ЖК сравниваются по названию с
-ЖК справочника (любого происхождения), с объектами открытого реестра (все названия записей, части в скобках) и с уже
-известными объектами из рекламы. Совпало с ЖК или реестром — ничего не создаётся (привязку предлагают правила и Claude);
-совпало с объектом из рекламы — к нему добавляется упоминание; иначе — новый объект (status new). Упоминание — одна
-строка на объект и публикацию (повторный анализ её обновляет, исчезнувшие упоминания удаляются), счётчики
+Откуда: после каждого проверенного ответа Claude(app.llm, mentionedComplexes) упомянутые ЖК сравниваются по названию с
+ЖК справочника(любого происхождения), с объектами открытого реестра(все названия записей, части в скобках) и с уже
+известными объектами из рекламы. Совпало с ЖК или реестром - ничего не создаётся(привязку предлагают правила и Claude);
+совпало с объектом из рекламы - к нему добавляется упоминание; иначе - новый объект(status new). Упоминание - одна
+строка на объект и публикацию(повторный анализ её обновляет, исчезнувшие упоминания удаляются), счётчики
 пересчитываются.
-Заявки жителей (source bot) тоже дают упоминания, но их аккаунт в «аккаунты рекламы» не попадает (D20).
+Заявки жителей(source bot) тоже дают упоминания, но их аккаунт в "аккаунты рекламы" не попадает(D20).
 
-Сравнение названий (name_keys): без «ЖК», «МЖК», «жилой комплекс», «ЖК бизнес-класса», кавычек, эмодзи и знаков, без
-регистра, ё = е, латиница ≈ кириллица (скелет ai.nlp.skeleton: «Satti City» = «Сатти Сити», «AB-Residence 2» = «АВ
-Резиденс 2»); совпадение — тот же ключ, та же основа без номеров и слов очереди («AB-Residence» ≈ «AB-Residence 2»,
-«Жаным, блок А» ≈ «Жаным») или сходство триграмм ≥ 0.8 у длинных ключей.
+Сравнение названий(name_keys): без "ЖК", "МЖК", "жилой комплекс", "ЖК бизнес-класса", кавычек, эмодзи и знаков, без
+регистра, ё = е, латиница ≈ кириллица(скелет ai.nlp.skeleton: "Satti City" = "Сатти Сити", "AB-Residence 2" = "АВ
+Резиденс 2"); совпадение - тот же ключ, та же основа без номеров и слов очереди("AB-Residence" ≈ "AB-Residence 2",
+"Жаным, блок А" ≈ "Жаным") или сходство триграмм ≥ 0.8 у длинных ключей.
 
-Решения аналитика (автор — в журнал, kind data): создать карточку ЖК (origin «advertised», застройщик — найденный по
-названию или БИН, иначе новый «advertised», без названия — «не установлен»), привязать к существующему ЖК (название —
-его другое написание: упоминания становятся рекламой этого ЖК в «Проверке по рекламе») или отклонить с причиной. После
-создания карточки правила сопоставления пересчитываются по публикациям с упоминаниями — без нового запроса к Claude
-(задание анализа rulesOnly). Сверка 2ГИС — кандидаты по «Усть-Каменогорск, ЖК <название>» и по адресу из рекламы
-(квота, кэш и права — как у сверки адреса ЖК), ничего не принимается автоматически. Импорт ЖК по рекламе списком —
-администратору (POST /api/discovered/import, python -m app.demo add-advertised).
+Решения аналитика(автор - в журнал, kind data): создать карточку ЖК(origin "advertised", застройщик - найденный по
+названию или БИН, иначе новый "advertised", без названия - "не установлен"), привязать к существующему ЖК(название -
+его другое написание: упоминания становятся рекламой этого ЖК в "Проверке по рекламе") или отклонить с причиной. После
+создания карточки правила сопоставления пересчитываются по публикациям с упоминаниями - без нового запроса к Claude
+(задание анализа rulesOnly). Сверка 2ГИС - кандидаты по "Усть-Каменогорск, ЖК <название>" и по адресу из рекламы
+(квота, кэш и права - как у сверки адреса ЖК), ничего не принимается автоматически. Импорт ЖК по рекламе списком -
+администратору(POST /api/discovered/import, python -m app.demo add-advertised).
 """
 import hashlib
 import logging
@@ -65,15 +65,15 @@ _CLASS = re.compile(r"^\s*(?:бизнес|комфорт|премиум|элит
 _EMOJI = re.compile("[\U0001F000-\U0001FAFF☀-➿⬀-⯿️‍⃣]")
 _EDGE = " \t«»\"'“”„‟‘’‚`´.,:;!?*#•·-–—_/\\|"
 _PAREN = re.compile(r"\(([^()]*)\)")
-# слова очереди и части объекта: «AB-Residence 2» и «AB-Residence», «Жаным, блок А» и «Жаным» — одна основа
+# слова очереди и части объекта: "AB-Residence 2" и "AB-Residence", "Жаным, блок А" и "Жаным" - одна основа
 _QUEUE = frozenset({"очередь", "очереди", "очередей", "оч", "блок", "блоки", "блока", "пятно", "пятна", "здание",
                     "корпус", "корпуса", "этап", "фаза", "секция", "литер", "queue", "phase", "block", "stage"})
 _ROMAN = re.compile(r"^(?:i{1,3}|iv|v|vi{0,3}|ix|x)$")
 
 
 def clean_name(raw: Any) -> str:
-    """Название для показа: без «ЖК»/«жилой комплекс»/«ЖК бизнес-класса», кавычек и эмодзи по краям, пробелы
-    схлопнуты. «ЖК «Nova Park» 🔥» → «Nova Park»."""
+    """Название для показа: без "ЖК"/"жилой комплекс"/"ЖК бизнес-класса", кавычек и эмодзи по краям, пробелы
+    схлопнуты. "ЖК "Nova Park" 🔥" → "Nova Park"."""
     s = " ".join(_EMOJI.sub(" ", str(raw or "")).split()).strip(_EDGE)
     prev = None
     while prev != s:
@@ -101,14 +101,14 @@ def _keys(text: str) -> Keys:
 
 
 def name_keys(raw: Any) -> Keys:
-    """Ключ сравнения названия: основная часть (до запятой, без частей в скобках) — см. модуль."""
+    """Ключ сравнения названия: основная часть(до запятой, без частей в скобках) - см. модуль."""
     main = _PAREN.sub(" ", clean_name(raw)).split(",")[0]
     return _keys(main)
 
 
 def variants(raw: Any) -> List[Keys]:
-    """Ключи всех написаний названия: основная часть и содержимое скобок («Престиж (Sparkle Diamond)» — «Престиж» и
-    «Sparkle Diamond»; «(ГС: Инвестор)», «(блок А)» — не названия)."""
+    """Ключи всех написаний названия: основная часть и содержимое скобок("Престиж(Sparkle Diamond)" - "Престиж" и
+    "Sparkle Diamond"; "(ГС: Инвестор)", "(блок А)" - не названия)."""
     name = clean_name(raw)
     out = [name_keys(name)]
     for part in _PAREN.findall(name):
@@ -148,8 +148,8 @@ class Entry:
 
 @dataclass
 class Matcher:
-    """Справочник названий: ЖК (любого происхождения), объекты открытого реестра (все названия записей), объекты из
-    рекламы (ключ, название и другие написания)."""
+    """Справочник названий: ЖК(любого происхождения), объекты открытого реестра(все названия записей), объекты из
+    рекламы(ключ, название и другие написания)."""
     known: List[Entry] = field(default_factory=list)
     found: List[Entry] = field(default_factory=list)
     by_key: Dict[str, int] = field(default_factory=dict)  # norm_key → id объекта из рекламы
@@ -227,8 +227,8 @@ def _add_alias(o: models.DiscoveredObject, name: Optional[str]) -> None:
 
 
 def recount(db: Session, ids: Iterable[int]) -> None:
-    """Счётчики объектов по упоминаниям: публикаций, аккаунты рекламы (по частоте; заявки жителей — нет), первое и
-    последнее упоминание, адрес из рекламы (если не задан)."""
+    """Счётчики объектов по упоминаниям: публикаций, аккаунты рекламы(по частоте; заявки жителей - нет), первое и
+    последнее упоминание, адрес из рекламы(если не задан)."""
     M, O, A = models.DiscoveredMention, models.DiscoveredObject, models.Ad
     for oid in sorted(set(ids)):
         o = db.get(O, oid)
@@ -255,7 +255,7 @@ def recount(db: Session, ids: Iterable[int]) -> None:
 
 def sync_mentions(db: Session, ad: models.Ad, mentions: List[dict], stage: Optional[dict], now: datetime,
                   matcher: Optional[Matcher] = None) -> List[int]:
-    """Упоминания публикации по проверенному ответу Claude (в сессии db, без commit): объекты из рекламы создаются,
+    """Упоминания публикации по проверенному ответу Claude(в сессии db, без commit): объекты из рекламы создаются,
     упоминания добавляются, обновляются или удаляются; счётчики пересчитываются. Возвращает id объектов публикации."""
     M = models.DiscoveredMention
     m = matcher or Matcher.load(db)
@@ -271,7 +271,7 @@ def sync_mentions(db: Session, ad: models.Ad, mentions: List[dict], stage: Optio
         hit = m.object_match(k)
         if hit is None:
             if m.known_match(k) is not None:
-                continue  # ЖК справочника или реестра — привязку предлагают правила и Claude
+                continue  # ЖК справочника или реестра - привязку предлагают правила и Claude
             o = _new_object(db, name, k.key[:255], x.get("address") or None, now)
             m.add_object(o)
             oid = o.id
@@ -305,7 +305,7 @@ def sync_mentions(db: Session, ad: models.Ad, mentions: List[dict], stage: Optio
 
 
 def record_result(ad_id: str, result: Optional[dict], now: datetime) -> List[int]:
-    """После ответа Claude (status done): упоминания публикации — своя сессия и транзакция."""
+    """После ответа Claude(status done): упоминания публикации - своя сессия и транзакция."""
     res = result or {}
     with SessionLocal() as db:
         ad = db.get(models.Ad, ad_id)
@@ -323,7 +323,7 @@ def _slug(key: str) -> str:
 
 
 def new_complex_id(db: Session, key: str) -> str:
-    """«a-<латинский ключ>»; длинный или пустой — «ah-<sha1[:16]>»; занятый — с добавкой."""
+    """"a-<латинский ключ>"; длинный или пустой - "ah-<sha1[:16]>"; занятый - с добавкой."""
     slug = _slug(key)
     cid = f"a-{slug}"
     if slug and len(cid) <= ID_MAX and db.get(models.Complex, cid) is None:
@@ -337,8 +337,8 @@ def new_complex_id(db: Session, key: str) -> str:
 
 
 def ensure_developer(db: Session, name: Optional[str], bin_: Optional[str]) -> Tuple[models.Developer, bool]:
-    """Застройщик ЖК по рекламе: существующий по БИН или названию (без формы собственности и кавычек), иначе новый
-    (origin «advertised»); без названия и БИН — «Застройщик не установлен». (застройщик, создан ли)."""
+    """Застройщик ЖК по рекламе: существующий по БИН или названию(без формы собственности и кавычек), иначе новый
+    (origin "advertised"); без названия и БИН - "Застройщик не установлен". (застройщик, создан ли)."""
     D = models.Developer
     if not name and not bin_:
         d = db.get(D, UNKNOWN_DEV)
@@ -370,7 +370,7 @@ def _complex_values(name: str, address: str, lat: Optional[float], lng: Optional
 
 
 def rerun_rules(db: Session, ad_ids: Iterable[str], reason: str = RULES_REASON) -> List[str]:
-    """Пересчёт правил сопоставления по собранным публикациям — задание анализа без запроса к Claude (rulesOnly)."""
+    """Пересчёт правил сопоставления по собранным публикациям - задание анализа без запроса к Claude(rulesOnly)."""
     from . import ingest
 
     ids = sorted(set(ad_ids))
@@ -436,10 +436,10 @@ def _urls(xs: Iterable[str]) -> List[str]:
 
 def import_advertised(db: Session, items: Iterable[Any], *, author: str, note: Optional[str] = None,
                       now: Optional[datetime] = None) -> ImportReport:
-    """Карточки ЖК по рекламе списком (в сессии db, без commit). Идемпотентно по ключу названия: ЖК «advertised» с тем
-    же ключом — только дополняются пустые поля (адрес, координаты), другие названия, аккаунты и ссылки; ЖК справочника
-    или объект открытого реестра с тем же названием — пропуск с причиной. Объект из рекламы с тем же ключом
-    привязывается к карточке (его упоминания — реклама этого ЖК, правила пересчитываются). События журнала — по
+    """Карточки ЖК по рекламе списком(в сессии db, без commit). Идемпотентно по ключу названия: ЖК "advertised" с тем
+    же ключом - только дополняются пустые поля(адрес, координаты), другие названия, аккаунты и ссылки; ЖК справочника
+    или объект открытого реестра с тем же названием - пропуск с причиной. Объект из рекламы с тем же ключом
+    привязывается к карточке(его упоминания - реклама этого ЖК, правила пересчитываются). События журнала - по
     каждой карточке."""
     rep = ImportReport()
     now = models.as_utc(now) or models.utcnow()
@@ -551,7 +551,7 @@ def _obj(db: Session, oid: int) -> models.DiscoveredObject:
 
 
 def _geo(db: Session, oid: int) -> List[dict]:
-    """Последние сверки 2ГИС объекта — по одной на запрос, новые первыми."""
+    """Последние сверки 2ГИС объекта - по одной на запрос, новые первыми."""
     from .integrations import dgis
     from .settings import get_settings
 
@@ -568,7 +568,7 @@ def _geo(db: Session, oid: int) -> List[dict]:
 
 
 def discovered_out(db: Session, objs: List[models.DiscoveredObject], as_of: Optional[date] = None) -> List[dict]:
-    """Объекты для API (DiscoveredOut): упоминания, цитаты, стадия, признаки продажи, сверки 2ГИС, оценка."""
+    """Объекты для API(DiscoveredOut): упоминания, цитаты, стадия, признаки продажи, сверки 2ГИС, оценка."""
     from .settings import get_settings
 
     M = models.DiscoveredMention
@@ -637,8 +637,8 @@ STATUS_ORDER = {"new": 0, "linked": 1, "dismissed": 2}
 @router.get("/api/discovered", response_model=List[schemas.DiscoveredOut], response_model_by_alias=True)
 def list_discovered(status: Optional[schemas.DiscoveredStatus] = Query(None, description="new | linked | dismissed"),
                     db: Session = Depends(get_db)):
-    """Объекты из рекламы (ЖК, которых нет в справочнике и открытом реестре): новые первыми, затем по числу публикаций.
-    Цитаты (до трёх), стадия по рекламе, признаки продажи, последние сверки 2ГИС и оценка «Проверка по рекламе»."""
+    """Объекты из рекламы(ЖК, которых нет в справочнике и открытом реестре): новые первыми, затем по числу публикаций.
+    Цитаты(до трёх), стадия по рекламе, признаки продажи, последние сверки 2ГИС и оценка "Проверка по рекламе"."""
     O = models.DiscoveredObject
     q = select(O)
     if status is not None:
@@ -660,9 +660,9 @@ def get_discovered(oid: int = OID, db: Session = Depends(get_db)):
                                          503: {"description": "2ГИС не настроен или ключ отклонён"}})
 def geo_discovered(body: schemas.DiscoveredGeoIn, request: Request, response: Response, oid: int = OID,
                    db: Session = Depends(get_db)):
-    """Кандидаты 2ГИС для объекта из рекламы: по «Казахстан, Усть-Каменогорск, ЖК <название>» и, если реклама называла
-    адрес, по адресу — кэш первым, квота и права как у «Сверить адрес» (force — мимо кэша, только администратор).
-    Ничего не принимается автоматически: выбранный кандидат передаётся в create-complex (candidateId)."""
+    """Кандидаты 2ГИС для объекта из рекламы: по "Казахстан, Усть-Каменогорск, ЖК <название>" и, если реклама называла
+    адрес, по адресу - кэш первым, квота и права как у "Сверить адрес"(force - мимо кэша, только администратор).
+    Ничего не принимается автоматически: выбранный кандидат передаётся в create-complex(candidateId)."""
     from .integrations import dgis
 
     o = _obj(db, oid)
@@ -707,9 +707,9 @@ def _candidate(db: Session, oid: int, cand_id: str) -> Tuple[models.GeoCheck, di
              responses={409: {"description": "Объект уже привязан, ЖК с таким названием есть или решение уже приняли"},
                         422: {"description": "Кандидата 2ГИС нет в сверках объекта"}})
 def create_complex(body: schemas.DiscoveredCreateIn, oid: int = OID, db: Session = Depends(get_db)):
-    """Карточка ЖК по объекту из рекламы (origin «advertised»: в открытом реестре его нет, сведения рекламы не
-    проверены). Застройщик — существующий по БИН или названию, иначе новый «advertised»; без названия — «не установлен».
-    Объект — «привязан», в журнал — кто и что создал; правила сопоставления пересчитываются по публикациям с
+    """Карточка ЖК по объекту из рекламы(origin "advertised": в открытом реестре его нет, сведения рекламы не
+    проверены). Застройщик - существующий по БИН или названию, иначе новый "advertised"; без названия - "не установлен".
+    Объект - "привязан", в журнал - кто и что создал; правила сопоставления пересчитываются по публикациям с
     упоминаниями без нового запроса к Claude. Формальный риск по такой карточке не оценивается до проверенных
     сведений."""
     o = _obj(db, oid)
@@ -746,7 +746,7 @@ def create_complex(body: schemas.DiscoveredCreateIn, oid: int = OID, db: Session
         db.rollback()
         raise HTTPException(409, "Решение по объекту уже принял другой аналитик — обновите страницу")
     db.refresh(o)
-    _add_alias(o, name)  # название карточки — тоже написание объекта: его упоминания попадут к этому ЖК
+    _add_alias(o, name)  # название карточки - тоже написание объекта: его упоминания попадут к этому ЖК
     if geo is not None:
         G = models.GeoCheck
         db.execute(update(G).where(G.id == geo.id)
@@ -773,8 +773,8 @@ def create_complex(body: schemas.DiscoveredCreateIn, oid: int = OID, db: Session
 @router.post("/api/discovered/{oid}/link", response_model=schemas.DiscoveredOut, response_model_by_alias=True,
              responses={409: {"description": "Решение по объекту уже принял другой аналитик"}})
 def link_discovered(body: schemas.DiscoveredLinkIn, oid: int = OID, db: Session = Depends(get_db)):
-    """Привязать объект из рекламы к существующему ЖК: его название — другое написание этого ЖК, упоминания — реклама
-    этого ЖК в «Проверке по рекламе» (гипотеза по публикации). Повтор с тем же ЖК ничего не меняет."""
+    """Привязать объект из рекламы к существующему ЖК: его название - другое написание этого ЖК, упоминания - реклама
+    этого ЖК в "Проверке по рекламе"(гипотеза по публикации). Повтор с тем же ЖК ничего не меняет."""
     from . import registry
 
     o = _obj(db, oid)
@@ -806,7 +806,7 @@ def link_discovered(body: schemas.DiscoveredLinkIn, oid: int = OID, db: Session 
 @router.post("/api/discovered/{oid}/dismiss", response_model=schemas.DiscoveredOut, response_model_by_alias=True,
              responses={409: {"description": "Решение по объекту уже принял другой аналитик"}})
 def dismiss_discovered(body: schemas.DiscoveredDismissIn, oid: int = OID, db: Session = Depends(get_db)):
-    """Отклонить объект из рекламы (не ЖК, подборка, ошибка распознавания…) с причиной; привязка, если была, снимается.
+    """Отклонить объект из рекламы(не ЖК, подборка, ошибка распознавания…) с причиной; привязка, если была, снимается.
     Карточка ЖК, созданная по объекту, остаётся."""
     o = _obj(db, oid)
     if o.status == "dismissed" and (o.note or "") == body.reason:
@@ -837,7 +837,7 @@ def dismiss_discovered(body: schemas.DiscoveredDismissIn, oid: int = OID, db: Se
                         503: {"description": "Администрирование не настроено"}})
 def import_discovered(body: schemas.AdvertisedImportIn, admin: auth.Admin = Depends(auth.require_admin),
                       db: Session = Depends(get_db)):
-    """Импорт ЖК по рекламе списком (администратор): карточки «advertised» с другими названиями, аккаунтами и ссылками
+    """Импорт ЖК по рекламе списком(администратор): карточки "advertised" с другими названиями, аккаунтами и ссылками
     рекламы. Повтор того же списка ничего не меняет; ЖК, которые есть в реестре или справочнике, пропускаются."""
     rep = import_advertised(db, body.items, author=body.author, note=body.note)
     db.commit()

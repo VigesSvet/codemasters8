@@ -1,19 +1,19 @@
-"""Решение аналитика по «Проверке по рекламе» (app.screening): сданные ЖК, которые всё ещё рекламируются, и другие
-случаи «Требует проверки», которые аналитик проверил и закрыл.
+"""Решение аналитика по "Проверке по рекламе"(app.screening): сданные ЖК, которые всё ещё рекламируются, и другие
+случаи "Требует проверки", которые аналитик проверил и закрыл.
 
-    POST   /api/complexes/{id}/commissioned          «Объект сдан»: акт № (необязателен), дата акта, источник, ссылка
-    DELETE /api/complexes/{id}/commissioned          отменить отметку «сдан» (причина обязательна)
-    POST   /api/complexes/{id}/screening-decision    {decision: "no_issues"} «Проверено — замечаний нет»: что проверено,
+    POST   /api/complexes/{id}/commissioned          "Объект сдан": акт № (необязателен), дата акта, источник, ссылка
+    DELETE /api/complexes/{id}/commissioned          отменить отметку "сдан"(причина обязательна)
+    POST   /api/complexes/{id}/screening-decision    {decision: "no_issues"} "Проверено - замечаний нет": что проверено,
                                                      источник, ссылка
-    DELETE /api/complexes/{id}/screening-decision    отменить действующее решение любого вида (причина обязательна)
+    DELETE /api/complexes/{id}/screening-decision    отменить действующее решение любого вида(причина обязательна)
     GET    /api/complexes/{id}/screening-decisions   история решений по ЖК: действующее, отменённые, заменённые
 
-Это действия аналитика (как сверка, app.verification): автор — имя вошедшего сотрудника (HumanName, «Система» — 422),
-каждое — событие журнала объекта вида «данные» от его имени. Решение хранится строкой screening_decisions: действующее
-(active) — одно на ЖК (частичный уникальный индекс; запись — под блокировкой строки ЖК), новое решение заменяет прежнее
-(superseded), отмена — cancelled; строки не удаляются — это история. «Сдан» ставит стадию карточки «введён» (риск: R1,
-R2, R3, R5, R6 — «объект введён», как у любого введённого ЖК); отмена или замена возвращает прежнюю стадию (prev_stage).
-Как решение влияет на оценку и когда снимается новой рекламой — app.screening. Ответ — ЖК в форме GET
+Это действия аналитика(как сверка, app.verification): автор - имя вошедшего сотрудника(HumanName, "Система" - 422),
+каждое - событие журнала объекта вида "данные" от его имени. Решение хранится строкой screening_decisions: действующее
+(active) - одно на ЖК(частичный уникальный индекс; запись - под блокировкой строки ЖК), новое решение заменяет прежнее
+(superseded), отмена - cancelled; строки не удаляются - это история. "Сдан" ставит стадию карточки "введён"(риск: R1,
+R2, R3, R5, R6 - "объект введён", как у любого введённого ЖК); отмена или замена возвращает прежнюю стадию(prev_stage).
+Как решение влияет на оценку и когда снимается новой рекламой - app.screening. Ответ - ЖК в форме GET
 /api/complexes/{id} с пересчитанной оценкой и полем decision.
 """
 from typing import Any, Dict, List, Optional
@@ -41,7 +41,7 @@ def _active(db: Session, cid: str) -> Optional[models.ScreeningDecision]:
 
 
 def _state(db: Session, cid: str) -> Optional[Obj]:
-    """Решение ЖК так, как его видит оценка: действует или снято новой рекламой (reopened)."""
+    """Решение ЖК так, как его видит оценка: действует или снято новой рекламой(reopened)."""
     return screening.compute(db).decisions.get(cid)
 
 
@@ -63,8 +63,8 @@ def _same(row: models.ScreeningDecision, values: Obj) -> bool:
 
 def _record(db: Session, c: models.Complex, kind: str, values: Obj, who: str, what: str,
             comment: Optional[str]) -> Obj:
-    """Новое решение (прежнее действующее — заменено); у «сдан» — стадия «введён», у прочих — возврат стадии, которую
-    поставила прежняя отметка «сдан». Повтор действующего (не снятого рекламой) решения без комментария — без записи."""
+    """Новое решение(прежнее действующее - заменено); у "сдан" - стадия "введён", у прочих - возврат стадии, которую
+    поставила прежняя отметка "сдан". Повтор действующего(не снятого рекламой) решения без комментария - без записи."""
     cur = _active(db, c.id)
     if cur is not None and cur.kind == kind and not comment and _same(cur, values):
         st = _state(db, c.id)
@@ -74,10 +74,10 @@ def _record(db: Session, c: models.Complex, kind: str, values: Obj, who: str, wh
     prev = c.stage
     if cur is not None:
         if cur.kind == "commissioned":
-            prev = cur.prev_stage or ""  # стадия до прежней отметки «сдан»
+            prev = cur.prev_stage or ""  # стадия до прежней отметки "сдан"
         _close(cur, "superseded", who, f"заменено решением «{screening.DECISION_LABELS[kind]}»")
         notes.append(f"прежнее решение «{_label(cur)}» от {_fmt(screening._local_minutes(cur.created_at))} заменено")
-        db.flush()  # прежнее решение закрыто до вставки нового — частичный уникальный индекс «одно действующее»
+        db.flush()  # прежнее решение закрыто до вставки нового - частичный уникальный индекс "одно действующее"
     row = D(complex_id=c.id, kind=kind, status="active", created_by=who, created_at=models.utcnow(),
             prev_stage=prev if kind == "commissioned" else None, comment=comment, **values)
     db.add(row)
@@ -92,9 +92,9 @@ def _record(db: Session, c: models.Complex, kind: str, values: Obj, who: str, wh
 
 @router.post("/api/complexes/{cid}/commissioned", response_model=schemas.ComplexListOut, response_model_by_alias=True)
 def mark_commissioned(cid: str, body: schemas.CommissionedIn, db: Session = Depends(get_db)):
-    """«Объект сдан»: ввод в эксплуатацию подтверждён — акт № (необязателен), дата акта (обязательна, не позже сегодня),
-    источник, ссылка, комментарий. Оценка — ok «Дом сдан — замечаний нет» (продажа квартир в сданном доме законна), пока
-    новая реклама со стартом продаж или строящейся очередью не снимет решение; стадия карточки — «введён»."""
+    """"Объект сдан": ввод в эксплуатацию подтверждён - акт № (необязателен), дата акта(обязательна, не позже сегодня),
+    источник, ссылка, комментарий. Оценка - ok "Дом сдан - замечаний нет"(продажа квартир в сданном доме законна), пока
+    новая реклама со стартом продаж или строящейся очередью не снимет решение; стадия карточки - "введён"."""
     c = _complex(db, cid, lock=True)
     act = body.act_date.isoformat()
     values = {"act_number": body.act_number, "act_date": act, "source": body.source, "source_url": body.source_url,
@@ -107,8 +107,8 @@ def mark_commissioned(cid: str, body: schemas.CommissionedIn, db: Session = Depe
 @router.post("/api/complexes/{cid}/screening-decision", response_model=schemas.ComplexListOut,
              response_model_by_alias=True)
 def decide(cid: str, body: schemas.ScreeningDecisionIn, db: Session = Depends(get_db)):
-    """«Проверено — замечаний нет»: что проверено (не короче 10 символов), источник, ссылка, комментарий. Оценка — ok
-    «Проверено — замечаний нет», пока новая реклама с признаком приёма денег не снимет решение."""
+    """"Проверено - замечаний нет": что проверено(не короче 10 символов), источник, ссылка, комментарий. Оценка - ok
+    "Проверено - замечаний нет", пока новая реклама с признаком приёма денег не снимет решение."""
     c = _complex(db, cid, lock=True)
     values = {"act_number": None, "act_date": None, "source": body.source, "source_url": body.source_url,
               "reason": body.reason}
@@ -143,20 +143,20 @@ def _cancel(db: Session, cid: str, body: schemas.DecisionCancelIn, only: Optiona
 @router.delete("/api/complexes/{cid}/screening-decision", response_model=schemas.ComplexListOut,
                response_model_by_alias=True, responses={404: {"description": NO_DECISION}})
 def cancel_decision(cid: str, body: schemas.DecisionCancelIn, db: Session = Depends(get_db)):
-    """Отменить действующее решение (любого вида): оценка снова автоматическая; у «сдан» — прежняя стадия карточки."""
+    """Отменить действующее решение(любого вида): оценка снова автоматическая; у "сдан" - прежняя стадия карточки."""
     return _cancel(db, cid, body)
 
 
 @router.delete("/api/complexes/{cid}/commissioned", response_model=schemas.ComplexListOut, response_model_by_alias=True,
                responses={404: {"description": NO_DECISION}, 409: {"description": NOT_COMMISSIONED}})
 def cancel_commissioned(cid: str, body: schemas.DecisionCancelIn, db: Session = Depends(get_db)):
-    """Отменить отметку «сдан»: стадия карточки — прежняя, оценка — автоматическая."""
+    """Отменить отметку "сдан": стадия карточки - прежняя, оценка - автоматическая."""
     return _cancel(db, cid, body, only="commissioned")
 
 
 @router.get("/api/complexes/{cid}/screening-decisions", response_model=List[schemas.DecisionRecordOut],
             response_model_by_alias=True)
 def history(cid: str, db: Session = Depends(get_db)):
-    """История решений по ЖК, новые первыми: действующее, заменённые и отменённые (кто, когда, почему)."""
+    """История решений по ЖК, новые первыми: действующее, заменённые и отменённые(кто, когда, почему)."""
     _complex(db, cid)
     return list(db.scalars(select(D).where(D.complex_id == cid).order_by(D.id.desc())))
