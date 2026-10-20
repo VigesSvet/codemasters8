@@ -1,6 +1,6 @@
-"""Instagram через Meta Graph API · Business Discovery(integration-spec §12.1, §16.3 test_integration_instagram,
-§16.5 столбец I): проверка токена и разрешений, сбор публикаций с файлами, повтор без дублей, правки, обход страниц,
-совместимость полей, ошибки и лимиты Graph API, токен не утекает, плановая проверка; приёмка по §14 плана.
+"""Instagram через Meta Graph API · Business Discovery: проверка токена и разрешений, сбор публикаций с файлами, повтор
+без дублей, правки, обход страниц, совместимость полей, ошибки и лимиты Graph API, токен не утекает, плановая проверка;
+приёмочные проверки подключения.
 
 Сеть - только поддельный Graph API и CDN поверх http_mock; модуль подключения импортируется внутри тестов."""
 import hashlib
@@ -544,7 +544,7 @@ def test_paging_first_load_cap_and_seeded(client, env, graph, run_worker, ocr_st
 
 def test_paging_without_next_walks_all_pages(client, env, graph, run_worker, ocr_stub):
     """Business Discovery не присылает paging.next: страницы - по курсору after до пустой страницы; новые публикации
-    дальше первой страницы не теряются(ревью C1: обход останавливался на первой странице)."""
+    дальше первой страницы не теряются."""
     env(META_USER_ACCESS_TOKEN=TOKEN, META_IG_USER_ID=IG_ID, IG_PAGE_SIZE="2", IG_FIRST_LOAD_MAX="50")
     graph.accounts[ACCOUNT] = [image(n) for n in range(140, 147)]  # 7 публикаций - 4 страницы
     configure(config={"accounts": [ACCOUNT]})
@@ -761,7 +761,7 @@ def test_daily_health_check_scheduled(client, configured, graph, run_worker, ocr
     assert count(models.CollectionRun) == 1  # следующая - через сутки
 
 
-# ---------- приёмка по §14 плана(integration-spec §16.5, столбец I) ----------
+# ---------- приёмочные проверки подключения ----------
 
 def test_acceptance_repeat_no_duplicate(client, configured, graph, run_worker, accept, ocr_stub):
     three_items(graph)

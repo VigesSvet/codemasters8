@@ -822,7 +822,7 @@ def test_ad_ocr_quote():
 
 @pytest.mark.parametrize("name", ["r2_offer_from_ocr_hit", "ad_quote_from_ocr"])
 def test_quote_from_marks_screenshot(name):
-    """Цитата со скриншота помечена quoteFrom = 'ocr', из текста публикации - 'text' (T-24)."""
+    """Цитата со скриншота помечена quoteFrom = 'ocr', из текста публикации - 'text'."""
     r = run(name) if name in CX_FX else run_ad(name)
     r2, r3 = fac(r, "R2")["items"][0], fac(r, "R3")["items"][0]
     assert (r2["marker"], r2["quote"], r2["quoteFrom"]) == ("первый взнос", "ПЕРВЫЙ ВЗНОС 20% · ДДУ · ФИКСИРУЕМ ЦЕНУ", "ocr")
@@ -1042,7 +1042,7 @@ def test_formula_and_texts_hold_for_every_result():
 
 def test_fixtures_cover_every_branch():
     covered, ad_covered, obs_covered, summaries, variants = set(), set(), set(), set(), set()
-    for name, r, is_ad in _all_results():
+    for _name, r, is_ad in _all_results():
         for f in r["factors"]:
             (ad_covered if is_ad and f["reason"] in AD_REASONS else covered).add((f["code"], f["reason"]))
             variants |= {(f["code"], k) for k, t in FACTORS[f["code"]].get("variants", {}).items()

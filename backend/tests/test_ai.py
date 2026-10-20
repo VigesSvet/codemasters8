@@ -1,4 +1,4 @@
-"""ИИ-сценарий(ТЗ §6, T-20…T-25): нормализация и транслитерация, условия оплаты с цитатами и уверенностью,
+"""ИИ-сценарий(ТЗ §6): нормализация и транслитерация, условия оплаты с цитатами и уверенностью,
 сопоставление публикации с ЖК, проверка на новых текстах(shared/ai_cases.json), эндпоинты анализа, решений аналитика
 и OCR."""
 import io
@@ -404,7 +404,7 @@ def test_seed_ads_match_their_confirmed_complex():
         assert hyps and hyps[0]["complexId"] == ad["complexId"], ad["id"]
 
 
-# ---------- проверка на новых данных(T-25) ----------
+# ---------- проверка на новых данных ----------
 
 CASES = load_cases()
 
@@ -414,7 +414,7 @@ def test_cases_file():
     seed_texts = {a["text"] for a in SEED["ads"]} | {a.get("ocr") for a in SEED["ads"]}
     assert not any(c.get("text") in seed_texts or (c.get("ocr") and c["ocr"] in seed_texts) for c in CASES)
     texts = " ".join(f"{c.get('text', '')} {c.get('ocr') or ''}" for c in CASES)
-    # три кейса из плана
+    # три кейса с ЖК c2, c4 и c11 тестового набора
     assert "Altai Residence" in texts and "ШЫГЫС ТАУЭР · ДДУ · ПЕРВЫЙ ВЗНОС 20 %" in texts and "Утепова 18" in texts
     assert {c["expected"]["complexId"] for c in CASES if c["id"] in ("k1", "k2", "k3")} == {"c2", "c4", "c11"}
     # контрпримеры и подборка
