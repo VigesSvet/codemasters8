@@ -67,7 +67,7 @@ export function EvidenceView({ item: x, linkAds = true, from }: { item: Evidence
       <div>
         <div className="row" style={{ gap: 8 }}><span className="bold">{x.label}</span>{typeof x.value === 'string' && <TriTag v={x.value as Tri} />}</div>
         {x.quote && <div className="q">{x.quote}</div>}
-        {/* провенанс по документу (T-29): источник, дата сверки, ссылка; без них документ не проверялся */}
+        {/* провенанс по документу: источник, дата сверки, ссылка; без них документ не проверялся */}
         {x.source || x.date
           ? <div className="meta">{meta(x.source ?? 'источник не указан', x.date ? `сверено ${fmtDate(x.date)}` : 'дата сверки не указана')}{x.url && <> · <SrcLink url={x.url} /></>}</div>
           : <div className="meta" style={{ color: 'var(--amber-ink)' }}>не проверялся: источника и даты сверки нет</div>}

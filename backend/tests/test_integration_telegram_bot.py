@@ -1,6 +1,6 @@
-"""Telegram-бот заявок(integration-spec §12.3, §16.3 test_integration_telegram_bot, §16.5 столбец B): доступ по
-сервисному токену, заявка JSON и multipart, повторная доставка и версии, заявитель отдельно от публикации, статус заявки
-для бота, статус подключения и приёмка по §14 плана. Модуль подключения импортируется внутри тестов(ground rule 12)."""
+"""Telegram-бот заявок: доступ по сервисному токену, заявка JSON и multipart, повторная доставка и версии, заявитель
+отдельно от публикации, статус заявки для бота, статус подключения и приёмочные проверки. Модуль подключения
+импортируется внутри тестов."""
 import json
 from datetime import datetime, timedelta, timezone, UTC
 
@@ -691,7 +691,7 @@ def test_auth_runs_off_event_loop(client, bot, monkeypatch):
     assert where == ["thread", "thread"]
 
 
-# ---------- §16.5: приёмка по §14 плана(столбец B) ----------
+# ---------- приёмочные проверки подключения ----------
 
 def test_acceptance_repeat_no_duplicate(client, bot, run_worker, accept, ocr_stub, http_mock):
     files = [("a.png", png_bytes((11, 0, 0)), "image/png"), ("b.png", png_bytes((12, 0, 0)), "image/png")]

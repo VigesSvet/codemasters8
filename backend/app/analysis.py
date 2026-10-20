@@ -1,4 +1,4 @@
-"""Анализ собранной публикации - задание analyze воркера(integration-spec §8; план: AnalysisJob).
+"""Анализ собранной публикации - задание analyze воркера.
 
 Этапы: media(файлы по ссылкам приёма через API) → frames(кадры видео, ffmpeg) → speech(речь в роликах, app.speech -
 faster-whisper, если установлен) → ocr(Tesseract по изображениям и кадрам) → rules(правила saq-ai-1: условия оплаты, гипотезы ЖК) → llm(Claude, app.llm - только если задан
@@ -127,7 +127,7 @@ def _has_work(assets: list[models.MediaAsset], now: datetime) -> bool:
             return True
         if a.current and a.status == "downloaded" and a.ocr_status is None and a.kind in ("image", "frame", "video"):
             return True
-        if _speech_due(a, False):  # ролик, проанализированный до распознавания речи(T-60)
+        if _speech_due(a, False):  # ролик, проанализированный до распознавания речи
             return True
     return False
 

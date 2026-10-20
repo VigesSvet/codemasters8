@@ -517,7 +517,7 @@ export interface LlmAnalysis {
   updatedAt?: string | null
 }
 
-// ---------- Сбор публикаций: файлы, анализ, версии (integration-spec §11.2) ----------
+// ---------- Сбор публикаций: файлы, анализ, версии ----------
 
 /** Речь в ролике (faster-whisper на сервере): done — расшифровка есть (она же — абзац «Речь в ролике: …» в ocr публикации);
  *  empty — нет звука или речи; unavailable — нет движка, ffmpeg или модели; failed — сбой; skipped — выключено, ролик длиннее
@@ -575,7 +575,7 @@ export interface MediaUpload {
   size: number
 }
 
-// ---------- Подключения источников и запуски сбора (integration-spec §10–§11) ----------
+// ---------- Подключения источников и запуски сбора ----------
 
 /** Код подключения; порядок — как в реестре сервера */
 export type ConnectorCode = 'instagram' | 'telegram' | 'tiktok' | 'krisha' | 'telegram_bot' | 'intake' | 'dgis' | 'anthropic' | 'olx'
@@ -585,12 +585,12 @@ export type ConnectorCode = 'instagram' | 'telegram' | 'tiktok' | 'krisha' | 'te
 export type ConnectorKind = 'collector' | 'intake' | 'geo' | 'oauth' | 'analyzer'
 export type ConnectorGroup = 'collectors' | 'intake' | 'geo' | 'analyzer' | 'limited'
 
-/** Состояние подключения (сохранённое + вычисленное на сервере), §10.4 */
+/** Состояние подключения (сохранённое + вычисленное на сервере) */
 export type ConnectorStatus =
   | 'not_configured' | 'unchecked' | 'checking' | 'queued' | 'running' | 'ready' | 'working' | 'partial'
   | 'waiting' | 'off' | 'error' | 'expired' | 'denied' | 'access_check' | 'rate_limited'
 
-/** Статус запуска сбора или проверки, §10.5; конечные — все, кроме queued и running */
+/** Статус запуска сбора или проверки; конечные — все, кроме queued и running */
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'partial' | 'failed' | 'access_check' | 'rate_limited' | 'not_configured' | 'cancelled'
 
 export type RunTrigger = 'schedule' | 'manual' | 'test'
@@ -763,7 +763,7 @@ export interface OlxStart {
   expiresAt?: string | null
 }
 
-// ---------- 2ГИС: сверка адреса (integration-spec §12.5) ----------
+// ---------- 2ГИС: сверка адреса ----------
 
 /** complex — карточка ЖК, registry — объект открытых данных, discovered — объект из рекламы */
 export type GeoTargetKind = 'complex' | 'registry' | 'discovered'

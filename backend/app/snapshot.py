@@ -481,9 +481,10 @@ def export(eng: Engine, out: Path = DIR, *, max_px: int = MAX_PX, quality: int =
         media_map = {r["id"]: Path(r["storage_key"]).name for r in media_rows
                      if r.get("storage_key") and r.get("status") == "downloaded"}
         man: Obj = {
-            "_note": "Стартовый набор SAQ Qurylys: реальные данные мониторинга (ЖК открытого реестра и известные по "
+            "_note": "Стартовый набор SAQ Qurylys: реальные данные мониторинга(ЖК открытого реестра и известные по "
                      "рекламе, застройщики, публичная реклама с OCR и анализом ИИ, объекты из рекламы, журнал). "
-                     "Загружается в пустую БД при старте API; формат и обновление — backend/app/snapshot.py, README.",
+                     "Загружается в пустую БД при старте API; формат и обновление - backend/app/snapshot.py, "
+                     "docs/DATA.md.",
             "format": FORMAT, "schemaVersion": version, "exportedAt": at.isoformat(),
             "tables": tables, "excluded": EXCLUDED, "alsoExcluded": ALSO_EXCLUDED,
             "media": {"dir": "media", "files": len(files), "bytes": sum(p.stat().st_size for p in files),

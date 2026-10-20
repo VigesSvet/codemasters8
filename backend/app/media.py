@@ -183,7 +183,7 @@ def ensure_space(nbytes: int = 0, *, reserve_mb: int = 0) -> None:
 
 
 def storage_key(sha: str, mime: str) -> str:
-    """Ключ хранилища файла по SHA-256 и MIME(из ALLOWED): "ab/cd/<sha256>.<ext>"(integration-spec §6.1)."""
+    """Ключ хранилища файла по SHA-256 и MIME(из ALLOWED): "ab/cd/<sha256>.<ext>"."""
     return f"{sha[:2]}/{sha[2:4]}/{sha}{ALLOWED[mime]}"
 
 

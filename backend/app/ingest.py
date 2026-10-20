@@ -1,4 +1,4 @@
-"""Единый приём публикаций(план §5): Publication → IngestItem + Ad + IngestVersion + MediaAsset.
+"""Единый приём публикаций: Publication → IngestItem + Ad + IngestVersion + MediaAsset.
 
 Им пользуются все сборщики(RunContext.ingest), приём через API(POST /api/intake/publications) и бот заявок.
 Дедупликация - по(пространство площадки, внешний ID): сначала INSERT … ON CONFLICT DO NOTHING(гонка двух сборщиков
@@ -270,7 +270,7 @@ def _apply(a: models.MediaAsset, m: MediaIn, now: datetime) -> str:
         return m.status
     if m.url and a.status in ("failed", "unavailable") and (a.attempts or 0) < ATTEMPTS_MAX:
         # приём через API прислал ссылку снова(например, свежую подписанную вместо истёкшей): файл, который не
-        # загрузился, загружается ещё раз - всего не больше ATTEMPTS_MAX попыток, как у сборщиков(§7.3 п. 3)
+        # загрузился, загружается ещё раз - всего не больше ATTEMPTS_MAX попыток, как у сборщиков
         a.status, a.error = "pending", None
         a.meta = {k: v for k, v in (a.meta or {}).items() if k != "retryAt"}
     if m.url and a.status == "pending":  # приём через API: файл загрузит анализ; meta.src не выводится и не логируется

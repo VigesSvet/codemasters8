@@ -1,5 +1,5 @@
-"""Сборщик Krisha.kz(integration-spec §12.6, §16.3 krisha, §16.5): без сети - httpx.MockTransport и синтетические
-страницы tests/fixtures/krisha/ (написаны вручную, данные вымышленные)."""
+"""Сборщик Krisha.kz: без сети - httpx.MockTransport и синтетические страницы tests/fixtures/krisha/ (написаны вручную,
+данные вымышленные)."""
 import contextlib
 import hashlib
 import importlib.util
@@ -1052,7 +1052,7 @@ def test_playwright_ok_card_and_redirect_refused(client, kr, site, run_worker, o
     assert r2.status == "partial" and "перенаправление на https://evil.example/a/show/900000002" in row().status_detail
 
 
-# ---------- приёмка по §14 плана(integration-spec §16.5) ----------
+# ---------- приёмочные проверки подключения ----------
 
 def test_acceptance_repeat_no_duplicate(client, kr, site, run_worker, ocr_stub, accept):
     site.setup(cards="ok")

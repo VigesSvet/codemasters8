@@ -114,7 +114,7 @@ def sanitize_collected(fields: dict) -> dict:
 
 def match_obj(ad) -> dict:
     """Данные публикации для сопоставления с ЖК. У заявки жителя(source = bot) аккаунт и ссылка - его слова, а не
-    признак: не учитываются(D20)."""
+    признак: не учитываются."""
     bot = getattr(ad, "source", None) == "bot"
     return {"text": ad.text, "ocr": ad.ocr, "account": None if bot else ad.account, "url": None if bot else ad.url}
 

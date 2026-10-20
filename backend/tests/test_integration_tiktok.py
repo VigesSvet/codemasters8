@@ -1,7 +1,7 @@
-"""TikTok через Apify(integration-spec §12.4, §16.3 test_integration_tiktok, §16.5 столбец K, план §8): проверка без
-платного запуска, фазы сбора через воркер(запуск → опрос → Dataset постранично → стоимость), файлы только из хранилища
-Apify с Bearer-токеном, бюджет и остановка платного сбора после ошибки, продолжение с сохранённой позиции и приёмка по
-§14 плана. Без сети: API Apify - синтетическая заглушка поверх http_mock; токен - поддельный."""
+"""TikTok через Apify: проверка без платного запуска, фазы сбора через воркер(запуск → опрос → Dataset постранично →
+стоимость), файлы только из хранилища Apify с Bearer-токеном, бюджет и остановка платного сбора после ошибки,
+продолжение с сохранённой позиции и приёмочные проверки подключения. Без сети: API Apify - синтетическая заглушка поверх
+http_mock; токен - поддельный."""
 import json
 import logging
 import re
@@ -529,7 +529,7 @@ def test_input_template_and_build_input(env):
     assert body["profileSorting"] == "latest" and json.loads(raw) == data  # шаблон не меняется
 
 
-# ---------- приёмка по §14 плана(integration-spec §16.5, столбец K) ----------
+# ---------- приёмочные проверки подключения ----------
 
 def test_acceptance_repeat_no_duplicate(tk, client, http_mock, run_worker, accept):
     fake = FakeApify(http_mock, [item(PID1, cover=True)], statuses=("SUCCEEDED",))
@@ -813,7 +813,7 @@ def test_cap_sent_exactly_never_rounded(tk, client, env, http_mock, run_worker):
         assert e.value.detail.startswith(f"{name} должен быть конечным числом")
 
 
-# ---------- 11. окно выдачи: пропуск публикаций не выглядит полным сбором(план §14) ----------
+# ---------- 11. окно выдачи: пропуск публикаций не выглядит полным сбором ----------
 
 P = [f"75592300000001{i:05d}" for i in range(14)]  # P[1]…P[13]: чем больше номер, тем новее публикация
 U = [f"75592300000002{i:05d}" for i in range(8)]  # публикации второго профиля(ID TikTok общие для всех)

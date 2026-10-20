@@ -1,4 +1,4 @@
-"""Общая запись публикации(integration-spec §7.1, §16.2 test_ads_service): ручной ввод, собранная, заявка бота."""
+"""Общая запись публикации: ручной ввод, собранная, заявка бота."""
 import os
 import re
 from datetime import datetime, timedelta, UTC

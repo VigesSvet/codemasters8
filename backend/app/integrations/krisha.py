@@ -1,4 +1,4 @@
-"""Krisha.kz - HTML-сборщик выдачи(integration-spec §12.6, план §9). API для сбора у Krisha нет.
+"""Krisha.kz - HTML-сборщик выдачи. API для сбора у Krisha нет.
 
 Страница читается обычным HTTP-запросом с честным User-Agent из настроек, без cookie(cookie "sl-session" защиты
 SafeLine не сохраняется и не отправляется), с паузой KRISHA_MIN_DELAY_S + 0…2 с перед каждым запросом после первого,

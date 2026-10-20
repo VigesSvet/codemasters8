@@ -253,7 +253,7 @@ class Signal(Base):
 
 
 class AuditEvent(Base):
-    """Журнал: кто, что и когда сделал(ТЗ §7 "Контроль решений") и когда зафиксированы сведения из источников(§4)."""
+    """Журнал: кто, что и когда сделал(ТЗ §7 "Контроль решений") и когда зафиксированы сведения из источников."""
 
     __tablename__ = "audit_events"
 
@@ -272,9 +272,9 @@ class AuditEvent(Base):
 
 
 class SourceRecord(Base):
-    """Запись открытого источника(T-26): нормализованные поля строки файла и провенанс - источник, раздел, ссылка, ID
+    """Запись открытого источника: нормализованные поля строки файла и провенанс - источник, раздел, ссылка, ID
     в источнике, время сбора, дата загрузки у поставщика, когда и из какого файла загружена. Это сведения источника, а не
-    выводы системы: риск, зоны и сигналы для них не рассчитываются(T-31). Объект - группа записей по ключу(key)."""
+    выводы системы: риск, зоны и сигналы для них не рассчитываются. Объект - группа записей по ключу(key)."""
 
     __tablename__ = "source_records"
     __table_args__ = (UniqueConstraint("source", "source_record_id", name="uq_source_records_source_id"),)
@@ -323,7 +323,7 @@ class SourceRecord(Base):
 # (String(32)), целостность - в сервисном слое. Так старые пути пересоздания схемы продолжают работать.
 
 class Collector(Base):
-    """Подключение(план: Source): одна строка на код подключения, создаётся лениво. Только ссылки на секреты, не они."""
+    """Подключение: одна строка на код подключения, создаётся лениво. Только ссылки на секреты, не они."""
 
     __tablename__ = "collectors"
 
@@ -332,7 +332,7 @@ class Collector(Base):
     # {accounts, channels, profiles, searchUrls, cardUrls, resultsPerPage, downloadVideos}
     config: Mapped[dict] = mapped_column(MutableJSONDict, default=dict)
     interval_min: Mapped[int | None] = mapped_column(Integer, nullable=True)  # None - период подключения по умолчанию
-    status: Mapped[str] = mapped_column(String(24), default="unchecked")  # хранимый статус(integration-spec §10.4)
+    status: Mapped[str] = mapped_column(String(24), default="unchecked")  # хранимый статус
     status_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     # несекретные сведения: account, expiresAt, scopes, keyFp, partial, stopped, stoppedCode, …
     facts: Mapped[dict] = mapped_column(MutableJSONDict, default=dict)
@@ -358,7 +358,7 @@ class CollectionRun(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     collector: Mapped[str] = mapped_column(String(32), index=True)
     trigger: Mapped[str] = mapped_column(String(16))  # schedule | manual | test
-    status: Mapped[str] = mapped_column(String(16), default="queued", index=True)  # integration-spec §10.5
+    status: Mapped[str] = mapped_column(String(16), default="queued", index=True)  # статусы запуска - base.RUN_STATUS_LABELS
     requested_by: Mapped[str | None] = mapped_column(String(128), nullable=True)  # администратор или "Система"
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -379,8 +379,8 @@ class CollectionRun(Base):
 
 
 class IngestItem(Base):
-    """Принятая публикация(план: IngestItem): внешний ID в пространстве площадки, владелец-подключение, хеш и версия
-    содержимого, снимок ответа источника(без секретов) и состояние анализа(план: AnalysisJob)."""
+    """Принятая публикация: внешний ID в пространстве площадки, владелец-подключение, хеш и версия
+    содержимого, снимок ответа источника(без секретов) и состояние анализа."""
 
     __tablename__ = "ingest_items"
     __table_args__ = (UniqueConstraint("platform", "external_id", name="uq_ingest_items_platform_external"),)
@@ -439,7 +439,7 @@ class IngestVersion(Base):
 
 
 class MediaAsset(Base):
-    """Файл публикации(план: MediaAsset): изображение, видео или кадр видео. Байты - в хранилище по SHA-256
+    """Файл публикации: изображение, видео или кадр видео. Байты - в хранилище по SHA-256
     (media.py), здесь - ключ хранилища, MIME по сигнатуре, размер, хеш, источник загрузки и состояние."""
 
     __tablename__ = "media_assets"
@@ -491,7 +491,7 @@ ACTIVE_JOB = "status IN ('queued', 'running')"
 
 
 class Job(Base):
-    """Задание воркера: collect(сбор), test(проверка подключения), analyze(анализ публикации, план: AnalysisJob).
+    """Задание воркера: collect(сбор), test(проверка подключения), analyze(анализ публикации).
     Не больше одного активного задания на dedupe_key(частичный уникальный индекс)."""
 
     __tablename__ = "jobs"

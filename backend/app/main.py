@@ -813,12 +813,12 @@ def stats(as_of: date | None = AsOf, db: Session = Depends(get_db)):
             "screening": screening.summary(screening.compute(db, as_of), db)}
 
 
-# ---------- сигналы(модуль 05); маршрут рассмотрения - раньше /{sid}, иначе /routes ушёл бы в него(T-79) ----------
+# ---------- сигналы(модуль 05); маршрут рассмотрения - раньше /{sid}, иначе /routes ушёл бы в него ----------
 
 app.include_router(route.router)
 app.include_router(signals.router)
 
-# ---------- проект запроса сведений в ЖАО / Единому оператору / ГАСК(T-78) ----------
+# ---------- проект запроса сведений в ЖАО / Единому оператору / ГАСК ----------
 
 app.include_router(letters.router)
 

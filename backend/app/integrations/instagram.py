@@ -1,5 +1,5 @@
-"""Instagram - публикации профессиональных аккаунтов через Meta Graph API · Business Discovery(integration-spec §12.1,
-план §6).
+"""Instagram - публикации профессиональных аккаунтов через Meta Graph API · Business Discovery(docs/INTEGRATIONS.md,
+"Instagram").
 
 Сервер запросов - graph.facebook.com/{META_GRAPH_VERSION}/ (Instagram API with Facebook Login), не graph.instagram.com.
 Токен уходит только заголовком Authorization: Bearer, клиент привязан к хосту Graph API: абсолютная ссылка на другой
@@ -140,8 +140,8 @@ def appsecret_proof(token: str, app_secret: str) -> str:
 def graph_get(client: httpx.Client, path: str, params: dict, s: Settings, *,
               token: str | None = None) -> tuple[dict, httpx.Headers]:
     """GET {path} относительно базового адреса Graph API. Токен - заголовком клиента(token - другой токен, например
-    токен приложения для debug_token); при META_APP_SECRET - appsecret_proof к этому токену. Ошибки → §10.1
-    (map_error; исходная GraphError - в __cause__). Абсолютные ссылки(paging.next) не открываются."""
+    токен приложения для debug_token); при META_APP_SECRET - appsecret_proof к этому токену. Ошибки - типизированные
+    ошибки подключения(map_error; исходная GraphError - в __cause__). Абсолютные ссылки(paging.next) не открываются."""
     path = str(path)
     if "://" in path or path.startswith("//"):
         raise SourceError("Ссылки из ответа Graph API не открываются — только пути от базового адреса",

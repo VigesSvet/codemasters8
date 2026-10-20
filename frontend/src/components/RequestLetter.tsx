@@ -9,7 +9,7 @@ import { Cell, Modal } from './ui'
 const COMMENT_MAX = 2000
 const NOTE = 'Черновик для внутреннего маршрута — автоматической отправки нет'
 
-/** Кнопка «Запрос в ЖАО / ЕО» и окно проекта запроса (T-78): адресат, темы, предпросмотр, PDF и DOCX */
+/** Кнопка «Запрос в ЖАО / ЕО» и окно проекта запроса: адресат, темы, предпросмотр, PDF и DOCX */
 export function RequestLetterButton({ complexId, complexName, topics, className = 'btn g full', label = 'Запрос в ЖАО / ЕО (письмо)', onSaved }: {
   complexId: string; complexName: string; topics?: RequestTopic[]; className?: string; label?: string; onSaved?: () => void
 }) {

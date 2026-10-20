@@ -1,4 +1,4 @@
-"""Задания, воркер, итоги запусков, планировщик и анализ публикаций(integration-spec §8, §9, §16.2 test_worker).
+"""Задания, воркер, итоги запусков, планировщик и анализ публикаций.
 
 Подключения здесь - подменные(Fake…) в реестре под кодами настоящих: итог запуска определяет фундамент, а не модуль
 подключения. Сеть не используется: файлы - из хранилища или через http_mock.
@@ -331,7 +331,7 @@ def test_heartbeat_stops_extending_after_job_max(client, env, caplog):
     assert caplog.text.count(f"Задание №{job.id} выполняется дольше 60 с") == 1
 
 
-# ---------- итоги запусков(§9.4) ----------
+# ---------- итоги запусков ----------
 
 def test_collect_success_working_and_summary(client, run_worker, use):
     use(Fake(collect=lambda ctx: [ctx.ingest(pub(n)) for n in (1, 2)]))
@@ -568,7 +568,7 @@ def test_paid_stop_and_admin_test_clears(client, run_worker, use, env, admin_hea
         db.rollback()
 
 
-# ---------- планировщик(§9.5) ----------
+# ---------- планировщик ----------
 
 @pytest.mark.parametrize("values", [
     {"enabled": False, "status": "ready"}, {"enabled": True, "status": "expired"},
@@ -718,7 +718,7 @@ def test_key_change_marks_unchecked(client, run_worker, use, env):
     assert META not in client.get("/api/sources/connectors").text
 
 
-# ---------- анализ публикаций(§8) ----------
+# ---------- анализ публикаций ----------
 
 TEXT = "Старт продаж в ЖК Ульба Ривер! Бронь квартиры за 100 000 ₸, рассрочка до сдачи дома"
 

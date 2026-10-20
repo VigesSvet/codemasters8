@@ -1,6 +1,6 @@
-"""OLX.kz - OAuth собственного аккаунта(integration-spec §12.7, §16.3 test_integration_olx, §16.5): старт с
-одноразовым state, возврат, обмен кода сервером, users/me с "Version: 2.0", обновление токена, проверка воркером,
-плановые проверки, отсутствие токенов в ответах API и журналах. Сеть - только заглушки(http_mock)."""
+"""OLX.kz - OAuth собственного аккаунта: старт с одноразовым state, возврат, обмен кода сервером, users/me
+с "Version: 2.0", обновление токена, проверка воркером, плановые проверки, отсутствие токенов в ответах API и журналах.
+Сеть - только заглушки(http_mock)."""
 import hashlib
 import json
 import logging
@@ -881,7 +881,7 @@ def test_no_tokens_in_api_or_logs(client, olx_env, http_mock, run_worker, caplog
             assert state not in st.state_hash
 
 
-# ---------- приёмка по §14 плана(§16.5, применимое к OAuth-подключению) ----------
+# ---------- приёмочные проверки подключения(применимые к OAuth-подключению) ----------
 
 def test_acceptance_failure_not_empty(client, olx_env, http_mock, run_worker, accept):
     """"сбой не выглядит пустой выдачей": ошибка OLX - запуск не "успешно", подключение не "работает", причина видна."""

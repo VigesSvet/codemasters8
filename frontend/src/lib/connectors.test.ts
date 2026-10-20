@@ -74,7 +74,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('статусы подключений (§10.4)', () => {
+describe('статусы подключений', () => {
   it('цвет и подпись есть у каждого статуса; «работает частично» — жёлтый', () => {
     expect(Object.keys(STATUS_TONE).sort()).toEqual([...STATUSES].sort())
     expect(Object.keys(STATUS_LABEL).sort()).toEqual([...STATUSES].sort())
@@ -158,7 +158,7 @@ describe('группы подключений', () => {
   })
 })
 
-describe('запуски сбора (§10.5)', () => {
+describe('запуски сбора', () => {
   it('конечные — все, кроме «в очереди» и «выполняется»', () => {
     expect(RUNS.filter((s) => !isTerminal({ status: s }))).toEqual(['queued', 'running'])
     expect(RUN_TERMINAL.size).toBe(7)

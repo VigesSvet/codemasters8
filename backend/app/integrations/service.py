@@ -1,5 +1,5 @@
-"""Состояние подключений для API и воркера(integration-spec §10.4-§10.7, §5.2): строки collectors, фактический
-статус, настройки, запуски, переходы статуса с записью в журнал, квоты, учёт отказов клиентов приёма.
+"""Состояние подключений для API и воркера: строки collectors, фактический статус, настройки, запуски, переходы статуса
+с записью в журнал, квоты, учёт отказов клиентов приёма.
 
 Фактический статус - хранимый статус с наложениями(по порядку): нет ключей на сервере → "не настроен"; ключи
 сменились после последней проверки → "не проверен"; идёт проверка → "проверяется"; сбор в очереди / идёт; живой статус
@@ -104,7 +104,7 @@ def _active_jobs(db: Session, codes: list | None = None) -> dict[str, _Jobs]:
 
 def effective_status(db: Session, conn: Connector, r: models.Collector | None, now: datetime,
                      active: _Jobs | None = None) -> tuple[str, str | None]:
-    """(статус, пояснение) с наложениями §10.4."""
+    """(статус, пояснение): хранимый статус с наложениями очереди, ключей и пульса воркера."""
     s = get_settings()
     if conn.missing(s, r):
         return "not_configured", conn.missing_detail(s, r) or None
@@ -562,7 +562,7 @@ def quota_used(db: Session, name: str) -> int:
     return int(db.scalar(select(models.QuotaCounter.count).where(models.QuotaCounter.name == name)) or 0)
 
 
-# ---------- отказы клиентов приёма(§5.2) ----------
+# ---------- отказы клиентов приёма ----------
 
 _REJECT_AT: dict[tuple, float] = {}
 _REJECT_LOCK = threading.Lock()

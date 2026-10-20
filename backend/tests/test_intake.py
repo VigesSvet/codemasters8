@@ -1,6 +1,5 @@
-"""Приём публикаций(integration-spec §5, §7.3, §7.4, §16.2 test_intake, §16.5 столбец A): доступ по токенам, единый
-приём ingest, маршрут POST /api/intake/publications(422, 413, 409, статус подключения), загрузка файлов по ссылкам
-заданием анализа и приёмка по §14 плана."""
+"""Приём публикаций: доступ по токенам, единый приём ingest, маршрут POST /api/intake/publications(422, 413, 409, статус
+подключения), загрузка файлов по ссылкам заданием анализа и приёмочные проверки подключения."""
 import hashlib
 import json
 import re
@@ -474,7 +473,7 @@ def test_collector_actor_default(client):
         assert v.extra == {"title": "3-комнатная квартира"}
 
 
-# ---------- маршрут POST /api/intake/publications(§7.4) ----------
+# ---------- маршрут POST /api/intake/publications ----------
 
 INTAKE = "/api/intake/publications"
 BEARER = {"Authorization": f"Bearer {INGEST_TOKEN}"}
@@ -836,7 +835,7 @@ def get_asset(asset_id: str) -> models.MediaAsset:
         return db.get(models.MediaAsset, asset_id)
 
 
-# ---------- приёмка по §14 плана(integration-spec §16.5, столбец A) ----------
+# ---------- приёмочные проверки подключения ----------
 
 def test_acceptance_repeat_no_duplicate(client, intake_on, run_worker, http_mock, accept, ocr_stub):
     http_mock.on("GET", "https://cdn.example.com/a.png", content=png_bytes((51, 0, 0)))

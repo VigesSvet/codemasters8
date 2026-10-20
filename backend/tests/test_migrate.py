@@ -469,8 +469,8 @@ def test_unknown_version_without_durable_rows_reseeds(client):
 
 @pytest.mark.parametrize("version", migrate.RETIRED)
 def test_retired_version_is_unknown(client, version):
-    """Версия схемы до migrate(блок C - "2026.10-audit-1", блок D) - неизвестная: таблицы пересоздаются, а не
-    считаются текущими из-за совпадения имени с новым шагом."""
+    """Выведенная версия схемы(migrate.RETIRED: "2026.10-audit-1", "2026.10-ai-2") - неизвестная: таблицы пересоздаются,
+    а не считаются текущими из-за совпадения имени с новым шагом."""
     assert version != models.SCHEMA_VERSION and migrate.chain_from(version) is None
     client.patch("/api/ads/a1/status", json={"status": "in_review", "author": "Тест"})
     _set_meta(version)

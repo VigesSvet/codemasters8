@@ -1,4 +1,4 @@
-"""Воркер сбора и анализа: python -m app.worker [--once] [--id ID] [--schema-wait S](integration-spec §9.2, §9.5).
+"""Воркер сбора и анализа: python -m app.worker [--once] [--id ID] [--schema-wait S].
 
 Один процесс, цикл по таблице jobs: отчёт о локальных сведениях подключений(например, есть ли сессия Telegram) →
 такт лидера(планировщик сборов и плановых проверок, возврат зависших заданий, дозапрос Claude по старым публикациям раз
@@ -264,7 +264,7 @@ def start_heartbeat(worker_id: str, job_ref: Current, stop: threading.Event) -> 
     return t
 
 
-# ---------- планировщик(§9.5) ----------
+# ---------- планировщик ----------
 
 def schedule_due(db: Session, now: datetime) -> list[int]:
     """Сборы по расписанию и плановые проверки, которым пора(без commit). Возвращает id созданных запусков. Сбой
@@ -313,7 +313,7 @@ def _due_triggers(db: Session, s, code: str, conn, now: datetime) -> list[str]:
             and (r.next_run_at is None or models.as_utc(r.next_run_at) <= now) \
             and jobs.active(db, f"collect:{code}") is None:
         due.append("schedule")
-    # остановленное подключение(ошибка настроек, платный сбор) плановой проверкой не "оживляется"(§9.5 п. 3):
+    # остановленное подключение(ошибка настроек, платный сбор) плановой проверкой не "оживляется":
     # остановку снимают изменение настроек или проверка администратором
     if conn.health_check_min and caps.get("test") and not conn.missing(s, r) \
             and not (r is not None and (r.facts or {}).get("stopped")) \
@@ -322,7 +322,7 @@ def _due_triggers(db: Session, s, code: str, conn, now: datetime) -> list[str]:
     return due
 
 
-# ---------- уборка(§6.4) ----------
+# ---------- уборка ----------
 
 def housekeeping(db: Session, now: datetime) -> None:
     """Раз в час у лидера: непривязанные ручные загрузки старше суток, кандидаты 2ГИС старше срока кэша, истёкшие

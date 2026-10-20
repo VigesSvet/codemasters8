@@ -1,5 +1,5 @@
-"""Telegram-каналы(integration-spec §12.2, §16.3 C2, приёмка §16.5): поддельный клиент Telethon через
-telegram.CLIENT_FACTORY, настоящие классы telethon.errors; сети нет. Модули подключения импортируются внутри тестов."""
+"""Telegram-каналы: поддельный клиент Telethon через telegram.CLIENT_FACTORY, настоящие классы telethon.errors; сети
+нет. Модули подключения импортируются внутри тестов."""
 import asyncio
 import hashlib
 import json
@@ -983,7 +983,7 @@ def test_login_corrupted_session_and_pending(tg, client, capsys, monkeypatch):
     assert "Сначала запросите код: --send-code" in capsys.readouterr().err and not pending(tg).exists()
 
 
-# ---------- приёмка по §14 плана(integration-spec §16.5) ----------
+# ---------- приёмочные проверки подключения ----------
 
 def test_acceptance_repeat_no_duplicate(tg, client, run_worker, accept, ocr_stub):
     login(tg)

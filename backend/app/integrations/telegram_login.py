@@ -1,5 +1,5 @@
-"""Вход в Telegram для сборщика каналов: python -m app.integrations.telegram_login(integration-spec §12.2,
-план §7.1.2).
+"""Вход в Telegram для сборщика каналов: python -m app.integrations.telegram_login(docs/INTEGRATIONS.md,
+"Вход по коду").
 
 Режимы(один за запуск):
   без аргументов        - вход в одном процессе: код из Telegram через input(), пароль 2FA через getpass;

@@ -1,4 +1,4 @@
-// Журнал действий (T-16, T-17): подписи видов событий, темы запроса сведений, формат времени, инициалы авторов.
+// Журнал действий: подписи видов событий, темы запроса сведений, формат времени, инициалы авторов.
 import type { AdStatus, Analyst, AuditEvent, AuditKind, Complex } from '../data/types'
 import { IcBell, IcBolt, IcCheck, IcComment, IcDatabase, IcDownload, IcFlag, IcLink, IcPencil, IcSend, IcSparkSearch } from '../ui/icons'
 

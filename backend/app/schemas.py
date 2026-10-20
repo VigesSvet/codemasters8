@@ -33,7 +33,7 @@ TermKind = Literal["booking", "deposit", "down_payment", "installment", "ddu", "
 ReasonFeature = Literal["name", "translit", "address", "account", "phone", "history", "district"]
 # Темы внутреннего запроса сведений по ЖК(POST /api/complexes/{id}/requests)
 InfoTopic = Literal["basis", "readiness", "appeals", "list", "other"]
-# Сбор публикаций(integration-spec §10-§11): площадки приёма через API, статусы подключений и запусков
+# Сбор публикаций: площадки приёма через API, статусы подключений и запусков
 IntakePlatform = Literal["instagram", "telegram", "tiktok", "krisha", "olx", "facebook"]
 ConnectorStatus = Literal["not_configured", "unchecked", "checking", "queued", "running", "ready", "working", "partial",
                           "waiting", "off", "error", "expired", "denied", "access_check", "rate_limited"]
@@ -785,10 +785,10 @@ class AiEvalOut(Camel):
     metrics: AiMetricsOut
 
 
-# ---------- открытые данные(T-26…T-31): сведения источников, без риска и сигналов ----------
+# ---------- открытые данные: сведения источников, без риска и сигналов ----------
 
 class SourceRecordOut(Camel):
-    """Запись открытого источника: нормализованные поля строки и провенанс. Полей риска нет(T-31)."""
+    """Запись открытого источника: нормализованные поля строки и провенанс. Полей риска нет."""
 
     id: int
     key: str
@@ -905,7 +905,7 @@ class ImportReportOut(Camel):
     event_id: int
 
 
-# ---------- сбор публикаций: подключения, запуски, приём(integration-spec §11.2) ----------
+# ---------- сбор публикаций: подключения, запуски, приём ----------
 
 class AdVersionOut(Camel):
     version: int
@@ -1061,7 +1061,7 @@ class CollectAllOut(Camel):
     skipped: list[CollectAllItemOut]
 
 
-# ---------- приём публикаций через API(POST /api/intake/publications, integration-spec §7.4) ----------
+# ---------- приём публикаций через API(POST /api/intake/publications) ----------
 
 INTAKE_TEXT_MAX = 100000  # принимается до 100 000 символов, хранится до AD_TEXT_MAX
 INTAKE_MEDIA_MAX = 20

@@ -1,4 +1,4 @@
-// Подключения источников публикаций (integration-spec §10.4–§10.5, §11, §13.2): запросы к серверу и подписи по-русски.
+// Подключения источников публикаций: запросы к серверу и подписи по-русски.
 // Состояние подключений — только фактическое, с сервера: в офлайн-копии его нет, поддельных статусов не показываем.
 // «Заявка отправлена» и «ключ создан» — не «работает»: «работает» только у сборщика, у которого прошёл сбор.
 import { fmtDT, plural } from '../components/ui'
@@ -82,7 +82,7 @@ export async function olxStart(author: string): Promise<OlxStart> {
 /** Отключить аккаунт OLX (администратор): токены удаляются на сервере, статус «не подключён» */
 export const olxDisconnect = (author: string) => adminCall((h) => apiPost<unknown>('/integrations/olx/disconnect', { author }, h))
 
-// ---------- Статусы подключений (§10.4) ----------
+// ---------- Статусы подключений ----------
 
 export type Tone = 'gray' | 'blue' | 'green' | 'yellow' | 'red'
 
@@ -165,7 +165,7 @@ export const BUSY: ReadonlySet<ConnectorStatus> = new Set(['checking', 'queued',
 export const isBusy = (c: Pick<Connector, 'status' | 'configured'>) => BUSY.has(effectiveStatus(c))
 export const anyBusy = (list: readonly Connector[]) => list.some(isBusy)
 
-// ---------- Группы (§13.2): сборщики → приём → геосервис → анализатор → ограниченно ----------
+// ---------- Группы: сборщики → приём → геосервис → анализатор → ограниченно ----------
 
 export const GROUP_ORDER: readonly ConnectorGroup[] = ['collectors', 'intake', 'geo', 'analyzer', 'limited']
 export const GROUP_TITLE: Record<ConnectorGroup, string> = {
@@ -394,7 +394,7 @@ export function intervalText(min: number | null | undefined): string {
   return min < 60 ? `раз в ${min} мин` : `раз в ${Math.floor(min / 60)} ч ${min % 60} мин`
 }
 
-// ---------- Счётчики и запуски (§10.5) ----------
+// ---------- Счётчики и запуски ----------
 
 /** «Собрано»: 12 материалов · 10 публикаций · 7 файлов */
 export const collectedLine = (n: { items: number; ads: number; media: number }) =>
@@ -514,7 +514,7 @@ export function processingNote(p: Processing | null | undefined): string | null 
   return null
 }
 
-// ---------- Закреплённые тексты страницы «Источники» (§13.2) ----------
+// ---------- Закреплённые тексты страницы «Источники» ----------
 
 export const COPY = {
   offline: 'Состояние подключений хранится на сервере — в офлайн-копии недоступно.',

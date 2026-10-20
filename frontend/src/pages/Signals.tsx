@@ -36,7 +36,7 @@ export default function Signals() {
   }
   // сигнал и ЖК открываются с «← Сигналы» на эту же выборку: фильтр статуса и объекта сохраняется при возврате
   const back = from('Сигналы', `/signals${sp.toString() ? `?${sp}` : ''}`)
-  // маршрут рассмотрения (T-79): этап, срок и просрочка по каждому сигналу — с сервера
+  // маршрут рассмотрения: этап, срок и просрочка по каждому сигналу — с сервера
   const { t } = useT()
   const routes = useRoutes()
   const rows = routes ? base.map((s) => routes.rows.get(s.id)).filter((r) => !!r) : []

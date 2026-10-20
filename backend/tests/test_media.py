@@ -1,4 +1,4 @@
-"""Хранилище файлов, безопасный загрузчик, кадры видео(integration-spec §6, §16.2 test_media)."""
+"""Хранилище файлов, безопасный загрузчик, кадры видео."""
 import errno
 import hashlib
 import importlib.util
@@ -860,7 +860,7 @@ def test_video_real_frames_1080p_under_limits(tmp_path):
     assert len(frames) >= 2 and all(media.sniff(png[:64]) == "image/png" for _, png in frames)
 
 
-# ---------- маршруты /api/media(integration-spec §11.1; появляются на шаге маршрутов фундамента) ----------
+# ---------- маршруты /api/media ----------
 
 needs_routes = pytest.mark.skipif(importlib.util.find_spec("app.integrations.routes") is None,
                                   reason="маршруты /api/media пишутся на следующем шаге фундамента")

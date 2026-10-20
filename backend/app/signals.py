@@ -32,7 +32,7 @@ SIGNAL_AD_FIELDS = ("id", "platform", "account", "url", "date", "status", "match
 # ---------- снимок ----------
 
 def snapshot(db: Session, cid: str) -> Obj | None:
-    """Риск и доказательства по ЖК на текущий момент(T-11)."""
+    """Риск и доказательства по ЖК на текущий момент."""
     w = load_complex(db, cid)
     if w is None:
         return None
@@ -123,7 +123,7 @@ def counts(db: Session) -> dict[str, int]:
              responses={422: {"description": "Риск по ЖК не оценивается — нет проверенных данных"}})
 def create_signal(body: schemas.SignalCreateIn, db: Session = Depends(get_db)):
     snap = snapshot(db, body.complex_id)
-    if snap is None:  # в т. ч. ключ объекта открытых данных: сигналы - только по карточкам ЖК(T-31)
+    if snap is None:  # в т. ч. ключ объекта открытых данных: сигналы - только по карточкам ЖК
         raise registry.not_found(db, body.complex_id)
     if not snap["risk"].get("assessed", True):  # карточка из открытого реестра без проверенных сведений
         raise HTTPException(422, f"{MODEL['notAssessed']['label']}: сигнал по ЖК «{snap['complex']['name']}» не создаётся. "

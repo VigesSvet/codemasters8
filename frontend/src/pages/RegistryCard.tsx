@@ -47,7 +47,7 @@ const recordFields = (r: SourceRecord): Maybe[] => [
 /** Провенанс записи: откуда, где, когда */
 const provFields = (r: SourceRecord): Maybe[] => [
   fl('Источник', r.sourceName || sourceName(r.source)),
-  // раздел — только как атрибут источника: без цвета и оценок (T-31)
+  // раздел — только как атрибут источника: без цвета и оценок
   fl('Раздел источника', r.sourceSection && `«${r.sourceSection}»`),
   fl('Ссылка на источник', r.sourceUrl && <SrcLink url={r.sourceUrl}>{r.sourceUrl.replace(/^https?:\/\//, '')}</SrcLink>),
   fl('ID в источнике', r.sourceRecordId && <span className="num">{r.sourceRecordId}</span>),
@@ -77,7 +77,7 @@ function RecordView({ r, i }: { r: SourceRecord; i: number }) {
   )
 }
 
-/** Объект открытых данных: только атрибутированные сведения источников — без риска, зон, сигналов и «нужна проверка» (T-31) */
+/** Объект открытых данных: только атрибутированные сведения источников — без риска, зон, сигналов и «нужна проверка» */
 export default function RegistryCard() {
   const { key = '' } = useParams()
   const { mode, registryObject, revision } = useStore()

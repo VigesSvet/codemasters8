@@ -1,5 +1,5 @@
-"""Telegram-каналы: сбор публичных каналов через MTProto(Telethon) от выделенного аккаунта(integration-spec §12.2,
-план §7.1).
+"""Telegram-каналы: сбор публичных каналов через MTProto(Telethon) от выделенного аккаунта(docs/INTEGRATIONS.md,
+"Telegram-каналы").
 
 Сессия Telegram - секрет: текст StringSession в TG_SESSION_PATH(файл 0600, каталог 0700, владелец - этот
 пользователь); значение регистрируется для маскирования в логах. Один процесс с сессией за раз: воркер, вход и проверка
@@ -342,7 +342,7 @@ def _fatal_errors() -> tuple:
 
 
 def map_error(e: BaseException) -> BaseException:
-    """Исключение Telethon/сети → типизированная ошибка подключения(integration-spec §10.1); прочее - как есть."""
+    """Исключение Telethon/сети → типизированная ошибка подключения; прочее - как есть."""
     from telethon import errors
 
     if isinstance(e, ConnectorError):

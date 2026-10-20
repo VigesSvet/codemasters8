@@ -1,5 +1,5 @@
-"""API подключений(integration-spec §10.4-§10.8, §11.1, §5.3, §16.2 test_connectors_api): состояние без секретов,
-права администратора, настройки, запуски, "Обновить всё", изоляция модулей, защита публичного адреса."""
+"""API подключений: состояние без секретов, права администратора, настройки, запуски, "Обновить всё", изоляция модулей,
+защита публичного адреса."""
 import json
 import re
 import uuid
@@ -518,7 +518,7 @@ def test_not_connector_object_is_broken():
     assert isinstance(conns["dgis"], registry.BrokenConnector) and conns["dgis"].kind == "geo"
 
 
-# ---------- публичный адрес(§5.3) ----------
+# ---------- публичный адрес ----------
 
 def test_not_configured_409_names_real_problem(client, env):
     """Регрессия: у Telegram без сессии 409 советовал задать TG_SESSION_PATH(её задаёт compose) - нужен вход, и

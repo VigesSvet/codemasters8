@@ -5,7 +5,7 @@
 задания и сервис подключений сюда не импортируются - модуль подключения, который не загрузился, становится
 BrokenConnector в реестре, а не циклическим импортом всего приложения.
 
-Ошибки подключения определяют статус источника(integration-spec §9.4, §10.4): сбой никогда не выглядит как "нет новых".
+Ошибки подключения определяют статус источника: сбой никогда не выглядит как "нет новых".
 Обход защиты сайтов не выполняется: проверка доступа/CAPTCHA - AccessBlocked, сбор останавливается до ручного действия.
 """
 import math
@@ -39,7 +39,7 @@ def pause_seconds(seconds: Any, default: float) -> float:
     return default if math.isnan(secs) else min(max(secs, 0.0), MAX_PAUSE_S)
 
 
-# ---------- ошибки(integration-spec §10.1) ----------
+# ---------- ошибки ----------
 
 
 class ConnectorError(Exception):
@@ -115,7 +115,7 @@ class Deferred(Exception):
         self.payload = dict(payload or {})
 
 
-# ---------- данные от сборщика(integration-spec §7.2) ----------
+# ---------- данные от сборщика ----------
 
 MediaKind = Literal["image", "video"]
 MEDIA_STATUSES = ("pending", "downloaded", "failed", "unavailable", "skipped")
@@ -160,20 +160,20 @@ class Publication:
     namespace: str | None = None
 
 
-# ---------- подключение(integration-spec §10.2) ----------
+# ---------- подключение ----------
 
 Kind = Literal["collector", "intake", "geo", "oauth", "analyzer"]
 ConfigField = Literal["accounts", "channels", "profiles", "searchUrls", "cardUrls"]
 CONFIG_MAX_ITEMS = 50
 CONFIG_MAX_LEN = 255
 
-# Подписи статусов подключения(integration-spec §10.4); Connector.labels переопределяет отдельные
+# Подписи статусов подключения; Connector.labels переопределяет отдельные
 STATUS_LABELS = {"not_configured": "не настроен", "unchecked": "не проверен", "checking": "проверяется",
                  "queued": "в очереди", "running": "идёт сбор", "ready": "готов к сбору", "working": "работает",
                  "partial": "работает частично", "waiting": "ожидает заявок", "off": "не используется",
                  "error": "ошибка", "expired": "истёк доступ", "denied": "нет доступа",
                  "access_check": "нужно ручное действие", "rate_limited": "пауза: лимит запросов"}
-# Подписи статусов запуска(integration-spec §10.5)
+# Подписи статусов запуска
 RUN_STATUS_LABELS = {"queued": "в очереди", "running": "выполняется", "succeeded": "успешно", "partial": "частично",
                      "failed": "ошибка", "access_check": "проверка доступа на сайте",
                      "rate_limited": "пауза: лимит запросов", "not_configured": "не настроен", "cancelled": "отменён"}
