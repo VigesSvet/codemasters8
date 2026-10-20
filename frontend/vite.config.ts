@@ -1,5 +1,6 @@
-import { createReadStream, statSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { BlockList, isIP, type Server as NetServer } from 'node:net'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, searchForWorkspaceRoot, type Plugin } from 'vite'
@@ -60,12 +61,80 @@ function snapshotMedia(): Plugin {
   }
 }
 
+// Кто может открыть dev-сервер, когда он слушает не только localhost(docker compose: --host 0.0.0.0). Пускаются эта
+// машина и адреса из SAQ_ALLOWED_CLIENTS(IP или подсети через запятую, например устройство Tailscale), остальные
+// соединения рвутся сразу - до HTTP, прокси /api и HMR. "Эта машина" - loopback и, в контейнере, шлюз его сети: обращения
+// хоста к 127.0.0.1:5180 docker-proxy пересылает от адреса шлюза. Поэтому порт публикуется только на IPv4(docker-compose.yml):
+// соединения по IPv6 docker-proxy пересылает от того же шлюза
+function containerGateway(): string | null {
+  if (!existsSync('/.dockerenv')) return null
+  try {
+    for (const line of readFileSync('/proc/net/route', 'utf8').split('\n').slice(1)) {
+      const [, dest, gw] = line.trim().split(/\s+/)
+      // маршрут по умолчанию; адрес шлюза - 8 hex-цифр в обратном порядке байтов
+      if (dest === '00000000' && /^[0-9A-F]{8}$/i.test(gw ?? '')) {
+        return (gw.match(/../g) ?? []).reverse().map((h) => parseInt(h, 16)).join('.')
+      }
+    }
+  } catch {
+    // нет /proc/net/route - шлюз не доверяем
+  }
+  return null
+}
+
+function allowedClients(spec: string, gateway: string | null): BlockList {
+  const list = new BlockList()
+  list.addSubnet('127.0.0.0', 8, 'ipv4')
+  list.addAddress('::1', 'ipv6')
+  if (gateway) list.addAddress(gateway, 'ipv4')
+  for (const item of spec.split(',').map((s) => s.trim()).filter(Boolean)) {
+    const [addr, bits, extra] = item.split('/')
+    const v = isIP(addr)
+    const max = v === 4 ? 32 : 128
+    if (!v || extra !== undefined || (bits !== undefined && !(/^\d{1,3}$/.test(bits) && Number(bits) <= max))) {
+      throw new Error(`SAQ_ALLOWED_CLIENTS: "${item}" - не IP-адрес и не подсеть`)
+    }
+    const type = v === 4 ? 'ipv4' : 'ipv6'
+    if (bits === undefined) list.addAddress(addr, type)
+    else list.addSubnet(addr, Number(bits), type)
+  }
+  return list
+}
+
+function clientAllowlist(): Plugin {
+  const allowed = allowedClients(process.env.SAQ_ALLOWED_CLIENTS ?? '', containerGateway())
+  const warned = new Set<string>()
+  const guard = (srv: NetServer | null | undefined) => {
+    srv?.on('connection', (socket) => {
+      const ip = (socket.remoteAddress ?? '').replace(/^::ffff:/, '')
+      const v = isIP(ip)
+      if (v && allowed.check(ip, v === 4 ? 'ipv4' : 'ipv6')) return
+      if (!warned.has(ip)) {
+        warned.add(ip)
+        console.warn(`Соединение с ${ip || 'неизвестного адреса'} отклонено: адреса нет в SAQ_ALLOWED_CLIENTS`)
+      }
+      socket.destroy()
+    })
+  }
+  return {
+    name: 'saq-client-allowlist',
+    configureServer: (server) => guard(server.httpServer),
+    configurePreviewServer: (server) => guard(server.httpServer),
+  }
+}
+
+// Имена, по которым открывают интерфейс кроме localhost и IP(например имя машины в Tailscale MagicDNS), через запятую
+const webHosts = (process.env.SAQ_WEB_HOSTS ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+
 export default defineConfig({
-  plugins: [react(), snapshotMedia()],
+  plugins: [react(), snapshotMedia(), clientAllowlist()],
   optimizeDeps: { exclude: ['maplibre-gl'] },
   server: {
     port: 5180,
-    proxy: { '/api': process.env.API_PROXY ?? 'http://localhost:8000' },
+    allowedHosts: webHosts,
+    // Host браузера уходит в API как есть(краткая запись '/api': адрес включила бы changeOrigin и подменила Host на
+    // адрес API): по нему API сверяет Origin изменяющих запросов(CrossSiteGuard) и имя сервера(HostAllowlist)
+    proxy: { '/api': { target: process.env.API_PROXY ?? 'http://localhost:8000', changeOrigin: false } },
     fs: { allow: [searchForWorkspaceRoot(process.cwd()), shared] },
   },
 })

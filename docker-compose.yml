@@ -1,74 +1,89 @@
+# Ротация журналов контейнеров: без неё json-file растёт без предела и заполняет диск
+x-logging: &logging
+  options: { max-size: 10m, max-file: "3" }
+
+# Общее у api и worker: один образ, секреты подключений из .env в корне(его нет в Git; без файла API стартует,
+# подключения "не настроены"). Процессы - не от root(backend/Dockerfile), без повышения привилегий и capabilities;
+# init(tini) - PID 1: передаёт SIGTERM приложению и собирает осиротевшие процессы(например, дочерние у прерванной
+# команды docker compose exec), которые у uvicorn или воркера в роли PID 1 остались бы зомби
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  env_file:
+    - path: .env
+      required: false
+      format: raw
+  init: true
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  logging: *logging
+
+# Пути внутри контейнера перекрывают значения из .env(environment важнее env_file): пустой MEDIA_ROOT= из
+# .env.example иначе увёл бы файлы в каталог образа, недоступный для записи.
+# Пароль БД - SAQ_DB_PASSWORD из .env(только латинские буквы и цифры: он же входит в DATABASE_URL), не задан - "saq";
+# действует при создании тома pgdata, у существующей базы пароль меняется через ALTER USER
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+psycopg://saq:${SAQ_DB_PASSWORD:-saq}@db:5432/saq
+  MEDIA_ROOT: /data/media
+  TG_SESSION_PATH: /data/private/telegram.session
+  SAQ_ENV_FILE: ""
+
 services:
   db:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: saq
-      POSTGRES_PASSWORD: saq
+      POSTGRES_PASSWORD: ${SAQ_DB_PASSWORD:-saq}
       POSTGRES_DB: saq
     # только с этой машины: в БД токены OLX и данные заявителей
     ports: ["127.0.0.1:5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
+    # сеть backend: контейнер web(dev-сервер Vite и пакеты npm) до БД не достаёт
+    networks: [backend]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U saq"]
       interval: 3s
       retries: 20
+    restart: unless-stopped
+    logging: *logging
 
   api:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    # секреты подключений — из .env в корне (его нет в Git); без файла API стартует, подключения «не настроены».
-    # Пустая БД (новый том pgdata) при первом старте получает стартовый набор shared/snapshot из образа — README,
-    # «Развёртывание со стартовым набором данных»
-    env_file:
-      - path: .env
-        required: false
-        format: raw
+    <<: *backend
+    # Пустая БД(новый том pgdata) при первом старте получает стартовый набор shared/snapshot из образа - README,
+    # "Развёртывание со стартовым набором данных"
     environment:
-      DATABASE_URL: postgresql+psycopg://saq:saq@db:5432/saq
-      MEDIA_ROOT: /data/media
-      TG_SESSION_PATH: /data/private/telegram.session
-      SAQ_ENV_FILE: ""
-    # файлы публикаций; сессию Telegram API не видит (её наличие сообщает воркер)
+      <<: *backend-env
+    # файлы публикаций; сессию Telegram API не видит(её наличие сообщает воркер)
     volumes: [media:/data/media]
-    # только с этой машины: внешний доступ — через туннель к пути обратного вызова OLX (PublicHostGuard)
+    # только с этой машины: внешний доступ - через туннель к пути обратного вызова OLX(PublicHostGuard)
     ports: ["127.0.0.1:8000:8000"]
+    networks: [backend, frontend]
     depends_on:
       db: { condition: service_healthy }
-    # проверка раз в 30 с (каждая — строка журнала доступа uvicorn), при старте — раз в 2 с: воркер не ждёт лишнего
+    # проверка раз в 30 с(каждая - строка журнала доступа uvicorn), при старте - раз в 2 с: воркер не ждёт лишнего
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=2)"]
       interval: 30s
       start_period: 60s
       start_interval: 2s
       retries: 5
-    logging: &logs
-      options: { max-size: 10m, max-file: "3" }
 
   # воркер сбора и анализа: ждёт, пока API применит схему БД, сам её не меняет
   worker:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
+    <<: *backend
     command: ["python", "-m", "app.worker"]
-    env_file:
-      - path: .env
-        required: false
-        format: raw
     environment:
-      DATABASE_URL: postgresql+psycopg://saq:saq@db:5432/saq
-      MEDIA_ROOT: /data/media
-      TG_SESSION_PATH: /data/private/telegram.session
-      SAQ_ENV_FILE: ""
+      <<: *backend-env
       SAQ_WORKER_ID: worker-1
       SAQ_ASR_MODEL_DIR: /data/models
-    # сессия Telegram — секрет: отдельный том, смонтирован только сюда; asrmodels — модели распознавания речи
-    # (скачиваются один раз, пересборка образа их не теряет)
+    # сессия Telegram - секрет: отдельный том, смонтирован только сюда;
+    # asrmodels - модели распознавания речи(скачиваются один раз, пересборка образа их не теряет)
     volumes: [media:/data/media, tgsession:/data/private, asrmodels:/data/models]
-    restart: unless-stopped
-    # остановка: текущее задание дорабатывает (загрузка файла прерывается через 30 с), только потом SIGKILL
+    networks: [backend]
+    # остановка: текущее задание дорабатывает(загрузка файла прерывается через 30 с), только потом SIGKILL
     stop_grace_period: 120s
-    logging: *logs
     depends_on:
       api: { condition: service_healthy }
 
@@ -78,11 +93,25 @@ services:
     command: sh -c "npm ci && npx vite --host 0.0.0.0 --port 5180"
     environment:
       API_PROXY: http://api:8000
-    # ../shared из /app → /shared: фронтенд импортирует общую модель риска, офлайн-копию стартового набора (shared/snapshot/api,
-    # картинки — /snapshot-media/… из vite.config.ts) и тестовые данные для vitest (shared/testdata)
+      # кроме этой машины интерфейс открывается только с этих адресов(IP или подсети через запятую, обычно устройства
+      # Tailscale); пусто - только с этой машины. Проверка - в frontend/vite.config.ts, на уровне соединения
+      SAQ_ALLOWED_CLIENTS: ${SAQ_ALLOWED_CLIENTS:-}
+      # имена, по которым открывают интерфейс кроме localhost и IP(например имя машины в Tailscale MagicDNS)
+      SAQ_WEB_HOSTS: ${SAQ_WEB_HOSTS:-}
+    # ../shared из /app -> /shared: фронтенд импортирует общую модель риска, офлайн-копию стартового набора(shared/snapshot/api,
+    # картинки - /snapshot-media/... из vite.config.ts) и тестовые данные для vitest(shared/testdata)
     volumes: [./frontend:/app:z, /app/node_modules, "./shared:/shared:ro,z"]
-    ports: ["5180:5180"]
+    # только IPv4: при "5180:5180" Docker слушает и [::], а такие соединения docker-proxy пересылает от адреса шлюза
+    # сети - фильтр в vite.config.ts принял бы их за обращения с этой машины
+    ports: ["0.0.0.0:5180:5180"]
+    networks: [frontend]
     depends_on: [api]
+    restart: unless-stopped
+    logging: *logging
+
+networks:
+  backend:
+  frontend:
 
 volumes:
   pgdata:

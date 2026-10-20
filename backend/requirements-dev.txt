@@ -1,2 +1,2 @@
-pytest>=8
-httpx>=0.27
+# Только для тестов, ставится вместе с requirements.txt(./dev.sh, CI); httpx для TestClient - уже там, с точной версией
+pytest>=9.1.1,<10

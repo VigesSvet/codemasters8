@@ -40,7 +40,7 @@ jobs:
           tesseract --list-langs
           ffmpeg -version | head -1
 
-      # версия — как в образе API (python:3.12-slim)
+      # версия - как в образе API(python:3.12-slim-trixie)
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -54,6 +54,15 @@ jobs:
 
       - name: pytest
         run: python -m pytest -q
+
+      # известные уязвимости(база PyPI) ровно в тех версиях, что поставил pip: requirements*.txt задают только нижние
+      # границы. pip-audit - в отдельном окружении, чтобы он и его зависимости не попали в проверяемый список
+      - name: Аудит зависимостей - pip-audit
+        run: |
+          python -m venv "$RUNNER_TEMP/audit"
+          "$RUNNER_TEMP/audit/bin/python" -m pip install --quiet pip-audit
+          python -m pip freeze --exclude-editable \
+            | "$RUNNER_TEMP/audit/bin/pip-audit" -r /dev/stdin --no-deps --disable-pip --progress-spinner off
 
   frontend:
     name: Фронтенд — tsc, vitest, oxlint, сборка
