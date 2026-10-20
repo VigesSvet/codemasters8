@@ -8,7 +8,7 @@
      "ad":      [{"name", "ad", "complex"}]}
 """
 import json
-from typing import Any, Dict
+from typing import Any
 
 from .risk import score_ad, score_complex
 from .risk_model import SHARED, VERSION
@@ -18,7 +18,7 @@ TESTDATA = SHARED / "testdata"
 GOLDEN = TESTDATA / "risk_golden.json"
 
 
-def build() -> Dict[str, Any]:
+def build() -> dict[str, Any]:
     seed = json.loads((TESTDATA / "demo_seed.json").read_text(encoding="utf-8"))
     fx_path = TESTDATA / "risk_fixtures.json"
     fx = json.loads(fx_path.read_text(encoding="utf-8")) if fx_path.exists() else {"complex": [], "ad": []}
@@ -40,7 +40,7 @@ def build() -> Dict[str, Any]:
     }
 
 
-def dump(data: Dict[str, Any]) -> str:
+def dump(data: dict[str, Any]) -> str:
     return json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True) + "\n"
 
 

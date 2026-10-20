@@ -37,8 +37,9 @@ import logging
 import re
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from datetime import datetime, UTC
+from typing import Any
+from collections.abc import Iterable
 
 from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.engine import Engine
@@ -48,7 +49,7 @@ from . import importer, migrate, models, registry
 
 log = logging.getLogger("saq")
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 SYSTEM = "Система"
 FLAG = "demo_data"  # ключ флага в meta
 PURGED = "purged"
@@ -82,7 +83,7 @@ def complex_id(key: str) -> str:
     return cid if len(cid) <= ID_MAX else "rh-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
 
 
-def developer_id(bin_: Optional[str], name: Optional[str]) -> Optional[str]:
+def developer_id(bin_: str | None, name: str | None) -> str | None:
     """"rd-<БИН>"; без БИН - "rd-<sha1 названия организации>"; без застройщика - None."""
     if bin_:
         return f"rd-{bin_}"
@@ -99,37 +100,37 @@ def display_name(name: str) -> str:
     return " ".join(_PREFIX.sub("", name or "").split()) or (name or "").strip()
 
 
-def _address(addr: Optional[str]) -> str:
+def _address(addr: str | None) -> str:
     """Адрес без "г. Усть-Каменогорск," - как у карточек ЖК(город добавляет интерфейс; ИИ сравнивает улицу и дом)."""
     return _CITY.sub("", addr or "").strip()
 
 
-def _single(rs: List[Obj], f: str) -> str:
+def _single(rs: list[Obj], f: str) -> str:
     """Значение поля, если все записи объекта, где оно есть, согласны; иначе(разные очереди, блоки) - ""(нет сведений)."""
     vals = {r.get(f) for r in rs if r.get(f)}
     return vals.pop() if len(vals) == 1 else ""
 
 
-def _building(stage: Optional[str]) -> bool:
+def _building(stage: str | None) -> bool:
     """Источник относит объект к строящимся("В строительстве(фильтр источника)"), а не к завершённым."""
     t = (stage or "").lower()
     return "строительств" in t and "заверш" not in t
 
 
-def _fmt(d: Optional[str]) -> str:
+def _fmt(d: str | None) -> str:
     return f"{d[8:10]}.{d[5:7]}.{d[:4]}" if d and len(d) >= 10 else ""
 
 
-def _ordered(rs: List[Obj]) -> List[Obj]:
+def _ordered(rs: list[Obj]) -> list[Obj]:
     order = {s: i for i, s in enumerate(importer.SOURCE_ORDER)}
     return sorted(rs, key=lambda r: (order.get(r["source"], 9), r.get("row") or 0, r.get("id") or 0))
 
 
-def _refs(rs: List[Obj]) -> Obj:
+def _refs(rs: list[Obj]) -> Obj:
     """Документы основания, которые называет источник, - справкой(guaranteeRef / mioRef / bank), без статуса "есть"."""
     out: Obj = {}
     for method, (ref, label, tail) in FUNDING_REF.items():
-        by_src: Dict[str, List[str]] = {}
+        by_src: dict[str, list[str]] = {}
         for r in _ordered(rs):
             if r.get("fundingMethod") != method:
                 continue
@@ -149,7 +150,7 @@ def _refs(rs: List[Obj]) -> Obj:
     return out
 
 
-def complex_values(o: Obj, rs: List[Obj]) -> Obj:
+def complex_values(o: Obj, rs: list[Obj]) -> Obj:
     """Поля карточки ЖК по объекту реестра(o - importer.group, rs - его записи). Неизвестное - пусто/0/"unknown"."""
     return {
         "name": display_name(o["name"])[:255],
@@ -170,12 +171,12 @@ FILL = ("name", "address", "start", "planned_end")  # дополняются, т
 
 @dataclass
 class ImportReport:
-    created: List[str] = field(default_factory=list)
-    updated: List[str] = field(default_factory=list)
-    unchanged: List[str] = field(default_factory=list)
-    skipped: List[str] = field(default_factory=list)  # "название: причина"
-    developers_created: List[str] = field(default_factory=list)
-    developers_updated: List[str] = field(default_factory=list)
+    created: list[str] = field(default_factory=list)
+    updated: list[str] = field(default_factory=list)
+    unchanged: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)  # "название: причина"
+    developers_created: list[str] = field(default_factory=list)
+    developers_updated: list[str] = field(default_factory=list)
 
     def line(self) -> str:
         out = (f"Карточки ЖК из открытого реестра: создано {len(self.created)}, дополнено {len(self.updated)}, без изменений "
@@ -187,24 +188,24 @@ class ImportReport:
         return out
 
 
-def _objects(db: Session) -> List[Tuple[Obj, List[Obj]]]:
+def _objects(db: Session) -> list[tuple[Obj, list[Obj]]]:
     """Объекты реестра(сначала с координатами, затем без - как "objects" и "withoutCoords" в
     shared/registry_ust_kamenogorsk.json) и их записи."""
     rs = registry.records(db)
-    by: Dict[str, List[Obj]] = {}
+    by: dict[str, list[Obj]] = {}
     for r in rs:
         by.setdefault(r["key"], []).append(r)
     split = importer.split(importer.group(rs))
     return [(o, by[o["key"]]) for o in split["objects"] + split["withoutCoords"]]
 
 
-def _sources_line(o: Obj, rs: List[Obj]) -> str:
+def _sources_line(o: Obj, rs: list[Obj]) -> str:
     names = ", ".join(importer.SOURCES[s]["name"] for s in o["sources"] if s in importer.SOURCES)
     got = o.get("collectedAt")
     return f"{names} (записей: {len(rs)}" + (f", собраны {_fmt(got)}" if got else "") + ")"
 
 
-def import_registry(db: Session, *, dry_run: bool = False, at: Optional[datetime] = None) -> ImportReport:
+def import_registry(db: Session, *, dry_run: bool = False, at: datetime | None = None) -> ImportReport:
     """Создать недостающие и дополнить пустые поля карточек ЖК и застройщиков из открытого реестра(в сессии db, без
     commit). Записей реестра нет - сначала загружается shared/registry_ust_kamenogorsk.json(registry.seed).
     Повторный вызов ничего не меняет. События журнала - по каждой созданной и дополненной карточке."""
@@ -213,7 +214,7 @@ def import_registry(db: Session, *, dry_run: bool = False, at: Optional[datetime
     if not dry_run and db.scalar(select(models.SourceRecord.id).limit(1)) is None:
         registry.seed(db, importer.load_registry())
         db.flush()
-    devs: Dict[str, models.Developer] = {d.id: d for d in db.scalars(select(models.Developer))}
+    devs: dict[str, models.Developer] = {d.id: d for d in db.scalars(select(models.Developer))}
     for o, rs in _objects(db):
         label = display_name(o["name"])
         did = developer_id(o.get("developerBin"), o.get("developer"))
@@ -287,27 +288,27 @@ def import_registry(db: Session, *, dry_run: bool = False, at: Optional[datetime
 @dataclass
 class Plan:
     """Что удаляет purge: id строк по таблицам; unlink - собранные/внесённые публикации, привязанные к демо-ЖК."""
-    ads: List[str] = field(default_factory=list)
-    complexes: Dict[str, str] = field(default_factory=dict)  # id → название(для событий о снятой привязке)
-    developers: List[str] = field(default_factory=list)
-    appeals: List[str] = field(default_factory=list)
-    signals: List[int] = field(default_factory=list)
-    events: List[int] = field(default_factory=list)
-    detach: List[int] = field(default_factory=list)  # события собранных публикаций о демо-ЖК: complex_id → NULL
-    unlink: List[Tuple[str, str]] = field(default_factory=list)  # (публикация, демо-ЖК)
-    llm: List[int] = field(default_factory=list)
-    items: List[int] = field(default_factory=list)
-    versions: List[int] = field(default_factory=list)
-    media: List[str] = field(default_factory=list)
-    bot: List[int] = field(default_factory=list)
-    jobs: List[int] = field(default_factory=list)
-    geo: List[int] = field(default_factory=list)
-    mentions: List[int] = field(default_factory=list)  # упоминания объектов из рекламы в демо-публикациях
-    relink: List[int] = field(default_factory=list)  # объекты из рекламы, привязанные к демо-ЖК: снова "new"
-    kept_developers: List[str] = field(default_factory=list)  # демо-застройщик у не демо-ЖК - не удаляется
-    blocked: List[str] = field(default_factory=list)  # почему удалить нельзя(ничего не удаляется)
+    ads: list[str] = field(default_factory=list)
+    complexes: dict[str, str] = field(default_factory=dict)  # id → название(для событий о снятой привязке)
+    developers: list[str] = field(default_factory=list)
+    appeals: list[str] = field(default_factory=list)
+    signals: list[int] = field(default_factory=list)
+    events: list[int] = field(default_factory=list)
+    detach: list[int] = field(default_factory=list)  # события собранных публикаций о демо-ЖК: complex_id → NULL
+    unlink: list[tuple[str, str]] = field(default_factory=list)  # (публикация, демо-ЖК)
+    llm: list[int] = field(default_factory=list)
+    items: list[int] = field(default_factory=list)
+    versions: list[int] = field(default_factory=list)
+    media: list[str] = field(default_factory=list)
+    bot: list[int] = field(default_factory=list)
+    jobs: list[int] = field(default_factory=list)
+    geo: list[int] = field(default_factory=list)
+    mentions: list[int] = field(default_factory=list)  # упоминания объектов из рекламы в демо-публикациях
+    relink: list[int] = field(default_factory=list)  # объекты из рекламы, привязанные к демо-ЖК: снова "new"
+    kept_developers: list[str] = field(default_factory=list)  # демо-застройщик у не демо-ЖК - не удаляется
+    blocked: list[str] = field(default_factory=list)  # почему удалить нельзя(ничего не удаляется)
 
-    def rows(self) -> List[Tuple[str, int]]:
+    def rows(self) -> list[tuple[str, int]]:
         return [("публикации демо-набора", len(self.ads)), ("ЖК демо-набора", len(self.complexes)),
                 ("застройщики демо-набора", len(self.developers)), ("обращения демо-набора", len(self.appeals)),
                 ("сигналы по демо-ЖК", len(self.signals)), ("события журнала (демо-публикации, демо-ЖК, сид)", len(self.events)),
@@ -342,10 +343,10 @@ SEED_AUDIT = (
 
 def _seed_audit() -> set:
     """События журнала прежнего демо-набора: (кто, что, когда UTC)."""
-    return {(who, what, datetime.fromisoformat(at).replace(tzinfo=timezone.utc)) for who, what, at in SEED_AUDIT}
+    return {(who, what, datetime.fromisoformat(at).replace(tzinfo=UTC)) for who, what, at in SEED_AUDIT}
 
 
-def _ids(db: Session, col, *where) -> List[Any]:
+def _ids(db: Session, col, *where) -> list[Any]:
     return list(db.scalars(select(col).where(*where)))
 
 
@@ -411,7 +412,7 @@ def _delete(db: Session, model, col, ids: Iterable[Any]) -> None:
         db.execute(model.__table__.delete().where(col.in_(ids[i:i + 500])))
 
 
-def apply(db: Session, p: Plan, *, at: Optional[datetime] = None) -> ImportReport:
+def apply(db: Session, p: Plan, *, at: datetime | None = None) -> ImportReport:
     """Удаление по плану, флаг demo_data = purged, карточки ЖК из реестра и событие журнала - в сессии db(без commit)."""
     if p.blocked:
         raise RuntimeError("; ".join(p.blocked))
@@ -469,7 +470,7 @@ def apply(db: Session, p: Plan, *, at: Optional[datetime] = None) -> ImportRepor
 
 # ---------- вывод и CLI ----------
 
-def _version(db: Session) -> Optional[str]:
+def _version(db: Session) -> str | None:
     try:
         m = db.get(models.Meta, "schema_version")
     except Exception:  # нет таблицы meta - БД пустая или чужая
@@ -478,7 +479,7 @@ def _version(db: Session) -> Optional[str]:
     return m.value if m else None
 
 
-def kept(db: Session) -> List[Tuple[str, int]]:
+def kept(db: Session) -> list[tuple[str, int]]:
     def n(model, *where) -> int:
         return int(db.scalar(select(func.count()).select_from(model).where(*where)) or 0)
 
@@ -575,7 +576,7 @@ def import_cli(eng: Engine) -> int:
     return 0
 
 
-def add_advertised_cli(eng: Engine, path: str, *, author: Optional[str], note: Optional[str]) -> int:
+def add_advertised_cli(eng: Engine, path: str, *, author: str | None, note: str | None) -> int:
     """CLI add-advertised: 0 - выполнено, 2 - схема не текущая, файл не читается или не в формате."""
     from pydantic import ValidationError
 
@@ -611,7 +612,7 @@ def add_advertised_cli(eng: Engine, path: str, *, author: Optional[str], note: O
     return 0
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m app.demo", description="Демо-данные и карточки ЖК из открытого реестра")
     sub = ap.add_subparsers(dest="cmd", required=True)
     pp = sub.add_parser("purge", help="удалить демо-данные (кроме аналитиков и открытого реестра)")

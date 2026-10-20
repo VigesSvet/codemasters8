@@ -12,7 +12,6 @@ import hashlib
 import hmac
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 from fastapi import HTTPException, Request
 
@@ -41,7 +40,7 @@ def token_fp(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()[:12]
 
 
-def _bearer(request: Request) -> Optional[str]:
+def _bearer(request: Request) -> str | None:
     """Значение "Authorization: Bearer <токен>"(схема без учёта регистра) или None."""
     scheme, _, value = (request.headers.get("authorization") or "").strip().partition(" ")
     value = value.strip()
@@ -59,11 +58,11 @@ def _record(code: str, status: int, detail: str) -> None:
         from .integrations import service
 
         service.record_reject(code, status, detail)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("Отказ доступа (%s, HTTP %s) не записан в состояние подключения", code, status, exc_info=True)
 
 
-def _check(got: Optional[str], secret: str, unset: str, missing: str, wrong: str, record: Optional[str]) -> None:
+def _check(got: str | None, secret: str, unset: str, missing: str, wrong: str, record: str | None) -> None:
     if not secret:
         raise HTTPException(503, unset)
     got = (got or "").strip()

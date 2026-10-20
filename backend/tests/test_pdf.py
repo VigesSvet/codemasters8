@@ -1,6 +1,6 @@
 """PDF сигнальной карточки: много доказательств и длинные тексты переносятся постранично, формулировки - по данным."""
 import re
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from reportlab.platypus import KeepTogether, Paragraph, Table
 
@@ -39,7 +39,7 @@ def _text(x) -> str:
 
 
 def _story_text(c, sid) -> str:
-    return _text(pdf.story(c.get(f"/api/signals/{sid}").json(), datetime.now(timezone.utc)))
+    return _text(pdf.story(c.get(f"/api/signals/{sid}").json(), datetime.now(UTC)))
 
 
 def test_many_linked_ads(client):

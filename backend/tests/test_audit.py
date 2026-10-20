@@ -176,7 +176,7 @@ def test_concurrent_status_decisions(client, monkeypatch):
         db = SessionLocal()
         try:
             results[i] = main.set_status("a1", bodies[i], db).status
-        except Exception as e:  # noqa: BLE001 - 409 ожидаем, любое другое исключение провалит проверку ниже
+        except Exception as e:
             results[i] = e
         finally:
             db.close()

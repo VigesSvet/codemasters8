@@ -1,6 +1,6 @@
 import re
-from datetime import date as Date, datetime, timedelta, timezone
-from typing import Annotated, Any, Dict, List, Literal, Optional, Union
+from datetime import date as Date, datetime, timedelta, UTC
+from typing import Annotated, Any, Literal, Optional
 
 from pydantic import (AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints, ValidationInfo,
                       field_validator, model_serializer, model_validator)
@@ -69,15 +69,15 @@ def _blank_to_none(v: Any) -> Any:
 
 
 # Необязательные строки: пустая или из пробелов - то же, что не указана; длина - как у обязательных
-OptName = Annotated[Optional[Name], BeforeValidator(_blank_to_none)]
-OptComment = Annotated[Optional[Comment], BeforeValidator(_blank_to_none)]
-OptNote = Annotated[Optional[Note], BeforeValidator(_blank_to_none)]
+OptName = Annotated[Name | None, BeforeValidator(_blank_to_none)]
+OptComment = Annotated[Comment | None, BeforeValidator(_blank_to_none)]
+OptNote = Annotated[Note | None, BeforeValidator(_blank_to_none)]
 # Уверенность ИИ в привязке публикации к ЖК: 0…1, информативно - фактом привязку делает только подтверждение аналитика
 Confidence = Annotated[float, Field(ge=0, le=1)]
 # Текст объявления и распознанный скриншот: с запасом для любого поста, но с пределом - их анализирует ИИ(время анализа)
 AD_TEXT_MAX = 20000
 # Время из БД(datetime, в SQLite - наивное UTC) → ISO 8601 с UTC-смещением
-IsoTime = Annotated[Optional[str], BeforeValidator(lambda v: iso(v) if isinstance(v, datetime) else v)]
+IsoTime = Annotated[str | None, BeforeValidator(lambda v: iso(v) if isinstance(v, datetime) else v)]
 
 
 class Camel(BaseModel):
@@ -94,9 +94,9 @@ class DeveloperOut(Camel):
     registered: str
     objects: int
     unfinished: int
-    site: Optional[str] = None
-    instagram: Optional[str] = None
-    phones: List[str] = []
+    site: str | None = None
+    instagram: str | None = None
+    phones: list[str] = []
     origin: Origin = "demo"
 
 
@@ -106,8 +106,8 @@ class ComplexOut(Camel):
     developer_id: str
     address: str
     district: str
-    lng: Optional[float] = None  # None - координат нет(объект реестра без координат, ЖК по рекламе до сверки 2ГИС)
-    lat: Optional[float] = None
+    lng: float | None = None  # None - координат нет(объект реестра без координат, ЖК по рекламе до сверки 2ГИС)
+    lat: float | None = None
     stage: str
     progress: int
     floors: int
@@ -122,8 +122,8 @@ class ComplexOut(Camel):
     idle_days: int
     origin: Origin = "demo"
     # Сверка аналитиком(app.verification): перечень ГАСК и "обращений нет - сверено"; null - не сверялось
-    published_list_check: Optional[dict] = None
-    appeals_check: Optional[dict] = None
+    published_list_check: dict | None = None
+    appeals_check: dict | None = None
 
 
 class AppealOut(Camel):
@@ -133,34 +133,34 @@ class AppealOut(Camel):
     collective: bool
     applicants: int
     status: AppealStatus
-    verified_at: Optional[str] = None
+    verified_at: str | None = None
     subject: str
     source: str
     origin: Origin = "demo"
     # внесено и проверено аналитиком(app.verification); у обращений демо-набора - null
-    comment: Optional[str] = None
-    created_by: Optional[str] = None
+    comment: str | None = None
+    created_by: str | None = None
     created_at: IsoTime = None
-    decided_by: Optional[str] = None
-    decision_comment: Optional[str] = None
+    decided_by: str | None = None
+    decision_comment: str | None = None
 
 
 class AdIn(Camel):
     """Ручное добавление публикации. author - кто добавил(в журнал); без него - "Система".
     Длины строк - как у столбцов БД: на PostgreSQL более длинное значение было бы ошибкой БД(500), а не понятным 422."""
 
-    id: Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]],
+    id: Annotated[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)] | None,
                   BeforeValidator(_blank_to_none)] = None
     platform: str = Field(max_length=16)
     account: str = Field(max_length=255)
     url: str = Field("", max_length=512)
-    date: Optional[str] = Field(None, max_length=32)
+    date: str | None = Field(None, max_length=32)
     text: str = Field(max_length=AD_TEXT_MAX)
-    ocr: Optional[str] = Field(None, max_length=AD_TEXT_MAX)
-    image: Optional[str] = Field(None, max_length=512)
-    complex_id: Optional[str] = Field(None, max_length=32)
+    ocr: str | None = Field(None, max_length=AD_TEXT_MAX)
+    image: str | None = Field(None, max_length=512)
+    complex_id: str | None = Field(None, max_length=32)
     match_confidence: Confidence = 0
-    price: Optional[str] = Field(None, max_length=64)
+    price: str | None = Field(None, max_length=64)
     source: str = Field("manual", max_length=16)
     # Только статусы до решения: "На проверке", "Нарушение подтверждено", "Отклонено" - через PATCH /api/ads/{id}/status
     # (автор, основание, событие в журнале). Иначе подтверждённая при создании публикация давала бы R2/R3 без следа решения.
@@ -190,12 +190,12 @@ class SpeechOut(Camel):
     расшифровка(она же - абзац "Речь в ролике: …" в ocr публикации), language - ru | kk, audioS - секунд звука."""
 
     status: Literal["done", "empty", "unavailable", "failed", "skipped"]
-    text: Optional[str] = None
-    engine: Optional[str] = None
-    model: Optional[str] = None
-    language: Optional[str] = None
-    audio_s: Optional[float] = None
-    detail: Optional[str] = None
+    text: str | None = None
+    engine: str | None = None
+    model: str | None = None
+    language: str | None = None
+    audio_s: float | None = None
+    detail: str | None = None
 
 
 class MediaRefOut(Camel):
@@ -204,13 +204,13 @@ class MediaRefOut(Camel):
 
     id: str
     kind: Literal["image", "video"]
-    mime: Optional[str] = None
+    mime: str | None = None
     url: str = ""
-    role: Optional[str] = None
-    speech: Optional[SpeechOut] = None
+    role: str | None = None
+    speech: SpeechOut | None = None
 
     @model_serializer(mode="wrap")
-    def _out(self, handler) -> Dict[str, Any]:
+    def _out(self, handler) -> dict[str, Any]:
         out = handler(self)
         if out.get("speech") is None:
             out.pop("speech", None)
@@ -222,9 +222,9 @@ class ProcessingOut(Camel):
 
     status: Literal["queued", "running", "done", "failed"]
     version: int
-    analyzed_version: Optional[int] = None
-    stage: Optional[str] = None
-    error: Optional[str] = None
+    analyzed_version: int | None = None
+    stage: str | None = None
+    error: str | None = None
 
 
 # Анализ ИИ(Claude, app.llm): виды признаков продажи и уверенность в кандидате ЖК - как в схеме ответа модели
@@ -275,7 +275,7 @@ class LlmStageOut(Camel):
 
     value: LlmStage = "unknown"
     quote: str = ""
-    source: Optional[Literal["text", "ocr"]] = None
+    source: Literal["text", "ocr"] | None = None
 
 
 LawArticle = Literal["7", "8", "18", "23"]  # статьи правового контекста анализа ИИ(shared/law.json)
@@ -299,22 +299,22 @@ class LlmOut(Camel):
     status: Literal["done", "refused", "failed", "skipped"]
     provider: Literal["anthropic"] = "anthropic"
     model: str
-    served_model: Optional[str] = None
+    served_model: str | None = None
     prompt_version: str
-    content_version: Optional[int] = None
-    sale_signals: List[LlmSignalOut] = []
-    amounts: List[LlmAmountOut] = []
-    complex_candidates: List[LlmCandidateOut] = []
-    mentioned_complexes: List[LlmMentionOut] = []  # saq-llm-2; у ответов saq-llm-1 - пусто
-    object_stage: Optional[LlmStageOut] = None  # saq-llm-2; у ответов saq-llm-1 - null
-    legal_refs: List[LlmLegalRefOut] = []  # saq-llm-3; у ответов прежних версий - пусто
-    uncertainties: List[str] = []
-    summary: Optional[str] = None
-    dropped: Dict[str, int] = {}  # отброшено сервером: цитаты нет в тексте, ЖК нет в справочнике, сумма не число…
-    error: Optional[str] = None
+    content_version: int | None = None
+    sale_signals: list[LlmSignalOut] = []
+    amounts: list[LlmAmountOut] = []
+    complex_candidates: list[LlmCandidateOut] = []
+    mentioned_complexes: list[LlmMentionOut] = []  # saq-llm-2; у ответов saq-llm-1 - пусто
+    object_stage: LlmStageOut | None = None  # saq-llm-2; у ответов saq-llm-1 - null
+    legal_refs: list[LlmLegalRefOut] = []  # saq-llm-3; у ответов прежних версий - пусто
+    uncertainties: list[str] = []
+    summary: str | None = None
+    dropped: dict[str, int] = {}  # отброшено сервером: цитаты нет в тексте, ЖК нет в справочнике, сумма не число…
+    error: str | None = None
     retry_at: IsoTime = None  # failed с retry_at - ждёт повтора
     attempts: int = 0
-    refusal_category: Optional[str] = None
+    refusal_category: str | None = None
     fallback: bool = False  # ответила резервная модель(серверный fallback после отказа)
     input_tokens: int = 0
     output_tokens: int = 0
@@ -334,36 +334,36 @@ class AdOut(Camel):
     url: str = ""
     date: str
     text: str
-    ocr: Optional[str] = None
-    image: Optional[str] = None
-    complex_id: Optional[str] = None
+    ocr: str | None = None
+    image: str | None = None
+    complex_id: str | None = None
     match_confidence: float = 0
-    link_confirmed_by: Optional[str] = None
+    link_confirmed_by: str | None = None
     link_confirmed_at: IsoTime = None
-    rejected_links: Annotated[List[str], BeforeValidator(lambda v: v or [])] = []
-    terms_review: Optional[TermsReview] = None
-    terms_review_by: Optional[str] = None
+    rejected_links: Annotated[list[str], BeforeValidator(lambda v: v or [])] = []
+    terms_review: TermsReview | None = None
+    terms_review_by: str | None = None
     terms_review_at: IsoTime = None
-    price: Optional[str] = None
+    price: str | None = None
     source: str = "manual"
     status: AdStatus = "new"
-    assignee: Optional[str] = None
-    reach: Optional[int] = None
+    assignee: str | None = None
+    reach: int | None = None
     origin: Origin = "demo"
     collected_at: IsoTime = None  # время получения сборщиком/приёмом(UTC), не время публикации
-    media: Annotated[List[MediaRefOut], BeforeValidator(lambda v: list(v or []))] = []
-    processing: Optional[ProcessingOut] = None  # только у публикаций из приёма(Ad.ingest)
-    llm: Optional[LlmOut] = None  # последний анализ ИИ - гипотезы; нет - анализа не было
+    media: Annotated[list[MediaRefOut], BeforeValidator(lambda v: list(v or []))] = []
+    processing: ProcessingOut | None = None  # только у публикаций из приёма(Ad.ingest)
+    llm: LlmOut | None = None  # последний анализ ИИ - гипотезы; нет - анализа не было
 
     @model_serializer(mode="wrap")
-    def _out(self, handler) -> Dict[str, Any]:
+    def _out(self, handler) -> dict[str, Any]:
         return {k: v for k, v in handler(self).items() if not (k in _AD_OPTIONAL and v == _AD_OPTIONAL[k])}
 
 
 class AdComplexIn(Camel):
     """Привязка публикации к ЖК аналитиком: complexId - ЖК(привязка - факт, подтвердил author) или null - снять привязку."""
 
-    complex_id: Optional[Name]
+    complex_id: Name | None
     author: Name
 
 
@@ -377,7 +377,7 @@ class StatusIn(Camel):
 
     @field_validator("comment")
     @classmethod
-    def _basis_for_confirmed(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:
+    def _basis_for_confirmed(cls, v: str | None, info: ValidationInfo) -> str | None:
         if v is None and info.data.get("status") == "confirmed":
             raise PydanticCustomError("value_error", "для подтверждения нарушения укажите основание решения")
         return v
@@ -392,7 +392,7 @@ class InfoRequestIn(Camel):
     """Внутренний запрос сведений по ЖК: только запись в журнале объекта, во внешние органы не отправляется."""
 
     author: Name
-    topics: List[InfoTopic] = Field(min_length=1, max_length=5)
+    topics: list[InfoTopic] = Field(min_length=1, max_length=5)
     comment: OptNote = None
 
 
@@ -408,18 +408,18 @@ class AnalystOut(Camel):
 
 class EvidenceItemOut(Camel):
     kind: EvidenceKind
-    ref: Optional[str] = None
-    label: Optional[str] = None
-    quote: Optional[str] = None
-    quote_from: Optional[Literal["text", "ocr"]] = None
-    marker: Optional[str] = None
-    source: Optional[str] = None
-    date: Optional[str] = None
-    url: Optional[str] = None
-    value: Optional[Union[int, float, str]] = None
+    ref: str | None = None
+    label: str | None = None
+    quote: str | None = None
+    quote_from: Literal["text", "ocr"] | None = None
+    marker: str | None = None
+    source: str | None = None
+    date: str | None = None
+    url: str | None = None
+    value: int | float | str | None = None
 
     @model_serializer(mode="wrap")
-    def _drop_empty(self, handler) -> Dict[str, Any]:
+    def _drop_empty(self, handler) -> dict[str, Any]:
         # как в движке: отсутствующие поля не выводятся(EvidenceItem в types.ts - все поля необязательные)
         return {k: v for k, v in handler(self).items() if v is not None}
 
@@ -431,7 +431,7 @@ class RiskFactorOut(Camel):
     state: FactorState
     reason: str
     evidence: str
-    items: List[EvidenceItemOut] = []
+    items: list[EvidenceItemOut] = []
 
 
 class ObservationOut(Camel):
@@ -445,8 +445,8 @@ class RiskOut(Camel):
     score: int
     zone: Zone
     needs_check: bool
-    factors: List[RiskFactorOut]
-    observations: List[ObservationOut]
+    factors: list[RiskFactorOut]
+    observations: list[ObservationOut]
     summary: str
     model_version: str
     # False - риск не оценивается: карточка из открытого реестра без проверенных сведений(балл и зона не показываются)
@@ -458,18 +458,18 @@ class RiskRowOut(RiskOut):
 
 
 class AdSignalsOut(Camel):
-    sale: List[str]
-    funds: List[str]
-    safe: List[str]
+    sale: list[str]
+    funds: list[str]
+    safe: list[str]
 
 
 class AdScoreOut(Camel):
     score: int
     zone: Zone
     needs_check: bool
-    factors: List[RiskFactorOut]
+    factors: list[RiskFactorOut]
     signals: AdSignalsOut
-    complex_id: Optional[str] = None
+    complex_id: str | None = None
     match_confidence: float = 0
 
 
@@ -479,9 +479,9 @@ class AuditOut(Camel):
     who: str
     what: str
     kind: AuditKind
-    ad_id: Optional[str] = None
-    complex_id: Optional[str] = None
-    signal_id: Optional[int] = None
+    ad_id: str | None = None
+    complex_id: str | None = None
+    signal_id: int | None = None
 
 
 # ---------- сигналы(модуль 05) ----------
@@ -494,23 +494,23 @@ class SignalAdOut(Camel):
     date: str
     status: AdStatus
     match_confidence: float
-    link_confirmed_by: Optional[str] = None
-    link_confirmed_at: Optional[str] = None
-    terms_review: Optional[TermsReview] = None
+    link_confirmed_by: str | None = None
+    link_confirmed_at: str | None = None
+    terms_review: TermsReview | None = None
     text: str
-    ocr: Optional[str] = None
-    image: Optional[str] = None
-    price: Optional[str] = None
+    ocr: str | None = None
+    image: str | None = None
+    price: str | None = None
     signals: AdSignalsOut
 
 
 class SignalEvidenceOut(Camel):
     complex: ComplexOut
-    developer: Optional[DeveloperOut] = None
-    ads: List[SignalAdOut] = []
-    appeals: List[AppealOut] = []
+    developer: DeveloperOut | None = None
+    ads: list[SignalAdOut] = []
+    appeals: list[AppealOut] = []
     photos: list = []
-    documents: List[EvidenceItemOut] = []
+    documents: list[EvidenceItemOut] = []
 
 
 class SignalSummaryOut(Camel):
@@ -522,23 +522,23 @@ class SignalSummaryOut(Camel):
     score: int
     zone: Zone
     needs_check: bool
-    hits: List[str]
+    hits: list[str]
     created_at: str
     created_by: str
-    decided_at: Optional[str] = None
-    decided_by: Optional[str] = None
+    decided_at: str | None = None
+    decided_by: str | None = None
 
 
 class SignalOut(SignalSummaryOut):
     summary: str
-    factors: List[RiskFactorOut]
-    observations: List[ObservationOut]
+    factors: list[RiskFactorOut]
+    observations: list[ObservationOut]
     evidence: SignalEvidenceOut
     model_version: str
-    decision_comment: Optional[str] = None
+    decision_comment: str | None = None
     file_name: str
-    exported_at: Optional[str] = None
-    journal: List[AuditOut] = []
+    exported_at: str | None = None
+    journal: list[AuditOut] = []
 
 
 class SignalCreateIn(Camel):
@@ -553,7 +553,7 @@ class SignalDecisionIn(Camel):
 
 # ---------- ИИ-анализ публикаций(ТЗ §6) ----------
 
-def _drop_none(handler, self) -> Dict[str, Any]:
+def _drop_none(handler, self) -> dict[str, Any]:
     return {k: v for k, v in handler(self).items() if v is not None}
 
 
@@ -561,10 +561,10 @@ class AnalyzeIn(Camel):
     """Что анализировать: текст объявления, распознанный скриншот, аккаунт, площадка, ссылка. В БД ничего не пишется."""
 
     text: str = Field("", max_length=AD_TEXT_MAX)
-    ocr: Optional[str] = Field(None, max_length=AD_TEXT_MAX)
-    account: Optional[str] = Field(None, max_length=255)
-    platform: Optional[str] = Field(None, max_length=16)
-    url: Optional[str] = Field(None, max_length=512)
+    ocr: str | None = Field(None, max_length=AD_TEXT_MAX)
+    account: str | None = Field(None, max_length=255)
+    platform: str | None = Field(None, max_length=16)
+    url: str | None = Field(None, max_length=512)
 
     @field_validator("*")
     @classmethod
@@ -577,11 +577,11 @@ class TermOut(Camel):
 
     kind: TermKind
     label: str
-    amount: Optional[Union[int, float]] = None
-    currency: Optional[Literal["KZT", "USD", "RUB"]] = None
-    unit: Optional[Literal["m2"]] = None
-    percent: Optional[Union[int, float]] = None
-    months: Optional[Union[int, float]] = None
+    amount: int | float | None = None
+    currency: Literal["KZT", "USD", "RUB"] | None = None
+    unit: Literal["m2"] | None = None
+    percent: int | float | None = None
+    months: int | float | None = None
     quote: str
     from_: Literal["text", "ocr"] = Field(alias="from")
     confidence: float
@@ -589,7 +589,7 @@ class TermOut(Camel):
     money: bool
 
     @model_serializer(mode="wrap")
-    def _out(self, handler) -> Dict[str, Any]:
+    def _out(self, handler) -> dict[str, Any]:
         return _drop_none(handler, self)
 
 
@@ -604,33 +604,33 @@ class LinkHypothesisOut(Camel):
     complex_name: str
     confidence: float
     low: bool
-    reasons: List[ReasonOut]
-    quote: Optional[str] = None
+    reasons: list[ReasonOut]
+    quote: str | None = None
 
     @model_serializer(mode="wrap")
-    def _out(self, handler) -> Dict[str, Any]:
+    def _out(self, handler) -> dict[str, Any]:
         return _drop_none(handler, self)
 
 
 class AnalysisOut(Camel):
     engine: str
-    terms: List[TermOut]
-    hypotheses: List[LinkHypothesisOut]
+    terms: list[TermOut]
+    hypotheses: list[LinkHypothesisOut]
     signals: AdSignalsOut
-    phones: List[str]
-    addresses: List[str]
-    note: Optional[str] = None
+    phones: list[str]
+    addresses: list[str]
+    note: str | None = None
 
 
 class AdAnalysisOut(AnalysisOut):
     """Анализ сохранённой публикации: без отклонённых гипотез и с решениями аналитика."""
 
-    terms_review: Optional[TermsReview] = None
-    terms_review_by: Optional[str] = None
-    terms_review_at: Optional[str] = None
-    link_confirmed_by: Optional[str] = None
-    link_confirmed_at: Optional[str] = None
-    rejected_links: List[str] = []
+    terms_review: TermsReview | None = None
+    terms_review_by: str | None = None
+    terms_review_at: str | None = None
+    link_confirmed_by: str | None = None
+    link_confirmed_at: str | None = None
+    rejected_links: list[str] = []
 
 
 class HypothesisIn(Camel):
@@ -653,27 +653,27 @@ class TermsReviewIn(Camel):
 class OcrOut(Camel):
     text: str
     engine: Literal["tesseract", "none"]
-    confidence: Optional[float] = None
-    languages: List[str] = []
+    confidence: float | None = None
+    languages: list[str] = []
     duration_ms: int
-    version: Optional[str] = None
-    preprocess: List[str] = []
-    detail: Optional[str] = None
+    version: str | None = None
+    preprocess: list[str] = []
+    detail: str | None = None
 
     @model_serializer(mode="wrap")
-    def _out(self, handler) -> Dict[str, Any]:
+    def _out(self, handler) -> dict[str, Any]:
         return _drop_none(handler, self)
 
 
 class OcrStatusOut(Camel):
     available: bool
     engine: Literal["tesseract", "none"]
-    version: Optional[str] = None
-    languages: List[str] = []
-    detail: Optional[str] = None
+    version: str | None = None
+    languages: list[str] = []
+    detail: str | None = None
 
     @model_serializer(mode="wrap")
-    def _out(self, handler) -> Dict[str, Any]:
+    def _out(self, handler) -> dict[str, Any]:
         return _drop_none(handler, self)
 
 
@@ -688,7 +688,7 @@ class AiMetricsOut(Camel):
 
 class AiEvalOut(Camel):
     engine: str
-    cases: List[Dict[str, Any]]
+    cases: list[dict[str, Any]]
     metrics: AiMetricsOut
 
 
@@ -702,44 +702,44 @@ class SourceRecordOut(Camel):
     origin: Literal["source"] = "source"
     source: SourceCode
     source_name: str
-    source_section: Optional[str] = None
-    source_url: Optional[str] = None
+    source_section: str | None = None
+    source_url: str | None = None
     source_record_id: str
     collected_at: IsoTime = None
-    provider_loaded_at: Optional[str] = None
+    provider_loaded_at: str | None = None
     imported_at: IsoTime = None
-    import_file: Optional[str] = None
-    row: Optional[int] = None
+    import_file: str | None = None
+    row: int | None = None
     name: str
-    address: Optional[str] = None
-    developer: Optional[str] = None
-    developer_bin: Optional[str] = None
-    agent: Optional[str] = None
-    agent_bin: Optional[str] = None
-    stage: Optional[str] = None
-    funding_method: Optional[FundingMethod] = None
-    funding_text: Optional[str] = None
-    doc_number: Optional[str] = None
-    doc_date: Optional[str] = None
-    start: Optional[str] = None
-    planned_end: Optional[str] = None
-    act_number: Optional[str] = None
-    act_date: Optional[str] = None
-    readiness: Optional[float] = None
-    report_period: Optional[str] = None
-    lat: Optional[float] = None
-    lng: Optional[float] = None
-    cadastral: Optional[str] = None
-    site: Optional[str] = None
-    note: Optional[str] = None
+    address: str | None = None
+    developer: str | None = None
+    developer_bin: str | None = None
+    agent: str | None = None
+    agent_bin: str | None = None
+    stage: str | None = None
+    funding_method: FundingMethod | None = None
+    funding_text: str | None = None
+    doc_number: str | None = None
+    doc_date: str | None = None
+    start: str | None = None
+    planned_end: str | None = None
+    act_number: str | None = None
+    act_date: str | None = None
+    readiness: float | None = None
+    report_period: str | None = None
+    lat: float | None = None
+    lng: float | None = None
+    cadastral: str | None = None
+    site: str | None = None
+    note: str | None = None
 
 
 class RegistryFlagsOut(Camel):
-    source_section: Optional[str] = None  # раздел источника - как у источника, без оценки
-    coords_far_km: Optional[int] = None  # координаты источника далеко от Усть-Каменогорска(км от центра)
+    source_section: str | None = None  # раздел источника - как у источника, без оценки
+    coords_far_km: int | None = None  # координаты источника далеко от Усть-Каменогорска(км от центра)
 
     @model_serializer(mode="wrap")
-    def _out(self, handler) -> Dict[str, Any]:
+    def _out(self, handler) -> dict[str, Any]:
         return _drop_none(handler, self)
 
 
@@ -749,29 +749,29 @@ class RegistryObjectOut(Camel):
     key: str
     origin: Literal["source"] = "source"
     name: str
-    address: Optional[str] = None
-    developer: Optional[str] = None
-    developer_bin: Optional[str] = None
-    agent: Optional[str] = None
-    funding_methods: List[FundingMethod] = []
-    stage: Optional[str] = None
-    planned_end: Optional[str] = None
-    lat: Optional[float] = None
-    lng: Optional[float] = None
+    address: str | None = None
+    developer: str | None = None
+    developer_bin: str | None = None
+    agent: str | None = None
+    funding_methods: list[FundingMethod] = []
+    stage: str | None = None
+    planned_end: str | None = None
+    lat: float | None = None
+    lng: float | None = None
     records: int
-    sources: List[SourceCode]
-    collected_at: Optional[str] = None
+    sources: list[SourceCode]
+    collected_at: str | None = None
     flags: RegistryFlagsOut = RegistryFlagsOut()
 
 
 class RegistryOut(Camel):
-    objects: List[RegistryObjectOut]
-    without_coords: List[RegistryObjectOut]
+    objects: list[RegistryObjectOut]
+    without_coords: list[RegistryObjectOut]
 
 
 class RegistryItemOut(Camel):
     object: RegistryObjectOut
-    records: List[SourceRecordOut]
+    records: list[SourceRecordOut]
 
 
 class DemoCountsOut(Camel):
@@ -784,16 +784,16 @@ class DemoCountsOut(Camel):
 class SourceInfoOut(Camel):
     code: Literal["homeportal", "homeportal_section", "ashyq", "demo"]
     name: str
-    url: Optional[str] = None
+    url: str | None = None
     records: int
     objects: int
-    collected_at: Optional[str] = None
-    provider_loaded_at: Optional[str] = None
+    collected_at: str | None = None
+    provider_loaded_at: str | None = None
     note: str
-    counts: Optional[DemoCountsOut] = None
+    counts: DemoCountsOut | None = None
 
     @model_serializer(mode="wrap")
-    def _out(self, handler) -> Dict[str, Any]:
+    def _out(self, handler) -> dict[str, Any]:
         out = handler(self)
         return out if out.get("counts") is not None else {k: v for k, v in out.items() if k != "counts"}
 
@@ -807,12 +807,12 @@ class ImportReportOut(Camel):
     unchanged: int
     skipped: int
     duplicates: int
-    errors: List[str] = []
-    warnings: List[str] = []
+    errors: list[str] = []
+    warnings: list[str] = []
     records: int
     objects: int
     without_coords: int
-    sources: Dict[str, int] = {}
+    sources: dict[str, int] = {}
     event_id: int
 
 
@@ -822,8 +822,8 @@ class AdVersionOut(Camel):
     version: int
     collected_at: IsoTime = None
     text: str
-    price: Optional[str] = None
-    media_keys: List[str] = []
+    price: str | None = None
+    media_keys: list[str] = []
     current: bool
 
 
@@ -843,20 +843,20 @@ class ConnectorConfigIn(Camel):
 
     model_config = ConfigDict(extra="forbid")
 
-    accounts: Optional[List[ConfigItem]] = Field(None, max_length=50)
-    channels: Optional[List[ConfigItem]] = Field(None, max_length=50)
-    profiles: Optional[List[ConfigItem]] = Field(None, max_length=20)
-    search_urls: Optional[List[ConfigUrl]] = Field(None, max_length=10)
-    card_urls: Optional[List[ConfigUrl]] = Field(None, max_length=10)
-    results_per_page: Optional[int] = Field(None, ge=1, le=50)
-    download_videos: Optional[bool] = None
+    accounts: list[ConfigItem] | None = Field(None, max_length=50)
+    channels: list[ConfigItem] | None = Field(None, max_length=50)
+    profiles: list[ConfigItem] | None = Field(None, max_length=20)
+    search_urls: list[ConfigUrl] | None = Field(None, max_length=10)
+    card_urls: list[ConfigUrl] | None = Field(None, max_length=10)
+    results_per_page: int | None = Field(None, ge=1, le=50)
+    download_videos: bool | None = None
 
 
 class ConnectorPatchIn(Camel):
     author: HumanName
-    enabled: Optional[bool] = None
-    interval_min: Optional[int] = Field(None, ge=5, le=10080)
-    config: Optional[ConnectorConfigIn] = None
+    enabled: bool | None = None
+    interval_min: int | None = Field(None, ge=5, le=10080)
+    config: ConnectorConfigIn | None = None
 
 
 class AdminActionIn(Camel):
@@ -885,16 +885,16 @@ class RunOut(Camel):
     trigger: Literal["schedule", "manual", "test"]
     status: RunStatus
     status_label: str
-    requested_by: Optional[str] = None
+    requested_by: str | None = None
     created_at: IsoTime = None
     started_at: IsoTime = None
     finished_at: IsoTime = None
     counts: RunCountsOut
-    external_run_id: Optional[str] = None
-    cost_usd: Optional[float] = None
-    error_code: Optional[str] = None
-    error: Optional[str] = None
-    notes: List[RunNoteOut] = []
+    external_run_id: str | None = None
+    cost_usd: float | None = None
+    error_code: str | None = None
+    error: str | None = None
+    notes: list[RunNoteOut] = []
     retry_at: IsoTime = None
 
 
@@ -916,33 +916,33 @@ class ConnectorOut(Camel):
     code: str
     kind: Literal["collector", "intake", "geo", "oauth", "analyzer"]
     group: Literal["collectors", "intake", "geo", "analyzer", "limited"]
-    platform: Optional[str] = None
+    platform: str | None = None
     name: str
     via: str
     status: ConnectorStatus
     status_label: str
-    status_detail: Optional[str] = None
+    status_detail: str | None = None
     enabled: bool
     configured: bool
-    missing: List[str] = []
-    secret_refs: List[str] = []
-    config: Dict[str, Any] = {}
-    config_fields: List[str] = []
-    options: List[str] = []
-    interval_min: Optional[int] = None
-    interval_bounds: Optional[List[int]] = None
+    missing: list[str] = []
+    secret_refs: list[str] = []
+    config: dict[str, Any] = {}
+    config_fields: list[str] = []
+    options: list[str] = []
+    interval_min: int | None = None
+    interval_bounds: list[int] | None = None
     next_run_at: IsoTime = None
     last_success_at: IsoTime = None
-    last_error: Optional[str] = None
+    last_error: str | None = None
     last_error_at: IsoTime = None
     checked_at: IsoTime = None
-    facts: Dict[str, Any] = {}
+    facts: dict[str, Any] = {}
     counts: ConnectorCountsOut
-    last_run: Optional[RunOut] = None
-    active_run_id: Optional[int] = None
+    last_run: RunOut | None = None
+    active_run_id: int | None = None
     capabilities: ConnectorCapsOut
-    limitation: Optional[str] = None
-    contract_verified: Optional[bool] = None
+    limitation: str | None = None
+    contract_verified: bool | None = None
     paid: bool = False
     stopped: bool = False
 
@@ -950,11 +950,11 @@ class ConnectorOut(Camel):
 class WorkerOut(Camel):
     alive: bool
     last_seen_at: IsoTime = None
-    id: Optional[str] = None
+    id: str | None = None
 
 
 class ConnectorsOut(Camel):
-    connectors: List[ConnectorOut]
+    connectors: list[ConnectorOut]
     worker: WorkerOut
     admin_configured: bool
     # true - запрос с верным токеном администратора: полные сведения; false - сведения для посетителя
@@ -963,13 +963,13 @@ class ConnectorsOut(Camel):
 
 class CollectAllItemOut(Camel):
     code: str
-    run_id: Optional[int] = None
-    reason: Optional[str] = None
+    run_id: int | None = None
+    reason: str | None = None
 
 
 class CollectAllOut(Camel):
-    queued: List[CollectAllItemOut]
-    skipped: List[CollectAllItemOut]
+    queued: list[CollectAllItemOut]
+    skipped: list[CollectAllItemOut]
 
 
 # ---------- приём публикаций через API(POST /api/intake/publications, integration-spec §7.4) ----------
@@ -1016,11 +1016,11 @@ def _strip_ctrl(v: Any) -> Any:
     return _CTRL.sub("", v) if isinstance(v, str) else v
 
 
-def _aware(v: Optional[datetime], name: str) -> Optional[datetime]:
+def _aware(v: datetime | None, name: str) -> datetime | None:
     if v is not None and v.tzinfo is None:
         raise PydanticCustomError("value_error", "{name}: укажите часовой пояс (например, 2026-10-09T11:10:23Z)",
                                   {"name": name})
-    return v.astimezone(timezone.utc) if v is not None else None
+    return v.astimezone(UTC) if v is not None else None
 
 
 class IntakeMediaIn(Camel):
@@ -1029,7 +1029,7 @@ class IntakeMediaIn(Camel):
     key: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255), AfterValidator(no_nul)]
     url: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2048), AfterValidator(no_nul)]
     kind: Literal["image", "video"] = "image"
-    mime: Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=64), AfterValidator(no_nul)]] = None
+    mime: Annotated[str, StringConstraints(strip_whitespace=True, max_length=64), AfterValidator(no_nul)] | None = None
 
     @field_validator("url")
     @classmethod
@@ -1049,17 +1049,15 @@ class IntakePublicationIn(Camel):
     external_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
     account: Annotated[str, BeforeValidator(_strip_ctrl), StringConstraints(strip_whitespace=True, max_length=255)] = ""
     url: Annotated[str, StringConstraints(strip_whitespace=True, max_length=512), AfterValidator(no_nul)] = ""
-    published_at: Optional[datetime] = None
-    collected_at: Optional[datetime] = None
+    published_at: datetime | None = None
+    collected_at: datetime | None = None
     text: Annotated[str, Field(max_length=INTAKE_TEXT_MAX)] = ""
-    price: Optional[Annotated[str, BeforeValidator(_strip_ctrl), StringConstraints(strip_whitespace=True,
-                                                                                    max_length=64)]] = None
-    reach: Optional[int] = Field(None, ge=0)
-    media: List[IntakeMediaIn] = Field([], max_length=INTAKE_MEDIA_MAX)
-    source_id: Optional[Annotated[str, StringConstraints(pattern=r"^[a-z0-9_-]{1,32}$")]] = None
-    external_run_id: Optional[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64),
-                                        AfterValidator(no_nul)]] = None
-    raw: Dict[str, Any] = {}
+    price: Annotated[str, BeforeValidator(_strip_ctrl), StringConstraints(strip_whitespace=True, max_length=64)] | None = None
+    reach: int | None = Field(None, ge=0)
+    media: list[IntakeMediaIn] = Field([], max_length=INTAKE_MEDIA_MAX)
+    source_id: Annotated[str, StringConstraints(pattern=r"^[a-z0-9_-]{1,32}$")] | None = None
+    external_run_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64), AfterValidator(no_nul)] | None = None
+    raw: dict[str, Any] = {}
 
     @model_validator(mode="before")
     @classmethod
@@ -1093,15 +1091,15 @@ class IntakePublicationIn(Camel):
 
     @field_validator("published_at")
     @classmethod
-    def _published(cls, v: Optional[datetime]) -> Optional[datetime]:
+    def _published(cls, v: datetime | None) -> datetime | None:
         return _aware(v, "publishedAt")
 
     @field_validator("collected_at")
     @classmethod
-    def _collected(cls, v: Optional[datetime]) -> Optional[datetime]:
+    def _collected(cls, v: datetime | None) -> datetime | None:
         v = _aware(v, "collectedAt")
         if v is not None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             if v > now + timedelta(minutes=INTAKE_FUTURE_MIN):
                 raise PydanticCustomError("value_error", "collectedAt в будущем — проверьте часы сборщика")
             if v < now - timedelta(days=INTAKE_PAST_DAYS):
@@ -1110,7 +1108,7 @@ class IntakePublicationIn(Camel):
 
     @field_validator("media")
     @classmethod
-    def _unique_keys(cls, v: List[IntakeMediaIn]) -> List[IntakeMediaIn]:
+    def _unique_keys(cls, v: list[IntakeMediaIn]) -> list[IntakeMediaIn]:
         seen, dup = set(), []
         for m in v:
             if m.key in seen and m.key not in dup:
@@ -1150,27 +1148,27 @@ class PermitOut(Camel):
 
     status: PermitStatus
     text: str
-    source: Optional[str] = None  # homeportal | homeportal_section | ashyq | analyst
-    url: Optional[str] = None
-    registry_key: Optional[str] = None  # объект открытых данных(GET /api/registry/{key})
-    registry_stage: Optional[Literal["completed", "under_construction"]] = None  # фильтр источника, не стадия
+    source: str | None = None  # homeportal | homeportal_section | ashyq | analyst
+    url: str | None = None
+    registry_key: str | None = None  # объект открытых данных(GET /api/registry/{key})
+    registry_stage: Literal["completed", "under_construction"] | None = None  # фильтр источника, не стадия
     verified: bool = False  # сверено аналитиком(basis "есть/нет" с источником), а не только сведения источника
 
 
 class ScreeningReasonOut(Camel):
     text: str
-    ad_id: Optional[str] = None
-    quote: Optional[str] = None
-    signal: Optional[str] = None  # presale | booking | ddu | installment | down_payment | money | sale | price | …
+    ad_id: str | None = None
+    quote: str | None = None
+    signal: str | None = None  # presale | booking | ddu | installment | down_payment | money | sale | price | …
     # decision - причина от решения аналитика(сведения решения или "новая реклама после решения"): такие идут первыми,
     # следом - строка основания(permit.text), затем остальные
-    kind: Optional[Literal["decision"]] = None
+    kind: Literal["decision"] | None = None
 
 
 class ScreeningCountsOut(Camel):
     ads: int = 0  # публикаций, отнесённых к ЖК(без отклонённых аналитиком)
     concerning: int = 0  # из них свежих(окно windowDays) с признаком приёма денег
-    last_ad_at: Optional[str] = None  # дата последней публикации(как Ad.date, местное время)
+    last_ad_at: str | None = None  # дата последней публикации(как Ad.date, местное время)
     window_days: int = 120
 
 
@@ -1181,8 +1179,8 @@ class ScreeningOut(Camel):
 
     status: ScreeningStatus
     label: str
-    variant: Optional[ScreeningVariant] = None
-    reasons: List[ScreeningReasonOut] = []
+    variant: ScreeningVariant | None = None
+    reasons: list[ScreeningReasonOut] = []
     counts: ScreeningCountsOut
     basis: ScreeningBasis = "hypothesis"
     in_registry: bool = False
@@ -1192,10 +1190,10 @@ class ScreeningOut(Camel):
 class AdvertOut(Camel):
     """Объекты из рекламы, привязанные к ЖК: другие названия, аккаунты и ссылки рекламы."""
 
-    discovered_ids: List[int] = []
-    aliases: List[str] = []
-    accounts: List[str] = []
-    source_urls: List[str] = []
+    discovered_ids: list[int] = []
+    aliases: list[str] = []
+    accounts: list[str] = []
+    source_urls: list[str] = []
     ads: int = 0
 
 
@@ -1210,12 +1208,12 @@ class GalleryPhotoOut(Camel):
     src: str
     kind: GalleryKind
     source: str
-    date: Optional[str] = None
-    by: Optional[str] = None
-    note: Optional[str] = None
-    url: Optional[str] = None
-    ad_id: Optional[str] = None
-    media_id: Optional[str] = None
+    date: str | None = None
+    by: str | None = None
+    note: str | None = None
+    url: str | None = None
+    ad_id: str | None = None
+    media_id: str | None = None
     hypothesis: bool = False
     cover: bool = False
 
@@ -1224,14 +1222,14 @@ class ComplexListOut(ComplexOut):
     """ЖК в списке и карточке(GET /api/complexes, /api/complexes/{id}): основание по открытым данным и "Проверка по
     рекламе"; gallery - фото объекта, обложка первой."""
 
-    permit: Optional[PermitOut] = None
-    screening: Optional[ScreeningOut] = None
-    advert: Optional[AdvertOut] = None
+    permit: PermitOut | None = None
+    screening: ScreeningOut | None = None
+    advert: AdvertOut | None = None
     # Документы основания, которые называет открытый реестр(карточка "registry"): подсказка для сверки в один клик
-    basis_suggest: Optional[Dict[str, "BasisSuggestionOut"]] = None
+    basis_suggest: dict[str, "BasisSuggestionOut"] | None = None
     # Решение аналитика по "Проверке по рекламе"("сдан" / "проверено - замечаний нет"); null - оценка автоматическая
     decision: Optional["ScreeningDecisionOut"] = None
-    gallery: List[GalleryPhotoOut] = []
+    gallery: list[GalleryPhotoOut] = []
     homeportal: bool = False  # есть карточка Homeportal в записях реестра - фото можно подгрузить оттуда
 
 
@@ -1253,26 +1251,26 @@ class DeveloperScreeningCountsOut(Camel):
 class DeveloperScreeningOut(Camel):
     status: ScreeningStatus
     label: str
-    reasons: List[ScreeningReasonOut] = []
+    reasons: list[ScreeningReasonOut] = []
     counts: DeveloperScreeningCountsOut
-    worst: List[ScreeningWorstOut] = []
+    worst: list[ScreeningWorstOut] = []
     basis: ScreeningBasis = "hypothesis"
     disclaimer: str
 
 
 class DeveloperListOut(DeveloperOut):
-    screening: Optional[DeveloperScreeningOut] = None
+    screening: DeveloperScreeningOut | None = None
 
 
 class DiscoveredQuoteOut(Camel):
     ad_id: str
     quote: str
     name: str = ""
-    address: Optional[str] = None
+    address: str | None = None
     source: str = "parser"  # parser | bot(заявка жителя) | manual
-    date: Optional[str] = None
-    platform: Optional[str] = None
-    account: Optional[str] = None
+    date: str | None = None
+    platform: str | None = None
+    account: str | None = None
 
 
 class DiscoveredStageQuoteOut(Camel):
@@ -1285,53 +1283,53 @@ class DiscoveredStageOut(Camel):
     under_construction: int = 0
     completed: int = 0
     unknown: int = 0
-    quotes: List[DiscoveredStageQuoteOut] = []
+    quotes: list[DiscoveredStageQuoteOut] = []
 
 
 class DiscoveredSignalsOut(Camel):
     ads: int = 0
     concerning: int = 0  # публикаций с признаком приёма денег(любой давности)
     recent_concerning: int = 0  # из них в окне windowDays
-    types: Dict[str, int] = {}  # вид признака → публикаций
-    last_ad_at: Optional[str] = None
+    types: dict[str, int] = {}  # вид признака → публикаций
+    last_ad_at: str | None = None
 
 
 class DiscoveredOut(Camel):
     id: int
     name: str
     norm_key: str
-    aliases: List[str] = []
-    address_hint: Optional[str] = None
+    aliases: list[str] = []
+    address_hint: str | None = None
     status: DiscoveredStatus
     origin: Literal["ads", "import"] = "ads"
-    complex_id: Optional[str] = None
-    complex_name: Optional[str] = None
+    complex_id: str | None = None
+    complex_name: str | None = None
     first_seen: IsoTime = None
     last_seen: IsoTime = None
     ads_count: int = 0
-    accounts: List[str] = []
-    source_urls: List[str] = []
-    note: Optional[str] = None
-    decided_by: Optional[str] = None
+    accounts: list[str] = []
+    source_urls: list[str] = []
+    note: str | None = None
+    decided_by: str | None = None
     decided_at: IsoTime = None
-    sources: Dict[str, int] = {}  # parser | bot | manual → упоминаний
-    quotes: List[DiscoveredQuoteOut] = []  # до трёх, новые первыми
+    sources: dict[str, int] = {}  # parser | bot | manual → упоминаний
+    quotes: list[DiscoveredQuoteOut] = []  # до трёх, новые первыми
     stage_hints: DiscoveredStageOut
     sale_signals: DiscoveredSignalsOut
-    geo: List[dict] = []  # последние сверки 2ГИС(форма GeoCheckOut), новые первыми
-    screening: Optional[ScreeningOut] = None  # оценка, как у ЖК вне реестра, по рекламе этого объекта
+    geo: list[dict] = []  # последние сверки 2ГИС(форма GeoCheckOut), новые первыми
+    screening: ScreeningOut | None = None  # оценка, как у ЖК вне реестра, по рекламе этого объекта
 
 
 DevName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255), AfterValidator(no_nul)]
-OptDevName = Annotated[Optional[DevName], BeforeValidator(_blank_to_none)]
-Bin = Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\d{12}$")]],
+OptDevName = Annotated[DevName | None, BeforeValidator(_blank_to_none)]
+Bin = Annotated[Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\d{12}$")] | None,
                 BeforeValidator(_blank_to_none)]
 ShortText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=255), AfterValidator(no_nul)]
-Lat = Annotated[Optional[float], Field(None, ge=-90, le=90)]
-Lng = Annotated[Optional[float], Field(None, ge=-180, le=180)]
+Lat = Annotated[float | None, Field(None, ge=-90, le=90)]
+Lng = Annotated[float | None, Field(None, ge=-180, le=180)]
 
 
-def _pair(lat: Optional[float], lng: Optional[float]) -> None:
+def _pair(lat: float | None, lng: float | None) -> None:
     if (lat is None) != (lng is None):
         raise PydanticCustomError("value_error", "координаты указываются парой: lat и lng")
 
@@ -1347,8 +1345,7 @@ class DiscoveredCreateIn(Camel):
     lng: Lng = None
     developer_name: OptDevName = None
     developer_bin: Bin = None
-    candidate_id: Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
-                                                                      max_length=64)]],
+    candidate_id: Annotated[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)] | None,
                             BeforeValidator(_blank_to_none)] = None
 
     @model_validator(mode="after")
@@ -1379,8 +1376,8 @@ class GeoErrorOut(Camel):
 
 
 class DiscoveredGeoOut(Camel):
-    checks: List[dict] = []  # сверки 2ГИС(форма GeoCheckOut): по названию и, если есть, по адресу
-    errors: List[GeoErrorOut] = []
+    checks: list[dict] = []  # сверки 2ГИС(форма GeoCheckOut): по названию и, если есть, по адресу
+    errors: list[GeoErrorOut] = []
 
 
 UrlItem = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512), AfterValidator(no_nul)]
@@ -1394,14 +1391,14 @@ class AdvertisedItemIn(Camel):
     model_config = ConfigDict(extra="forbid")
 
     name: DevName
-    aliases: List[AliasItem] = Field(default_factory=list, max_length=20)
+    aliases: list[AliasItem] = Field(default_factory=list, max_length=20)
     address: ShortText = ""
     lat: Lat = None
     lng: Lng = None
     developer_name: OptDevName = None
     developer_bin: Bin = None
-    accounts: List[AliasItem] = Field(default_factory=list, max_length=50)
-    source_urls: List[UrlItem] = Field(default_factory=list, max_length=50)
+    accounts: list[AliasItem] = Field(default_factory=list, max_length=50)
+    source_urls: list[UrlItem] = Field(default_factory=list, max_length=50)
     note: OptNote = None
 
     @model_validator(mode="after")
@@ -1413,16 +1410,16 @@ class AdvertisedItemIn(Camel):
 class AdvertisedImportIn(Camel):
     author: HumanName
     note: OptNote = None  # что это за импорт(попадает в журнал)
-    items: List[AdvertisedItemIn] = Field(min_length=1, max_length=200)
+    items: list[AdvertisedItemIn] = Field(min_length=1, max_length=200)
 
 
 class AdvertisedImportOut(Camel):
-    created: List[str] = []  # id созданных карточек ЖК
-    updated: List[str] = []  # дополнены пустые поля, другие названия, аккаунты или ссылки
-    unchanged: List[str] = []
-    skipped: List[str] = []  # "название: причина"(есть в открытом реестре или справочнике ЖК)
-    developers_created: List[str] = []
-    event_ids: List[int] = []
+    created: list[str] = []  # id созданных карточек ЖК
+    updated: list[str] = []  # дополнены пустые поля, другие названия, аккаунты или ссылки
+    unchanged: list[str] = []
+    skipped: list[str] = []  # "название: причина"(есть в открытом реестре или справочнике ЖК)
+    developers_created: list[str] = []
+    event_ids: list[int] = []
 
 
 # ---------- сверка сведений аналитиком(app.verification) ----------
@@ -1467,24 +1464,24 @@ def _not_future(v: Any) -> Any:
     return v
 
 
-def _http_url(v: Optional[str]) -> Optional[str]:
+def _http_url(v: str | None) -> str | None:
     if v is not None and not _HTTP_URL.match(v):
         raise PydanticCustomError("value_error", "нужна ссылка, начинающаяся с http:// или https://")
     return v
 
 
 Day = Annotated[Date, BeforeValidator(lambda v: _parse_day(v, required=True)), AfterValidator(_not_future)]
-OptDay = Annotated[Optional[Date], BeforeValidator(_parse_day), AfterValidator(_not_future)]
+OptDay = Annotated[Date | None, BeforeValidator(_parse_day), AfterValidator(_not_future)]
 SourceText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255), AfterValidator(no_nul)]
-OptSourceText = Annotated[Optional[SourceText], BeforeValidator(_blank_to_none)]
-OptUrl = Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=512), AfterValidator(no_nul)]],
+OptSourceText = Annotated[SourceText | None, BeforeValidator(_blank_to_none)]
+OptUrl = Annotated[Annotated[str, StringConstraints(strip_whitespace=True, max_length=512), AfterValidator(no_nul)] | None,
                    BeforeValidator(_blank_to_none), AfterValidator(_http_url)]
-RefText = Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=500), AfterValidator(no_nul)]],
+RefText = Annotated[Annotated[str, StringConstraints(strip_whitespace=True, max_length=500), AfterValidator(no_nul)] | None,
                     BeforeValidator(_blank_to_none)]
 Subject = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000), AfterValidator(no_nul)]
 
 
-def _source_for_tri(v: Optional[str], info: ValidationInfo) -> Optional[str]:
+def _source_for_tri(v: str | None, info: ValidationInfo) -> str | None:
     if v is None and info.data.get("value") in ("yes", "no"):
         raise PydanticCustomError("value_error", "обязателен, если отмечено «есть» или «нет»: где это проверено")
     return v
@@ -1579,7 +1576,7 @@ class BasisSuggestionOut(Camel):
     ref: str
     source: str  # короткое название для сверки: "Homeportal"
     source_name: str  # как у источника: "Homeportal - карточки ЖК"
-    url: Optional[str] = None
+    url: str | None = None
     records: int = 1
 
 
@@ -1587,22 +1584,22 @@ class BasisDocOut(Camel):
     doc: BasisDocKey
     label: str
     value: Tri
-    ref: Optional[str] = None
-    source: Optional[str] = None
-    url: Optional[str] = None
-    checked_at: Optional[str] = None
-    checked_by: Optional[str] = None
-    comment: Optional[str] = None
+    ref: str | None = None
+    source: str | None = None
+    url: str | None = None
+    checked_at: str | None = None
+    checked_by: str | None = None
+    comment: str | None = None
     checked: bool = False  # "есть" или "нет" с источником и датой сверки
-    suggestion: Optional[BasisSuggestionOut] = None
+    suggestion: BasisSuggestionOut | None = None
 
 
 class BasisViewOut(Camel):
     """Основание ЖК по документам: значение, сверка(кто, когда, где), подсказка из открытого реестра; перечень ГАСК."""
 
     complex_id: str
-    documents: List[BasisDocOut]
-    published_list: Dict[str, Any]
+    documents: list[BasisDocOut]
+    published_list: dict[str, Any]
     checked: int
     total: int
 
@@ -1617,7 +1614,7 @@ def _min_text(n: int, msg: str):
     return check
 
 
-ActNumber = Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=128), AfterValidator(no_nul)]],
+ActNumber = Annotated[Annotated[str, StringConstraints(strip_whitespace=True, max_length=128), AfterValidator(no_nul)] | None,
                       BeforeValidator(_blank_to_none)]
 DecisionReason = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000), AfterValidator(no_nul),
                            AfterValidator(_min_text(10, "опишите, что проверено, — не короче 10 символов"))]
@@ -1665,7 +1662,7 @@ class CoverIn(Camel):
     """Обложка карточки ЖК: src одного из фото объекта; пустой или null - снова автоматическая."""
 
     author: HumanName
-    src: Optional[str] = Field(None, max_length=512)
+    src: str | None = Field(None, max_length=512)
 
 
 class DecisionCancelIn(Camel):
@@ -1679,9 +1676,9 @@ class DecisionTriggerOut(Camel):
     """Новая реклама после решения, которая его сняла: публикация, дата, признак и цитата."""
 
     ad_id: str
-    date: Optional[str] = None
-    signal: Optional[str] = None
-    quote: Optional[str] = None
+    date: str | None = None
+    signal: str | None = None
+    quote: str | None = None
 
 
 class ScreeningDecisionOut(Camel):
@@ -1692,14 +1689,14 @@ class ScreeningDecisionOut(Camel):
     status: DecisionStatus
     label: str  # "Дом сдан - замечаний нет" | "Проверено - замечаний нет"
     by: str
-    at: Optional[str] = None  # когда записано(UTC ISO)
-    act_number: Optional[str] = None
-    act_date: Optional[str] = None
+    at: str | None = None  # когда записано(UTC ISO)
+    act_number: str | None = None
+    act_date: str | None = None
     source: str
-    source_url: Optional[str] = None
-    reason: Optional[str] = None
-    comment: Optional[str] = None
-    reopened_by: Optional[DecisionTriggerOut] = None
+    source_url: str | None = None
+    reason: str | None = None
+    comment: str | None = None
+    reopened_by: DecisionTriggerOut | None = None
 
 
 class DecisionRecordOut(Camel):
@@ -1709,18 +1706,18 @@ class DecisionRecordOut(Camel):
     complex_id: str
     kind: DecisionKind
     status: Literal["active", "cancelled", "superseded"]
-    act_number: Optional[str] = None
-    act_date: Optional[str] = None
+    act_number: str | None = None
+    act_date: str | None = None
     source: str
-    source_url: Optional[str] = None
-    reason: Optional[str] = None
-    comment: Optional[str] = None
-    prev_stage: Optional[str] = None
+    source_url: str | None = None
+    reason: str | None = None
+    comment: str | None = None
+    prev_stage: str | None = None
     created_by: str
     created_at: IsoTime = None
-    closed_by: Optional[str] = None
+    closed_by: str | None = None
     closed_at: IsoTime = None
-    close_reason: Optional[str] = None
+    close_reason: str | None = None
 
 
 ComplexListOut.model_rebuild()

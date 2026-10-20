@@ -10,12 +10,12 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from ..risk_model import T
 from .nlp import Spans, fold_homoglyphs, phones, plain
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 
 # Совпадений(якорей и чисел) на источник: объявление - это десятки условий, а не тысячи; предел держит время анализа
 # длинного или мусорного текста(до 20 000 символов) в доле секунды. Берутся первые по тексту - результат детерминирован.
@@ -37,7 +37,7 @@ NO_CONFLICT = {"price"}  # разные цены в одном объявлен�
 
 L = r"(?<![^\W\d_])"  # слева не буква: "бронь" в "ПРОДАЖ·БРОНЬ50000₸" находится, "взнос" внутри слова - нет
 # (вид, выражение, базовая уверенность, нужно ли число рядом, слабый якорь)
-_ANCHORS: List[Tuple[str, str, float, bool, bool]] = [
+_ANCHORS: list[tuple[str, str, float, bool, bool]] = [
     ("booking", r"брон(?:ь|и|ью|ей|ям|ях|ировани\w*|ирова\w*|иру\w*)", 0.6, False, False),
     ("booking", r"забронир\w*|брондау\w*", 0.6, False, False),
     ("booking", r"(?:за)?фикс(?:ир\w*|аци\w*|ируем)\s+цен\w*", 0.5, False, True),
@@ -100,7 +100,7 @@ _WORDNUM = {"один": 1, "одного": 1, "два": 2, "двух": 2, "тр�
 _MULTS = {"тыс": 1000, "млн": 10 ** 6, "миллион": 10 ** 6, "млрд": 10 ** 9, "миллиард": 10 ** 9}
 
 
-def _number(raw: str, mult: Optional[str]) -> Optional[Decimal]:
+def _number(raw: str, mult: str | None) -> Decimal | None:
     s = re.sub(r"[ \u00a0\u202f\u2009]", "", raw)
     if re.fullmatch(r"\d{1,3}(?:\.\d{3}){2,}", s):
         s = s.replace(".", "")
@@ -117,7 +117,7 @@ def _number(raw: str, mult: Optional[str]) -> Optional[Decimal]:
     return v
 
 
-def _currency(cur: Optional[str]) -> Optional[str]:
+def _currency(cur: str | None) -> str | None:
     if not cur:
         return None
     c = cur.lower()
@@ -138,20 +138,20 @@ class Qty:
     start: int
     end: int
     value: Any = None
-    currency: Optional[str] = None
-    unit: Optional[str] = None
+    currency: str | None = None
+    unit: str | None = None
     used: bool = False
 
 
-def quantities(text: str, masked: List[Tuple[int, int]]) -> List[Qty]:
+def quantities(text: str, masked: list[tuple[int, int]]) -> list[Qty]:
     """Суммы, проценты, сроки(и площади - чтобы "64 м²" не стали суммой), без пересечений; телефоны исключены."""
-    found: List[Tuple[int, int, str, re.Match]] = []
+    found: list[tuple[int, int, str, re.Match]] = []
     mask = Spans(masked)
     for kind, rx in QUANTITIES:
         for m in rx.finditer(text):
             if m.end() > m.start() and not mask.overlaps(m.start(), m.end()):
                 found.append((m.start(), -(m.end() - m.start()), kind, m))
-    out: List[Qty] = []
+    out: list[Qty] = []
     taken_end = -1  # по возрастанию начала: пересечение с уже взятыми ⇔ начало раньше конца последнего
     for start, neg, kind, m in sorted(found, key=lambda x: (x[0], x[1])):
         if start < taken_end:
@@ -163,7 +163,7 @@ def quantities(text: str, masked: List[Tuple[int, int]]) -> List[Qty]:
     return out
 
 
-def _qty(kind: str, m: re.Match) -> Optional[Qty]:
+def _qty(kind: str, m: re.Match) -> Qty | None:
     g = m.groupdict()
     if kind == "area":
         return Qty("area", m.start(), m.end())
@@ -209,7 +209,7 @@ _BOUND = re.compile(r"[;!?\n·•|]|[.,](?=\s|$)")
 _SENT = re.compile(r"[!?\n·•|]|\.(?=\s|$)")
 
 
-def _bounds(text: str, rx: re.Pattern, keep: Spans) -> List[Tuple[int, int]]:
+def _bounds(text: str, rx: re.Pattern, keep: Spans) -> list[tuple[int, int]]:
     """Отрезки текста между разделителями. Разделители внутри чисел и телефонов не режут; точка после сокращения
     ("500 тыс. тг", "IV кв. 2028") режет, только если дальше новая фраза с заглавной("24 мес. Звоните"), а после
     "ул.", "пр.", "г." - никогда."""
@@ -229,7 +229,7 @@ def _bounds(text: str, rx: re.Pattern, keep: Spans) -> List[Tuple[int, int]]:
     return [(a, b) for a, b in zip(cuts, cuts[1:], strict=False) if text[a:b].strip()]
 
 
-def _strip(text: str, a: int, b: int) -> Tuple[int, int]:
+def _strip(text: str, a: int, b: int) -> tuple[int, int]:
     while a < b and (text[a].isspace() or text[a] in ",;:·•|-"):
         a += 1
     while b > a and (text[b - 1].isspace() or text[b - 1] in ",;:·•|-"):
@@ -237,7 +237,7 @@ def _strip(text: str, a: int, b: int) -> Tuple[int, int]:
     return a, b
 
 
-def quote_span(text: str, clauses: List[Tuple[int, int]], ci: int, pos: int, max_words: int) -> Tuple[int, int]:
+def quote_span(text: str, clauses: list[tuple[int, int]], ci: int, pos: int, max_words: int) -> tuple[int, int]:
     """Дословный фрагмент вокруг условия: его отрезок; из одного слова("ДДУ") - вместе с соседними; длинный - окно слов."""
     a, b = clauses[ci]
     lo, hi = ci, ci
@@ -282,25 +282,25 @@ class Occ:
     source: str
     values: Obj = field(default_factory=dict)  # amount, currency, unit, percent, months
     free: bool = False
-    quote: Tuple[int, int] = (0, 0)
+    quote: tuple[int, int] = (0, 0)
     conf: float = 0.0
 
 
-def _anchors(text: str, busy: Spans) -> List[Tuple[int, int, str, float, bool, bool]]:
+def _anchors(text: str, busy: Spans) -> list[tuple[int, int, str, float, bool, bool]]:
     """Якоря условий вне чисел и телефонов; из пересекающихся - раньше начавшийся, при равенстве - более длинный."""
     found = []
     for kind, rx, base, needs, weak in ANCHORS:
         for m in rx.finditer(text):
             if not busy.overlaps(m.start(), m.end()):
                 found.append((m.start(), m.end(), kind, base, needs, weak))
-    out: List[Tuple[int, int, str, float, bool, bool]] = []
+    out: list[tuple[int, int, str, float, bool, bool]] = []
     for item in sorted(found, key=lambda x: (x[0], -(x[1] - x[0]))):
         if not out or item[0] >= out[-1][1]:
             out.append(item)
     return out
 
 
-def _locator(segments: List[Tuple[int, int]]):
+def _locator(segments: list[tuple[int, int]]):
     """Номер отрезка по позиции(позиция вне отрезков - последний отрезок)."""
     spans = Spans(segments)
 
@@ -310,7 +310,7 @@ def _locator(segments: List[Tuple[int, int]]):
     return find
 
 
-def _assign(q: Qty, occs: List[Occ]) -> bool:
+def _assign(q: Qty, occs: list[Occ]) -> bool:
     """Число - ближайшему условию в том же отрезке, которое такое число принимает: сначала слева, потом справа."""
     field_name = "amount" if q.kind == "amount" else q.kind
     ok = [o for o in occs if field_name in ACCEPTS[o.kind] and field_name not in o.values
@@ -328,7 +328,7 @@ def _assign(q: Qty, occs: List[Occ]) -> bool:
     return True
 
 
-def occurrences(source_text: Optional[str], source: str) -> List[Occ]:
+def occurrences(source_text: str | None, source: str) -> list[Occ]:
     text = plain(source_text)
     if source == "ocr":  # "12 mec" → "12 мес": длина та же, цитата берётся из исходного текста по позициям
         text = fold_homoglyphs(text)
@@ -345,7 +345,7 @@ def occurrences(source_text: Optional[str], source: str) -> List[Occ]:
     cut = min([len(text)] + [x[0] for x in anchors[MAX_MATCHES:MAX_MATCHES + 1]]
               + [q.start for q in qs[MAX_MATCHES:MAX_MATCHES + 1]])
     anchors, qs = [x for x in anchors if x[0] < cut], [q for q in qs if q.start < cut]
-    occs: List[Occ] = []
+    occs: list[Occ] = []
     for start, end, kind, base, needs, weak in anchors:
         ci = clause_of(start)
         free = bool(NEGATION_BEFORE.search(text[max(0, start - 16):start])) or (
@@ -354,7 +354,7 @@ def occurrences(source_text: Optional[str], source: str) -> List[Occ]:
             continue  # "без предоплаты", "без первоначального взноса", "взнос не нужен" - условия нет
         occs.append(Occ(kind, start, end, base, needs, weak, ci, source, free=free))
     # числа → условиям того же отрезка; отрезок без условий отдаёт числа предыдущему("Бронь квартиры, 200 000 тг")
-    by_clause: Dict[int, List[Occ]] = {}
+    by_clause: dict[int, list[Occ]] = {}
     for o in occs:
         by_clause.setdefault(o.clause, []).append(o)
     for q in qs:
@@ -370,7 +370,7 @@ def occurrences(source_text: Optional[str], source: str) -> List[Occ]:
             occs.append(Occ("price", q.start, q.end, 0.6, False, False, clause_of(q.start), source,
                             {"amount": q.value, "currency": q.currency, "unit": q.unit}))
     # "бронь бесплатная": отрицание после якоря в том же отрезке
-    free_clause: Dict[int, bool] = {}
+    free_clause: dict[int, bool] = {}
     for o in occs:
         if o.kind == "booking" and not o.free and not o.values.get("amount"):
             if o.clause not in free_clause:
@@ -411,11 +411,11 @@ def _conflict(a: Obj, b: Obj) -> bool:
     return any(k in b and b[k] != v for k, v in a.items() if k != "currency")
 
 
-def extract(text: Optional[str], ocr: Optional[str] = None) -> List[Obj]:
+def extract(text: str | None, ocr: str | None = None) -> list[Obj]:
     """Условия оплаты: текст, затем скриншот; повтор в OCR того же условия не дублирует его, а подтверждает(+0.05)."""
     sources = {"text": text or "", "ocr": ocr or ""}  # plain() не меняет длину - позиции те же, цитата дословная
-    kept: List[Occ] = []
-    fields: List[Obj] = []  # значения условий kept(по тем же индексам)
+    kept: list[Occ] = []
+    fields: list[Obj] = []  # значения условий kept(по тем же индексам)
     for o in occurrences(text, "text") + occurrences(ocr, "ocr"):
         f = _fields(o)
         j = next((i for i, k in enumerate(kept) if k.kind == o.kind and (_subset(f, fields[i]) or _subset(fields[i], f))),

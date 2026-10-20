@@ -11,7 +11,8 @@ BrokenConnector в реестре, а не циклическим импорто
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Literal, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Optional
+from collections.abc import Callable
 
 from .. import media
 from .. import settings as _settings
@@ -33,7 +34,7 @@ class ConnectorError(Exception):
     code: ClassVar[str] = "source_error"
     retryable: bool = False
 
-    def __init__(self, detail: str, *, retry_after: Optional[float] = None):
+    def __init__(self, detail: str, *, retry_after: float | None = None):
         self.detail = redact(str(detail)) or ""
         self.retry_after = retry_after
         super().__init__(self.detail)
@@ -67,7 +68,7 @@ class RateLimited(ConnectorError):
     RateLimited("текст", retry_after=120); не указано - через час."""
     code = "rate_limited"
 
-    def __init__(self, seconds: Any = None, detail: Optional[str] = None, *, retry_after: Optional[float] = None):
+    def __init__(self, seconds: Any = None, detail: str | None = None, *, retry_after: float | None = None):
         if isinstance(seconds, str):
             seconds, detail = None, seconds
         secs = retry_after if retry_after is not None else seconds
@@ -85,7 +86,7 @@ class BadConfig(ConnectorError):
 class SourceError(ConnectorError):
     """Ошибка источника; retryable - повторить задание с паузой(сеть, 5xx), иначе - сразу ошибка запуска."""
 
-    def __init__(self, detail: str, *, retryable: bool = True, retry_after: Optional[float] = None):
+    def __init__(self, detail: str, *, retryable: bool = True, retry_after: float | None = None):
         super().__init__(detail, retry_after=retry_after)
         self.retryable = retryable
 
@@ -94,7 +95,7 @@ class Deferred(Exception):
     """Не ошибка: продолжить задание через seconds секунд(ожидание внешнего запуска Apify и т. п.); payload - что
     сохранить в jobs.payload для следующей фазы. Попытка задания при этом не расходуется."""
 
-    def __init__(self, seconds: float, payload: Optional[dict] = None):
+    def __init__(self, seconds: float, payload: dict | None = None):
         super().__init__(f"повтор через {seconds:g} с")
         self.seconds = float(seconds)
         self.payload = dict(payload or {})
@@ -113,14 +114,14 @@ class MediaIn:
     когда файл ещё нужен; stored - уже сохранённые байты."""
     key: str
     kind: MediaKind = "image"
-    role: Optional[str] = None  # cover | slide | attachment
-    url: Optional[str] = None
-    fetch: Optional[Callable[[], "MediaIn"]] = None
-    stored: Optional[media.Stored] = None
+    role: str | None = None  # cover | slide | attachment
+    url: str | None = None
+    fetch: Callable[[], "MediaIn"] | None = None
+    stored: media.Stored | None = None
     status: str = "pending"  # pending | downloaded | failed | unavailable | skipped
-    error: Optional[str] = None
-    origin_url: Optional[str] = None  # маскируется при сохранении
-    origin_ref: Optional[str] = None
+    error: str | None = None
+    origin_url: str | None = None  # маскируется при сохранении
+    origin_ref: str | None = None
     meta: dict = field(default_factory=dict)
 
 
@@ -135,13 +136,13 @@ class Publication:
     url: str
     text: str
     collected_at: datetime  # время сервера(UTC)
-    published_at: Optional[datetime] = None
+    published_at: datetime | None = None
     media: list[MediaIn] = field(default_factory=list)
-    price: Optional[str] = None
-    reach: Optional[int] = None
+    price: str | None = None
+    reach: int | None = None
     extra: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)
-    namespace: Optional[str] = None
+    namespace: str | None = None
 
 
 # ---------- подключение(integration-spec §10.2) ----------
@@ -165,12 +166,12 @@ HEALTH_STATUSES = frozenset({"ready", "working", "partial", "rate_limited", "err
 _PLACEHOLDER = re.compile(r"\{([A-Z][A-Z0-9_]*)\}")
 
 
-def local_time(dt: Optional[datetime], fmt: str = "%H:%M") -> str:
+def local_time(dt: datetime | None, fmt: str = "%H:%M") -> str:
     """Время для текстов статуса и журнала - местное(Усть-Каменогорск, UTC+5): "14:05" или по fmt."""
     return as_utc(dt).astimezone(ALMATY).strftime(fmt) if dt is not None else ""
 
 
-def when_text(dt: Optional[datetime]) -> str:
+def when_text(dt: datetime | None) -> str:
     """"16.10.2026 14:05" по местному времени(Усть-Каменогорск)."""
     return local_time(dt, "%d.%m.%Y %H:%M")
 
@@ -197,23 +198,23 @@ class Connector:
 
     code: ClassVar[str]
     kind: ClassVar[Kind]
-    platform: ClassVar[Optional[str]] = None
+    platform: ClassVar[str | None] = None
     name: ClassVar[str]
     via: ClassVar[str]
     group: ClassVar[str]  # collectors | intake | geo | analyzer | limited
     required_env: ClassVar[tuple[str, ...]] = ()
     config_fields: ClassVar[tuple[ConfigField, ...]] = ()
     options: ClassVar[tuple[str, ...]] = ()  # resultsPerPage, downloadVideos
-    default_interval_min: ClassVar[Optional[int]] = None
+    default_interval_min: ClassVar[int | None] = None
     interval_bounds: ClassVar[tuple[int, int]] = (15, 10080)
-    limitation: ClassVar[Optional[str]] = None
+    limitation: ClassVar[str | None] = None
     capabilities: ClassVar[dict] = {"test": True, "collect": True, "toggle": True, "configure": True, "connect": False}
     secret_refs: ClassVar[tuple[str, ...]] = ()
     max_attempts: ClassVar[int] = 5
     paid: ClassVar[bool] = False  # платный сбор(TikTok): после ошибки остановка до ручной проверки
     labels: ClassVar[dict[str, str]] = {}
-    contract_verified: ClassVar[Optional[bool]] = None
-    health_check_min: ClassVar[Optional[int]] = None  # ежедневная проверка, пока сбор включён
+    contract_verified: ClassVar[bool | None] = None
+    health_check_min: ClassVar[int | None] = None  # ежедневная проверка, пока сбор включён
 
     # --- настройка ---
 
@@ -265,7 +266,7 @@ class Connector:
     def status_label(self, status: str) -> str:
         return self.labels.get(status) or STATUS_LABELS.get(status, status)
 
-    def limitation_text(self, s: Settings) -> Optional[str]:
+    def limitation_text(self, s: Settings) -> str | None:
         """Ограничение для страницы "Подключения": "{TG_EDIT_WINDOW}" и т. п. заменяются значением настройки."""
         if not self.limitation:
             return None
@@ -278,11 +279,11 @@ class Connector:
 
     # --- состояние ---
 
-    def computed_status(self, db, row: Optional["Collector"], now: datetime) -> Optional[tuple[str, str]]:
+    def computed_status(self, db, row: Optional["Collector"], now: datetime) -> tuple[str, str] | None:
         """Живой статус без запусков(приём, анализатор, OAuth): (status, detail) или None - показывать хранимый."""
         return None
 
-    def can_enable(self, row: Optional["Collector"]) -> Optional[str]:
+    def can_enable(self, row: Optional["Collector"]) -> str | None:
         """None - сбор можно включить; иначе причина(409)."""
         return None
 
@@ -296,7 +297,7 @@ class Connector:
         checked = as_utc(row.checked_at)
         return checked is None or checked <= as_utc(now) - timedelta(minutes=self.health_check_min)
 
-    def report(self, s: Settings) -> Optional[dict]:
+    def report(self, s: Settings) -> dict | None:
         """Сведения, которые видит только воркер(например, есть ли файл сессии Telegram): пишутся в state.report."""
         return None
 

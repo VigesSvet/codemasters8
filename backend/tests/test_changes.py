@@ -1,12 +1,12 @@
 """"Удалено в источнике" и история изменений(app.changes): пословный diff версий, удалённые условия оплаты, статус в
 источнике по окну сбора(classify), GET /api/ads/{id}/source-status и GET /api/changes на приёме Instagram."""
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 from app import changes, ingest, models
 from app.db import SessionLocal
 from app.integrations.base import Publication
 
-T0 = datetime(2026, 10, 1, 10, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 10, 1, 10, 0, tzinfo=UTC)
 
 
 # ---------- diff ----------

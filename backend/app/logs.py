@@ -12,7 +12,7 @@ import re
 import sys
 import threading
 from collections.abc import Mapping
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import quote, quote_plus
 
 from . import settings as _settings
@@ -59,7 +59,7 @@ def _variants(value: str) -> set[str]:
     return {value, quote(value, safe=""), quote_plus(value)}
 
 
-def register_secret(value: Optional[str]) -> None:
+def register_secret(value: str | None) -> None:
     """Секрет, появившийся во время работы(токены OLX, StringSession, phone_code_hash, OAuth code/state,
     appsecret_proof). Значения короче 8 символов не регистрируются. Маскируются value, quote(value, safe=""),
     quote_plus(value)."""
@@ -69,7 +69,7 @@ def register_secret(value: Optional[str]) -> None:
         _REGISTERED.update(_variants(value))
 
 
-def _secret_re() -> Optional[re.Pattern]:
+def _secret_re() -> re.Pattern | None:
     try:
         configured = _settings.get_settings().secrets()
     except Exception:  # маскирование не должно ломать запись в лог
@@ -88,7 +88,7 @@ def _secret_re() -> Optional[re.Pattern]:
     return rx
 
 
-def redact(text: Optional[str], limit: Optional[int] = 500) -> Optional[str]:
+def redact(text: str | None, limit: int | None = 500) -> str | None:
     """Секреты Settings.secrets() + зарегистрированные(длинные первыми) → "***"; query-параметры access_token,
     refresh_token, token, key, code, state, signature, client_secret, password, hash, appsecret_proof, oh, oe, sig, X-Amz-*
     → "name=***"; "/bot<digits>:<token>/" → "/bot***/"; "Bearer <x>" → "Bearer ***"; userinfo в URL → удалить.
@@ -170,17 +170,17 @@ class RedactingFormatter(logging.Formatter):
     """Обёртка над чужим форматтером: format(r) = redact(inner.format(r), limit=None) - покрывает msg, args, exc_text,
     stack_info после форматирования(uvicorn AccessFormatter продолжает получать свой кортеж args)."""
 
-    def __init__(self, inner: Optional[logging.Formatter] = None):
+    def __init__(self, inner: logging.Formatter | None = None):
         super().__init__()
         self.inner = inner or logging.Formatter()
 
     def format(self, record: logging.LogRecord) -> str:
         return redact(self.inner.format(record), limit=None)
 
-    def formatTime(self, record, datefmt=None):  # noqa: N802 - имя из logging
+    def formatTime(self, record, datefmt=None):
         return self.inner.formatTime(record, datefmt)
 
-    def formatException(self, ei):  # noqa: N802
+    def formatException(self, ei):
         return redact(self.inner.formatException(ei), limit=None)
 
 

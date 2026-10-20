@@ -34,7 +34,8 @@ import logging
 import random
 import re
 import weakref
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Optional
+from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Iterable, Iterator
 from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
@@ -81,7 +82,7 @@ REDIRECTS = (301, 302, 303, 307, 308)
 
 # Фабрика браузера: вызов возвращает контекстный менеджер с объектом браузера Playwright(sync API). None - Playwright
 # из окружения(импорт - только внутри функции, когда KRISHA_PLAYWRIGHT=1); тесты подменяют её заглушкой
-BROWSER_FACTORY: Optional[Callable[[], Any]] = None
+BROWSER_FACTORY: Callable[[], Any] | None = None
 
 BLOCKED = ("Krisha.kz отвечает проверкой доступа ({reason}) — автоматический сбор остановлен, нужен ручной шаг; "
            "обход проверок не выполняется")
@@ -149,7 +150,7 @@ def _budget(ctx: "RunContext") -> _Budget:
 
 # ---------- разбор страниц ----------
 
-def _clean(s: Any, limit: int = 500) -> Optional[str]:
+def _clean(s: Any, limit: int = 500) -> str | None:
     """Однострочный текст: пробелы(включая неразрывные) схлопнуты; пусто - None."""
     if s is None:
         return None
@@ -157,7 +158,7 @@ def _clean(s: Any, limit: int = 500) -> Optional[str]:
     return t[:limit] or None
 
 
-def _price(v: Any) -> Optional[str]:
+def _price(v: Any) -> str | None:
     """Цена одинаково для выдачи и карточки: "58 194 600 ₸"(знак тенге Krisha "〒" → "₸")."""
     if v is None or isinstance(v, bool):
         return None
@@ -166,14 +167,14 @@ def _price(v: Any) -> Optional[str]:
     return _clean(str(v).replace("〒", "₸"), 64)
 
 
-def _complex_name(v: Any) -> Optional[str]:
+def _complex_name(v: Any) -> str | None:
     if isinstance(v, dict):
         v = v.get("name") or v.get("title")
     t = _clean(v, 255)
     return _clean(_COMPLEX_PREFIX.sub("", t), 255) if t else None
 
 
-def _https(url: Any) -> Optional[str]:
+def _https(url: Any) -> str | None:
     if not isinstance(url, str):
         return None
     u = url.strip()
@@ -196,7 +197,7 @@ def _has_window_data(body: str) -> bool:
     return any(True for _ in _assignments(body or ""))
 
 
-def detect_block(status: int, headers: Any, body: str) -> Optional[str]:
+def detect_block(status: int, headers: Any, body: str) -> str | None:
     """Причина проверки доступа или None. HTTP 468 - SafeLine всегда; 403/429/503 - признаки SafeLine/CAPTCHA в ответе
     или cookie sl-session; 200 - только HTML-страница с признаками проверки и без данных страницы(window.data): обычная
     страница Krisha с cookie sl-session или словом captcha в скриптах и robots.txt со строкой "Disallow: /captcha" -
@@ -237,7 +238,7 @@ def _assignments(html: str) -> Iterator[int]:
         i = html.find("window.data", i + 1)
 
 
-def extract_window_data(html: str) -> Optional[dict]:
+def extract_window_data(html: str) -> dict | None:
     """Объект из присваивания `window.data = {…}` - JSON-декодером(raw_decode), без выполнения JavaScript: первое
     присваивание, значение которого - JSON-объект. Нет - None."""
     text = html or ""
@@ -327,7 +328,7 @@ def sanitize_window_data(d: Any) -> dict:
     return out
 
 
-def markup_error(html: str, search: dict, cards: list) -> Optional[SourceError]:
+def markup_error(html: str, search: dict, cards: list) -> SourceError | None:
     """Объявления на странице есть(ids/nbTotal в window.data, а если их там нет - ссылки /a/show/…), а карточек a-card
     не разобрано - разметка изменилась: это ошибка, а не пустая выдача. Пустые ids/nbTotal 0 - выдача правда пуста."""
     if cards:
@@ -347,7 +348,7 @@ def _soup(html: str):
     return BeautifulSoup(html or "", "html.parser")
 
 
-def _text_of(el) -> Optional[str]:
+def _text_of(el) -> str | None:
     return _clean(el.get_text(" ", strip=True)) if el is not None else None
 
 
@@ -359,7 +360,7 @@ def _first(root, selectors: Iterable[str]):
     return None
 
 
-def _seller_type(el) -> Optional[str]:
+def _seller_type(el) -> str | None:
     """Тип продавца карточки выдачи: класс user-<тип> у подвала div.a-card__footer(complex, owner, company,
     specialist - разметка живой выдачи), затем атрибут data-user-type."""
     for footer in el.select(".a-card__footer"):
@@ -370,7 +371,7 @@ def _seller_type(el) -> Optional[str]:
     return el.get("data-user-type")
 
 
-def _search_complex(el) -> Optional[str]:
+def _search_complex(el) -> str | None:
     """ЖК карточки выдачи. Живая разметка: блок .a-card__complex-info = подпись .a-card__complex-label("Новостройка" -
     не название), ссылка "ЖК …" на /complex/show/… и "от застройщика "…"". Сначала текст ссылки, затем текст блока без
     подписи и застройщика, затем прежние классы .a-card__complex / .a-card__complex-name."""
@@ -446,7 +447,7 @@ def _documents(soup) -> list[str]:
     return out[:20]
 
 
-def _description(soup) -> Optional[str]:
+def _description(soup) -> str | None:
     el = _first(soup, (".js-description", ".offer__description .text", ".offer__description", ".a-text"))
     if el is None:
         return None
@@ -454,7 +455,7 @@ def _description(soup) -> Optional[str]:
     return "\n".join(x for x in lines if x)[:20000] or None
 
 
-def _params(soup) -> tuple[dict, Optional[str], Optional[str]]:
+def _params(soup) -> tuple[dict, str | None, str | None]:
     """Характеристики карточки {подпись: значение}, ЖК и застройщик(по data-name или подписи)."""
     params: dict[str, str] = {}
     complex_name = developer = None
@@ -530,7 +531,7 @@ def card_url(external_id: str) -> str:
     return f"{BASE}/a/show/{external_id}"
 
 
-def _card_id(url: str) -> Optional[str]:
+def _card_id(url: str) -> str | None:
     try:
         m = _CARD_PATH.match(urlsplit(url).path)
     except ValueError:
@@ -642,7 +643,7 @@ def fetch(ctx: "RunContext", client: httpx.Client, url: str) -> httpx.Response:
                       retryable=False)
 
 
-def _status_error(resp: httpx.Response, what: str) -> Optional[Exception]:
+def _status_error(resp: httpx.Response, what: str) -> Exception | None:
     """Ответ не 200(проверка доступа уже исключена) → ошибка источника; 200 - None."""
     code = resp.status_code
     if code == 200:
@@ -689,7 +690,7 @@ def _allowed(ctx: "RunContext", rp: RobotFileParser, url: str) -> bool:
 
 # ---------- браузер(необязательно) ----------
 
-def _browser_enabled(ctx: "RunContext") -> tuple[bool, Optional[str]]:
+def _browser_enabled(ctx: "RunContext") -> tuple[bool, str | None]:
     """(включён ли Playwright, заметка если включён в настройках, но недоступен)."""
     if not ctx.settings.krisha_playwright:
         return False, None
@@ -726,7 +727,7 @@ def _route_guard(route) -> None:
         route.abort()
 
 
-def browser_card(ctx: "RunContext", url: str) -> tuple[Optional[str], Optional[str]]:
+def browser_card(ctx: "RunContext", url: str) -> tuple[str | None, str | None]:
     """Карточка через Playwright: (html, None) или(None, причина). JavaScript выключен - скрипт проверки доступа не
     выполняется; хранилище не сохраняется; используется только ответ самой навигации - проверка доступа в нём(или
     перенаправление с krisha.kz) означает остановку, содержимое после неё не берётся."""
@@ -793,7 +794,7 @@ def _summary(card: dict) -> dict:
     return {k: card.get(k) for k in SUMMARY}
 
 
-def _join(*parts: Optional[str]) -> str:
+def _join(*parts: str | None) -> str:
     return "\n".join(p for p in parts if p)
 
 
@@ -875,10 +876,10 @@ class KrishaConnector(Connector):
         return CheckResult(True, f"Выдача и карточки объявлений доступны ({found})", facts)
 
     def _fetch_card(self, ctx: "RunContext", client: httpx.Client, url: str,
-                    facts: Optional[dict] = None, *, browser_first: bool = False) -> tuple[Optional[str], Optional[str]]:
+                    facts: dict | None = None, *, browser_first: bool = False) -> tuple[str | None, str | None]:
         """Карточка: (причина проверки доступа, None) | (None, html) | (None, None) - ошибка(в facts["cardError"]).
         Закрыта проверкой - при KRISHA_PLAYWRIGHT=1 одна попытка через браузер с выключенным JavaScript."""
-        reason: Optional[str] = None
+        reason: str | None = None
         if not browser_first:
             try:
                 resp = fetch(ctx, client, url)
@@ -907,7 +908,7 @@ class KrishaConnector(Connector):
             html, breason = browser_card(ctx, url)
         except _Exhausted:
             raise
-        except Exception as e:  # noqa: BLE001 - сбой браузера не меняет вывод: карточка закрыта
+        except Exception as e:
             log.warning("Krisha: браузерная проверка карточки не выполнена (%s)", type(e).__name__)
             ctx.note(f"Проверка карточки через браузер не выполнена ({type(e).__name__})", "warn")
             return reason or "браузер недоступен", None
@@ -935,7 +936,7 @@ class KrishaConnector(Connector):
             changed: list[str] = []  # новые и изменившиеся в выдаче
             search_only: list[str] = []  # без изменений, версии карточки ещё нет
             # данные выдачи, отложенные до прохода карточек: Publication - принять, None - только "видели"
-            pending: dict[str, Optional[Publication]] = {}
+            pending: dict[str, Publication | None] = {}
             try:
                 try:
                     done = self._search_pass(ctx, client, rp, allowed, s.krisha_max_pages, found, changed,
@@ -1042,7 +1043,7 @@ class KrishaConnector(Connector):
                     break
         return True
 
-    def _search_item(self, ctx: "RunContext", card: dict, search_url: str, pending: dict) -> Optional[str]:
+    def _search_item(self, ctx: "RunContext", card: dict, search_url: str, pending: dict) -> str | None:
         """Карточка выдачи → отложенный приём(pending). Итог: "changed" - новая или изменилась(в том числе заменено
         превью), "search_only" - без изменений, версии карточки ещё нет; None - без изменений при версии карточки или
         запись другого источника."""
@@ -1081,7 +1082,7 @@ class KrishaConnector(Connector):
         return "changed"
 
     @staticmethod
-    def _cover(ctx: "RunContext", eid: str, photo: Optional[str]) -> list[MediaIn]:
+    def _cover(ctx: "RunContext", eid: str, photo: str | None) -> list[MediaIn]:
         """Превью из выдачи: ключ krisha:{id}:c:… по самому фото(photo_key), роль cover."""
         if not photo:
             return []
@@ -1124,7 +1125,7 @@ class KrishaConnector(Connector):
             self._card_item(ctx, eid, card, found.get(eid))
             pending.pop(eid, None)
 
-    def _card_item(self, ctx: "RunContext", eid: str, card: dict, search_card: Optional[dict]) -> None:
+    def _card_item(self, ctx: "RunContext", eid: str, card: dict, search_card: dict | None) -> None:
         """Публикация с данными карточки: сводка выдачи этого запуска(если объявление в ней было), описание, превью
         выдачи krisha:{id}:c:… (из этого запуска, иначе сохранённое) и фото карточки krisha:{id}:p:… в порядке галереи
         (ключи - photo_key)."""

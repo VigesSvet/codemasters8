@@ -143,7 +143,7 @@ def test_registry_json_matches_xlsx(parsed):
     assert "не выводы системы" in data["_note"] and "не рассчитываются" in data["_note"]
     assert meta["report"]["read"] == 103 and meta["report"]["objects"] == 15 and meta["report"]["withoutCoords"] == 3
     assert [s["code"] for s in data["sources"]] == ["homeportal", "homeportal_section", "ashyq"]
-    strip = lambda r: {k: v for k, v in r.items() if k != "origin"}  # noqa: E731
+    strip = lambda r: {k: v for k, v in r.items() if k != "origin"}
     assert data["records"] == [strip(r) for r in parsed.records]
 
 
@@ -202,7 +202,7 @@ def test_registry_list_and_item(client):
     assert client.get("/api/registry", params={"withCoords": "true"}).json()["withoutCoords"] == []
     assert client.get("/api/registry", params={"withCoords": "false"}).json()["objects"] == []
     # поиск: название(в т. ч. латиницей ↔ кириллицей), адрес, застройщик, БИН, номер документа
-    q = lambda s: sorted(o["key"] for part in client.get("/api/registry", params={"q": s}).json().values()  # noqa: E731
+    q = lambda s: sorted(o["key"] for part in client.get("/api/registry", params={"q": s}).json().values()
                          for o in part)
     assert q("жаным") == q("Zhanym") == q("«ЖАНЫМ»") == ["zhanym"]
     assert q("Асылтас") == ["asyltas"] and q("Mercury") == ["park-line", "renesans"] == q("220740026935")
@@ -342,7 +342,7 @@ def test_import_csv(client, delimiter, bom):
 
 def test_import_skips_and_duplicates(client):
     head = [h for h, _, _ in importer.COLUMNS]
-    row = lambda src, rid, name="ЖК «Тест»": [src, name] + [None] * 22 + [rid, None]  # noqa: E731
+    row = lambda src, rid, name="ЖК «Тест»": [src, name] + [None] * 22 + [rid, None]
     rows = [["Набор"], [], head, row("Казреестр — CSV Ashyq Data", "t1"), row("Казреестр — CSV Ashyq Data", "t1"),
             row("Krisha", "t2"), row("Homeportal — карточка ЖК", None), row("Homeportal — карточка ЖК", "t3", None),
             [None] * 26]
@@ -369,7 +369,7 @@ def test_import_errors(client, monkeypatch):
     assert "xls" in _import(client, b"abc", "old.xls").json()["detail"] and _import(client, b"a", "old.xls").status_code == 415
     cases = [(b"not a zip", "broken.xlsx", "повреждён"), (b"", "empty.csv", "пустой"),
              ("Источник;ЖК\nx;y\n".encode("cp1251"), "cp.csv", "UTF-8"),
-             ("a;b;c\n1;2;3\n".encode(), "nohead.csv", "заголовка"),
+             (b"a;b;c\n1;2;3\n", "nohead.csv", "заголовка"),
              (_xlsx([["a", "b"], [1, 2]]), "nohead.xlsx", "заголовка"), (b"PK\x03\x04zzz", "zip.csv", "Excel")]
     for data, name, word in cases:
         r = _import(client, data, name)

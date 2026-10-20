@@ -4,7 +4,7 @@
 """
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,7 +14,7 @@ from .ai.matching import Catalog, build_catalog
 from .models import iso
 from .risk import score_ad, score_complex
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 
 
 def by_id(rows):
@@ -30,7 +30,7 @@ def complex_dict(c: models.Complex) -> Obj:
     return _out(schemas.ComplexOut, c)
 
 
-def developer_dict(d: Optional[models.Developer]) -> Optional[Obj]:
+def developer_dict(d: models.Developer | None) -> Obj | None:
     return _out(schemas.DeveloperOut, d) if d is not None else None
 
 
@@ -44,12 +44,12 @@ def appeal_dict(a: models.Appeal) -> Obj:
 
 @dataclass
 class World:
-    complexes: List[Obj]
-    developers: Dict[str, Obj]
-    ads: List[Obj]
-    appeals: List[Obj]
+    complexes: list[Obj]
+    developers: dict[str, Obj]
+    ads: list[Obj]
+    appeals: list[Obj]
 
-    def risk(self, c: Obj, as_of: Optional[date] = None) -> Obj:
+    def risk(self, c: Obj, as_of: date | None = None) -> Obj:
         return score_complex(c, self.developers.get(c["developerId"]), self.ads, self.appeals, as_of)
 
 
@@ -62,7 +62,7 @@ def load(db: Session) -> World:
     )
 
 
-def load_complex(db: Session, cid: str) -> Optional[World]:
+def load_complex(db: Session, cid: str) -> World | None:
     """Мир одного ЖК: сам объект, застройщик, его публикации и обращения(движок всё равно фильтрует по complexId)."""
     c = db.get(models.Complex, cid)
     if c is None:
@@ -76,19 +76,19 @@ def load_complex(db: Session, cid: str) -> Optional[World]:
     )
 
 
-def risk_for(db: Session, cid: str, as_of: Optional[date] = None) -> Optional[Obj]:
+def risk_for(db: Session, cid: str, as_of: date | None = None) -> Obj | None:
     """Риск одного ЖК или None, если ЖК нет."""
     w = load_complex(db, cid)
     return w.risk(w.complexes[0], as_of) if w else None
 
 
-def risk_all(db: Session, as_of: Optional[date] = None) -> List[Obj]:
+def risk_all(db: Session, as_of: date | None = None) -> list[Obj]:
     """[{complexId, ...RiskResult}] по всем ЖК - одним запросом для списков на фронте."""
     w = load(db)
     return [{"complexId": c["id"], **w.risk(c, as_of)} for c in w.complexes]
 
 
-def catalog(db: Session, exclude_ad: Optional[str] = None) -> Catalog:
+def catalog(db: Session, exclude_ad: str | None = None) -> Catalog:
     """Справочник для ИИ-сопоставления из БД: ЖК, застройщики, история аккаунтов(подтверждённые привязки, кроме exclude_ad)."""
     w = load(db)
     return build_catalog(w.complexes, w.developers.values(), w.ads, exclude_ad)
@@ -107,7 +107,7 @@ def audit_dict(e: models.AuditEvent) -> Obj:
             "adId": e.ad_id, "complexId": e.complex_id, "signalId": e.signal_id}
 
 
-def audit(db: Session, *where, limit: Optional[int] = None) -> List[Obj]:
+def audit(db: Session, *where, limit: int | None = None) -> list[Obj]:
     """События журнала по возрастанию времени(at, id); limit - последние N, отданные тоже по возрастанию."""
     E = models.AuditEvent
     q = select(E).where(*where)

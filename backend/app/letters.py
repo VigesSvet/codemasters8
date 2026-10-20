@@ -11,9 +11,9 @@
 """
 import re
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from io import BytesIO
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 from xml.sax.saxutils import escape
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -29,16 +29,16 @@ from sqlalchemy.orm import Session
 from . import law, models, registry, schemas, screening
 from .db import get_db
 from .risk import factor_r1
-from .pdf import MARGIN, PLATFORMS, P, S, _box, _canvas, _glyphs, _style, clean, esc, when
+from .pdf import MARGIN, PLATFORMS, P, _box, _canvas, _glyphs, _style, clean, esc, when
 from .world import load_complex
 
 router = APIRouter(prefix="/api/complexes", tags=["complexes"])
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 Addressee = Literal["mio", "operator", "gask"]
 Fmt = Literal["pdf", "docx"]
 
-ADDRESSEES: Dict[str, Obj] = {
+ADDRESSEES: dict[str, Obj] = {
     "mio": {"short": "ЖАО (МИО) ВКО", "to": "в ЖАО (МИО) ВКО",
             "lines": ["В местный исполнительный орган", "Восточно-Казахстанской области (ЖАО)",
                       "уполномоченное подразделение по вопросам долевого", "участия в жилищном строительстве"],
@@ -76,7 +76,7 @@ EXCERPT_MAX = 700
 class LetterIn(schemas.Camel):
     addressee: Addressee
     author: schemas.HumanName
-    topics: List[schemas.InfoTopic] = Field(min_length=1, max_length=5)
+    topics: list[schemas.InfoTopic] = Field(min_length=1, max_length=5)
     comment: schemas.OptNote = None
 
     @model_validator(mode="after")
@@ -130,9 +130,9 @@ def _ad_line(ad: Obj, risk: Obj) -> str:
     return f"{head}: «{q}»" + (f" — {ad['url']}" if ad.get("url") else "") + f" ({link})"
 
 
-def _law_refs(addressee: str) -> List[Obj]:
+def _law_refs(addressee: str) -> list[Obj]:
     """Нормы письма: ссылки факторов R1-R3 и документа основания адресата, по статьям 7, 8, 18, 23 по порядку."""
-    parts: Dict[str, set] = {}
+    parts: dict[str, set] = {}
     for code in ("R1", "R2", "R3", ADDRESSEES[addressee]["doc"]):
         for r in law.refs(code):
             parts.setdefault(r["article"], set()).update(r.get("parts") or [])
@@ -141,7 +141,7 @@ def _law_refs(addressee: str) -> List[Obj]:
             for a in order if a in parts]
 
 
-def _law_lines(refs: List[Obj]) -> List[str]:
+def _law_lines(refs: list[Obj]) -> list[str]:
     """Дословные выдержки по пунктам; название статьи - у первого пункта статьи."""
     out = []
     for r in refs:
@@ -164,12 +164,12 @@ def law_intro() -> str:
             f"№ {act['number']} {title} ({act['url']}{red}):")
 
 
-def build(db: Session, cid: str, body: LetterIn, now: Optional[datetime] = None) -> Obj:
+def build(db: Session, cid: str, body: LetterIn, now: datetime | None = None) -> Obj:
     """Письмо как структура: blocks [{type, text|lines}] - для PDF, DOCX и предпросмотра; text - плоский текст."""
     c_row = db.get(models.Complex, cid)
     if c_row is None:
         raise registry.not_found(db, cid)
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     w = load_complex(db, cid)
     c = w.complexes[0]
     dev = w.developers.get(c["developerId"])
@@ -233,7 +233,7 @@ def build(db: Session, cid: str, body: LetterIn, now: Optional[datetime] = None)
                            "на ___ л.")
     attachments.append("Выписка из журнала объекта в SAQ Qurylys (по требованию) — на ___ л.")
 
-    blocks: List[Obj] = [
+    blocks: list[Obj] = [
         {"type": "note", "text": f"ПРОЕКТ. {DRAFT_NOTE}. Сформирован в SAQ Qurylys {when(now)} (Алматы); подлежит проверке "
                                  "и подписанию в установленном порядке."},
         {"type": "addr", "lines": a["lines"]},
@@ -273,7 +273,7 @@ def build(db: Session, cid: str, body: LetterIn, now: Optional[datetime] = None)
             "fileBase": _file_base(c["id"], body.addressee, now)}
 
 
-def schemas_topics(topics: List[str]) -> List[str]:
+def schemas_topics(topics: list[str]) -> list[str]:
     """Темы в порядке списка(как в журнале и окне запроса), без повторов."""
     order = ["basis", "readiness", "appeals", "list", "other"]
     return [t for t in order if t in topics]
@@ -296,7 +296,7 @@ def _plain(b: Obj) -> str:
 
 def _file_base(cid: str, addressee: str, now: datetime) -> str:
     safe = re.sub(r"[^A-Za-z0-9_-]+", "-", cid).strip("-") or "complex"
-    return f"request-{safe}-{addressee}-{now.astimezone(timezone.utc):%Y%m%d}"
+    return f"request-{safe}-{addressee}-{now.astimezone(UTC):%Y%m%d}"
 
 
 # ---------- PDF ----------
@@ -406,14 +406,14 @@ def _xml(s: Any) -> str:
     return escape("".join(ch for ch in str(s) if ch in "\t\n" or ord(ch) >= 0x20))
 
 
-def _run(text: str, bold: bool = False, size: Optional[int] = None, color: Optional[str] = None) -> str:
+def _run(text: str, bold: bool = False, size: int | None = None, color: str | None = None) -> str:
     rpr = ("<w:b/>" if bold else "") + (f'<w:color w:val="{color}"/>' if color else "") + \
           (f'<w:sz w:val="{size}"/><w:szCs w:val="{size}"/>' if size else "")
     return f'<w:r>{f"<w:rPr>{rpr}</w:rPr>" if rpr else ""}<w:t xml:space="preserve">{_xml(text)}</w:t></w:r>'
 
 
-def _par(runs: str, align: Optional[str] = None, indent: Optional[int] = None, hanging: Optional[int] = None,
-         first: Optional[int] = None, before: int = 0, after: int = 80, shade: Optional[str] = None) -> str:
+def _par(runs: str, align: str | None = None, indent: int | None = None, hanging: int | None = None,
+         first: int | None = None, before: int = 0, after: int = 80, shade: str | None = None) -> str:
     ppr = f'<w:spacing w:before="{before}" w:after="{after}"/>'
     if shade:
         ppr += (f'<w:pBdr><w:top w:val="single" w:sz="4" w:space="2" w:color="8A6100"/><w:left w:val="single" w:sz="4" '
@@ -428,13 +428,13 @@ def _par(runs: str, align: Optional[str] = None, indent: Optional[int] = None, h
     return f"<w:p><w:pPr>{ppr}</w:pPr>{runs}</w:p>"
 
 
-def _lines(lines: List[str], **kw: Any) -> str:
+def _lines(lines: list[str], **kw: Any) -> str:
     runs = '<w:r><w:br/></w:r>'.join(_run(x) for x in lines)
     return _par(runs, **kw)
 
 
-def render_docx(letter: Obj, now: Optional[datetime] = None) -> bytes:
-    now = now or datetime.now(timezone.utc)
+def render_docx(letter: Obj, now: datetime | None = None) -> bytes:
+    now = now or datetime.now(UTC)
     body = []
     for b in letter["blocks"]:
         t = b["type"]
@@ -462,7 +462,7 @@ def render_docx(letter: Obj, now: Optional[datetime] = None) -> bytes:
             'w:left="1701" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>')
     doc = (f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="{W_NS}"><w:body>'
            + "".join(body) + sect + "</w:body></w:document>")
-    stamp = now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    stamp = now.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     core = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
             'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" '
@@ -497,7 +497,7 @@ def letter_preview(cid: str, body: LetterIn, db: Session = Depends(get_db)):
                               "description": "Проект запроса (черновик, без отправки)"}})
 def letter_file(cid: str, body: LetterIn, fmt: Fmt = Query("pdf", alias="format"), db: Session = Depends(get_db)):
     """Проект запроса в PDF или DOCX; в журнал объекта - "Сформирован проект запроса в …"(kind = request)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     letter = build(db, cid, body, now)
     data = render_pdf(letter) if fmt == "pdf" else render_docx(letter, now)
     topics = ", ".join(TOPIC_NAMES[t] for t in letter["topics"])

@@ -19,14 +19,15 @@ import re
 import sys
 import zipfile
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, UTC
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any
+from collections.abc import Iterable
 
 from .ai.nlp import _CYR, _LAT, norm, skeleton_text  # таблицы транслитерации ИИ-модуля - для slug и поиска
 from .risk_model import SHARED
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 
 IMPORTER = "saq-import-1"
 REGISTRY = SHARED / "registry_ust_kamenogorsk.json"
@@ -37,7 +38,7 @@ TOO_BIG = "Файл больше 5 МБ — разделите его на ча�
 WRONG_TYPE = "Поддерживаются файлы .xlsx (Excel) и .csv (UTF-8, разделитель «,» или «;»)"
 
 # Источники, правила которых известны(ссылки и условия - CREDITS.md). Запись другого источника не импортируется.
-SOURCES: Dict[str, Obj] = {
+SOURCES: dict[str, Obj] = {
     "homeportal": {"name": "Homeportal — карточки ЖК", "url": "https://homeportal.kz",
                    "note": "Жилищный портал КЖК: публичные карточки ЖК — документ-основание, сроки, координаты. "
                            "Сведения источника на момент сбора."},
@@ -60,7 +61,7 @@ CITY = (49.948, 82.628)  # центр Усть-Каменогорска - для
 FAR_KM = 30
 
 # Колонки файла: заголовок → поле записи, тип значения. Заголовки сравниваются без регистра, ё/е и лишних пробелов.
-COLUMNS: List[Tuple[str, str, str]] = [
+COLUMNS: list[tuple[str, str, str]] = [
     ("Источник", "sourceName", "text"),
     ("ЖК / объект", "name", "text"),
     ("Адрес", "address", "text"),
@@ -107,14 +108,14 @@ class ImportFailed(Exception):
 class Parsed:
     file: str
     format: str
-    records: List[Obj] = field(default_factory=list)
+    records: list[Obj] = field(default_factory=list)
     read: int = 0
     skipped: int = 0
     duplicates: int = 0
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    preamble: List[str] = field(default_factory=list)  # строки над заголовком: название и пояснение набора
-    sheet: Optional[str] = None
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    preamble: list[str] = field(default_factory=list)  # строки над заголовком: название и пояснение набора
+    sheet: str | None = None
 
 
 # ---------- нормализация значений ----------
@@ -122,7 +123,7 @@ class Parsed:
 _WS = re.compile(r"\s+")
 
 
-def _text(v: Any) -> Optional[str]:
+def _text(v: Any) -> str | None:
     if v is None:
         return None
     if isinstance(v, float) and v.is_integer():
@@ -133,7 +134,7 @@ def _text(v: Any) -> Optional[str]:
     return t or None
 
 
-def _bin(v: Any) -> Tuple[Optional[str], Optional[str]]:
+def _bin(v: Any) -> tuple[str | None, str | None]:
     """БИН - строка из 12 цифр. Числовая ячейка Excel теряет ведущий ноль - дополняется до 12 знаков."""
     if v is None or (isinstance(v, str) and not v.strip()):
         return None, None
@@ -145,7 +146,7 @@ def _bin(v: Any) -> Tuple[Optional[str], Optional[str]]:
     return None, f"БИН «{_text(v)}» — не 12 цифр, не сохранён"
 
 
-def _date(v: Any) -> Tuple[Optional[str], Optional[str]]:
+def _date(v: Any) -> tuple[str | None, str | None]:
     """"07.10.2026", "2024-06-19", дата Excel → ISO-дата."""
     if v is None:
         return None, None
@@ -171,11 +172,11 @@ def _date(v: Any) -> Tuple[Optional[str], Optional[str]]:
 _UTC = re.compile(r"(\d{1,2})\.(\d{1,2})\.(\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?\s*(UTC|GMT|Z)?([+-]\d{2}:?\d{2})?", re.I)
 
 
-def _utc(v: Any) -> Tuple[Optional[str], Optional[str]]:
+def _utc(v: Any) -> tuple[str | None, str | None]:
     """"15.10.2026 11:17 UTC", ISO со смещением, время Excel → ISO UTC. Без пояса - UTC(так помечена колонка)."""
     if v is None:
         return None, None
-    dt: Optional[datetime] = v if isinstance(v, datetime) else None
+    dt: datetime | None = v if isinstance(v, datetime) else None
     t = _text(v) or ""
     if dt is None and t:
         m = _UTC.fullmatch(t)
@@ -194,11 +195,11 @@ def _utc(v: Any) -> Tuple[Optional[str], Optional[str]]:
                 dt = None
     if dt is None:
         return None, (f"время сбора «{t}» не распознано — не сохранено" if t else None)
-    dt = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    dt = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
     return dt.isoformat(timespec="seconds"), None
 
 
-def _local(v: Any) -> Tuple[Optional[str], Optional[str]]:
+def _local(v: Any) -> tuple[str | None, str | None]:
     """"2026-06-15 17:35:09" → "2026-06-15T17:35:09": время поставщика как есть(пояс не указан - без смещения)."""
     if v is None:
         return None, None
@@ -220,7 +221,7 @@ def _local(v: Any) -> Tuple[Optional[str], Optional[str]]:
     return None, f"дата загрузки у поставщика «{t}» не распознана — не сохранена"
 
 
-def _number(v: Any) -> Optional[float]:
+def _number(v: Any) -> float | None:
     if v is None or isinstance(v, bool):
         return None
     if isinstance(v, (int, float)):
@@ -233,7 +234,7 @@ def _number(v: Any) -> Optional[float]:
     return x if math.isfinite(x) else None
 
 
-def _percent(v: Any) -> Tuple[Optional[float], Optional[str]]:
+def _percent(v: Any) -> tuple[float | None, str | None]:
     if v is None or _text(v) is None:
         return None, None
     x = _number(v)
@@ -242,7 +243,7 @@ def _percent(v: Any) -> Tuple[Optional[float], Optional[str]]:
     return round(x, 2), None
 
 
-def _period(v: Any) -> Tuple[Optional[str], Optional[str]]:
+def _period(v: Any) -> tuple[str | None, str | None]:
     """"08.2026" → "2026-08"; другое написание - как есть."""
     if isinstance(v, (datetime, date)):
         return f"{v.year:04d}-{v.month:02d}", None
@@ -258,7 +259,7 @@ def _period(v: Any) -> Tuple[Optional[str], Optional[str]]:
     return t, None
 
 
-def source_code(label: Optional[str], url: Optional[str] = None) -> Optional[str]:
+def source_code(label: str | None, url: str | None = None) -> str | None:
     """"Homeportal - карточка ЖК" → homeportal, "Homeportal - отдельный раздел" → homeportal_section,
     "Казреестр - CSV Ashyq Data" → ashyq; уже код - как есть; иначе None."""
     t, u = norm(label), (url or "").lower()
@@ -271,7 +272,7 @@ def source_code(label: Optional[str], url: Optional[str] = None) -> Optional[str
     return None
 
 
-def funding_code(text: Optional[str]) -> Optional[str]:
+def funding_code(text: str | None) -> str | None:
     """Способ привлечения средств: гарантия ЕО(КЖК) / разрешение МИО / участие БВУ."""
     t = norm(text)
     if not t:
@@ -288,7 +289,7 @@ def funding_code(text: Optional[str]) -> Optional[str]:
 _SECTION = re.compile(r"раздел\w*\s+(?:homeportal\s+)?«([^»]+)»", re.I)
 
 
-def source_section(code: str, note: Optional[str], url: Optional[str]) -> Optional[str]:
+def source_section(code: str, note: str | None, url: str | None) -> str | None:
     """Название раздела источника - из примечания("в разделе Homeportal "…"") или по пути ссылки."""
     if code != "homeportal_section":
         return None
@@ -306,7 +307,7 @@ _PART = re.compile(r"[,(]?\s*\b(?:блок|пятно|очередь|здани�
 _STOP = re.compile(r"\b(?:жк|мжк|ж\s*\.\s*к\s*\.?|жилой комплекс|zhk)(?=\s|$)")
 
 
-def object_name(name: Optional[str]) -> str:
+def object_name(name: str | None) -> str:
     """Название объекта для группировки: без "ЖК/МЖК", кавычек, регистра, "блок А", "пятно N", "очередь N", "здание N",
     "(ГС: …)" - очереди и блоки одного ЖК становятся одним объектом."""
     t = _PART.sub(" ", _GS.sub(" ", norm(name)))
@@ -322,14 +323,14 @@ def slug(text: str) -> str:
     return t or "obj-" + hashlib.sha1(text.encode()).hexdigest()[:8]
 
 
-def object_key(name: Optional[str]) -> str:
+def object_key(name: str | None) -> str:
     return slug(object_name(name) or norm(name))
 
 
 _ORG = re.compile(r"\b(?:товарищество с ограниченной ответственностью|тоо|too|ао|ип|ltd|llp)\b")
 
 
-def org_name(name: Optional[str]) -> str:
+def org_name(name: str | None) -> str:
     """Название организации для сравнения: без формы собственности, кавычек и регистра(латинское "TOO" - тоже)."""
     return _WS.sub(" ", re.sub(r"[^\w\s-]", " ", _ORG.sub(" ", norm(name)))).strip()
 
@@ -344,7 +345,7 @@ HEADS = {_head(h): f for h, f, _ in COLUMNS}
 KINDS = {f: k for _, f, k in COLUMNS}
 
 
-def kind_of(name: str, content_type: Optional[str] = None) -> str:
+def kind_of(name: str, content_type: str | None = None) -> str:
     """xlsx | csv по расширению(иначе по типу содержимого); другое - 415."""
     ext = Path(name or "").suffix.lower()
     ct = (content_type or "").split(";")[0].strip().lower()
@@ -357,7 +358,7 @@ def kind_of(name: str, content_type: Optional[str] = None) -> str:
     raise ImportFailed(415, WRONG_TYPE)
 
 
-def _xlsx_sheets(raw: bytes) -> Iterable[Tuple[str, List[tuple]]]:
+def _xlsx_sheets(raw: bytes) -> Iterable[tuple[str, list[tuple]]]:
     try:
         z = zipfile.ZipFile(io.BytesIO(raw))
         total = sum(i.file_size for i in z.infolist())
@@ -383,14 +384,14 @@ def _xlsx_sheets(raw: bytes) -> Iterable[Tuple[str, List[tuple]]]:
         wb.close()
 
 
-def _csv_rows(raw: bytes) -> List[tuple]:
+def _csv_rows(raw: bytes) -> list[tuple]:
     if raw[:4] == b"PK\x03\x04":
         raise ImportFailed(422, "Файл с расширением .csv похож на книгу Excel — сохраните его как .csv или загрузите .xlsx")
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
         raise ImportFailed(422, "CSV должен быть в кодировке UTF-8 — пересохраните файл («CSV UTF-8»)") from None
-    best: List[tuple] = []
+    best: list[tuple] = []
     best_score = -1
     for delim in (";", ","):  # разделитель - тот, при котором узнаётся больше колонок заголовка
         try:
@@ -405,7 +406,7 @@ def _csv_rows(raw: bytes) -> List[tuple]:
     return best
 
 
-def _header(rows: List[tuple]) -> Optional[Tuple[int, Dict[int, str]]]:
+def _header(rows: list[tuple]) -> tuple[int, dict[int, str]] | None:
     """Строка заголовка - первая, где узнаются "Источник", "ЖК / объект" и "ID в источнике"."""
     for i, row in enumerate(rows[:50]):
         cols = {j: HEADS[_head(v)] for j, v in enumerate(row) if _head(v) in HEADS}
@@ -414,7 +415,7 @@ def _header(rows: List[tuple]) -> Optional[Tuple[int, Dict[int, str]]]:
     return None
 
 
-def _normalize(cells: Dict[str, Any], n: int, p: Parsed) -> Optional[Obj]:
+def _normalize(cells: dict[str, Any], n: int, p: Parsed) -> Obj | None:
     rec: Obj = {}
     for f, kind in KINDS.items():
         v = cells.get(f)
@@ -468,7 +469,7 @@ def _normalize(cells: Dict[str, Any], n: int, p: Parsed) -> Optional[Obj]:
             "sourceSection": source_section(code, rec["note"], rec["sourceUrl"]), **rec, "row": n}
 
 
-def parse(raw: bytes, name: str, content_type: Optional[str] = None) -> Parsed:
+def parse(raw: bytes, name: str, content_type: str | None = None) -> Parsed:
     """Файл → нормализованные записи и отчёт(прочитано, пропущено, повторы внутри файла, ошибки и предупреждения)."""
     if len(raw) > MAX_BYTES:
         raise ImportFailed(413, TOO_BIG)
@@ -494,7 +495,7 @@ def parse(raw: bytes, name: str, content_type: Optional[str] = None) -> Parsed:
     extra = [_text(v) for j, v in enumerate(rows[hi]) if j not in cols and _text(v)]
     if extra:
         p.warnings.append(f"Неизвестные колонки пропущены: {', '.join(extra)}")
-    seen: Dict[Tuple[str, str], int] = {}
+    seen: dict[tuple[str, str], int] = {}
     for i, row in enumerate(rows[hi + 1:], start=hi + 2):
         if all(_text(v) is None for v in row):
             continue
@@ -531,13 +532,13 @@ def _rank(r: Obj) -> tuple:
             r.get("row") or 0, r.get("sourceRecordId") or "")
 
 
-def _first(rs: List[Obj], f: str) -> Any:
+def _first(rs: list[Obj], f: str) -> Any:
     return next((r[f] for r in rs if r.get(f) not in (None, "")), None)
 
 
-def group(records: Iterable[Obj]) -> List[Obj]:
+def group(records: Iterable[Obj]) -> list[Obj]:
     """Записи → объекты(RegistryObject) по ключу; основная запись - по _rank. Риска, зоны, балла здесь нет(T-31)."""
-    by: Dict[str, List[Obj]] = {}
+    by: dict[str, list[Obj]] = {}
     for r in records:
         by.setdefault(r["key"], []).append(r)
     out = []
@@ -576,7 +577,7 @@ def split(objs: Iterable[Obj]) -> Obj:
     return {"objects": [o for o in objs if o["lat"] is not None], "withoutCoords": [o for o in objs if o["lat"] is None]}
 
 
-def search_text(o: Obj, rs: Iterable[Obj]) -> Tuple[str, str]:
+def search_text(o: Obj, rs: Iterable[Obj]) -> tuple[str, str]:
     """Строка поиска объекта: названия(в т. ч. очередей), адрес, застройщик, БИН, документы, кадастр - нормализованная
     и в латинском скелете(латиница ≈ кириллица, как в ИИ-сопоставлении)."""
     parts = [o["name"], o.get("address"), o.get("developer"), o.get("agent"), o["key"]]
@@ -587,7 +588,7 @@ def search_text(o: Obj, rs: Iterable[Obj]) -> Tuple[str, str]:
     return t, skeleton_text(t)
 
 
-def matches(q: str, hay: Tuple[str, str]) -> bool:
+def matches(q: str, hay: tuple[str, str]) -> bool:
     nq = norm(q)
     if not nq:
         return True
@@ -628,7 +629,7 @@ def build(path: Path) -> Obj:
             "description": " ".join(p.preamble[1:]) or None,
             "origin": "source",
             "builtFrom": _rel(path), "sheet": p.sheet, "sha256": hashlib.sha256(raw).hexdigest(),
-            "builtAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "builtAt": datetime.now(UTC).isoformat(timespec="seconds"),
             "builtBy": f"python -m app.importer ({IMPORTER})",
             "collectedFrom": min(times) if times else None, "collectedAt": max(times) if times else None,
             "providerLoadedAt": max(loaded) if loaded else None,
@@ -640,13 +641,13 @@ def build(path: Path) -> Obj:
     }
 
 
-def load_registry(path: Optional[Path] = None) -> Optional[Obj]:
+def load_registry(path: Path | None = None) -> Obj | None:
     """Содержимое shared/registry_ust_kamenogorsk.json или None, если файла нет(тогда слоя открытых данных нет)."""
     path = path or REGISTRY
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m app.importer",
                                  description="Импорт открытых данных (xlsx/csv) → shared/registry_ust_kamenogorsk.json")
     ap.add_argument("file", type=Path, help="xlsx или csv в формате docs/Усть-Каменогорск_объекты.xlsx")

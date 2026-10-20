@@ -19,20 +19,20 @@ os.environ["MEDIA_ROOT"] = f"{_TMP}/media"
 os.environ["TG_SESSION_PATH"] = f"{_TMP}/private/telegram.session"
 atexit.register(shutil.rmtree, _TMP, ignore_errors=True)
 
-from app import settings as _settings  # noqa: E402
+from app import settings as _settings
 
 for _name in _settings.ENV_NAMES:
     if _name not in ("SAQ_ENV_FILE", "MEDIA_ROOT", "TG_SESSION_PATH"):
         os.environ.pop(_name, None)  # реальные ключи разработчика в тесты не попадают
 
-from app import logs as _logs  # noqa: E402
+from app import logs as _logs
 
 _logs.install(handler=False)  # фабрика записей с маскированием; без stderr-обработчика
 
-import pytest  # noqa: E402
+import pytest
 
-import demo_seed as _demo_seed  # noqa: E402 - демо-набор только для тестов(shared/testdata)
-from app import seed as _seed  # noqa: E402
+import demo_seed as _demo_seed
+from app import seed as _seed
 
 TMP = _TMP
 FAKE_ADMIN_TOKEN = "t-admin-0123456789abcdef0123"

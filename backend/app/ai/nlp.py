@@ -9,20 +9,20 @@ import re
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import FrozenSet, Iterable, List, Optional, Tuple
+from collections.abc import Iterable
 
 _SPACES = dict.fromkeys(map(ord, "\u00a0\u202f\u2007\u2009\u200a\u2002\u2003\u2004\u2005\u2006\u2008\u205f\u3000"), " ")
 _QUOTES = dict.fromkeys(map(ord, "«»\"'“”„‟‘’‚`´"), None)
 _DASHES = dict.fromkeys(map(ord, "‐‑‒–—―−"), "-")
 
 
-def plain(text: Optional[str]) -> str:
+def plain(text: str | None) -> str:
     """Неразрывные и узкие пробелы → пробел, типографские тире → '-'. Длина строки не меняется - позиции совпадают
     с исходным текстом(кавычки здесь не удаляются)."""
     return (text or "").translate(_SPACES).translate(_DASHES)
 
 
-def norm(text: Optional[str]) -> str:
+def norm(text: str | None) -> str:
     """Нормализованная форма: нижний регистр, ё→е, пробелы и тире как в plain, без кавычек, пробелы схлопнуты."""
     t = plain(text).translate(_QUOTES).lower().replace("ё", "е")
     return re.sub(r"\s+", " ", t).strip()
@@ -32,7 +32,7 @@ class Spans:
     """Непересекающиеся отрезки текста [a, b): пересечение с отрезком и попадание позиции - за O(log n), чтобы длинный
     текст с тысячами чисел не анализировался квадратично."""
 
-    def __init__(self, spans: Iterable[Tuple[int, int]]):
+    def __init__(self, spans: Iterable[tuple[int, int]]):
         self.items = sorted(spans)
         self.starts = [a for a, _ in self.items]
 
@@ -40,7 +40,7 @@ class Spans:
         i = bisect_left(self.starts, b) - 1
         return i >= 0 and self.items[i][1] > a
 
-    def index(self, pos: int) -> Optional[int]:
+    def index(self, pos: int) -> int | None:
         """Номер отрезка, в который попадает позиция, или None."""
         i = bisect_right(self.starts, pos) - 1
         return i if i >= 0 and pos < self.items[i][1] else None
@@ -105,12 +105,12 @@ class Tok:
     cap: bool = False  # в тексте с заглавной буквы(имя собственное или капс)
 
 
-def words(text: Optional[str]) -> List[str]:
+def words(text: str | None) -> list[str]:
     return [m.group().lower().replace("ё", "е") for m in _WORD.finditer(plain(text))]
 
 
-def tokens(text: Optional[str], drop_stop: bool = False) -> List[Tok]:
-    out: List[Tok] = []
+def tokens(text: str | None, drop_stop: bool = False) -> list[Tok]:
+    out: list[Tok] = []
     raw = list(_WORD.finditer(plain(text)))
     for i, m in enumerate(raw):
         n = m.group().lower().replace("ё", "е")
@@ -180,7 +180,7 @@ def _is_zh_k(raw, i: int) -> bool:
 # ---------- сходство ----------
 
 @lru_cache(maxsize=65536)
-def trigrams(s: str) -> FrozenSet[str]:
+def trigrams(s: str) -> frozenset[str]:
     s = f" {s} "
     return frozenset(s[i:i + 3] for i in range(len(s) - 2))
 
@@ -201,7 +201,7 @@ def jaccard(a: str, b: str) -> float:
 _PHONE = re.compile(r"(?<![\d+])(\+\s?7|8|7)?[\s\-()]{0,4}((?:\d[\s\-()]{0,4}){9}\d)(?!\d)")
 
 
-def phones(text: Optional[str]) -> List[Tuple[str, str, int, int]]:
+def phones(text: str | None) -> list[tuple[str, str, int, int]]:
     """Казахстанские номера: (как в тексте, 10 цифр без кода страны, начало, конец). Номер начинается с 7(7xx - мобильные,
     7xxx - городские коды); без префикса +7/8 первая группа цифр должна быть не короче трёх - иначе это цена "7 200 000 000"."""
     out = []

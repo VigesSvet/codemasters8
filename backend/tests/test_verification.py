@@ -3,9 +3,8 @@
 журнала, влияние на риск(assessed, R1, R4, R5, R6) и на "Проверку по рекламе"(permit: сверка аналитика важнее открытых
 данных), пределы загрузки снимков; демо-набор без действий аналитика считается как прежде(эталон сида)."""
 import json
-from datetime import date, timedelta
+from datetime import timedelta
 
-import pytest
 from sqlalchemy import select
 
 import demo_seed
@@ -13,7 +12,6 @@ from conftest import png_bytes
 
 from app import demo, golden, media, models, screening
 from app.db import SessionLocal
-from app.risk_model import MODEL
 from app.schemas import today_local
 
 AUTHOR = "Омарова Ж."

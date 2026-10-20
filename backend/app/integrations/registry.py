@@ -7,7 +7,8 @@
 """
 import importlib
 import logging
-from typing import Callable, Literal, Optional
+from typing import Literal
+from collections.abc import Callable
 
 from fastapi import APIRouter
 
@@ -58,13 +59,13 @@ def load(importer: Callable[[str], object] = importlib.import_module) -> tuple[d
     for code, module in MODULES.items():
         try:
             mod = importer(f"{__package__}.{module}")
-            conn = getattr(mod, "CONNECTOR")
+            conn = mod.CONNECTOR
             if not isinstance(conn, Connector) or conn.code != code:
                 raise TypeError(f"CONNECTOR модуля {module} — не подключение «{code}»")
             router = getattr(mod, "router", None)
             if router is not None and not isinstance(router, APIRouter):
                 raise TypeError(f"router модуля {module} — не APIRouter")
-        except Exception:  # noqa: BLE001 - сломанный модуль не должен ронять API и воркер
+        except Exception:
             log.exception("Подключение %s: модуль %s не загрузился", code, module)
             connectors[code] = BrokenConnector(code)
             continue
@@ -82,7 +83,7 @@ def get(code: str) -> Connector:
     return CONNECTORS[code]
 
 
-def find(code: str) -> Optional[Connector]:
+def find(code: str) -> Connector | None:
     return CONNECTORS.get(code)
 
 

@@ -55,8 +55,8 @@ origin = collected, статус "new", без привязки к ЖК) и ан
 import hashlib
 import logging
 import re
-from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any, List, Literal, Optional
+from datetime import datetime, timedelta, UTC
+from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
@@ -152,18 +152,15 @@ class TelegramIntakeIn(Camel):
     external_id: Annotated[str, BeforeValidator(_as_text),
                            StringConstraints(strip_whitespace=True, min_length=1, max_length=128,
                                              pattern=r"^[\w.:@/+=-]+$")]
-    submitted_at: Optional[datetime] = None
-    platform: Annotated[Optional[BotPlatform],
+    submitted_at: datetime | None = None
+    platform: Annotated[BotPlatform | None,
                         BeforeValidator(lambda v: v.strip().lower() if isinstance(v, str) else v)] = None
-    account: Optional[Annotated[str, BeforeValidator(_as_text),
-                                StringConstraints(strip_whitespace=True, max_length=255)]] = None
-    url: Optional[Annotated[str, BeforeValidator(_as_text), StringConstraints(strip_whitespace=True,
-                                                                              max_length=512)]] = None
+    account: Annotated[str, BeforeValidator(_as_text), StringConstraints(strip_whitespace=True, max_length=255)] | None = None
+    url: Annotated[str, BeforeValidator(_as_text), StringConstraints(strip_whitespace=True, max_length=512)] | None = None
     text: Annotated[str, BeforeValidator(lambda v: "" if v is None else v), Field(max_length=TEXT_MAX)] = ""
-    comment: Optional[Annotated[str, BeforeValidator(lambda v: v.replace("\x00", "") if isinstance(v, str) else v),
-                                StringConstraints(strip_whitespace=True, max_length=COMMENT_MAX)]] = None
-    applicant: Optional[TelegramApplicantIn] = None
-    media: Annotated[List[TelegramMediaIn], BeforeValidator(lambda v: [] if v is None else v),
+    comment: Annotated[str, BeforeValidator(lambda v: v.replace("\x00", "") if isinstance(v, str) else v), StringConstraints(strip_whitespace=True, max_length=COMMENT_MAX)] | None = None
+    applicant: TelegramApplicantIn | None = None
+    media: Annotated[list[TelegramMediaIn], BeforeValidator(lambda v: [] if v is None else v),
                      Field(max_length=MAX_FILES)] = []
 
     @model_validator(mode="before")
@@ -178,7 +175,7 @@ class TelegramIntakeIn(Camel):
 
     @field_validator("url")
     @classmethod
-    def _url(cls, v: Optional[str]) -> Optional[str]:
+    def _url(cls, v: str | None) -> str | None:
         if v and not _HTTP_URL.match(v):
             raise PydanticCustomError("value_error", "url: нужна ссылка http(s):// или пустая строка")
         return v or None
@@ -190,20 +187,20 @@ class TelegramIntakeIn(Camel):
 
     @field_validator("submitted_at")
     @classmethod
-    def _submitted(cls, v: Optional[datetime]) -> Optional[datetime]:
+    def _submitted(cls, v: datetime | None) -> datetime | None:
         if v is None:
             return None
         if v.tzinfo is None:
             raise PydanticCustomError("value_error",
                                       "submittedAt: укажите часовой пояс (например, 2026-10-17T09:30:00Z)")
-        v = v.astimezone(timezone.utc)
-        if v > datetime.now(timezone.utc) + FUTURE_SKEW:
+        v = v.astimezone(UTC)
+        if v > datetime.now(UTC) + FUTURE_SKEW:
             raise PydanticCustomError("value_error", "submittedAt в будущем — проверьте часы бота")
         return v
 
     @field_validator("media")
     @classmethod
-    def _unique_keys(cls, v: List[TelegramMediaIn]) -> List[TelegramMediaIn]:
+    def _unique_keys(cls, v: list[TelegramMediaIn]) -> list[TelegramMediaIn]:
         keys = [m.key for m in v]
         dup = sorted({k for k in keys if keys.count(k) > 1})
         if dup:
@@ -218,7 +215,7 @@ def _precise(v: Any) -> Any:
     return models.as_utc(v).isoformat(timespec="microseconds") if isinstance(v, datetime) else v
 
 
-PreciseTime = Annotated[Optional[str], BeforeValidator(_precise)]
+PreciseTime = Annotated[str | None, BeforeValidator(_precise)]
 
 
 class TelegramIntakeOut(Camel):
@@ -231,7 +228,7 @@ class TelegramIntakeOut(Camel):
 
 class SubmissionStatusOut(Camel):
     external_id: str
-    ad_id: Optional[str] = None
+    ad_id: str | None = None
     status: SubmissionStatus
     status_label: str
     updated_at: PreciseTime = None
@@ -384,7 +381,7 @@ def content_key(data: bytes) -> str:
     return _content_key(hashlib.sha256(data).hexdigest())
 
 
-Planned = tuple[str, Optional[bytes], Optional[str]]  # ключ, байты(None - не передан), sha256
+Planned = tuple[str, bytes | None, str | None]  # ключ, байты(None - не передан), sha256
 
 
 def _plan(body: TelegramIntakeIn, blobs: list[bytes]) -> list[Planned]:
@@ -419,7 +416,7 @@ def _store(blob: bytes, sha: str) -> tuple[media.Stored, bool]:
     return st, not existed and st.storage_key == key
 
 
-def _media(plan: list[Planned], stored: list[Optional[media.Stored]]) -> list[MediaIn]:
+def _media(plan: list[Planned], stored: list[media.Stored | None]) -> list[MediaIn]:
     """Файлы заявки; описанный в media, но не переданный файл - "недоступен"(виден у публикации, а не потерян
     молча)."""
     out: list[MediaIn] = []
@@ -460,7 +457,7 @@ def _settle_files(files: dict[str, tuple[str, bytes, bool]]) -> None:
                     path.unlink(missing_ok=True)
             elif not path.exists():
                 media.store_bytes(blob, allowed=BOT_TYPES)
-    except Exception as e:  # noqa: BLE001 - уборка не меняет ответ боту
+    except Exception as e:
         log.warning("Файлы заявки бота не проверены после приёма (лишние могли остаться на диске): %s",
                     type(e).__name__)
 
@@ -496,8 +493,8 @@ def _upsert_submission(db: Session, body: TelegramIntakeIn, res: ingest.IngestRe
     return sub
 
 
-def _view(external_id: str, ad_id: Optional[str], ad_status: Optional[str], received_at: Optional[datetime],
-          last_status_at: Optional[datetime]) -> dict:
+def _view(external_id: str, ad_id: str | None, ad_status: str | None, received_at: datetime | None,
+          last_status_at: datetime | None) -> dict:
     status = _BY_AD_STATUS.get(ad_status or "", "received")
     times = [t for t in (models.as_utc(received_at), models.as_utc(last_status_at)) if t is not None]
     return {"external_id": external_id, "ad_id": ad_id, "status": status, "status_label": SUBMISSION_LABELS[status],
@@ -515,7 +512,7 @@ def submission_view(db: Session, sub: models.BotSubmission) -> dict:
     return _view(sub.external_id, sub.ad_id, ad_status, sub.received_at, last)
 
 
-def _submit_sync(body: TelegramIntakeIn, blobs: list[bytes]) -> tuple[ingest.IngestResult, Optional[dict]]:
+def _submit_sync(body: TelegramIntakeIn, blobs: list[bytes]) -> tuple[ingest.IngestResult, dict | None]:
     """В пуле потоков: файлы → хранилище, заявка → единый приём + bot_submissions, commit. Файлы пишутся до
     транзакции(без долгой записи на диск внутри неё); записанные этим запросом и оставшиеся без записи в БД
     (отказ, сбой, файл не понадобился) удаляются - _settle_files."""
@@ -523,7 +520,7 @@ def _submit_sync(body: TelegramIntakeIn, blobs: list[bytes]) -> tuple[ingest.Ing
     media.ensure_space(sum(len(b) for _, b, _ in plan if b is not None))
     files: dict[str, tuple[str, bytes, bool]] = {}
     try:
-        stored: list[Optional[media.Stored]] = []
+        stored: list[media.Stored | None] = []
         for _, blob, sha in plan:
             st = None
             if blob is not None:
@@ -657,7 +654,7 @@ def _since(value: str) -> datetime:
     return models.as_utc(dt)
 
 
-@router.get("/api/intake/telegram/updates", response_model=List[SubmissionStatusOut], response_model_by_alias=True,
+@router.get("/api/intake/telegram/updates", response_model=list[SubmissionStatusOut], response_model_by_alias=True,
             dependencies=[Depends(auth.require_service)])
 def updates(since: str = Query(..., max_length=64, description="ISO 8601 с часовым поясом; изменения строго позже"),
             limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_db)):
@@ -678,7 +675,7 @@ def updates(since: str = Query(..., max_length=64, description="ISO 8601 с ча
 
 # ---------- подключение ----------
 
-def _token_ok_at(r: Optional[models.Collector]) -> Optional[datetime]:
+def _token_ok_at(r: models.Collector | None) -> datetime | None:
     """Когда бот последний раз обратился с верным токеном после отказа по токену(state.tokenOkAt) или None."""
     at = ((r.state or {}) if r is not None else {}).get("tokenOkAt")
     try:
@@ -705,7 +702,7 @@ def _token_ok(db: Session) -> None:
                       .execution_options(populate_existing=True))
         r.state = {**(r.state or {}), "tokenOkAt": models.utcnow().isoformat()}
         db.commit()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         db.rollback()
         log.warning("Успешное обращение бота не записано в состояние подключения: %s", type(e).__name__)
 
@@ -723,7 +720,7 @@ class TelegramBotConnector(Connector):
     contract_verified = False
     limitation = "Контракт адаптера saq-telegram-bot с этой версией API не сверен."
 
-    def computed_status(self, db, row, now: datetime) -> Optional[tuple[str, str]]:
+    def computed_status(self, db, row, now: datetime) -> tuple[str, str] | None:
         """Живой статус приёмника: отказ боту новее последней принятой заявки - "нет доступа"(401/403) или "ошибка"
         (409/413/415/422, сбой сервера 500/507); заявка за 7 дней - "принимает заявки"; иначе - "ожидает заявок".
         Отказ по токену, после которого бот обращался с верным токеном, не показывается. Проверки и сбора нет."""

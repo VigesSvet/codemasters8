@@ -26,7 +26,8 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any
+from collections.abc import Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from sqlalchemy import select, update
@@ -106,7 +107,7 @@ def name_keys(raw: Any) -> Keys:
     return _keys(main)
 
 
-def variants(raw: Any) -> List[Keys]:
+def variants(raw: Any) -> list[Keys]:
     """Ключи всех написаний названия: основная часть и содержимое скобок("Престиж(Sparkle Diamond)" - "Престиж" и
     "Sparkle Diamond"; "(ГС: Инвестор)", "(блок А)" - не названия)."""
     name = clean_name(raw)
@@ -141,18 +142,18 @@ class Entry:
     kind: str  # complex | registry | discovered
     ref: Any  # id ЖК, ключ объекта реестра или id объекта из рекламы
     name: str
-    complex_id: Optional[str] = None
-    origin: Optional[str] = None
-    status: Optional[str] = None
+    complex_id: str | None = None
+    origin: str | None = None
+    status: str | None = None
 
 
 @dataclass
 class Matcher:
     """Справочник названий: ЖК(любого происхождения), объекты открытого реестра(все названия записей), объекты из
     рекламы(ключ, название и другие написания)."""
-    known: List[Entry] = field(default_factory=list)
-    found: List[Entry] = field(default_factory=list)
-    by_key: Dict[str, int] = field(default_factory=dict)  # norm_key → id объекта из рекламы
+    known: list[Entry] = field(default_factory=list)
+    found: list[Entry] = field(default_factory=list)
+    by_key: dict[str, int] = field(default_factory=dict)  # norm_key → id объекта из рекламы
 
     @classmethod
     def load(cls, db: Session) -> "Matcher":
@@ -162,7 +163,7 @@ class Matcher:
         for c in db.scalars(select(models.Complex).order_by(models.Complex.id)):
             m.add_complex(c)
         cards = {e.complex_id for e in m.known}
-        names: Dict[str, set] = {}
+        names: dict[str, set] = {}
         for r in registry.records(db):
             names.setdefault(r["key"], set()).add(r["name"])
         for key, ns in sorted(names.items()):
@@ -188,11 +189,11 @@ class Matcher:
             self.found.append(Entry(Keys(o.norm_key, o.norm_key), "discovered", o.id, o.name,
                                     complex_id=o.complex_id, status=o.status))
 
-    def known_match(self, k: Keys) -> Optional[Entry]:
+    def known_match(self, k: Keys) -> Entry | None:
         exact = next((e for e in self.known if e.keys.key == k.key), None)
         return exact or next((e for e in self.known if same(e.keys, k)), None)
 
-    def object_match(self, k: Keys) -> Optional[Entry]:
+    def object_match(self, k: Keys) -> Entry | None:
         oid = self.by_key.get(k.key)
         if oid is not None:
             return next(e for e in self.found if e.ref == oid)
@@ -201,8 +202,8 @@ class Matcher:
 
 # ---------- упоминания ----------
 
-def _merge(old: Iterable[str], new: Iterable[str], limit: int) -> List[str]:
-    out: List[str] = []
+def _merge(old: Iterable[str], new: Iterable[str], limit: int) -> list[str]:
+    out: list[str] = []
     for x in [*old, *new]:
         x = " ".join(str(x or "").split())
         if x and x not in out:
@@ -210,7 +211,7 @@ def _merge(old: Iterable[str], new: Iterable[str], limit: int) -> List[str]:
     return out[:limit]
 
 
-def _new_object(db: Session, name: str, key: str, address: Optional[str], now: datetime,
+def _new_object(db: Session, name: str, key: str, address: str | None, now: datetime,
                 origin: str = "ads") -> models.DiscoveredObject:
     O = models.DiscoveredObject
     models.insert_ignore(db, O, {"norm_key": key, "name": name[:255], "aliases": [], "address_hint": address or None,
@@ -219,7 +220,7 @@ def _new_object(db: Session, name: str, key: str, address: Optional[str], now: d
     return db.scalar(select(O).where(O.norm_key == key))
 
 
-def _add_alias(o: models.DiscoveredObject, name: Optional[str]) -> None:
+def _add_alias(o: models.DiscoveredObject, name: str | None) -> None:
     if not name:
         return
     if name.casefold() != (o.name or "").casefold() and all(name.casefold() != a.casefold() for a in o.aliases or []):
@@ -237,7 +238,7 @@ def recount(db: Session, ids: Iterable[int]) -> None:
         rows = db.execute(select(M, A.account, A.source).outerjoin(A, A.id == M.ad_id)
                           .where(M.object_id == oid).order_by(M.created_at, M.id)).all()
         o.ads_count = len(rows)
-        freq: Dict[str, int] = {}
+        freq: dict[str, int] = {}
         for m, account, source in rows:
             if account and (source or m.source) != "bot":
                 freq[account] = freq.get(account, 0) + 1
@@ -253,14 +254,14 @@ def recount(db: Session, ids: Iterable[int]) -> None:
                 o.address_hint = next((m.address for m, _, _ in rows if m.address), None)
 
 
-def sync_mentions(db: Session, ad: models.Ad, mentions: List[dict], stage: Optional[dict], now: datetime,
-                  matcher: Optional[Matcher] = None) -> List[int]:
+def sync_mentions(db: Session, ad: models.Ad, mentions: list[dict], stage: dict | None, now: datetime,
+                  matcher: Matcher | None = None) -> list[int]:
     """Упоминания публикации по проверенному ответу Claude(в сессии db, без commit): объекты из рекламы создаются,
     упоминания добавляются, обновляются или удаляются; счётчики пересчитываются. Возвращает id объектов публикации."""
     M = models.DiscoveredMention
     m = matcher or Matcher.load(db)
     now = models.as_utc(now)
-    wanted: Dict[int, dict] = {}
+    wanted: dict[int, dict] = {}
     for x in mentions:
         if not isinstance(x, dict):
             continue
@@ -304,7 +305,7 @@ def sync_mentions(db: Session, ad: models.Ad, mentions: List[dict], stage: Optio
     return sorted(wanted)
 
 
-def record_result(ad_id: str, result: Optional[dict], now: datetime) -> List[int]:
+def record_result(ad_id: str, result: dict | None, now: datetime) -> list[int]:
     """После ответа Claude(status done): упоминания публикации - своя сессия и транзакция."""
     res = result or {}
     with SessionLocal() as db:
@@ -330,13 +331,13 @@ def new_complex_id(db: Session, key: str) -> str:
         return cid
     n = 0
     while True:
-        cid = "ah-" + hashlib.sha1(f"{key}#{n}".encode("utf-8")).hexdigest()[:16]
+        cid = "ah-" + hashlib.sha1(f"{key}#{n}".encode()).hexdigest()[:16]
         if db.get(models.Complex, cid) is None:
             return cid
         n += 1
 
 
-def ensure_developer(db: Session, name: Optional[str], bin_: Optional[str]) -> Tuple[models.Developer, bool]:
+def ensure_developer(db: Session, name: str | None, bin_: str | None) -> tuple[models.Developer, bool]:
     """Застройщик ЖК по рекламе: существующий по БИН или названию(без формы собственности и кавычек), иначе новый
     (origin "advertised"); без названия и БИН - "Застройщик не установлен". (застройщик, создан ли)."""
     D = models.Developer
@@ -361,7 +362,7 @@ def ensure_developer(db: Session, name: Optional[str], bin_: Optional[str]) -> T
     return d, True
 
 
-def _complex_values(name: str, address: str, lat: Optional[float], lng: Optional[float]) -> dict:
+def _complex_values(name: str, address: str, lat: float | None, lng: float | None) -> dict:
     return {"name": name[:255], "address": (address or "")[:255], "district": "", "lat": lat, "lng": lng, "stage": "",
             "progress": 0, "floors": 0, "flats": 0, "start": "", "planned_end": "",
             "basis": {"guarantee": "unknown", "mio": "unknown", "bvu": "unknown"},
@@ -369,7 +370,7 @@ def _complex_values(name: str, address: str, lat: Optional[float], lng: Optional
             "photos": [], "idle_days": 0, "origin": ADVERTISED}
 
 
-def rerun_rules(db: Session, ad_ids: Iterable[str], reason: str = RULES_REASON) -> List[str]:
+def rerun_rules(db: Session, ad_ids: Iterable[str], reason: str = RULES_REASON) -> list[str]:
     """Пересчёт правил сопоставления по собранным публикациям - задание анализа без запроса к Claude(rulesOnly)."""
     from . import ingest
 
@@ -383,20 +384,20 @@ def rerun_rules(db: Session, ad_ids: Iterable[str], reason: str = RULES_REASON) 
     return out
 
 
-def _mention_ads(db: Session, oid: int) -> List[str]:
+def _mention_ads(db: Session, oid: int) -> list[str]:
     M = models.DiscoveredMention
     return list(db.scalars(select(M.ad_id).where(M.object_id == oid)))
 
 
-def _event(db: Session, who: str, what: str, *, complex_id: Optional[str] = None, kind: str = "data",
-           at: Optional[datetime] = None) -> models.AuditEvent:
+def _event(db: Session, who: str, what: str, *, complex_id: str | None = None, kind: str = "data",
+           at: datetime | None = None) -> models.AuditEvent:
     e = models.AuditEvent(kind=kind, who=who, what=what, at=models.as_utc(at) if at else models.utcnow(),
                           complex_id=complex_id)
     db.add(e)
     return e
 
 
-def _list(xs: List[str], n: int = 5) -> str:
+def _list(xs: list[str], n: int = 5) -> str:
     return ", ".join(xs[:n]) + (f" и ещё {len(xs) - n}" if len(xs) > n else "")
 
 
@@ -404,13 +405,13 @@ def _list(xs: List[str], n: int = 5) -> str:
 
 @dataclass
 class ImportReport:
-    created: List[str] = field(default_factory=list)
-    updated: List[str] = field(default_factory=list)
-    unchanged: List[str] = field(default_factory=list)
-    skipped: List[str] = field(default_factory=list)
-    developers_created: List[str] = field(default_factory=list)
-    event_ids: List[int] = field(default_factory=list)
-    rules: List[str] = field(default_factory=list)  # публикации с пересчётом правил
+    created: list[str] = field(default_factory=list)
+    updated: list[str] = field(default_factory=list)
+    unchanged: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
+    developers_created: list[str] = field(default_factory=list)
+    event_ids: list[int] = field(default_factory=list)
+    rules: list[str] = field(default_factory=list)  # публикации с пересчётом правил
 
     def line(self) -> str:
         out = (f"ЖК по рекламе: создано {len(self.created)}, дополнено {len(self.updated)}, без изменений "
@@ -428,14 +429,14 @@ def _item(raw: Any) -> schemas.AdvertisedItemIn:
     return raw if isinstance(raw, schemas.AdvertisedItemIn) else schemas.AdvertisedItemIn.model_validate(raw)
 
 
-def _urls(xs: Iterable[str]) -> List[str]:
+def _urls(xs: Iterable[str]) -> list[str]:
     from .ads_service import safe_url
 
     return [u for u in (safe_url(x) for x in xs) if u]
 
 
-def import_advertised(db: Session, items: Iterable[Any], *, author: str, note: Optional[str] = None,
-                      now: Optional[datetime] = None) -> ImportReport:
+def import_advertised(db: Session, items: Iterable[Any], *, author: str, note: str | None = None,
+                      now: datetime | None = None) -> ImportReport:
     """Карточки ЖК по рекламе списком(в сессии db, без commit). Идемпотентно по ключу названия: ЖК "advertised" с тем
     же ключом - только дополняются пустые поля(адрес, координаты), другие названия, аккаунты и ссылки; ЖК справочника
     или объект открытого реестра с тем же названием - пропуск с причиной. Объект из рекламы с тем же ключом
@@ -456,7 +457,7 @@ def import_advertised(db: Session, items: Iterable[Any], *, author: str, note: O
         keys = [k] + [name_keys(a) for a in alias_names if name_keys(a).key]
         known = next((e for e in (m.known_match(x) for x in keys) if e is not None), None)
         found = next((e for e in (m.object_match(x) for x in keys) if e is not None), None)
-        c: Optional[models.Complex] = None
+        c: models.Complex | None = None
         if known is not None and known.kind == "complex" and known.origin == ADVERTISED:
             c = db.get(models.Complex, known.ref)
         elif known is not None:
@@ -550,7 +551,7 @@ def _obj(db: Session, oid: int) -> models.DiscoveredObject:
     return o
 
 
-def _geo(db: Session, oid: int) -> List[dict]:
+def _geo(db: Session, oid: int) -> list[dict]:
     """Последние сверки 2ГИС объекта - по одной на запрос, новые первыми."""
     from .integrations import dgis
     from .settings import get_settings
@@ -567,7 +568,7 @@ def _geo(db: Session, oid: int) -> List[dict]:
     return out[:4]
 
 
-def discovered_out(db: Session, objs: List[models.DiscoveredObject], as_of: Optional[date] = None) -> List[dict]:
+def discovered_out(db: Session, objs: list[models.DiscoveredObject], as_of: date | None = None) -> list[dict]:
     """Объекты для API(DiscoveredOut): упоминания, цитаты, стадия, признаки продажи, сверки 2ГИС, оценка."""
     from .settings import get_settings
 
@@ -575,7 +576,7 @@ def discovered_out(db: Session, objs: List[models.DiscoveredObject], as_of: Opti
     ids = [o.id for o in objs]
     if not ids:
         return []
-    mentions: Dict[int, List[models.DiscoveredMention]] = {}
+    mentions: dict[int, list[models.DiscoveredMention]] = {}
     for r in db.scalars(select(M).where(M.object_id.in_(ids)).order_by(M.id)):
         mentions.setdefault(r.object_id, []).append(r)
     facts = screening.load_facts(db, {r.ad_id for rs in mentions.values() for r in rs})
@@ -589,8 +590,8 @@ def discovered_out(db: Session, objs: List[models.DiscoveredObject], as_of: Opti
                                                            or "", r.id), reverse=True)
         quotes, sources = [], {}
         stage = {"under_construction": 0, "completed": 0, "unknown": 0, "quotes": []}
-        types: Dict[str, int] = {}
-        ads: List[Tuple[screening.AdFacts, str]] = []
+        types: dict[str, int] = {}
+        ads: list[tuple[screening.AdFacts, str]] = []
         for r in rs:
             f = facts.get(r.ad_id)
             sources[r.source] = sources.get(r.source, 0) + 1
@@ -634,8 +635,8 @@ OID = Path(..., ge=1, le=2_147_483_647, description="id объекта из ре
 STATUS_ORDER = {"new": 0, "linked": 1, "dismissed": 2}
 
 
-@router.get("/api/discovered", response_model=List[schemas.DiscoveredOut], response_model_by_alias=True)
-def list_discovered(status: Optional[schemas.DiscoveredStatus] = Query(None, description="new | linked | dismissed"),
+@router.get("/api/discovered", response_model=list[schemas.DiscoveredOut], response_model_by_alias=True)
+def list_discovered(status: schemas.DiscoveredStatus | None = Query(None, description="new | linked | dismissed"),
                     db: Session = Depends(get_db)):
     """Объекты из рекламы(ЖК, которых нет в справочнике и открытом реестре): новые первыми, затем по числу публикаций.
     Цитаты(до трёх), стадия по рекламе, признаки продажи, последние сверки 2ГИС и оценка "Проверка по рекламе"."""
@@ -690,7 +691,7 @@ def geo_discovered(body: schemas.DiscoveredGeoIn, request: Request, response: Re
     return {"checks": checks, "errors": errors}
 
 
-def _candidate(db: Session, oid: int, cand_id: str) -> Tuple[models.GeoCheck, dict]:
+def _candidate(db: Session, oid: int, cand_id: str) -> tuple[models.GeoCheck, dict]:
     G = models.GeoCheck
     for g in db.scalars(select(G).where(G.target_kind == "discovered", G.target_id == str(oid), G.purged_at.is_(None))
                         .order_by(G.fetched_at.desc(), G.id.desc())):

@@ -15,12 +15,13 @@
 """
 import re
 import statistics
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any
+from collections.abc import Iterable
 
 from .ai.nlp import plain
 from .sellers import quote_at, segments
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 
 THRESHOLD = 0.7
 MIN_GROUP = 5
@@ -56,7 +57,7 @@ _FULL = re.compile(r"100\s?%[\s-]*(?:предоплат|оплат|төлем)\w
                    r"\(наличн\w+\s+рас+ч[её]т\w*\)", re.I)
 
 
-def to_number(num: str, mult: Optional[str] = None) -> Optional[float]:
+def to_number(num: str, mult: str | None = None) -> float | None:
     """'39 999 999' → 39999999; '23,4', 'млн' → 23 400 000; '400', 'тыс' → 400 000."""
     try:
         v = float(re.sub(r"[  ]", "", num).replace(",", "."))
@@ -70,7 +71,7 @@ def to_number(num: str, mult: Optional[str] = None) -> Optional[float]:
     return v
 
 
-def rooms_of(text: str) -> Optional[int]:
+def rooms_of(text: str) -> int | None:
     """Число комнат: "2-комнатная", "двухкомнатная", "студия" → 0; 4 и больше - 4."""
     m = _ROOMS.search(text or "")
     if not m:
@@ -82,7 +83,7 @@ def rooms_of(text: str) -> Optional[int]:
     return 0
 
 
-def _ok(v: Optional[float]) -> bool:
+def _ok(v: float | None) -> bool:
     return v is not None and PER_M2_RANGE[0] <= v <= PER_M2_RANGE[1]
 
 
@@ -91,7 +92,7 @@ def _near(s: str, a: int, b: int) -> str:
     return s[max(0, a - 160):b + 40]
 
 
-def _explicit(src: str, s: str) -> Optional[Obj]:
+def _explicit(src: str, s: str) -> Obj | None:
     for rx in (_PER_A, _PER_B, _IMPLIED):
         for m in rx.finditer(s):
             v = to_number(m.group(1), m.group(2))
@@ -105,7 +106,7 @@ def _explicit(src: str, s: str) -> Optional[Obj]:
     return None
 
 
-def _areas(s: str) -> List[Tuple[float, int, int]]:
+def _areas(s: str) -> list[tuple[float, int, int]]:
     out = []
     for m in _AREA.finditer(s):
         pre, post = s[max(0, m.start() - 25):m.start()].lower(), s[m.end():m.end() + 16].lower()
@@ -116,7 +117,7 @@ def _areas(s: str) -> List[Tuple[float, int, int]]:
     return out
 
 
-def _totals(s: str) -> List[Tuple[float, int, int]]:
+def _totals(s: str) -> list[tuple[float, int, int]]:
     out = []
     for m in _TOTAL.finditer(s):
         v = to_number(m.group(1), m.group(2))
@@ -129,7 +130,7 @@ def _totals(s: str) -> List[Tuple[float, int, int]]:
     return out
 
 
-def parse(ad: Obj) -> Optional[Obj]:
+def parse(ad: Obj) -> Obj | None:
     """Цена за м² публикации или None. Результат: {perM2, method: explicit | total_area, total?, area?, rooms, source,
     quote, from, fullPayment?: {quote, source}}."""
     segs = [(src, s) for src, s in segments(ad.get("text"), ad.get("ocr")) if src != "speech"]
@@ -172,7 +173,7 @@ def parse(ad: Obj) -> Optional[Obj]:
     return {**out, "rooms": rooms, "fullPayment": full}
 
 
-def _median(xs: Iterable[float]) -> Optional[float]:
+def _median(xs: Iterable[float]) -> float | None:
     xs = list(xs)
     return statistics.median(xs) if xs else None
 
@@ -187,7 +188,7 @@ def analyze(ads: Iterable[Obj]) -> Obj:
                          "url": a.get("url"), "complexId": a.get("complexId"), "complexName": a.get("complexName"), **p})
     priced = [r for r in rows if r["perM2"]]
     overall = _median(r["perM2"] for r in priced)
-    by_rooms: Dict[str, Obj] = {}
+    by_rooms: dict[str, Obj] = {}
     for k in sorted({r["rooms"] for r in priced if r["rooms"] is not None}):
         xs = [r["perM2"] for r in priced if r["rooms"] == k]
         by_rooms[str(k)] = {"median": round(_median(xs)), "n": len(xs), "used": len(xs) >= MIN_GROUP}
@@ -202,7 +203,7 @@ def analyze(ads: Iterable[Obj]) -> Obj:
     return {"rows": rows, "median": round(overall) if overall else None, "n": len(priced), "byRooms": by_rooms}
 
 
-def for_ad(a: Obj, ad_id: str) -> Optional[Obj]:
+def for_ad(a: Obj, ad_id: str) -> Obj | None:
     r = next((r for r in a["rows"] if r["adId"] == ad_id), None)
     return {**r, "threshold": THRESHOLD, "cityMedian": a["median"], "n": a["n"]} if r else None
 

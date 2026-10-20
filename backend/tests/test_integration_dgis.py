@@ -5,7 +5,7 @@
 import logging
 import re
 import threading
-from datetime import timedelta
+from datetime import timedelta, UTC
 
 import httpx
 import pytest
@@ -244,12 +244,12 @@ def test_geocode_unknown_format_is_failure(geo, dgis, status, payload, detail):
 
 
 def test_quota_names_and_reserve(env, dgis):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     s = env(DGIS_API_KEY=KEY, DGIS_QUOTA_PERIOD_START="2026-10-16", DGIS_QUOTA_LIMIT=2, DGIS_DAILY_LIMIT=5)
     fp = s.key_fp("DGIS_API_KEY")
     # 20:30 UTC = 01:30 следующего дня в Усть-Каменогорске(UTC+5)
-    now = datetime(2026, 10, 16, 20, 30, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 16, 20, 30, tzinfo=UTC)
     assert dgis.quota_names(s, now) == (f"dgis:{fp}:2026-10-16", f"dgis-day:{fp}:2026-10-17")
     assert KEY not in "".join(dgis.quota_names(s, now))
     s2 = env(DGIS_QUOTA_PERIOD_START=None)

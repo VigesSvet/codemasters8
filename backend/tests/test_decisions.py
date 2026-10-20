@@ -400,7 +400,7 @@ def test_developer_rollup_and_stats(client, env):
     st0 = client.get("/api/stats").json()["screening"]
     assert st0["complexes"] == {"ok": 14, "check": 1, "suspect": 0, "unknown": 0}
     assert st0["decisions"] == {"commissioned": 0, "analyst": 0, "reopened": 0}
-    dev = lambda did: next(d for d in client.get("/api/developers").json() if d["id"] == did)["screening"]  # noqa: E731
+    dev = lambda did: next(d for d in client.get("/api/developers").json() if d["id"] == did)["screening"]
     assert dev(AB_DEV)["status"] == "check"
     commission(client, AB)
     d = dev(AB_DEV)

@@ -31,7 +31,7 @@ import logging
 import time
 import uuid
 from datetime import datetime, timedelta
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from sqlalchemy import func, or_, select, update
 
@@ -73,7 +73,7 @@ def _plural(n: int, one: str, few: str, many: str) -> str:
     return many
 
 
-def _retry_at(a: models.MediaAsset) -> Optional[datetime]:
+def _retry_at(a: models.MediaAsset) -> datetime | None:
     raw = (a.meta or {}).get("retryAt")
     if not raw:
         return None
@@ -120,7 +120,7 @@ def _speech_due(a: models.MediaAsset, force: bool) -> bool:
     return force and sp.get("status") in _SPEECH_RETRY
 
 
-def _stage(job_id: Optional[int], item_id: int, stage: str) -> None:
+def _stage(job_id: int | None, item_id: int, stage: str) -> None:
     """Начало этапа: ingest_items.analysis_stage и jobs.payload.stage(своя короткая сессия)."""
     with SessionLocal() as db:
         db.execute(update(models.IngestItem).where(models.IngestItem.id == item_id).values(analysis_stage=stage)
@@ -131,7 +131,7 @@ def _stage(job_id: Optional[int], item_id: int, stage: str) -> None:
         db.commit()
 
 
-def _cover(assets) -> Optional[str]:
+def _cover(assets) -> str | None:
     imgs = [a for a in assets if a.status == "downloaded" and a.kind == "image" and a.current and a.parent_id is None]
     imgs.sort(key=lambda a: a.position)
     pick = next((a for a in imgs if a.role != "cover"), None) or (imgs[0] if imgs else None)
@@ -140,7 +140,7 @@ def _cover(assets) -> Optional[str]:
 
 # ---------- этапы ----------
 
-def _download(asset_id: str, kind: str, src: Optional[str], attempts: int, remaining: int,
+def _download(asset_id: str, kind: str, src: str | None, attempts: int, remaining: int,
               clock: Callable[[], datetime]) -> tuple[dict, int]:
     """Сеть, без сессии: файл по ссылке приёма → хранилище. (новые значения полей файла, сохранено байт). Срок
     повтора - от момента неудачной загрузки(clock()), а не от захвата задания."""
@@ -167,7 +167,7 @@ def _download(asset_id: str, kind: str, src: Optional[str], attempts: int, remai
         return {"status": status, "error": e.detail, "attempts": attempts + 1, **drop}, 0
     except media.MediaRejected as e:
         return {"status": "failed", "error": e.detail, "attempts": attempts + 1, **drop}, 0
-    except Exception as e:  # noqa: BLE001 - сбой одного файла не роняет анализ
+    except Exception as e:
         log.warning("Файл %s не загружен: %s", asset_id, type(e).__name__)
         return {"status": "failed", "error": f"Файл не загружен ({type(e).__name__})", "attempts": attempts + 1,
                 **drop}, 0
@@ -294,7 +294,7 @@ def _speech_stage(item_id: int, force: bool, heard: set) -> None:
         heard.add(vid)
 
 
-def _ocr_result(r: dict) -> tuple[str, str, Optional[str], Optional[str]]:
+def _ocr_result(r: dict) -> tuple[str, str, str | None, str | None]:
     """Ответ ocr.recognize → (ocr_status, текст, движок, пояснение)."""
     engine = r.get("engine") or "none"
     text = (r.get("text") or "").strip()
@@ -333,7 +333,7 @@ def _ocr_stage(item_id: int) -> None:
             status, text, engine, detail = _ocr_result(ocr_engine.recognize(data, mime))
         except ocr_engine.OcrError as e:
             status, text, engine, detail = "failed", "", None, e.detail
-        except Exception as e:  # noqa: BLE001 - сбой распознавания одного файла не роняет анализ
+        except Exception as e:
             log.warning("OCR файла %s не выполнен: %s", aid, type(e).__name__)
             status, text, engine, detail = "failed", "", None, f"Ошибка распознавания ({type(e).__name__})"
         with SessionLocal() as db:
@@ -344,7 +344,7 @@ def _ocr_stage(item_id: int) -> None:
                 db.commit()
 
 
-def compose_ocr(texts: list[str], said: list[str]) -> Optional[str]:
+def compose_ocr(texts: list[str], said: list[str]) -> str | None:
     """ads.ocr: тексты OCR, затем абзацы "Речь в ролике: …". Предел AD_TEXT_MAX: обрезается OCR, а не расшифровка
     (её у ролика не больше speech.TEXT_MAX)."""
     tail = "\n\n".join(f"{SPEECH_MARK} {t}" for t in said)
@@ -382,7 +382,7 @@ def _ocr_text(item_id: int, ad_id: str) -> bool:
         return True
 
 
-def _rules(ad_id: str) -> tuple[dict, bool, Optional[str], str]:
+def _rules(ad_id: str) -> tuple[dict, bool, str | None, str]:
     """Правила saq-ai-1 по тексту и OCR; при SAQ_COLLECTED_AUTOLINK - привязка-гипотеза условным UPDATE.
     (результат анализа, привязка назначена, почему не назначена, источник публикации)."""
     s = get_settings()
@@ -409,7 +409,7 @@ def _rules(ad_id: str) -> tuple[dict, bool, Optional[str], str]:
         return res, linked, why_not, ad.source
 
 
-def _ocr_event(cur: list[models.MediaAsset]) -> Optional[str]:
+def _ocr_event(cur: list[models.MediaAsset]) -> str | None:
     """Событие OCR по изображениям и кадрам. Сбой распознавания(Tesseract упал, не уложился, файл не разобран) не
     выглядит как "текста нет": ничего не распознано - "OCR не выполнен: …", часть - счёт нераспознанных."""
     imgs = [a for a in cur if a.kind in ("image", "frame") and a.status == "downloaded"]
@@ -436,7 +436,7 @@ def _ocr_event(cur: list[models.MediaAsset]) -> Optional[str]:
     return what
 
 
-def _image_event(cur: list[models.MediaAsset], only: Optional[set]) -> Optional[str]:
+def _image_event(cur: list[models.MediaAsset], only: set | None) -> str | None:
     """Изображения публикации, которые не загрузились(ошибка, недоступно, превышен объём): сбой не выглядит как
     публикация без картинок. only - только эти файлы(новая неудача после первого анализа)."""
     bad = [a for a in cur if a.kind == "image" and a.parent_id is None
@@ -451,7 +451,7 @@ def _image_event(cur: list[models.MediaAsset], only: Optional[set]) -> Optional[
     return f"Изображения не загружены: {len(bad)} ({error}) — {tail}"
 
 
-def _video_event(cur: list[models.MediaAsset], only: Optional[set]) -> Optional[str]:
+def _video_event(cur: list[models.MediaAsset], only: set | None) -> str | None:
     for a in cur:
         if a.kind != "video" or a.parent_id is not None or (only is not None and a.id not in only):
             continue
@@ -463,7 +463,7 @@ def _video_event(cur: list[models.MediaAsset], only: Optional[set]) -> Optional[
     return None
 
 
-def _speech_event(cur: list[models.MediaAsset], heard: set) -> Optional[str]:
+def _speech_event(cur: list[models.MediaAsset], heard: set) -> str | None:
     """Событие распознавания речи по роликам этого анализа. Нет звука или речи и выключенный этап - без события; сбой
     движка, тайм-аут и слишком длинный ролик не выглядят как "в ролике молчат"."""
     sps = [(a.meta or {}).get("speech") or {} for a in cur if a.id in heard and a.kind == "video"]
@@ -480,7 +480,7 @@ def _speech_event(cur: list[models.MediaAsset], heard: set) -> Optional[str]:
     return what
 
 
-def _hypothesis_event(res: dict, linked: bool, source: str) -> tuple[str, Optional[str]]:
+def _hypothesis_event(res: dict, linked: bool, source: str) -> tuple[str, str | None]:
     low = T["lowConfidence"]
     hyps = res.get("hypotheses") or []
     best = hyps[0] if hyps else None
@@ -501,7 +501,7 @@ def _hypothesis_event(res: dict, linked: bool, source: str) -> tuple[str, Option
     return what, cid
 
 
-def _terms_event(res: dict) -> Optional[str]:
+def _terms_event(res: dict) -> str | None:
     kinds = list(dict.fromkeys(t["kind"] for t in res.get("terms") or [] if t.get("kind") != "price"))
     labels = [TERM_LABELS.get(k, k) for k in kinds]
     return f"ИИ: найдены условия оплаты — {', '.join(labels)} — нужна проверка аналитиком" if labels else None
@@ -509,7 +509,7 @@ def _terms_event(res: dict) -> Optional[str]:
 
 # ---------- задание ----------
 
-def last_rules_hypothesis(db, ad_id: str) -> tuple[bool, Optional[str]]:
+def last_rules_hypothesis(db, ad_id: str) -> tuple[bool, str | None]:
     """(было ли событие гипотезы правил, её ЖК) - последнее "Гипотеза ИИ: ЖК …" / "ИИ: ЖК не определён" от "Системы"."""
     from .screening import rules_hypotheses
 
@@ -517,7 +517,7 @@ def last_rules_hypothesis(db, ad_id: str) -> tuple[bool, Optional[str]]:
     return ad_id in got, got.get(ad_id)
 
 
-def _rules_only(job_id: Optional[int], ad_id: str, item_id: int, v: int, reason: str,
+def _rules_only(job_id: int | None, ad_id: str, item_id: int, v: int, reason: str,
                 clock: Callable[[], datetime]) -> dict:
     """Пересчёт правил сопоставления по проанализированной версии(без файлов, OCR и Claude)."""
     I = models.IngestItem
@@ -544,8 +544,8 @@ def _rules_only(job_id: Optional[int], ad_id: str, item_id: int, v: int, reason:
     return out
 
 
-def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: bool = False,
-                 rules_only: bool = False, reason: Optional[str] = None) -> dict:
+def run_analysis(job_id: int | None, ad_id: str, *, now: datetime, force: bool = False,
+                 rules_only: bool = False, reason: str | None = None) -> dict:
     """Анализ публикации ad_id(задание job_id): этапы media → frames → speech → ocr → rules → llm → events. Итог - jobs.result.
     now - время захвата задания; сроки повтора загрузок и время событий - от текущего момента(clock). force -
     "Проанализировать ещё раз": анализ идёт и по уже проанализированной версии, Claude запрашивается снова. rules_only -
@@ -602,7 +602,7 @@ def run_analysis(job_id: Optional[int], ad_id: str, *, now: datetime, force: boo
     suffix = f" (версия {v})" if v > 1 else ""
     with SessionLocal() as db:
         cur = [a for a in _assets(db, item_id) if a.current]
-        events: list[tuple[str, str, Optional[str]]] = []
+        events: list[tuple[str, str, str | None]] = []
         if ocr_changed or first:
             what = _ocr_event(cur)
             if what:

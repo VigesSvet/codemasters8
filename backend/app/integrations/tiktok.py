@@ -31,11 +31,11 @@ import json
 import logging
 import math
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NoReturn, Optional
+from typing import TYPE_CHECKING, Any, NoReturn
 
 import httpx
 
@@ -153,7 +153,7 @@ def usd_param(x: float) -> str:
     return format(Decimal(repr(float(x))), "f")
 
 
-def _event_price(ev: Any) -> Optional[float]:
+def _event_price(ev: Any) -> float | None:
     """Цена события: eventPriceUsd или(ступенчатые цены) наибольшая из ступеней - оценка сверху."""
     if not isinstance(ev, dict):
         return None
@@ -169,27 +169,27 @@ def _event_price(ev: Any) -> Optional[float]:
     return None
 
 
-def _pricing(actor: dict, now: Optional[datetime] = None) -> Optional[dict]:
+def _pricing(actor: dict, now: datetime | None = None) -> dict | None:
     """Действующая запись PAY_PER_EVENT из pricingInfos: последняя, вступившая в силу к now(будущие - только если
     действующей нет)."""
     infos = [p for p in (actor or {}).get("pricingInfos") or []
              if isinstance(p, dict) and p.get("pricingModel") == "PAY_PER_EVENT"]
     if not infos:
         return None
-    now = as_utc(now) or datetime.now(timezone.utc)
+    now = as_utc(now) or datetime.now(UTC)
 
     def started(p: dict) -> datetime:
         raw = p.get("startedAt") or p.get("createdAt")
         try:
             return as_utc(datetime.fromisoformat(str(raw).replace("Z", "+00:00")))
         except (TypeError, ValueError):
-            return datetime.min.replace(tzinfo=timezone.utc)
+            return datetime.min.replace(tzinfo=UTC)
     infos.sort(key=started)
     current = [p for p in infos if started(p) <= now]
     return (current or infos)[-1]
 
 
-def prices(actor: dict, now: Optional[datetime] = None) -> dict[str, float]:
+def prices(actor: dict, now: datetime | None = None) -> dict[str, float]:
     """Цены событий Actor(PAY_PER_EVENT): {событие: USD}; цен нет - пустой словарь(оценка берёт FALLBACK_PRICES)."""
     p = _pricing(actor, now)
     events = ((p or {}).get("pricingPerEvent") or {}).get("actorChargeEvents") or {}
@@ -202,13 +202,13 @@ def prices(actor: dict, now: Optional[datetime] = None) -> dict[str, float]:
     return out
 
 
-def min_charge(actor: dict, now: Optional[datetime] = None) -> float:
+def min_charge(actor: dict, now: datetime | None = None) -> float:
     """Минимальный лимит расходов на запуск(minimalMaxTotalChargeUsd); не указан - ACTOR_MIN_CHARGE."""
     v = (_pricing(actor, now) or {}).get("minimalMaxTotalChargeUsd")
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else ACTOR_MIN_CHARGE
 
 
-def _all_prices(p: Optional[dict]) -> dict[str, float]:
+def _all_prices(p: dict | None) -> dict[str, float]:
     return {**FALLBACK_PRICES, **{k: float(v) for k, v in (p or {}).items() if isinstance(v, (int, float))}}
 
 
@@ -336,7 +336,7 @@ def _day_bounds(now: datetime) -> tuple[datetime, datetime]:
     """Начало текущих суток по местному времени(UTC+5) и начало следующих - в UTC."""
     local = as_utc(now).astimezone(ALMATY)
     start = local.replace(hour=0, minute=0, second=0, microsecond=0)
-    return start.astimezone(timezone.utc), (start + timedelta(days=1)).astimezone(timezone.utc)
+    return start.astimezone(UTC), (start + timedelta(days=1)).astimezone(UTC)
 
 
 def _unconfirmed_usd(state: dict, since: datetime, cap: float) -> float:
@@ -352,10 +352,10 @@ def _unconfirmed_usd(state: dict, since: datetime, cap: float) -> float:
     return total
 
 
-def _parse_time(v: Any) -> Optional[datetime]:
+def _parse_time(v: Any) -> datetime | None:
     if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
         try:
-            return datetime.fromtimestamp(float(v), timezone.utc)
+            return datetime.fromtimestamp(float(v), UTC)
         except (OverflowError, OSError, ValueError):
             return None
     if isinstance(v, str) and v.strip():
@@ -366,19 +366,19 @@ def _parse_time(v: Any) -> Optional[datetime]:
     return None
 
 
-def _valid_id(v: Any) -> Optional[str]:
+def _valid_id(v: Any) -> str | None:
     v = str(v or "").strip()
     return v if _ID_RE.match(v) else None
 
 
 # ---------- публикации ----------
 
-def _kv(url: Any) -> Optional[str]:
+def _kv(url: Any) -> str | None:
     """Ссылка на запись хранилища Apify(Key-value store) или None(CDN TikTok и прочее не используются)."""
     return url if isinstance(url, str) and KV_RE.match(url.strip()) else None
 
 
-def _kv_media(ctx: "RunContext", url: str, *, key: str, kind: str, role: Optional[str], token: str) -> MediaIn:
+def _kv_media(ctx: "RunContext", url: str, *, key: str, kind: str, role: str | None, token: str) -> MediaIn:
     """Ленивая загрузка файла из хранилища Apify с Bearer-токеном(только api.apify.com по https; перенаправление на
     другой хост - без заголовка). Отметка "загружен" - только после сохранения байтов."""
     def fetch() -> MediaIn:
@@ -390,7 +390,7 @@ def _kv_media(ctx: "RunContext", url: str, *, key: str, kind: str, role: Optiona
     return MediaIn(key=key, kind=kind, role=role, fetch=fetch, origin_url=http.redact_url(url))
 
 
-def _missing(key: str, kind: str, role: Optional[str], error: str) -> MediaIn:
+def _missing(key: str, kind: str, role: str | None, error: str) -> MediaIn:
     """Файла в хранилище нет: "недоступен"(ленивая отметка - повторяется не больше ATTEMPTS_MAX раз)."""
     def fetch() -> MediaIn:
         return MediaIn(key=key, kind=kind, role=role, status="unavailable", error=error)
@@ -433,7 +433,7 @@ def item_error(it: Any) -> str:
     return f"TikTok: запись Apify не принята — {text}" + (f" ({str(who)[:100]})" if who else "")
 
 
-def map_item(it: dict, ctx: "RunContext") -> Optional[Publication]:
+def map_item(it: dict, ctx: "RunContext") -> Publication | None:
     """Запись Dataset → Publication; запись-ошибка({"error": …}) или без ID - None(вызывающий: ctx.item_failed).
     isAd / isSponsored не фильтруют: рекламное предложение бывает и при isAd=false."""
     if not isinstance(it, dict) or it.get("error"):
@@ -457,7 +457,7 @@ def map_item(it: dict, ctx: "RunContext") -> Optional[Publication]:
         extra={"isSlideshow": bool(it.get("isSlideshow"))}, raw=it)
 
 
-def profile_key(it: Any) -> Optional[str]:
+def profile_key(it: Any) -> str | None:
     """Профиль записи Dataset(authorMeta.name, иначе input) в виде настроек("x", строчными) или None."""
     if not isinstance(it, dict):
         return None
@@ -657,7 +657,7 @@ class TikTokConnector(Connector):
         try:  # сбой записи не должен превратить ошибку в повторяемую(повтор - второй POST)
             ctx.save_state(**{UNCONFIRMED: (prev + [{"at": iso(now), "runId": ctx.run_id, "costUsd": cap}])[-50:]})
             ctx.note(f"Запуск Apify не подтверждён ({why}) — в дневном лимите учтён как ${usd_param(cap)}", "warn")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.warning("TikTok: неподтверждённый запуск Apify не записан в дневной лимит (%s)", type(e).__name__)
         raise SourceError(f"Apify не подтвердил запуск Actor ({why}) — запуск мог начаться и оплачиваться; проверьте "
                           "консоль Apify, затем запустите проверку вручную", retryable=False) from None
@@ -699,7 +699,7 @@ class TikTokConnector(Connector):
         ctx.save_payload(phase="dataset", datasetId=ds, offset=0, items=0)
 
     def _wait(self, ctx: "RunContext", c: httpx.Client, s: Settings, rid: str, deadline: datetime,
-              run: Optional[dict], why: Optional[str], *, delay: Optional[float] = None) -> None:
+              run: dict | None, why: str | None, *, delay: float | None = None) -> None:
         """Запуск ещё идёт(или Apify временно не ответил): Deferred до срока; после срока - прервать запуск, записать
         стоимость и завершить сбор ошибкой."""
         if as_utc(ctx.now()) < deadline:

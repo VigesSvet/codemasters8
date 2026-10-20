@@ -1,5 +1,5 @@
 """Маршрут рассмотрения сигнала(T-79): этапы из журнала, переходы и запреты, кто согласует, сроки и просрочка."""
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 from types import SimpleNamespace
 
 import pytest
@@ -7,7 +7,7 @@ import pytest
 from app import route
 
 ANALYST, LEAD, GASK = "Нестерова А.", "Омарова Ж.", "Исаев Т."  # an1, an2(руководитель в пилоте), an3
-UTC = timezone.utc
+UTC = UTC
 
 
 def _signal(c, cid="c2"):
@@ -41,7 +41,7 @@ def test_build_stages_and_overdue_with_frozen_time():
     created = datetime(2026, 10, 19, 5, 0, tzinfo=UTC)  # пн 10:00 Алматы
     s = SimpleNamespace(id=7, code="S-0007", status="new", created_at=created, created_by=ANALYST, decided_at=None,
                         decided_by=None, decision_comment=None)
-    ev = lambda at, what, who=ANALYST: {"at": at.isoformat(), "who": who, "what": what, "kind": "signal"}  # noqa: E731
+    ev = lambda at, what, who=ANALYST: {"at": at.isoformat(), "who": who, "what": what, "kind": "signal"}
     r = route.build(s, [], now=datetime(2026, 10, 21, 18, 0, tzinfo=UTC))  # ср 23:00 - срок разбора ещё не прошёл
     assert (r["stage"], r["slaDays"], r["overdue"], r["actions"]) == ("analysis", 2, False, ["submit"])
     assert r["dueAt"] == "2026-10-21T18:59:59+00:00"

@@ -6,7 +6,7 @@ import json
 import re
 import sys
 import types
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 import pytest
 from fastapi import Depends, FastAPI
@@ -122,7 +122,7 @@ def test_reject_recording_failure_does_not_change_response(guarded, env, monkeyp
 
 # ---------- единый приём ----------
 
-PUBLISHED = datetime(2026, 10, 9, 11, 10, 23, tzinfo=timezone.utc)
+PUBLISHED = datetime(2026, 10, 9, 11, 10, 23, tzinfo=UTC)
 EID = "7694623823408188693"
 
 

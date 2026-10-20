@@ -5,7 +5,6 @@
 доступа"(клиент обращается с неверным токеном), 409/413/415/422 и сбой сервера(500) - "ошибка"(публикация
 отклонена или не сохранена); публикация за последние 7 дней - "принимает публикации"; иначе - "ожидает публикаций"."""
 from datetime import datetime, timedelta
-from typing import Optional
 
 from sqlalchemy import func, select
 
@@ -15,7 +14,7 @@ from .base import Connector, when_text
 RECENT = timedelta(days=7)
 
 
-def intake_status(db, row, now: datetime, *, collector: str, last_at: Optional[datetime], denied: str,
+def intake_status(db, row, now: datetime, *, collector: str, last_at: datetime | None, denied: str,
                   rejected: str, working: str, never: str) -> tuple[str, str]:
     """Общее правило статуса приёмника(API и бот): отказ новее последнего успеха → denied / error; успех за 7 дней →
     working; иначе waiting. Тексты - с "{when}" и "{detail}"."""
@@ -48,7 +47,7 @@ class IntakeApiConnector(Connector):
     limitation = ("Принимает нормализованные публикации от внешних сборщиков по серверному токену; решения аналитика "
                   "через приём не передаются.")
 
-    def computed_status(self, db, row, now: datetime) -> Optional[tuple[str, str]]:
+    def computed_status(self, db, row, now: datetime) -> tuple[str, str] | None:
         I = models.IngestItem
         last = models.as_utc(db.scalar(select(func.max(I.collected_at)).where(I.collector == self.code)))
         return intake_status(db, row, now, collector=self.code, last_at=last,

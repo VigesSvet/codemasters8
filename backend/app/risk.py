@@ -19,11 +19,11 @@
 import math
 import re
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .risk_model import ALMATY, BUILT, FACTORS, MARKERS, MODEL, OBSERVATIONS, T, VERSION, fill, fmt_date, zone_for
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 NOT_ASSESSED: Obj = MODEL["notAssessed"]
 
 _SENTENCE = re.compile(r"(?<=[.!?…])\s+|\n+")
@@ -31,19 +31,19 @@ _SENTENCE = re.compile(r"(?<=[.!?…])\s+|\n+")
 
 # ---------- текст публикации ----------
 
-def hits(text: str, words: List[str]) -> List[str]:
+def hits(text: str, words: list[str]) -> list[str]:
     """Маркеры из словаря, найденные в тексте; вложенные("взнос" внутри "первый взнос") убираются."""
     t = text.lower()
     found = [w for w in words if w.lower() in t]
     return [w for w in found if not any(o != w and w.lower() in o.lower() for o in found)]
 
 
-def ad_signals(ad: Obj) -> Dict[str, List[str]]:
+def ad_signals(ad: Obj) -> dict[str, list[str]]:
     t = f"{ad.get('text') or ''} {ad.get('ocr') or ''}"
     return {"sale": hits(t, MARKERS["sale"]), "funds": hits(t, MARKERS["money"]), "safe": hits(t, MARKERS["safe"])}
 
 
-def quote(text: Optional[str], marker: str) -> Optional[str]:
+def quote(text: str | None, marker: str) -> str | None:
     """Фрагмент-основание: предложение с маркером; длинное - обрезается по словам вокруг маркера."""
     if not text:
         return None
@@ -87,8 +87,8 @@ def _item(**kw: Any) -> Obj:
     return {k: v for k, v in kw.items() if v is not None and v != ""}
 
 
-def _factor(code: str, state: str, reason: str, values: Optional[Obj] = None, items: Optional[List[Obj]] = None,
-            text: Optional[str] = None) -> Obj:
+def _factor(code: str, state: str, reason: str, values: Obj | None = None, items: list[Obj] | None = None,
+            text: str | None = None) -> Obj:
     f = FACTORS[code]
     return {
         "code": code,
@@ -109,7 +109,7 @@ def _ad_item(ad: Obj, marker: str) -> Obj:
                  url=ad.get("url"), marker=marker, quote=q, quoteFrom=("text" if in_text else "ocr") if q else None)
 
 
-def _by_date_desc(xs: List[Obj]) -> List[Obj]:
+def _by_date_desc(xs: list[Obj]) -> list[Obj]:
     return sorted(sorted(xs, key=lambda x: x["id"]), key=lambda x: x.get("date") or "", reverse=True)
 
 
@@ -172,7 +172,7 @@ def factor_r1(c: Obj) -> Obj:
     return _factor("R1", "unknown", "unknown", items=items)
 
 
-def _ads_factor(code: str, built: bool, linked: List[Obj], pick) -> Obj:
+def _ads_factor(code: str, built: bool, linked: list[Obj], pick) -> Obj:
     """R2/R3: подтверждённая привязка → hit, только гипотеза привязки → unknown.
     R2 не дают публикации, по которым аналитик отклонил условия оплаты("это не предложение внести деньги").
     В доказательства "отклонено аналитиком" идут только публикации, привязанные к ЖК фактом: отклонённая публикация
@@ -199,15 +199,15 @@ def _ads_factor(code: str, built: bool, linked: List[Obj], pick) -> Obj:
     return _factor(code, "clear", "none")
 
 
-def _money_marker(s: Dict[str, List[str]]) -> Optional[str]:
+def _money_marker(s: dict[str, list[str]]) -> str | None:
     return s["funds"][0] if s["funds"] else None
 
 
-def _adv_marker(s: Dict[str, List[str]]) -> Optional[str]:
+def _adv_marker(s: dict[str, list[str]]) -> str | None:
     return (s["sale"] or s["funds"] or [None])[0]
 
 
-def factor_r4(c: Obj, appeals: List[Obj]) -> Obj:
+def factor_r4(c: Obj, appeals: list[Obj]) -> Obj:
     own = [a for a in appeals if a.get("complexId") == c["id"] and a.get("collective") and a.get("status") != "rejected"]
     item = lambda a: _item(kind="appeal", ref=a["id"], label=a.get("subject"), source=a.get("source"), date=a.get("date"),
                            value=a.get("status"))
@@ -268,8 +268,8 @@ def factor_r6(c: Obj, as_of: date) -> Obj:
     return _factor("R6", "clear", "active")
 
 
-def observations(c: Obj, dev: Optional[Obj]) -> List[Obj]:
-    def obs(code: str, state: str, values: Optional[Obj] = None) -> Obj:
+def observations(c: Obj, dev: Obj | None) -> list[Obj]:
+    def obs(code: str, state: str, values: Obj | None = None) -> Obj:
         o = OBSERVATIONS[code]
         return {"code": code, "title": o["title"], "state": state, "text": fill(o["texts"][state], values)}
 
@@ -289,14 +289,14 @@ def observations(c: Obj, dev: Optional[Obj]) -> List[Obj]:
 
 # ---------- итог ----------
 
-def _total(factors: List[Obj]) -> Obj:
+def _total(factors: list[Obj]) -> Obj:
     score = min(MODEL["maxScore"], sum(f["points"] for f in factors if f["state"] == "hit"))
     zone = zone_for(score, [f["code"] for f in factors if f["state"] == "hit"])
     unknown = [f["code"] for f in factors if f["state"] == "unknown"]
     return {"score": score, "zone": zone, "needsCheck": bool(unknown), "unknown": unknown}
 
 
-def assessed(c: Obj, ads: List[Obj], appeals: List[Obj]) -> bool:
+def assessed(c: Obj, ads: list[Obj], appeals: list[Obj]) -> bool:
     """Оценивается ли риск ЖК. ЖК не из открытого реестра - всегда. Карточка из реестра(сведения источника, аналитиком не
     проверены) - только когда по ней есть проверенные сведения: подтверждённая аналитиком привязка публикации, документ
     основания "есть/нет" с источником и датой сверки, проверенное обращение, подтверждённая готовность с источником и датой
@@ -316,7 +316,7 @@ def assessed(c: Obj, ads: List[Obj], appeals: List[Obj]) -> bool:
     return any(p.get("date") and p.get("source") for p in c.get("photos") or [])
 
 
-def score_complex(c: Obj, dev: Optional[Obj], ads: List[Obj], appeals: List[Obj], as_of: Any = None) -> Obj:
+def score_complex(c: Obj, dev: Obj | None, ads: list[Obj], appeals: list[Obj], as_of: Any = None) -> Obj:
     """Риск ЖК: шесть факторов §5, балл, зона, "Нужна проверка", наблюдения вне балла. Карточка из открытого реестра без
     проверенных сведений - assessed False, балл 0 и пояснение "риск не оценивается"(факторы - как есть, для справки)."""
     d = _as_date(as_of)
@@ -344,7 +344,7 @@ def score_complex(c: Obj, dev: Optional[Obj], ads: List[Obj], appeals: List[Obj]
             "observations": observations(c, dev), "summary": summary, "modelVersion": VERSION, "assessed": True}
 
 
-def score_ad(ad: Obj, c: Optional[Obj]) -> Obj:
+def score_ad(ad: Obj, c: Obj | None) -> Obj:
     """Оценка одной публикации: основание объекта(R1) + её собственные R2 и R3, те же веса и зоны."""
     s = ad_signals(ad)
     # "введён" учитываем, только если привязка к ЖК - факт, а не гипотеза

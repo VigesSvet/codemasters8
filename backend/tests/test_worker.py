@@ -8,7 +8,7 @@ import logging
 import re
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 
 import pytest
 from sqlalchemy import func, select, update
@@ -627,7 +627,7 @@ def test_spent_usd_timezone_and_unknown_cost(client, run_ctx, env):
         for created, cost, ext in ((datetime(2026, 1, 10, 7, 30), 0.25, "r1"), (datetime(2026, 1, 10, 8, 0), None, "r2"),
                                    (datetime(2026, 1, 10, 6, 59), 5.0, "r0"), (datetime(2026, 1, 10, 9, 0), None, None)):
             db.add(models.CollectionRun(collector="tiktok", trigger="schedule", status="succeeded", cost_usd=cost,
-                                        external_run_id=ext, created_at=created.replace(tzinfo=timezone.utc), notes=[]))
+                                        external_run_id=ext, created_at=created.replace(tzinfo=UTC), notes=[]))
         db.commit()
     ctx = run_ctx("tiktok")
     assert ctx.spent_usd(since) == pytest.approx(0.25)

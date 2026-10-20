@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 import stat
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -22,7 +22,7 @@ API_ID = 12345
 API_HASH = "FAKETGHASH-0123456789abcdefgh"
 PHONE = "+77010000000"
 SESSION = "FAKE-STRING-SESSION-0123456789abcdefghijklmnopqrstuvwxyz"
-T0 = datetime(2026, 10, 1, 6, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 10, 1, 6, 0, tzinfo=UTC)
 LOGIN = "Нет авторизованной сессии Telegram: выполните вход — python -m app.integrations.telegram_login --send-code"
 
 

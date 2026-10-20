@@ -27,14 +27,15 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any
+from collections.abc import Callable
 
 from . import video
 from .ai.ocr import clip
 from .settings import get_settings
 
 log = logging.getLogger("saq.speech")
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 
 ENGINE = "faster-whisper"
 LANGS = ("ru", "kk")
@@ -57,7 +58,7 @@ _HALLUCINATIONS = re.compile(
     r"редактор субтитров|корректор|dimatorzok|amara\.org", re.I)
 
 _lock = threading.Lock()
-_models: Dict[Tuple[str, str], Any] = {}
+_models: dict[tuple[str, str], Any] = {}
 
 
 def available() -> bool:
@@ -72,7 +73,7 @@ def command(path: Path, mime: str, max_s: int, timeout: int = EXTRACT_TIMEOUT) -
             "-filter_threads", "1", "-ac", "1", "-ar", str(RATE), "-t", str(max_s + 1), "-f", "f32le", "pipe:1"]
 
 
-def extract_audio(path: Path, mime: str, max_s: int, timeout: int = EXTRACT_TIMEOUT) -> Tuple[Optional[bytes], str]:
+def extract_audio(path: Path, mime: str, max_s: int, timeout: int = EXTRACT_TIMEOUT) -> tuple[bytes | None, str]:
     """(PCM float32 моно 16 кГц, пояснение): нет дорожки - (None, NO_AUDIO), сбой или тайм-аут - (None, причина)."""
     try:
         res = subprocess.run(command(Path(path), mime, max_s, timeout), stdin=subprocess.DEVNULL, capture_output=True,
@@ -110,7 +111,7 @@ def _model(name: str, root: Path):
         return m
 
 
-def download(name: Optional[str] = None) -> Path:
+def download(name: str | None = None) -> Path:
     """Скачать модель SAQ_ASR_MODEL(или name) с HuggingFace в SAQ_ASR_MODEL_DIR; уже скачанная не скачивается заново."""
     from faster_whisper.utils import download_model
 
@@ -124,14 +125,14 @@ def _language(model, audio) -> str:
     """ru или kk - что вероятнее по речи(VAD); речи нет или сбой определения - ru."""
     try:
         _, _, probs = model.detect_language(audio, vad_filter=True)
-    except Exception as e:  # noqa: BLE001 - нет речи после VAD и т. п.: распознаётся как русская
+    except Exception as e:
         log.info("Язык речи не определён (%s) — распознаётся как русская", type(e).__name__)
         return "ru"
     p = dict(probs or [])
     return max(LANGS, key=lambda lang: p.get(lang, 0.0))
 
 
-def _clean(segments, deadline: float) -> Optional[list[str]]:
+def _clean(segments, deadline: float) -> list[str] | None:
     """Тексты сегментов без "галлюцинаций" и повторов подряд; None - не уложилось до deadline(MONOTONIC)."""
     out: list[str] = []
     for seg in segments:
@@ -174,7 +175,7 @@ def transcribe(path: Path, mime: str) -> Obj:
                     "detail": f"Ролик длиннее {s.asr_max_s} с (SAQ_ASR_MAX_S) — речь не распознавалась"}
         try:
             model = _model(name, Path(s.asr_model_dir))
-        except Exception as e:  # noqa: BLE001 - нет сети для загрузки, неизвестное имя модели, битый кэш
+        except Exception as e:
             log.warning("Модель распознавания речи %s не загружена: %s", name, type(e).__name__)
             return {**out, "status": "unavailable",
                     "detail": f"Модель faster-whisper «{name}» не найдена в SAQ_ASR_MODEL_DIR ({type(e).__name__}) — "
@@ -194,12 +195,12 @@ def transcribe(path: Path, mime: str) -> Obj:
         if not text:
             return {**out, "status": "empty", "detail": NO_SPEECH}
         return {**out, "status": "done", "text": text, "detail": None}
-    except Exception as e:  # noqa: BLE001 - сбой распознавания одного ролика не роняет анализ
+    except Exception as e:
         log.warning("Речь в ролике не распознана: %s", type(e).__name__)
         return {**out, "status": "failed", "detail": f"Ошибка распознавания речи ({type(e).__name__})"}
 
 
-def main(argv: Optional[list] = None) -> int:
+def main(argv: list | None = None) -> int:
     import argparse
     import json
 

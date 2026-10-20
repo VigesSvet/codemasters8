@@ -1,7 +1,7 @@
 """Общая запись публикации(integration-spec §7.1, §16.2 test_ads_service): ручной ввод, собранная, заявка бота."""
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 import pytest
 
@@ -53,10 +53,10 @@ def test_manual_errors(client):
 
 
 def test_collected_path(client):
-    at = datetime(2026, 10, 16, 8, 8, 10, tzinfo=timezone.utc)
+    at = datetime(2026, 10, 16, 8, 8, 10, tzinfo=UTC)
     fields = {"platform": "tiktok", "account": "@tumar\x00group", "url": "javascript:alert(1)",
               "text": "ЖК Ульба Ривер\x00 " + "слово " * 6000, "date": ads_service.local_minutes(
-                  datetime(2026, 10, 9, 11, 10, 23, tzinfo=timezone.utc)),
+                  datetime(2026, 10, 9, 11, 10, 23, tzinfo=UTC)),
               # решения аналитика и происхождение из внешнего ввода не принимаются
               "status": "confirmed", "complex_id": "c3", "match_confidence": 0.99, "link_confirmed": True,
               "link_confirmed_by": "Хакер", "assignee": "Хакер", "terms_review": "accepted", "rejected_links": ["c1"],

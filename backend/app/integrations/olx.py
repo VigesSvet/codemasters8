@@ -25,7 +25,7 @@ import re
 import secrets
 from datetime import datetime, timedelta
 from html import escape
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode
 
 import httpx
@@ -156,7 +156,7 @@ def _status_error(resp: httpx.Response, what: str) -> ConnectorError:
 
 # ---------- токены ----------
 
-def _expires_in(value: Any) -> Optional[int]:
+def _expires_in(value: Any) -> int | None:
     try:
         secs = int(value)
     except (TypeError, ValueError):
@@ -226,7 +226,7 @@ def save_token(db: Session, data: dict, now: datetime) -> None:
                    .execution_options(synchronize_session=False))
 
 
-def token_expired(tok: Optional[models.IntegrationToken], now: datetime) -> bool:
+def token_expired(tok: models.IntegrationToken | None, now: datetime) -> bool:
     """Доступ потерян без повторной авторизации: refresh token истёк, или истёк токен доступа, а refresh token нет."""
     if tok is None:
         return False
@@ -238,7 +238,7 @@ def token_expired(tok: Optional[models.IntegrationToken], now: datetime) -> bool
 
 
 def refresh(db: Session, client: httpx.Client, s: Settings, *,
-            now: Optional[datetime] = None) -> models.IntegrationToken:
+            now: datetime | None = None) -> models.IntegrationToken:
     """Обновить токен доступа по refresh token. Транзакция сессии завершается до сетевого запроса; запись - условным
     UPDATE … WHERE rev = :rev(одновременное обновление другим процессом не затирается). invalid_grant -
     AuthExpired, если токен за это время не обновил кто-то другой."""
@@ -278,7 +278,7 @@ def refresh(db: Session, client: httpx.Client, s: Settings, *,
 
 
 def _ensure(db: Session, client: httpx.Client, s: Settings, *,
-            now: Optional[datetime] = None) -> tuple[str, datetime]:
+            now: datetime | None = None) -> tuple[str, datetime]:
     """(действующий токен доступа, поколение подключения obtained_at): до истечения меньше часа - сначала обновить.
     Токен и поколение читаются из одной строки."""
     now = models.as_utc(now) or models.utcnow()
@@ -299,12 +299,12 @@ def _ensure(db: Session, client: httpx.Client, s: Settings, *,
     return token, grant
 
 
-def ensure_token(db: Session, client: httpx.Client, s: Settings, *, now: Optional[datetime] = None) -> str:
+def ensure_token(db: Session, client: httpx.Client, s: Settings, *, now: datetime | None = None) -> str:
     """Действующий токен доступа: до истечения меньше часа - сначала обновить."""
     return _ensure(db, client, s, now=now)[0]
 
 
-def _label_grant(db: Session, grant: Optional[datetime], label: Optional[str], now: datetime) -> bool:
+def _label_grant(db: Session, grant: datetime | None, label: str | None, now: datetime) -> bool:
     """Подпись аккаунта - в строку токена, только если подключение то же(obtained_at = grant: не переподключали и не
     отключали). UPDATE блокирует строку токена до конца транзакции - отключение и новое подключение ждут её. False -
     подключение заменено или удалено: сведения о прежнем аккаунте никуда не пишутся. Без commit."""
@@ -317,7 +317,7 @@ def _label_grant(db: Session, grant: Optional[datetime], label: Optional[str], n
     return res.rowcount == 1
 
 
-def _without_account(facts: Optional[dict]) -> dict:
+def _without_account(facts: dict | None) -> dict:
     return {k: v for k, v in (facts or {}).items() if k not in ACCOUNT_FACTS}
 
 
@@ -384,8 +384,8 @@ def start(db: Session, admin: auth.Admin, author: str) -> tuple[str, datetime]:
     return f"{AUTHORIZE}?{query}", expires
 
 
-def consume_state(db: Session, state: str, current_admin_fp: Optional[str], *,
-                  now: Optional[datetime] = None) -> models.OAuthState:
+def consume_state(db: Session, state: str, current_admin_fp: str | None, *,
+                  now: datetime | None = None) -> models.OAuthState:
     """Погасить state: условный UPDATE used_at(ровно одна строка: свой провайдер, не использован, не истёк), затем
     сверить отпечаток текущего токена администратора. Любая неудача - ValueError с одним текстом(state, погашенный
     до смены токена администратора, остаётся погашенным - вызывающий фиксирует транзакцию). Без commit."""
@@ -424,7 +424,7 @@ class OlxConnector(Connector):
     limitation = ("Partner API даёт доступ только к ресурсам своего авторизованного аккаунта — чужие объявления так не "
                   "собрать.")
 
-    def computed_status(self, db, row, now) -> Optional[tuple[str, str]]:
+    def computed_status(self, db, row, now) -> tuple[str, str] | None:
         """Ключи есть, токена нет - "не подключён"; токен не обновить - "истёк доступ"; иначе - хранимый статус."""
         if db is None:
             return None
@@ -591,8 +591,8 @@ def olx_start(body: schemas.AdminActionIn, admin: auth.Admin = Depends(auth.requ
 @router.get("/api/integrations/olx/callback", response_class=HTMLResponse,
             responses={400: {"description": "state недействителен или OLX отказал"},
                        502: {"description": "OLX не выдал токен или не подтвердил аккаунт"}})
-def olx_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None,
-                 error_description: Optional[str] = None):
+def olx_callback(code: str | None = None, state: str | None = None, error: str | None = None,
+                 error_description: str | None = None):
     """Возврат из OLX(публичный адрес): state → ошибка провайдера → обмен кода сервером → users/me → статус и журнал.
     Ответ - простая страница без токенов. Код и state регистрируются для маскирования только после проверки state
     (адрес публичный: чужие значения не должны расти списком секретов); в журнале запросов параметры code и state

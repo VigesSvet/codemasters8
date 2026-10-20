@@ -25,7 +25,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Callable, Optional
+from typing import Any
+from collections.abc import Callable
 
 from sqlalchemy import and_, exists, not_, select, text, update
 from sqlalchemy.orm import Session, aliased
@@ -53,19 +54,19 @@ MONOTONIC: Callable[[], float] = time.monotonic  # время выполнени
 
 # ---------- постановка ----------
 
-def _active(db: Session, dedupe_key: str) -> Optional[models.Job]:
+def _active(db: Session, dedupe_key: str) -> models.Job | None:
     J = models.Job
     return db.scalar(select(J).where(J.dedupe_key == dedupe_key, J.status.in_(ACTIVE)).order_by(J.id.desc()).limit(1))
 
 
-def active(db: Session, dedupe_key: str) -> Optional[models.Job]:
+def active(db: Session, dedupe_key: str) -> models.Job | None:
     """Активное(в очереди или выполняется) задание с этим ключом."""
     return _active(db, dedupe_key)
 
 
-def enqueue(db: Session, kind: str, *, dedupe_key: Optional[str] = None, collector: Optional[str] = None,
-            run_id: Optional[int] = None, ad_id: Optional[str] = None, content_version: Optional[int] = None,
-            payload: Optional[dict] = None, run_after: Optional[datetime] = None, priority: Optional[int] = None,
+def enqueue(db: Session, kind: str, *, dedupe_key: str | None = None, collector: str | None = None,
+            run_id: int | None = None, ad_id: str | None = None, content_version: int | None = None,
+            payload: dict | None = None, run_after: datetime | None = None, priority: int | None = None,
             max_attempts: int = 5) -> tuple[models.Job, bool]:
     """Задание в очередь(в сессии db, без commit). С dedupe_key: активное задание с тем же ключом уже есть -
     возвращается оно(created=False); для analyze его content_version поднимается до новой версии.
@@ -125,7 +126,7 @@ def _try_claim(db: Session, job_id: int, worker_id: str, now: datetime) -> bool:
     return res.rowcount == 1
 
 
-def claim(db: Session, worker_id: str, now: datetime) -> Optional[models.Job]:
+def claim(db: Session, worker_id: str, now: datetime) -> models.Job | None:
     """Следующее задание(приоритет, срок, id) → "выполняется" у этого воркера; фиксирует транзакцию. None - нечего
     делать. PostgreSQL: FOR UPDATE SKIP LOCKED; SQLite: условный UPDATE, при гонке - до трёх попыток."""
     J = models.Job
@@ -152,13 +153,13 @@ def backoff(attempts: int) -> float:
     return min(BACKOFF_BASE_S * 2 ** max(attempts - 1, 0), BACKOFF_MAX_S) * random.uniform(0.8, 1.2)
 
 
-def complete(db: Session, job: models.Job, result: Optional[dict] = None) -> None:
+def complete(db: Session, job: models.Job, result: dict | None = None) -> None:
     job.status, job.finished_at, job.locked_by = "done", models.utcnow(), None
     if result is not None:
         job.result = dict(result)
 
 
-def fail(db: Session, job: models.Job, error: Optional[str]) -> None:
+def fail(db: Session, job: models.Job, error: str | None) -> None:
     job.status, job.finished_at, job.locked_by = "failed", models.utcnow(), None
     job.last_error = redact(error)
 
@@ -167,7 +168,7 @@ def cancel(db: Session, job: models.Job) -> None:
     job.status, job.finished_at, job.locked_by = "cancelled", models.utcnow(), None
 
 
-def retry(db: Session, job: models.Job, error: Optional[str], *, now: datetime) -> bool:
+def retry(db: Session, job: models.Job, error: str | None, *, now: datetime) -> bool:
     """Повтор с паузой(backoff): задание снова в очереди. False - попытки исчерпаны(вызывающий завершает ошибкой)."""
     job.last_error = redact(error)
     if (job.attempts or 0) >= (job.max_attempts or 1):
@@ -177,7 +178,7 @@ def retry(db: Session, job: models.Job, error: Optional[str], *, now: datetime) 
     return True
 
 
-def defer(db: Session, job: models.Job, seconds: float, payload_update: Optional[dict], *, now: datetime) -> bool:
+def defer(db: Session, job: models.Job, seconds: float, payload_update: dict | None, *, now: datetime) -> bool:
     """Отсрочка без расхода попытки(ожидание внешнего запуска): в очередь через seconds с, payload дополняется.
     False - отсрочек больше MAX_DEFERRALS: задание дальше не откладывается(вызывающий завершает ошибкой)."""
     payload = {**(job.payload or {}), **(payload_update or {})}
@@ -191,8 +192,8 @@ def defer(db: Session, job: models.Job, seconds: float, payload_update: Optional
     return True
 
 
-def fence(db: Session, job_id: int, worker_id: Optional[str], attempts: Optional[int], *,
-          what: str = "итог не записан") -> Optional[models.Job]:
+def fence(db: Session, job_id: int, worker_id: str | None, attempts: int | None, *,
+          what: str = "итог не записан") -> models.Job | None:
     """Задание всё ещё у этого захвата(выполняется, тот же воркер, то же число попыток)? Условный UPDATE-"замок"
     (на PostgreSQL блокирует строку до конца транзакции, на SQLite берёт запись) и чтение свежей строки; None -
     задание уже вернули в очередь, завершили или отдали другому воркеру: итог этого исполнителя не записывается.
@@ -210,7 +211,7 @@ def fence(db: Session, job_id: int, worker_id: Optional[str], attempts: Optional
     return db.get(J, job_id, populate_existing=True)
 
 
-def _requeue(db: Session, job: models.Job, now: datetime, reason: str) -> Optional[str]:
+def _requeue(db: Session, job: models.Job, now: datetime, reason: str) -> str | None:
     """Задание, которое перестал выполнять воркер: снова в очередь(попытка уже израсходована) или итог ошибки, если
     попыток больше нет. Возвращает новый статус; None - задание тем временем завершилось или его уже забрали
     (условный UPDATE по прочитанному захвату не совпал)."""
@@ -294,15 +295,15 @@ class JobInfo:
     по которому итог проверяется(fence); base + прошедшее с started - время итога(now())."""
     id: int
     kind: str
-    collector: Optional[str]
-    run_id: Optional[int]
-    ad_id: Optional[str]
+    collector: str | None
+    run_id: int | None
+    ad_id: str | None
     attempts: int
     max_attempts: int
     payload: dict = field(default_factory=dict)
     trigger: str = "manual"
-    worker_id: Optional[str] = None
-    base: Optional[datetime] = None
+    worker_id: str | None = None
+    base: datetime | None = None
     started: float = field(default_factory=lambda: MONOTONIC())
 
     def now(self) -> datetime:
@@ -311,8 +312,8 @@ class JobInfo:
         return base + timedelta(seconds=MONOTONIC() - self.started)
 
 
-def execute(job_id: int, *, worker_id: str, now: Optional[datetime] = None,
-            stop: Optional[threading.Event] = None) -> None:
+def execute(job_id: int, *, worker_id: str, now: datetime | None = None,
+            stop: threading.Event | None = None) -> None:
     """Выполнить захваченное задание. S1(задание и запуск - "выполняется") фиксируется до обработчика; итог -
     в новой сессии и только пока задание у этого захвата. Исключения обработчика сюда не выходят(кроме ошибок БД
     при записи итога)."""
@@ -350,10 +351,10 @@ class _Failure:
     """Ошибка подключения для итога: код ошибки запуска, статус запуска и подключения, текст, повторять ли."""
     error_code: str
     run_status: str
-    status: Optional[str]  # None - статус подключения не меняется(вычисляется)
+    status: str | None  # None - статус подключения не меняется(вычисляется)
     detail: str
     retryable: bool = False
-    exc: Optional[BaseException] = None
+    exc: BaseException | None = None
 
 
 def _failure(e: BaseException) -> _Failure:
@@ -389,7 +390,7 @@ def _interval_s(conn, row) -> float:
     return float((row.interval_min if row is not None and row.interval_min else conn.default_interval_min) or 60) * 60
 
 
-def _connector_job(info: JobInfo, *, now: datetime, stop: Optional[threading.Event], test: bool) -> None:
+def _connector_job(info: JobInfo, *, now: datetime, stop: threading.Event | None, test: bool) -> None:
     from .integrations import base, registry, service
     from .integrations.context import RunContext
     from .settings import get_settings
@@ -428,7 +429,7 @@ def _connector_job(info: JobInfo, *, now: datetime, stop: Optional[threading.Eve
             _collect_ok(info, conn, ctx)
     except base.Deferred as d:
         _deferred(info, conn, d)
-    except Exception as e:  # noqa: BLE001 - любой сбой подключения - итог запуска, не падение воркера
+    except Exception as e:
         f = _failure(e)
         if f.error_code == "internal":
             log.exception("Подключение %s: необработанная ошибка в задании №%s", code, info.id)
@@ -437,7 +438,7 @@ def _connector_job(info: JobInfo, *, now: datetime, stop: Optional[threading.Eve
         _finish(info, conn, f)
 
 
-def _note(db: Session, run_id: Optional[int], text_: str, level: str = "info", *, now: datetime) -> None:
+def _note(db: Session, run_id: int | None, text_: str, level: str = "info", *, now: datetime) -> None:
     if run_id is None:
         return
     run = db.get(models.CollectionRun, run_id)
@@ -622,17 +623,17 @@ def _collect_ok(info: JobInfo, conn, ctx) -> None:
         db.commit()
 
 
-def _collect(info: JobInfo, *, now: datetime, stop: Optional[threading.Event] = None) -> None:
+def _collect(info: JobInfo, *, now: datetime, stop: threading.Event | None = None) -> None:
     _connector_job(info, now=now, stop=stop, test=False)
 
 
-def _test(info: JobInfo, *, now: datetime, stop: Optional[threading.Event] = None) -> None:
+def _test(info: JobInfo, *, now: datetime, stop: threading.Event | None = None) -> None:
     _connector_job(info, now=now, stop=stop, test=True)
 
 
 # ---------- анализ публикации ----------
 
-def _analyze(info: JobInfo, *, now: datetime, stop: Optional[threading.Event] = None) -> None:
+def _analyze(info: JobInfo, *, now: datetime, stop: threading.Event | None = None) -> None:
     from . import analysis
     from .ads_service import _event
 
@@ -642,7 +643,7 @@ def _analyze(info: JobInfo, *, now: datetime, stop: Optional[threading.Event] = 
         p = info.payload or {}
         result = analysis.run_analysis(info.id, info.ad_id, now=now, force=bool(p.get("force")),
                                        rules_only=bool(p.get("rulesOnly")), reason=p.get("reason"))
-    except Exception as e:  # noqa: BLE001 - сбой анализа - повтор, затем "анализ не выполнен", не падение воркера
+    except Exception as e:
         log.exception("Анализ публикации %s (задание №%s) не выполнен", info.ad_id, info.id)
         error = redact(str(e) or type(e).__name__, limit=300)
         I = models.IngestItem
@@ -676,7 +677,7 @@ def _analyze(info: JobInfo, *, now: datetime, stop: Optional[threading.Event] = 
 
 # ---------- предупреждение жителям ----------
 
-def _alert(info: JobInfo, *, now: datetime, stop: Optional[threading.Event] = None) -> None:
+def _alert(info: JobInfo, *, now: datetime, stop: threading.Event | None = None) -> None:
     from . import alerts
 
     alerts.run_job(info, now=now, stop=stop)

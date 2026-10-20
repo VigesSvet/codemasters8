@@ -52,8 +52,8 @@ import logging
 import math
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any, Literal, Optional, Union
+from datetime import datetime, timedelta, UTC
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, ValidationError
 from sqlalchemy import and_, exists, func, or_, select, update
@@ -170,7 +170,7 @@ class _Signal(_Strict):
 
 
 class _Amount(_Strict):
-    value: Union[StrictInt, StrictFloat]
+    value: StrictInt | StrictFloat
     currency: str
     kind: str
     quote: str
@@ -208,7 +208,7 @@ class Output(_Strict):
     amounts: list[_Amount]
     complexCandidates: list[_Candidate]
     mentionedComplexes: list[_Mention] = []
-    objectStage: Optional[_Stage] = None
+    objectStage: _Stage | None = None
     legalRefs: list[_LegalRef] = []
     uncertainties: list[str]
     summary: str
@@ -221,7 +221,7 @@ _TAGS = ("publication_metadata", "publication_text", "ocr_text", "complex_catalo
 _TAG_RE = re.compile(r"<(\s*/?\s*)(%s)" % "|".join(_TAGS + ("legal_context",)), re.I)
 
 
-def neutralize(text: Optional[str]) -> str:
+def neutralize(text: str | None) -> str:
     """Материал внутри размеченных блоков: теги-разделители в нём обезврежены("<ocr_text>" → "‹ocr_text>"), NUL
     убран. Цитаты сверяются именно с этим(отправленным) текстом."""
     return _TAG_RE.sub(r"‹\1\2", (text or "").replace("\x00", ""))
@@ -236,7 +236,7 @@ def _line(v: Any, limit: int = FIELD_LEN) -> str:
 class Material:
     """Что отправляется модели. account None - не передаётся(заявка жителя: его слова не доказательство, D20)."""
     platform: str
-    account: Optional[str]
+    account: str | None
     bot: bool
     text: str
     ocr: str
@@ -380,9 +380,9 @@ def verify(out: Output, m: Material) -> tuple[dict, dict]:
     цитаты о стадии нет в материале(stage - стадия "unknown"), статья ссылки на норму не из правового контекста
     (article; пункт не номер - очищается, ссылка остаётся). Названия и адреса сверяются без регистра и кавычек."""
     sources = {"text": _norm(m.text), "ocr": _norm(m.ocr)}
-    dropped = {k: 0 for k in DROP_REASONS}
+    dropped = dict.fromkeys(DROP_REASONS, 0)
 
-    def found(quote: str) -> Optional[str]:
+    def found(quote: str) -> str | None:
         q = _norm(quote)
         if len(q.replace(" ", "")) < QUOTE_MIN:
             return None
@@ -533,7 +533,7 @@ def request_cost(db: Session, s: Settings, ad: models.Ad) -> int:
     return _micro(worst_cost(s, len(system) + len(user)))
 
 
-def budget_problem(db: Session, s: Settings, ad: models.Ad, now: datetime) -> Optional[str]:
+def budget_problem(db: Session, s: Settings, ad: models.Ad, now: datetime) -> str | None:
     """Хватит ли остатка дневного бюджета на запрос по публикации. None - хватит, иначе пояснение по-русски."""
     budget = float(s.anthropic_daily_budget_usd)
     need = request_cost(db, s, ad)
@@ -547,7 +547,7 @@ def budget_problem(db: Session, s: Settings, ad: models.Ad, now: datetime) -> Op
 def day_start(now: datetime) -> datetime:
     """Начало дня бюджета(полночь по Усть-Каменогорску) в UTC."""
     local = models.as_utc(now).astimezone(ALMATY)
-    return datetime(local.year, local.month, local.day, tzinfo=ALMATY).astimezone(timezone.utc)
+    return datetime(local.year, local.month, local.day, tzinfo=ALMATY).astimezone(UTC)
 
 
 # ---------- запись ----------
@@ -557,7 +557,7 @@ _UPDATABLE = frozenset({"item_id", "content_version", "served_model", "status", 
                         "cost_usd", "error", "request_id", "meta", "updated_at"})
 
 
-def _find(db: Session, ad_id: str, key: str, model: str) -> Optional[models.LlmAnalysis]:
+def _find(db: Session, ad_id: str, key: str, model: str) -> models.LlmAnalysis | None:
     L = models.LlmAnalysis
     return db.scalar(select(L).where(L.ad_id == ad_id, L.content_hash == key, L.model == model,
                                      L.prompt_version == PROMPT_VERSION))
@@ -568,7 +568,7 @@ def archived_hash(key: str, row_id: int) -> str:
     return hashlib.sha256(f"{key}:{row_id}".encode()).hexdigest()
 
 
-def _save(ad_id: str, key: str, model: str, values: dict, now: datetime, archive: Optional[int] = None) -> int:
+def _save(ad_id: str, key: str, model: str, values: dict, now: datetime, archive: int | None = None) -> int:
     """Строка анализа(вставка или обновление по ключу) в своей сессии. Новая строка снимает ожидание повтора у
     прежних строк публикации(их материал устарел). archive - строка прежнего ответа по этому ключу(повторный анализ):
     в той же транзакции она уходит в историю(производный ключ, meta.materialHash - исходный), и результат пишется
@@ -576,7 +576,7 @@ def _save(ad_id: str, key: str, model: str, values: dict, now: datetime, archive
     L = models.LlmAnalysis
     values = {k: v for k, v in values.items() if k in _UPDATABLE}
     values["updated_at"] = models.as_utc(now)
-    if "error" in values and values["error"]:
+    if values.get("error"):
         values["error"] = redact(values["error"], limit=claude.ERROR_MAX)
     with SessionLocal() as db:
         old = db.get(L, archive) if archive is not None else None
@@ -608,7 +608,7 @@ def _touch(row_id: int, now: datetime) -> None:
         db.commit()
 
 
-def _connector(status: str, detail: Optional[str], now: datetime, *, audit: bool, error: Optional[str] = None,
+def _connector(status: str, detail: str | None, now: datetime, *, audit: bool, error: str | None = None,
                key_fp: bool = False) -> None:
     """Состояние подключения "anthropic" по итогу запроса(своя сессия); сбой записи статуса не роняет анализ."""
     from .integrations import service
@@ -627,11 +627,11 @@ def _connector(status: str, detail: Optional[str], now: datetime, *, audit: bool
                 r.facts = {**(r.facts or {}), "keyFp": {claude.KEY_ENV: fp} if fp else {}}
             service.transition(db, CODE, status, detail, at=at, audit=audit)
             db.commit()
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("Статус подключения «%s» не записан", CODE, exc_info=True)
 
 
-def _key_blocked(db: Session) -> Optional[str]:
+def _key_blocked(db: Session) -> str | None:
     """Ключ уже отклонён(401/403) и с тех пор не менялся - запрос не отправляется до замены ключа или успешной
     "Проверить подключение"."""
     from .integrations import registry, service
@@ -697,8 +697,8 @@ def done_text(result: dict, dropped: dict, bot: bool) -> str:
     return text
 
 
-def event_for(status: str, result: Optional[dict], dropped: Optional[dict], error: Optional[str], meta: dict,
-              bot: bool) -> Optional[tuple[str, str]]:
+def event_for(status: str, result: dict | None, dropped: dict | None, error: str | None, meta: dict,
+              bot: bool) -> tuple[str, str] | None:
     """(вид события, текст) по итогу анализа; None - событие не нужно(ожидание повтора, нечего анализировать)."""
     if status == "done":
         return "ai", done_text(result or {}, dropped or {}, bot)
@@ -723,11 +723,11 @@ class Outcome:
     записать в журнал публикации; retry_at - когда повторить(задание анализа ставится к этому сроку)."""
     status: str
     fresh: bool = False
-    row_id: Optional[int] = None
-    event: Optional[tuple[str, str]] = None
-    retry_at: Optional[datetime] = None
+    row_id: int | None = None
+    event: tuple[str, str] | None = None
+    retry_at: datetime | None = None
     cost_usd: float = 0.0
-    model: Optional[str] = None
+    model: str | None = None
     dropped: dict = field(default_factory=dict)
 
     def summary(self) -> dict:
@@ -784,7 +784,7 @@ def due(db: Session, ad_id: str, now: datetime) -> bool:
     return ad is not None and backlog(ad, rows, now)
 
 
-def unavailable(db: Session, s: Settings) -> Optional[tuple[int, str]]:
+def unavailable(db: Session, s: Settings) -> tuple[int, str] | None:
     """Почему запрос к Claude сейчас не отправить: (HTTP-код для API, пояснение по-русски); None - можно. 503 - не
     настроено на сервере(нет ключа или пакета SDK), 409 - ключ отклонён или бюджет 0."""
     if s.missing(claude.KEY_ENV):
@@ -852,8 +852,8 @@ def backfill(db: Session, now: datetime) -> list[str]:
     return picked
 
 
-def run_stage(ad_id: str, item_id: Optional[int], version: Optional[int], hypotheses: list, *,
-              now: datetime, force: bool = False) -> Optional[Outcome]:
+def run_stage(ad_id: str, item_id: int | None, version: int | None, hypotheses: list, *,
+              now: datetime, force: bool = False) -> Outcome | None:
     """Этап "llm" для публикации. None - ANTHROPIC_API_KEY не задан(этап не выполняется, ничего не пишется).
     force - повторный анализ: запрос уходит, даже если этот материал этой моделью уже проанализирован(прежний ответ -
     в историю). Исключения наружу не выходят: внутренняя ошибка - "анализ ИИ не выполнен"."""
@@ -863,15 +863,15 @@ def run_stage(ad_id: str, item_id: Optional[int], version: Optional[int], hypoth
     now = models.as_utc(now) or models.utcnow()
     try:
         return _run(s, ad_id, item_id, version, hypotheses or [], now, force)
-    except Exception:  # noqa: BLE001 - сбой этапа ИИ не роняет анализ публикации
+    except Exception:
         log.exception("Анализ ИИ публикации %s: внутренняя ошибка этапа", ad_id)
         return Outcome("failed", fresh=True, model=s.anthropic_model,
                        event=("system", "Анализ ИИ не выполнен: внутренняя ошибка этапа — подробности в "
                                         "журнале воркера; проверьте вручную"))
 
 
-def _run(s: Settings, ad_id: str, item_id: Optional[int], version: Optional[int], hypotheses: list,
-         now: datetime, force: bool = False) -> Optional[Outcome]:
+def _run(s: Settings, ad_id: str, item_id: int | None, version: int | None, hypotheses: list,
+         now: datetime, force: bool = False) -> Outcome | None:
     model = s.anthropic_model
     with SessionLocal() as db:
         ad = db.get(models.Ad, ad_id)
@@ -948,7 +948,7 @@ def _run(s: Settings, ad_id: str, item_id: Optional[int], version: Optional[int]
 
 
 def _failed(e: "claude.CallError", s: Settings, ad_id: str, key: str, model: str, base: dict, attempts: int,
-            mat: Material, now: datetime, archive: Optional[int] = None) -> Outcome:
+            mat: Material, now: datetime, archive: int | None = None) -> Outcome:
     """Ошибка запроса: повтор(сеть, 429, 5xx - пока есть попытки) или "не выполнен" со статусом подключения."""
     meta = {"errorKind": e.kind, "httpStatus": e.status, "catalogSize": len(mat.catalog)}
     vals = {**base, "status": "failed", "attempts": attempts, "request_id": e.request_id, "meta": meta,
@@ -977,14 +977,14 @@ def _failed(e: "claude.CallError", s: Settings, ad_id: str, key: str, model: str
                    event=event_for("failed", None, None, detail, meta, mat.bot))
 
 
-def _discover(ad_id: str, result: Optional[dict], now: datetime) -> None:
+def _discover(ad_id: str, result: dict | None, now: datetime) -> None:
     """Упомянутые ЖК, которых нет в справочнике и открытом реестре, - объекты из рекламы(app.discovery, своя сессия).
     Сбой учёта не роняет анализ: результат Claude уже записан."""
     try:
         from . import discovery
 
         discovery.record_result(ad_id, result, now)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("Объекты из рекламы по публикации %s не учтены", ad_id, exc_info=True)
 
 
@@ -996,12 +996,12 @@ def _connector_note(detail: str, now: datetime) -> None:
             if r is not None:
                 r.last_error, r.last_error_at = redact(detail), models.as_utc(now)
                 db.commit()
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("Ошибка подключения «%s» не записана", CODE, exc_info=True)
 
 
 def _answered(reply: "claude.Reply", s: Settings, ad_id: str, key: str, model: str, base: dict, attempts: int,
-              mat: Material, now: datetime, archive: Optional[int] = None) -> Outcome:
+              mat: Material, now: datetime, archive: int | None = None) -> Outcome:
     """Ответ получен(HTTP 200): сначала stop_reason, потом разбор JSON, проверка схемы и сверка с материалом.
     served_model есть у каждого ответа(нет в ответе - запрошенная модель): по нему SQL дозапроса видит "модель
     ответила"."""
@@ -1041,7 +1041,7 @@ def _answered(reply: "claude.Reply", s: Settings, ad_id: str, key: str, model: s
         with SessionLocal() as db:
             spent_note = (f"; сегодня ${spent_today(db, now):.2f} из "
                           f"${float(s.anthropic_daily_budget_usd):.2f}")
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     from .integrations.base import when_text
 

@@ -2,7 +2,7 @@
 моделей(as_utc, insert_ignore) и новые поля схем API(AdOut, HumanName, приём публикаций)."""
 import re
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 from pathlib import Path
 
 import pytest
@@ -440,9 +440,9 @@ def test_json_mutation_tracked(client):
 def test_as_utc():
     almaty = timezone(timedelta(hours=5))
     assert models.as_utc(None) is None
-    assert models.as_utc(datetime(2026, 10, 16, 12, 0)) == datetime(2026, 10, 16, 12, 0, tzinfo=timezone.utc)
+    assert models.as_utc(datetime(2026, 10, 16, 12, 0)) == datetime(2026, 10, 16, 12, 0, tzinfo=UTC)
     got = models.as_utc(datetime(2026, 10, 16, 12, 0, tzinfo=almaty))
-    assert got.tzinfo == timezone.utc and got.hour == 7
+    assert got.tzinfo == UTC and got.hour == 7
 
 
 def test_insert_ignore_and_partial_unique_index(client):
@@ -532,7 +532,7 @@ def _intake(**kw):
 def test_intake_publication_schema():
     b = _intake(text="a\x00b" + "x" * 30000, account="@x\x00y", publishedAt="2026-10-09T11:10:23.000Z")
     assert b.text.startswith("ab") and len(b.text) == schemas.AD_TEXT_MAX and b.account == "@xy"
-    assert b.published_at == datetime(2026, 10, 9, 11, 10, 23, tzinfo=timezone.utc)
+    assert b.published_at == datetime(2026, 10, 9, 11, 10, 23, tzinfo=UTC)
     tg = schemas.IntakePublicationIn.model_validate({"platform": "telegram", "externalId": "-1001234567890:5"})
     assert tg.external_id == "1234567890:5"
 
@@ -547,8 +547,8 @@ def test_intake_publication_schema():
         status="confirmed", complexId="c1")
     assert "extra_forbidden" in err(unknown=1) or "Extra inputs" in err(unknown=1)
     assert "publishedAt: укажите часовой пояс" in err(publishedAt="2026-10-09T11:10:23")
-    future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
-    old = (datetime.now(timezone.utc) - timedelta(days=31)).isoformat()
+    future = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+    old = (datetime.now(UTC) - timedelta(days=31)).isoformat()
     assert "collectedAt в будущем" in err(collectedAt=future)
     assert "collectedAt старше 30 дней" in err(collectedAt=old)
     assert "media.url: нужна ссылка https://" in err(media=[{"key": "a", "url": "http://x/y.png"}])

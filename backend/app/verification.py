@@ -26,7 +26,7 @@
 import math
 import uuid
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -40,7 +40,7 @@ from .risk_model import MODEL, T
 
 router = APIRouter(tags=["verification"])
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 DOCS = {d["key"]: d for d in MODEL["documents"]}  # guarantee | mio | bvu → {label, refField}
 DOC_NAMES = {"guarantee": "гарантия ЕО (КЖК)", "mio": "разрешение МИО", "bvu": "участие банка второго уровня"}
 TRI = {"yes": "есть", "no": "нет", "unknown": "нет сведений"}
@@ -61,7 +61,7 @@ def _num(x: float) -> Any:
     return int(x) if float(x).is_integer() else x
 
 
-def _then(text: str, comment: Optional[str]) -> str:
+def _then(text: str, comment: str | None) -> str:
     return f"{text}{'' if text.endswith('.') else '.'} Комментарий: {comment}" if comment else text
 
 
@@ -90,20 +90,20 @@ def _commit_row(db: Session, cid: str) -> Obj:
     return _row(db, _complex(db, cid))
 
 
-def _check(source: Optional[str], url: Optional[str], checked: str, who: str, comment: Optional[str], **extra) -> Obj:
+def _check(source: str | None, url: str | None, checked: str, who: str, comment: str | None, **extra) -> Obj:
     out = {**extra, "source": source, "url": url, "checkedAt": checked, "checkedBy": who}
     if comment:
         out["comment"] = comment
     return out
 
 
-def _src_text(source: str, url: Optional[str]) -> str:
+def _src_text(source: str, url: str | None) -> str:
     return f"источник: {source}" + (f" ({url})" if url else "")
 
 
 # ---------- основание ----------
 
-def doc_view(c: models.Complex, suggest: Optional[Obj]) -> List[Obj]:
+def doc_view(c: models.Complex, suggest: Obj | None) -> list[Obj]:
     """Документы основания: значение, сверка(кто, когда, где), подсказка открытого реестра."""
     b = c.basis or {}
     own = b.get("sources") or {}
@@ -307,10 +307,10 @@ def appeals_check(cid: str, body: schemas.AppealsCheckIn, db: Session = Depends(
 
 # ---------- снимки площадки ----------
 
-def idle_days(photos: List[Obj]) -> int:
+def idle_days(photos: list[Obj]) -> int:
     """Простой по снимкам: от первого до последнего снимка хвостовой серии(по дате) без активности или с низкой;
     снимки "нет сведений" серию не прерывают; последний информативный снимок с активностью - 0."""
-    run: List[str] = []
+    run: list[str] = []
     for p in sorted((p for p in photos if p.get("date")), key=lambda p: p["date"], reverse=True):
         act = p.get("activity")
         if act in T["idleActivities"]:
@@ -330,9 +330,9 @@ def _form_errors(e: ValidationError) -> RequestValidationError:
              status_code=201,
              responses={413: {"description": "Файл больше 10 МБ"}, 415: {"description": "Не изображение"},
                         429: {"description": "Слишком много загрузок"}, 507: {"description": "Мало места"}})
-def add_photo(cid: str, file: UploadFile = File(...), author: Optional[str] = Form(None),
-              date_: Optional[str] = Form(None, alias="date"), source: Optional[str] = Form(None),
-              activity: Optional[str] = Form(None), note: Optional[str] = Form(None), db: Session = Depends(get_db)):
+def add_photo(cid: str, file: UploadFile = File(...), author: str | None = Form(None),
+              date_: str | None = Form(None, alias="date"), source: str | None = Form(None),
+              activity: str | None = Form(None), note: str | None = Form(None), db: Session = Depends(get_db)):
     """Снимок площадки(multipart: file, author, date, source, activity: active | idle | unknown, note): файл - в
     хранилище(те же пределы, что у скриншота: 10 МБ, JPEG / PNG / WEBP / GIF по сигнатуре, часовой лимит ручных
     загрузок), запись - в снимках ЖК(src /api/media/{id}). Датированный снимок с источником - проверенные сведения(риск

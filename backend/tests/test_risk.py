@@ -10,7 +10,7 @@ import math
 import random
 import re
 from collections import Counter
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, UTC
 from pathlib import Path
 
 import pytest
@@ -203,7 +203,7 @@ DEFAULT = {"R1": ("clear", "ok_guarantee"), "R2": ("clear", "none"), "R3": ("cle
 OFFER, ADS = ("hit", "offer"), ("hit", "ads")
 ABSENT, VERIFIED, MISMATCH, IDLE = ("hit", "absent"), ("hit", "verified"), ("hit", "mismatch"), ("hit", "idle")
 UNLINKED, ADS_UNLINKED, REJECTED = ("unknown", "offer_unlinked"), ("unknown", "ads_unlinked"), ("clear", "offer_rejected")
-BUILT_ALL = {c: ("clear", "built") for c in ["R1", "R2", "R3", "R5", "R6"]}
+BUILT_ALL = dict.fromkeys(["R1", "R2", "R3", "R5", "R6"], ("clear", "built"))
 
 # имя → (балл, зона, "нужна проверка", отличия факторов от DEFAULT)
 EXPECT = {
@@ -1159,9 +1159,9 @@ def _frozen_now(utc):
 
 
 @pytest.mark.parametrize("utc,day", [
-    (datetime(2026, 10, 15, 18, 59, tzinfo=timezone.utc), "2026-10-15"),  # 23:59 в Усть-Каменогорске
-    (datetime(2026, 10, 15, 19, 0, tzinfo=timezone.utc), "2026-10-16"),   # 00:00 - по UTC ещё 15-е
-    (datetime(2026, 10, 15, 23, 30, tzinfo=timezone.utc), "2026-10-16"),
+    (datetime(2026, 10, 15, 18, 59, tzinfo=UTC), "2026-10-15"),  # 23:59 в Усть-Каменогорске
+    (datetime(2026, 10, 15, 19, 0, tzinfo=UTC), "2026-10-16"),   # 00:00 - по UTC ещё 15-е
+    (datetime(2026, 10, 15, 23, 30, tzinfo=UTC), "2026-10-16"),
 ])
 def test_default_as_of_is_today_utc5(monkeypatch, utc, day):
     """Без asOf расчёт идёт на сегодняшнюю дату по UTC+5, а не по поясу процесса."""

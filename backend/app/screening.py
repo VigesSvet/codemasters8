@@ -55,7 +55,8 @@ unknown - ЖК в системе нет; иначе check.
 """
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any
+from collections.abc import Iterable
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, lazyload
@@ -66,7 +67,7 @@ from .risk import doc_source, hits, quote as marker_quote
 from .risk_model import ALMATY, BUILT, MARKERS
 from .settings import get_settings
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 SYSTEM = "Система"
 ADVERTISED = "advertised"
 # События журнала с гипотезой правил(analysis._hypothesis_event, ads_service._create_manual, seed.journal)
@@ -125,19 +126,19 @@ def today() -> date:
     return datetime.now(ALMATY).date()
 
 
-def _day(value: Optional[str]) -> Optional[date]:
+def _day(value: str | None) -> date | None:
     try:
         return date.fromisoformat(str(value or "")[:10])
     except ValueError:
         return None
 
 
-def _fmt_day(value: Optional[str]) -> str:
+def _fmt_day(value: str | None) -> str:
     d = _day(value)
     return d.strftime("%d.%m.%Y") if d else "без даты"
 
 
-def _short(s: Optional[str], n: int = 160) -> str:
+def _short(s: str | None, n: int = 160) -> str:
     s = " ".join((s or "").split())
     return s if len(s) <= n else s[:n - 1] + "…"
 
@@ -149,32 +150,32 @@ class AdFacts:
     """Что оценка знает о публикации: дата, площадка, решения аналитика, признаки, стадия и к каким ЖК она отнесена."""
     id: str
     date: str
-    day: Optional[date]
+    day: date | None
     platform: str
     account: str
     source: str
     status: str
-    complex_id: Optional[str]
+    complex_id: str | None
     confirmed: bool
     rejected: frozenset
     terms_rejected: bool
-    concerning: List[Tuple[str, str]] = field(default_factory=list)  # (вид, цитата)
-    supporting: List[Tuple[str, str]] = field(default_factory=list)
-    stage: Optional[str] = None  # under_construction | completed | unknown(Claude objectStage)
+    concerning: list[tuple[str, str]] = field(default_factory=list)  # (вид, цитата)
+    supporting: list[tuple[str, str]] = field(default_factory=list)
+    stage: str | None = None  # under_construction | completed | unknown(Claude objectStage)
     stage_quote: str = ""
-    building: List[Tuple[str, str]] = field(default_factory=list)  # (маркер строящегося объекта / новой очереди, цитата)
-    claude: Dict[str, str] = field(default_factory=dict)  # ЖК → уверенность(high | medium)
-    rules: Optional[str] = None  # лучшая гипотеза правил(журнал)
-    discovered: Set[str] = field(default_factory=set)  # ЖК по привязанным объектам из рекламы
+    building: list[tuple[str, str]] = field(default_factory=list)  # (маркер строящегося объекта / новой очереди, цитата)
+    claude: dict[str, str] = field(default_factory=dict)  # ЖК → уверенность(high | medium)
+    rules: str | None = None  # лучшая гипотеза правил(журнал)
+    discovered: set[str] = field(default_factory=set)  # ЖК по привязанным объектам из рекламы
     from_claude: bool = False
 
-    def targets(self) -> Dict[str, str]:
+    def targets(self) -> dict[str, str]:
         """ЖК, к которым публикация отнесена, и основание. Подтверждённая привязка - единственная."""
         if self.status == "dismissed":
             return {}
         if self.confirmed and self.complex_id:
             return {self.complex_id: "confirmed"}
-        out: Dict[str, str] = {}
+        out: dict[str, str] = {}
         for cid in sorted(self.discovered):
             out.setdefault(cid, "discovered")
         for cid in self.claude:
@@ -193,7 +194,7 @@ class AdFacts:
         return ", ".join(x for x in (platform, self.account) if x) or "площадка не указана"
 
 
-def rules_hypotheses(db: Session, ad_ids: Optional[Iterable[str]] = None) -> Dict[str, Optional[str]]:
+def rules_hypotheses(db: Session, ad_ids: Iterable[str] | None = None) -> dict[str, str | None]:
     """Последняя гипотеза правил по публикации - из журнала("Гипотеза ИИ: ЖК "…"" с ЖК или "ИИ: ЖК не определён"
     от "Системы"): {публикация: ЖК или None}."""
     E = models.AuditEvent
@@ -203,39 +204,39 @@ def rules_hypotheses(db: Session, ad_ids: Optional[Iterable[str]] = None) -> Dic
          .order_by(E.at, E.id))
     if ad_ids is not None:
         q = q.where(E.ad_id.in_(list(ad_ids)))
-    out: Dict[str, Optional[str]] = {}
+    out: dict[str, str | None] = {}
     for aid, cid in db.execute(q):
         out[aid] = cid
     return out
 
 
-def discovered_links(db: Session, ad_ids: Optional[Iterable[str]] = None) -> Dict[str, Set[str]]:
+def discovered_links(db: Session, ad_ids: Iterable[str] | None = None) -> dict[str, set[str]]:
     """Публикация → ЖК, к которым аналитик привязал объекты из рекламы, упомянутые в ней."""
     M, O = models.DiscoveredMention, models.DiscoveredObject
     q = (select(M.ad_id, O.complex_id).join(O, O.id == M.object_id)
          .where(O.status == "linked", O.complex_id.is_not(None)))
     if ad_ids is not None:
         q = q.where(M.ad_id.in_(list(ad_ids)))
-    out: Dict[str, Set[str]] = {}
+    out: dict[str, set[str]] = {}
     for aid, cid in db.execute(q):
         out.setdefault(aid, set()).add(cid)
     return out
 
 
-def _latest_done(ad: models.Ad) -> Optional[models.LlmAnalysis]:
+def _latest_done(ad: models.Ad) -> models.LlmAnalysis | None:
     return next((r for r in ad.llm_analyses if r.status == "done" and r.result), None)
 
 
-def _building(ad: models.Ad) -> List[Tuple[str, str]]:
-    out: List[Tuple[str, str]] = []
+def _building(ad: models.Ad) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
     for marker in hits(f"{ad.text or ''} {ad.ocr or ''}", _BUILDING_MARKERS):
         q = marker_quote(ad.text, marker) or marker_quote(ad.ocr, marker) or marker
         out.append((marker, _short(q)))
     return out
 
 
-def _rule_signals(ad: models.Ad) -> List[Tuple[str, str]]:
-    out: List[Tuple[str, str]] = []
+def _rule_signals(ad: models.Ad) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
     for marker in hits(f"{ad.text or ''} {ad.ocr or ''}", _RULE_MARKERS):
         kind = _RULE_TYPES.get(marker.lower(), "money")
         q = marker_quote(ad.text, marker) or marker_quote(ad.ocr, marker) or marker
@@ -243,7 +244,7 @@ def _rule_signals(ad: models.Ad) -> List[Tuple[str, str]]:
     return out
 
 
-def facts_of(ad: models.Ad, rules: Optional[str], discovered: Set[str]) -> AdFacts:
+def facts_of(ad: models.Ad, rules: str | None, discovered: set[str]) -> AdFacts:
     f = AdFacts(id=ad.id, date=ad.date or "", day=_day(ad.date), platform=ad.platform or "", account=ad.account or "",
                 source=ad.source or "manual", status=ad.status or "new", complex_id=ad.complex_id,
                 confirmed=bool((ad.link_confirmed_by or "").strip()) or ad.status == "confirmed",
@@ -278,7 +279,7 @@ def facts_of(ad: models.Ad, rules: Optional[str], discovered: Set[str]) -> AdFac
     return f
 
 
-def load_facts(db: Session, ad_ids: Optional[Iterable[str]] = None) -> Dict[str, AdFacts]:
+def load_facts(db: Session, ad_ids: Iterable[str] | None = None) -> dict[str, AdFacts]:
     A = models.Ad
     q = select(A).options(lazyload(A.media), lazyload(A.ingest))
     ids = list(ad_ids) if ad_ids is not None else None
@@ -294,7 +295,7 @@ def load_facts(db: Session, ad_ids: Optional[Iterable[str]] = None) -> Dict[str,
 
 # ---------- основание по открытым данным ----------
 
-def _stage_of(rs: List[Obj]) -> Optional[str]:
+def _stage_of(rs: list[Obj]) -> str | None:
     t = " ".join((r.get("stage") or "") for r in rs).lower()
     if "заверш" in t and "строительств" not in t:
         return "completed"
@@ -310,9 +311,9 @@ def _doc(r: Obj) -> str:
     return doc + (f" от {d[8:10]}.{d[5:7]}.{d[:4]}" if d and len(d) >= 10 else "")
 
 
-def analyst_checks(b: Obj) -> Dict[str, Obj]:
+def analyst_checks(b: Obj) -> dict[str, Obj]:
     """Сверенные документы основания: "есть"/"нет" с источником и датой сверки(своей или общей - risk.doc_source)."""
-    out: Dict[str, Obj] = {}
+    out: dict[str, Obj] = {}
     for d in DOC_LABELS:
         if b.get(d) in ("yes", "no"):
             p = doc_source(b, d)
@@ -321,7 +322,7 @@ def analyst_checks(b: Obj) -> Dict[str, Obj]:
     return out
 
 
-def _checked_text(b: Obj, ok: Dict[str, Obj], docs: List[str]) -> str:
+def _checked_text(b: Obj, ok: dict[str, Obj], docs: list[str]) -> str:
     """"(источник, дата)" решающих документов: их собственная сверка(запись аналитика - basis.sources[документ] с
     checkedBy); у сведений без сверки аналитиком(демо-набор) - общая сверка, если она есть."""
     own = (b.get("sources") or {})
@@ -331,11 +332,11 @@ def _checked_text(b: Obj, ok: Dict[str, Obj], docs: List[str]) -> str:
     return f" ({'; '.join(parts)})" if parts else ""
 
 
-def _join(xs: List[str]) -> str:
+def _join(xs: list[str]) -> str:
     return xs[0] if len(xs) == 1 else ", ".join(xs[:-1]) + " и " + xs[-1]
 
 
-def permit_for(c: models.Complex, rs: List[Obj], key: Optional[str]) -> Obj:
+def permit_for(c: models.Complex, rs: list[Obj], key: str | None) -> Obj:
     """Основание привлекать деньги дольщиков: сверка аналитика(basis "есть/нет" с источником и датой) важнее
     открытых данных; затем раздел "Без разрешения на дольщиков", документ Homeportal, запись Казреестра."""
     b = c.basis or {}
@@ -388,15 +389,15 @@ def permit_for(c: models.Complex, rs: List[Obj], key: Optional[str]) -> Obj:
     return {**base, "status": "unknown", "source": None, "url": None, "verified": False, "text": text}
 
 
-def registry_groups(db: Session, complexes: Iterable[models.Complex]) -> Dict[str, Tuple[Optional[str], List[Obj]]]:
+def registry_groups(db: Session, complexes: Iterable[models.Complex]) -> dict[str, tuple[str | None, list[Obj]]]:
     """ЖК → (ключ объекта открытых данных, его записи): карточка реестра "r-<ключ>" - со своими записями, прочие - без."""
     from . import demo, registry
 
-    by_key: Dict[str, List[Obj]] = {}
+    by_key: dict[str, list[Obj]] = {}
     for r in registry.records(db):
         by_key.setdefault(r["key"], []).append(r)
     key_of = {demo.complex_id(k): k for k in by_key}
-    out: Dict[str, Tuple[Optional[str], List[Obj]]] = {}
+    out: dict[str, tuple[str | None, list[Obj]]] = {}
     for c in complexes:
         key = key_of.get(c.id) if c.origin == "registry" else None
         out[c.id] = (key, by_key.get(key, []) if key else [])
@@ -404,21 +405,21 @@ def registry_groups(db: Session, complexes: Iterable[models.Complex]) -> Dict[st
 
 
 def permits(db: Session, complexes: Iterable[models.Complex],
-            groups: Optional[Dict[str, Tuple[Optional[str], List[Obj]]]] = None) -> Dict[str, Obj]:
+            groups: dict[str, tuple[str | None, list[Obj]]] | None = None) -> dict[str, Obj]:
     """Основание по каждому ЖК; карточка реестра "r-<ключ>" сопоставляется со своими записями открытых данных."""
     complexes = list(complexes)
     groups = groups if groups is not None else registry_groups(db, complexes)
     return {c.id: permit_for(c, groups[c.id][1], groups[c.id][0]) for c in complexes}
 
 
-def suggestions(rs: List[Obj]) -> Dict[str, Obj]:
+def suggestions(rs: list[Obj]) -> dict[str, Obj]:
     """Документы основания, которые называет открытый реестр(записи Homeportal со способом привлечения), - подсказка
     для сверки в один клик: номер и дата(до трёх), короткое название источника, ссылка первой записи. Сведения
     источника, а не сверка: "есть" записывает только аналитик(POST /api/complexes/{id}/basis)."""
     from . import importer
 
     order = {s: i for i, s in enumerate(importer.SOURCE_ORDER)}
-    out: Dict[str, Obj] = {}
+    out: dict[str, Obj] = {}
     for d in DOC_LABELS:
         recs = sorted((r for r in rs if r.get("fundingMethod") == d),
                       key=lambda r: (order.get(r.get("source"), 9), r.get("row") or 0, r.get("id") or 0))
@@ -437,7 +438,7 @@ def suggestions(rs: List[Obj]) -> Dict[str, Obj]:
 
 # ---------- оценка ----------
 
-def _ad_reason(f: AdFacts, kind: str, signal: Optional[Tuple[str, str]]) -> Obj:
+def _ad_reason(f: AdFacts, kind: str, signal: tuple[str, str] | None) -> Obj:
     if signal is not None:
         t, q = signal
         text = (f"Реклама {_fmt_day(f.date)} ({f.who}): {SIGNAL_LABELS.get(t, t)} — «{q}»; "
@@ -446,18 +447,18 @@ def _ad_reason(f: AdFacts, kind: str, signal: Optional[Tuple[str, str]]) -> Obj:
     return {"text": f"Реклама {_fmt_day(f.date)} ({f.who}); {BASIS_TEXT.get(kind, kind)}", "adId": f.id}
 
 
-def _newest(items: List[Tuple[AdFacts, str]]) -> List[Tuple[AdFacts, str]]:
+def _newest(items: list[tuple[AdFacts, str]]) -> list[tuple[AdFacts, str]]:
     return sorted(items, key=lambda x: (x[0].date or "", x[0].id), reverse=True)
 
 
-def _basis(decisive: List[Tuple[AdFacts, str]], *, any_confirmed: bool) -> str:
+def _basis(decisive: list[tuple[AdFacts, str]], *, any_confirmed: bool) -> str:
     if not decisive:
         return "confirmed"
     flags = [k == "confirmed" for _, k in decisive]
     return "confirmed" if (any(flags) if any_confirmed else all(flags)) else "hypothesis"
 
 
-def screen(permit: Obj, ads: List[Tuple[AdFacts, str]], *, as_of: date, days: int, origin: str,
+def screen(permit: Obj, ads: list[tuple[AdFacts, str]], *, as_of: date, days: int, origin: str,
            card_completed: bool = False) -> Obj:
     """Оценка одного ЖК(или объекта из рекламы - origin "advertised", permit unknown) по правилам модуля."""
     ads = _newest(ads)
@@ -465,10 +466,10 @@ def screen(permit: Obj, ads: List[Tuple[AdFacts, str]], *, as_of: date, days: in
     recent = [(f, k) for f, k in ads if f.day is not None and f.day >= since]
     concerning = [(f, k) for f, k in recent if f.concerning]
     suspicious = [(f, k) for f, k in concerning if f.stage != "completed"]
-    reasons: List[Obj] = [{"text": permit["text"]}]
+    reasons: list[Obj] = [{"text": permit["text"]}]
     status = permit["status"]
     in_registry = status == "permitted"
-    decisive: List[Tuple[AdFacts, str]] = []
+    decisive: list[tuple[AdFacts, str]] = []
     any_confirmed = False
 
     if in_registry:
@@ -552,12 +553,12 @@ def decision_of(row: models.ScreeningDecision) -> Obj:
             "_since": _local_minutes(row.created_at)}
 
 
-def active_decisions(db: Session) -> Dict[str, Obj]:
+def active_decisions(db: Session) -> dict[str, Obj]:
     D = models.ScreeningDecision
     return {row.complex_id: decision_of(row) for row in db.scalars(select(D).where(D.status == "active").order_by(D.id))}
 
 
-def after(ad_date: Optional[str], since: str) -> bool:
+def after(ad_date: str | None, since: str) -> bool:
     """Публикация вышла не раньше решения: время публикации(местное, до минуты) - с минуты решения; дата без времени -
     со следующего дня."""
     d = (ad_date or "").strip()
@@ -566,7 +567,7 @@ def after(ad_date: Optional[str], since: str) -> bool:
     return len(d) >= 10 and d[:10] > since[:10]
 
 
-def act_text(act_number: Optional[str], act_date: Optional[str]) -> str:
+def act_text(act_number: str | None, act_date: str | None) -> str:
     """"акт № 12 от 01.09.2026"; без номера - "акт от 01.09.2026"."""
     num = (act_number or "").strip()
     num = (num if "№" in num else f"№ {num}") if num else ""
@@ -582,7 +583,7 @@ def decision_text(d: Obj) -> str:
     return f"Проверено: {reason} — источник {d['source']}; проверил: {d['by']}, {when}"
 
 
-def reopen_trigger(kind: str, since: str, ads: List[Tuple[AdFacts, str]]) -> Optional[Obj]:
+def reopen_trigger(kind: str, since: str, ads: list[tuple[AdFacts, str]]) -> Obj | None:
     """Первая публикация после решения, которая его снимает: с признаком приёма денег; у "сдан" - ещё и со строящимся
     объектом или новой очередью(стадия "строится", старт продаж, слова "строится", "новая очередь" в тексте)."""
     for f, k in sorted(ads, key=lambda x: (x[0].date or "", x[0].id)):
@@ -603,7 +604,7 @@ def reopen_trigger(kind: str, since: str, ads: List[Tuple[AdFacts, str]]) -> Opt
     return None
 
 
-def with_decision(auto: Obj, d: Obj, ads: List[Tuple[AdFacts, str]]) -> Tuple[Obj, Obj]:
+def with_decision(auto: Obj, d: Obj, ads: list[tuple[AdFacts, str]]) -> tuple[Obj, Obj]:
     """Автоматическая оценка + решение аналитика → (оценка, решение для ответа API). Действует - ok с подписью и
     вариантом решения; снято новой рекламой - автоматическая оценка с первой причиной "Новая реклама после решения"."""
     view = {k: v for k, v in d.items() if not k.startswith("_")}
@@ -624,15 +625,15 @@ def with_decision(auto: Obj, d: Obj, ads: List[Tuple[AdFacts, str]]) -> Tuple[Ob
     return out, view
 
 
-def screen_developer(d: models.Developer, items: List[Tuple[models.Complex, Obj]]) -> Obj:
-    counts = {"complexes": len(items), **{s: 0 for s in STATUSES}}
+def screen_developer(d: models.Developer, items: list[tuple[models.Complex, Obj]]) -> Obj:
+    counts = {"complexes": len(items), **dict.fromkeys(STATUSES, 0)}
     for _, sc in items:
         counts[sc["status"]] += 1
     worst = sorted(items, key=lambda x: (-RANK[x[1]["status"]], x[0].name, x[0].id))
-    reasons: List[Obj] = []
+    reasons: list[Obj] = []
     if d.id == PLACEHOLDER_DEV:
         reasons.append({"text": "Застройщик не установлен — карточки ЖК созданы по рекламе без названия застройщика"})
-    names = lambda st: ", ".join(f"«{c.name}»" for c, sc in worst if sc["status"] == st)  # noqa: E731
+    names = lambda st: ", ".join(f"«{c.name}»" for c, sc in worst if sc["status"] == st)
     if not items:
         status = "unknown"
         reasons.append({"text": "ЖК этого застройщика в системе нет"})
@@ -669,10 +670,10 @@ def screen_developer(d: models.Developer, items: List[Tuple[models.Complex, Obj]
             "basis": basis, "disclaimer": DISCLAIMER}
 
 
-def advert_info(db: Session) -> Dict[str, Obj]:
+def advert_info(db: Session) -> dict[str, Obj]:
     """ЖК → объекты из рекламы, привязанные к нему: другие названия, аккаунты, ссылки, упоминаний."""
     O = models.DiscoveredObject
-    out: Dict[str, Obj] = {}
+    out: dict[str, Obj] = {}
     for o in db.scalars(select(O).where(O.status == "linked", O.complex_id.is_not(None)).order_by(O.id)):
         a = out.setdefault(o.complex_id, {"discoveredIds": [], "aliases": [], "accounts": [], "sourceUrls": [],
                                           "ads": 0})
@@ -692,40 +693,40 @@ def advert_info(db: Session) -> Dict[str, Obj]:
 
 @dataclass
 class Result:
-    complexes: Dict[str, Obj]
-    developers: Dict[str, Obj]
-    permits: Dict[str, Obj]
-    advert: Dict[str, Obj]
+    complexes: dict[str, Obj]
+    developers: dict[str, Obj]
+    permits: dict[str, Obj]
+    advert: dict[str, Obj]
     as_of: date
     days: int
-    suggest: Dict[str, Obj] = field(default_factory=dict)  # ЖК → документы основания из открытого реестра
-    decisions: Dict[str, Obj] = field(default_factory=dict)  # ЖК → решение аналитика(действует или снято рекламой)
-    attributed: Dict[str, List[Tuple[str, str]]] = field(default_factory=dict)  # ЖК → [(публикация, основание)]
-    homeportal: Set[str] = field(default_factory=set)  # ЖК с карточкой Homeportal в записях реестра(фото - app.gallery)
+    suggest: dict[str, Obj] = field(default_factory=dict)  # ЖК → документы основания из открытого реестра
+    decisions: dict[str, Obj] = field(default_factory=dict)  # ЖК → решение аналитика(действует или снято рекламой)
+    attributed: dict[str, list[tuple[str, str]]] = field(default_factory=dict)  # ЖК → [(публикация, основание)]
+    homeportal: set[str] = field(default_factory=set)  # ЖК с карточкой Homeportal в записях реестра(фото - app.gallery)
 
 
-def compute(db: Session, as_of: Optional[date] = None) -> Result:
+def compute(db: Session, as_of: date | None = None) -> Result:
     """Оценка всех ЖК и застройщиков одним проходом(публикации, ответы Claude, журнал гипотез, объекты из рекламы)."""
     days = int(get_settings().screening_days)
     as_of = as_of or today()
     cxs = list(db.scalars(select(models.Complex)))
     devs = list(db.scalars(select(models.Developer)))
     facts = load_facts(db)
-    attributed: Dict[str, List[Tuple[AdFacts, str]]] = {}
+    attributed: dict[str, list[tuple[AdFacts, str]]] = {}
     for f in facts.values():
         for cid, kind in f.targets().items():
             attributed.setdefault(cid, []).append((f, kind))
     groups = registry_groups(db, cxs)
     pm = permits(db, cxs, groups)
     decs = active_decisions(db)
-    comp: Dict[str, Obj] = {}
-    decided: Dict[str, Obj] = {}
+    comp: dict[str, Obj] = {}
+    decided: dict[str, Obj] = {}
     for c in cxs:
         ads = attributed.get(c.id, [])
         comp[c.id] = screen(pm[c.id], ads, as_of=as_of, days=days, origin=c.origin, card_completed=c.stage == BUILT)
         if c.id in decs:
             comp[c.id], decided[c.id] = with_decision(comp[c.id], decs[c.id], ads)
-    by_dev: Dict[str, List[Tuple[models.Complex, Obj]]] = {}
+    by_dev: dict[str, list[tuple[models.Complex, Obj]]] = {}
     for c in cxs:
         by_dev.setdefault(c.developer_id, []).append((c, comp[c.id]))
     dev = {d.id: screen_developer(d, by_dev.get(d.id, [])) for d in devs}
@@ -735,10 +736,10 @@ def compute(db: Session, as_of: Optional[date] = None) -> Result:
     return Result(comp, dev, pm, advert_info(db), as_of, days, suggest, decided, links, hp)
 
 
-def summary(r: Result, db: Optional[Session] = None) -> Obj:
+def summary(r: Result, db: Session | None = None) -> Obj:
     """Сводка для /api/stats: ЖК и застройщики по статусам, решения аналитика(ok по отметке "сдан" и "проверено", снятые
     рекламой), объекты из рекламы по статусам."""
-    out: Obj = {"complexes": {s: 0 for s in STATUSES}, "developers": {s: 0 for s in STATUSES},
+    out: Obj = {"complexes": dict.fromkeys(STATUSES, 0), "developers": dict.fromkeys(STATUSES, 0),
                 "decisions": {"commissioned": 0, "analyst": 0, "reopened": 0},
                 "windowDays": r.days, "disclaimer": DISCLAIMER}
     for sc in r.complexes.values():
@@ -758,7 +759,7 @@ def summary(r: Result, db: Optional[Session] = None) -> Obj:
     return out
 
 
-def complex_rows(db: Session, rows: Iterable[models.Complex], r: Result) -> List[Obj]:
+def complex_rows(db: Session, rows: Iterable[models.Complex], r: Result) -> list[Obj]:
     """ЖК для ответа API(ComplexListOut): поля карточки, основание, оценка, объекты из рекламы."""
     from . import gallery, schemas
 
@@ -774,7 +775,7 @@ def complex_rows(db: Session, rows: Iterable[models.Complex], r: Result) -> List
     return out
 
 
-def developer_rows(rows: Iterable[models.Developer], r: Result) -> List[Obj]:
+def developer_rows(rows: Iterable[models.Developer], r: Result) -> list[Obj]:
     from . import schemas
 
     out = []

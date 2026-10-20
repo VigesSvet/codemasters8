@@ -16,8 +16,9 @@ last_run_id. Публикация считается удалённой(deleted)
 (пословный diff по LCS), удалённые условия оплаты(словарь markers.money модели риска и суммы), смена файлов.
 """
 import re
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from datetime import datetime, timedelta, UTC
+from typing import Any
+from collections.abc import Iterable, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -27,7 +28,7 @@ from . import models
 from .db import get_db
 from .risk_model import MARKERS
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 MIN_MISSED = 2  # запусков подключения без публикации, после которых отсутствие - удаление
 WINDOWED = ("instagram", "tiktok")  # сборщики с окном последних публикаций по аккаунту
 FRAGMENT_MAX = 160
@@ -40,16 +41,16 @@ TERMS = [*MARKERS["money"], "старт продаж", "скидк", "акци"]
 
 # ---------- пословный diff ----------
 
-def tokens(text: Optional[str]) -> List[str]:
+def tokens(text: str | None) -> list[str]:
     """Слова и пробелы по порядку: склеенные обратно дают исходный текст."""
     return _TOKEN.findall(text or "")
 
 
-def diff_words(a: Optional[str], b: Optional[str]) -> List[Tuple[str, str]]:
+def diff_words(a: str | None, b: str | None) -> list[tuple[str, str]]:
     """Пословный diff: [(op, текст)], op - eq | del | add; соседние куски одного вида склеены. Пробелы сравниваются
     как слова, но разница только в пробелах - eq. LCS по таблице; общие начало и конец отрезаются заранее."""
     ta, tb = tokens(a), tokens(b)
-    key = lambda t: " " if t.isspace() else t  # noqa: E731
+    key = lambda t: " " if t.isspace() else t
     ka, kb = [key(t) for t in ta], [key(t) for t in tb]
     i = 0
     while i < len(ka) and i < len(kb) and ka[i] == kb[i]:
@@ -58,7 +59,7 @@ def diff_words(a: Optional[str], b: Optional[str]) -> List[Tuple[str, str]]:
     while j < len(ka) - i and j < len(kb) - i and ka[-1 - j] == kb[-1 - j]:
         j += 1
     ma, mb = ka[i:len(ka) - j], kb[i:len(kb) - j]
-    ops: List[Tuple[str, str]] = [("eq", t) for t in tb[:i]]
+    ops: list[tuple[str, str]] = [("eq", t) for t in tb[:i]]
     if len(ma) * len(mb) > DIFF_CELLS:
         ops += [("del", t) for t in ta[i:len(ta) - j]] + [("add", t) for t in tb[i:len(tb) - j]]
     else:
@@ -85,10 +86,10 @@ def diff_words(a: Optional[str], b: Optional[str]) -> List[Tuple[str, str]]:
     return _merge(ops)
 
 
-def _merge(ops: Iterable[Tuple[str, str]]) -> List[Tuple[str, str]]:
+def _merge(ops: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:
     """Склеить соседние куски одного вида; пробел между двумя удалёнными(добавленными) словами - к ним же."""
     ops = list(ops)
-    out: List[Tuple[str, str]] = []
+    out: list[tuple[str, str]] = []
     for k, (op, t) in enumerate(ops):
         if op == "eq" and t.isspace() and out and out[-1][0] != "eq" and k + 1 < len(ops) and ops[k + 1][0] == out[-1][0]:
             op = out[-1][0]
@@ -104,13 +105,13 @@ def _short(s: str, n: int = FRAGMENT_MAX) -> str:
     return s if len(s) <= n else s[:n - 1] + "…"
 
 
-def fragments(ops: Sequence[Tuple[str, str]], op: str) -> List[str]:
+def fragments(ops: Sequence[tuple[str, str]], op: str) -> list[str]:
     return [_short(t) for o, t in ops if o == op and t.strip()][:FRAGMENTS]
 
 
-def hunks(ops: Sequence[Tuple[str, str]], context: int = 4, limit: int = FRAGMENTS) -> List[Obj]:
+def hunks(ops: Sequence[tuple[str, str]], context: int = 4, limit: int = FRAGMENTS) -> list[Obj]:
     """Правки с контекстом: {before, removed, added, after} - до context слов совпадающего текста с каждой стороны."""
-    out: List[Obj] = []
+    out: list[Obj] = []
     k = 0
     while k < len(ops) and len(out) < limit:
         if ops[k][0] == "eq":
@@ -130,7 +131,7 @@ def hunks(ops: Sequence[Tuple[str, str]], context: int = 4, limit: int = FRAGMEN
     return out
 
 
-def terms_in(text: str) -> List[str]:
+def terms_in(text: str) -> list[str]:
     """Условия оплаты и суммы во фрагменте: маркеры словаря и суммы("200 000 ₸", "30%")."""
     low = text.lower()
     found = [w for w in TERMS if w.lower() in low]
@@ -166,24 +167,24 @@ def change_of(prev: Obj, cur: Obj) -> Obj:
 
 # ---------- удалено в источнике ----------
 
-def _ts(v: Any) -> Optional[datetime]:
+def _ts(v: Any) -> datetime | None:
     if v is None:
         return None
     if isinstance(v, datetime):
-        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+        return v if v.tzinfo else v.replace(tzinfo=UTC)
     try:
         d = datetime.fromisoformat(str(v))
     except ValueError:
         return None
-    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    return d if d.tzinfo else d.replace(tzinfo=UTC)
 
 
-def _iso(v: Any) -> Optional[str]:
+def _iso(v: Any) -> str | None:
     d = _ts(v)
     return d.isoformat(timespec="seconds") if d else None
 
 
-def classify(item: Obj, siblings: List[Obj], runs: List[Obj]) -> Obj:
+def classify(item: Obj, siblings: list[Obj], runs: list[Obj]) -> Obj:
     """Статус в источнике по данным сбора(без сети). item / siblings - {collector, account, lastRunId, publishedAt,
     collectedAt}; siblings - публикации того же подключения и аккаунта(вместе с item или без); runs - запуски этого
     подключения {id, status, trigger, finishedAt, createdAt}. Ответ - {status, how, checkedAt, lastSeenAt, missedRuns}."""
@@ -228,9 +229,9 @@ def _item_obj(i: models.IngestItem) -> Obj:
             "publishedAt": i.published_at, "collectedAt": i.collected_at, "platform": i.platform, "url": i.url}
 
 
-def _runs(db: Session, collectors: Iterable[str]) -> Dict[str, List[Obj]]:
+def _runs(db: Session, collectors: Iterable[str]) -> dict[str, list[Obj]]:
     R = models.CollectionRun
-    out: Dict[str, List[Obj]] = {}
+    out: dict[str, list[Obj]] = {}
     cols = list(set(collectors))
     if not cols:
         return out
@@ -240,10 +241,10 @@ def _runs(db: Session, collectors: Iterable[str]) -> Dict[str, List[Obj]]:
     return out
 
 
-def _saved(db: Session, item_ids: List[int]) -> Dict[int, Obj]:
+def _saved(db: Session, item_ids: list[int]) -> dict[int, Obj]:
     """Последняя версия публикации: когда получена копия и номер версии."""
     V = models.IngestVersion
-    out: Dict[int, Obj] = {}
+    out: dict[int, Obj] = {}
     if not item_ids:
         return out
     for v in db.scalars(select(V).where(V.item_id.in_(item_ids)).order_by(V.item_id, V.version)):
@@ -251,19 +252,19 @@ def _saved(db: Session, item_ids: List[int]) -> Dict[int, Obj]:
     return out
 
 
-def statuses(db: Session, items: Optional[List[models.IngestItem]] = None) -> Dict[str, Obj]:
+def statuses(db: Session, items: list[models.IngestItem] | None = None) -> dict[str, Obj]:
     """Статус в источнике публикаций приёма: {ad_id: {...}}; items - по каким(иначе все)."""
     I = models.IngestItem
     rows = items if items is not None else list(db.scalars(select(I)))
     if not rows:
         return {}
-    groups: Dict[Tuple[str, str], List[Obj]] = {}
+    groups: dict[tuple[str, str], list[Obj]] = {}
     pairs = {(r.collector, r.account) for r in rows}
     for col, acc in pairs:
         groups[(col, acc)] = [_item_obj(x) for x in db.scalars(select(I).where(I.collector == col, I.account == acc))]
     runs = _runs(db, [c for c, _ in pairs])
     saved = _saved(db, [r.id for r in rows])
-    out: Dict[str, Obj] = {}
+    out: dict[str, Obj] = {}
     for r in rows:
         sib = groups[(r.collector, r.account)]
         me = next((s for s in sib if s["id"] == r.id), _item_obj(r))
@@ -288,15 +289,15 @@ def _version_obj(v: models.IngestVersion) -> Obj:
             "collectedAt": _iso(v.collected_at)}
 
 
-def recent_changes(db: Session, days: int = 30, limit: int = 100, now: Optional[datetime] = None) -> Obj:
+def recent_changes(db: Session, days: int = 30, limit: int = 100, now: datetime | None = None) -> Obj:
     """Изменения содержимого(пары соседних версий) и удалённые в источнике публикации за days дней, новые первыми."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     since = now - timedelta(days=days)
     I, V, A = models.IngestItem, models.IngestVersion, models.Ad
     items = {i.id: i for i in db.scalars(select(I))}
     ads = {a.id: a for a in db.scalars(select(A).where(A.id.in_([i.ad_id for i in items.values()])))} if items else {}
     multi = [i for i in items.values() if (i.version or 1) > 1]
-    vers: Dict[int, List[Obj]] = {}
+    vers: dict[int, list[Obj]] = {}
     if multi:
         for v in db.scalars(select(V).where(V.item_id.in_([i.id for i in multi])).order_by(V.item_id, V.version)):
             vers.setdefault(v.item_id, []).append(_version_obj(v))
@@ -307,7 +308,7 @@ def recent_changes(db: Session, days: int = 30, limit: int = 100, now: Optional[
                 "complexId": a.complex_id if a is not None else None,
                 "text": _short((a.text if a is not None else "") or "", 200)}
 
-    changes: List[Obj] = []
+    changes: list[Obj] = []
     for iid, vs in vers.items():
         for prev, cur in zip(vs, vs[1:]):
             at = _ts(cur.get("collectedAt"))
@@ -324,7 +325,7 @@ def recent_changes(db: Session, days: int = 30, limit: int = 100, now: Optional[
         if s.get("status") == "deleted":
             deleted.append({**head(i), **s})
     deleted.sort(key=lambda d: d.get("lastSeenAt") or "", reverse=True)
-    counts: Dict[str, int] = {"present": 0, "deleted": 0, "unknown": 0}
+    counts: dict[str, int] = {"present": 0, "deleted": 0, "unknown": 0}
     for s in st.values():
         counts[s["status"]] = counts.get(s["status"], 0) + 1
     return {"generatedAt": now.isoformat(timespec="seconds"), "days": days, "changes": changes[:limit],

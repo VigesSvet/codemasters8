@@ -46,7 +46,7 @@ def test_connectors_list_not_configured(client):
     assert [c["code"] for c in body["connectors"]] == ORDER
     assert body["adminConfigured"] is False and body["worker"] == {"alive": False, "lastSeenAt": None, "id": None}
     st = {c["code"]: c["status"] for c in body["connectors"]}
-    assert st == {**{c: "not_configured" for c in ORDER}, "krisha": "unchecked"}
+    assert st == {**dict.fromkeys(ORDER, "not_configured"), "krisha": "unchecked"}
     c = {x["code"]: x for x in body["connectors"]}
     assert (c["instagram"]["missing"], c["instagram"]["statusDetail"]) == (
         ["META_USER_ACCESS_TOKEN"], "Нет на сервере: META_USER_ACCESS_TOKEN")

@@ -21,7 +21,8 @@ import re
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any
+from collections.abc import Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -37,7 +38,7 @@ log = logging.getLogger("saq.sellers")
 
 router = APIRouter(tags=["sellers"])
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 
 NOTE = ("Связь по номеру телефона, БИН, имени аккаунта или общей картинке — гипотеза для проверки, а не вывод о "
         "нарушении: общий номер бывает у агентства, которое продаёт несколько ЖК. В балл риска не входит.")
@@ -71,7 +72,7 @@ def fmt_phone(d10: str) -> str:
     return f"+7 {d[:3]} {d[3:6]} {d[6:8]} {d[8:]}"
 
 
-def norm_phone(raw: str) -> Optional[str]:
+def norm_phone(raw: str) -> str | None:
     """Казахстанский номер в любом написании → 10 цифр без кода страны; не номер РК → None."""
     d = re.sub(r"\D", "", raw or "")
     if len(d) == 11 and d[0] in "78":
@@ -106,7 +107,7 @@ def quote_at(text: str, a: int, b: int, side: int = QUOTE_SIDE) -> str:
     return ("…" if lo > 0 else "") + s + ("…" if hi < len(text) else "")
 
 
-def segments(text: Optional[str], ocr: Optional[str]) -> List[Tuple[str, str]]:
+def segments(text: str | None, ocr: str | None) -> list[tuple[str, str]]:
     """Текст публикации, OCR картинок и речь роликов - отдельно: абзац OCR "Речь в ролике: …" - источник speech."""
     out = [("text", plain(text))] if text else []
     if ocr:
@@ -126,9 +127,9 @@ _MENTION = re.compile(r"(?<![\w@.])@([A-Za-z0-9_](?:[A-Za-z0-9_.]{0,28}[A-Za-z0-
 _EMAIL_TAIL = re.compile(r"^\.(?:kz|ru|com|net|org)\b", re.I)
 
 
-def contacts(text: Optional[str], ocr: Optional[str]) -> List[Contact]:
+def contacts(text: str | None, ocr: str | None) -> list[Contact]:
     """Контакты публикации по источникам; один и тот же контакт в одном источнике - один раз(первая находка)."""
-    out: List[Contact] = []
+    out: list[Contact] = []
     seen = set()
 
     def add(kind, value, shown, raw, src, s, a, b):
@@ -175,7 +176,7 @@ def account_label(key: str, account: str) -> str:
     return f"{account} · AD-{key.split('#', 1)[1].upper()}" if "#" in key else account
 
 
-def handle_of(account: str) -> Optional[str]:
+def handle_of(account: str) -> str | None:
     """Имя аккаунта соцсети без "@" и регистра: "@An.Groups" → "an.groups"; у Krisha имени нет."""
     a = (account or "").strip()
     return a[1:].lower() if a.startswith("@") and len(a) > 1 else None
@@ -188,7 +189,7 @@ def slug(key: str) -> str:
 
 # ---------- хэши картинок ----------
 
-def dhash(path: Path) -> Optional[int]:
+def dhash(path: Path) -> int | None:
     """dHash 64 бита: оттенки серого 9×8, бит - "левый пиксель ярче правого". Однотонная картинка → None."""
     from PIL import Image, ImageStat
 
@@ -210,7 +211,7 @@ def _cache_path() -> Path:
     return Path(get_settings().media_root).parent / "image_hashes.json"
 
 
-def image_hashes(db: Session) -> Dict[str, List[Tuple]]:
+def image_hashes(db: Session) -> dict[str, list[tuple]]:
     """Публикация → [(dHash, sha256, ID файла)] её загруженных картинок и кадров видео. Кэш по SHA-256 - в image_hashes.json;
     файл, которого нет на диске(стартовый набор без медиа), пропускается."""
     try:
@@ -219,13 +220,13 @@ def image_hashes(db: Session) -> Dict[str, List[Tuple]]:
         return {}
     path = _cache_path()
     try:
-        cache: Dict[str, Optional[int]] = json.loads(path.read_text()) if path.is_file() else {}
+        cache: dict[str, int | None] = json.loads(path.read_text()) if path.is_file() else {}
     except (OSError, ValueError):
         cache = {}
     M = models.MediaAsset
     rows = db.execute(select(M.ad_id, M.sha256, M.storage_key, M.id).where(
         M.status == "downloaded", M.kind.in_(("image", "frame")), M.storage_key.is_not(None))).all()
-    out: Dict[str, List[Tuple]] = {}
+    out: dict[str, list[tuple]] = {}
     dirty = False
     for ad_id, sha, key, mid in rows:
         if not sha:
@@ -255,7 +256,7 @@ def image_hashes(db: Session) -> Dict[str, List[Tuple]]:
 
 class _DSU:
     def __init__(self):
-        self.p: Dict[str, str] = {}
+        self.p: dict[str, str] = {}
 
     def find(self, x: str) -> str:
         self.p.setdefault(x, x)
@@ -276,16 +277,16 @@ class _Link:
     value: str
     shown: str
     accounts: set = field(default_factory=set)
-    evidence: List[Obj] = field(default_factory=list)
+    evidence: list[Obj] = field(default_factory=list)
     wa: bool = False  # номер встретился и WhatsApp-ссылкой
 
 
-def _day(d: Optional[str]) -> Optional[str]:
+def _day(d: str | None) -> str | None:
     return (d or "")[:10] or None
 
 
-def build(ads: Iterable[Obj], hashes: Optional[Dict[str, List[Tuple]]] = None,
-          developers: Iterable[Obj] = ()) -> List[Obj]:
+def build(ads: Iterable[Obj], hashes: dict[str, list[tuple]] | None = None,
+          developers: Iterable[Obj] = ()) -> list[Obj]:
     """Группы продавцов по публикациям - чистая функция. Публикация: {id, platform, account, date, text, ocr, url?,
     complexId?, complexName?, linkConfirmed?}; hashes - публикация → [(dHash, sha256, ID файла?)]; developers - {id, name, bin}
     (БИН из рекламы называет застройщика). Группы - по числу аккаунтов, затем публикаций."""
@@ -293,9 +294,9 @@ def build(ads: Iterable[Obj], hashes: Optional[Dict[str, List[Tuple]]] = None,
     hashes = hashes or {}
     dev_by_bin = {d["bin"]: d for d in developers if d.get("bin")}
     dsu = _DSU()
-    acc: Dict[str, Obj] = {}
-    by_ad: Dict[str, str] = {}
-    links: Dict[Tuple[str, str], _Link] = {}
+    acc: dict[str, Obj] = {}
+    by_ad: dict[str, str] = {}
+    links: dict[tuple[str, str], _Link] = {}
 
     def link(kind, value, shown) -> _Link:
         return links.setdefault((kind, value), _Link(kind, value, shown))
@@ -317,7 +318,7 @@ def build(ads: Iterable[Obj], hashes: Optional[Dict[str, List[Tuple]]] = None,
                 ln.evidence.append({"adId": a["id"], "account": a["account"], "source": c.source, "quote": c.quote,
                                     "raw": c.raw, "whatsapp": c.kind == "wa"})
     # одно имя аккаунта на разных площадках; упоминание @аккаунта, который есть в данных
-    by_handle: Dict[str, set] = {}
+    by_handle: dict[str, set] = {}
     for k, x in acc.items():
         if x["handle"]:
             by_handle.setdefault(x["handle"], set()).add(k)
@@ -357,7 +358,7 @@ def build(ads: Iterable[Obj], hashes: Optional[Dict[str, List[Tuple]]] = None,
         for o in ks[1:]:
             dsu.union(ks[0], o)
 
-    comps: Dict[str, List[str]] = {}
+    comps: dict[str, list[str]] = {}
     for k in acc:
         comps.setdefault(dsu.find(k), []).append(k)
     groups = []
@@ -377,7 +378,7 @@ def build(ads: Iterable[Obj], hashes: Optional[Dict[str, List[Tuple]]] = None,
         bins = [{"bin": ln.value, "developerId": dev_by_bin.get(ln.value, {}).get("id"),
                  "developerName": dev_by_bin.get(ln.value, {}).get("name"), "accounts": sorted(ln.accounts),
                  "evidence": ln.evidence} for ln in g_links if ln.kind == "bin"]
-        cx: Dict[str, Obj] = {}
+        cx: dict[str, Obj] = {}
         for a in g_ads:
             if a.get("complexId"):
                 c = cx.setdefault(a["complexId"], {"id": a["complexId"], "name": a.get("complexName") or a["complexId"],
@@ -404,7 +405,7 @@ def build(ads: Iterable[Obj], hashes: Optional[Dict[str, List[Tuple]]] = None,
 
 # ---------- данные из БД ----------
 
-def ad_rows(db: Session) -> List[Obj]:
+def ad_rows(db: Session) -> list[Obj]:
     A, C = models.Ad, models.Complex
     names = dict(db.execute(select(C.id, C.name)).all())
     return [{"id": a.id, "platform": a.platform, "account": a.account, "date": a.date, "url": a.url, "text": a.text,
@@ -414,12 +415,12 @@ def ad_rows(db: Session) -> List[Obj]:
                                        A.complex_id, A.link_confirmed_by)).all()]
 
 
-def compute(db: Session) -> List[Obj]:
+def compute(db: Session) -> list[Obj]:
     devs = [{"id": d.id, "name": d.name, "bin": d.bin} for d in db.scalars(select(models.Developer))]
     return build(ad_rows(db), image_hashes(db), devs)
 
 
-def stats(groups: List[Obj]) -> Obj:
+def stats(groups: list[Obj]) -> Obj:
     return {"groups": len(groups), "linked": sum(g["linked"] for g in groups),
             "accounts": sum(len(g["accounts"]) for g in groups), "ads": sum(g["adsCount"] for g in groups),
             "phones": len({p["digits"] for g in groups for p in g["phones"]}),
@@ -427,7 +428,7 @@ def stats(groups: List[Obj]) -> Obj:
             "imageLinks": sum(ln["kind"] == "image" for g in groups for ln in g["links"])}
 
 
-def find(groups: List[Obj], key: str) -> Optional[Obj]:
+def find(groups: list[Obj], key: str) -> Obj | None:
     """Группа по своему ключу или по ключу любого её аккаунта(ссылка на аккаунт не устаревает при слиянии групп)."""
     k = slug(key)
     for g in groups:
@@ -461,7 +462,7 @@ def graph(g: Obj) -> Obj:
     return {"nodes": nodes, "edges": edges}
 
 
-def ad_hint(groups: List[Obj], ad_id: str) -> Optional[Obj]:
+def ad_hint(groups: list[Obj], ad_id: str) -> Obj | None:
     """Для разбора публикации: её группа и номера - в скольких ещё публикациях и аккаунтах встречается каждый."""
     g = next((g for g in groups if ad_id in g["adIds"]), None)
     if g is None:

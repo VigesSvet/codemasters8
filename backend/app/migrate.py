@@ -10,9 +10,9 @@ PostgreSQL делает оператор(pg_dump, см. документацию
 import logging
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from sqlalchemy import Column, column, func, inspect, select, table, text
 from sqlalchemy.engine import Connection, Engine
@@ -151,7 +151,7 @@ STEP_TABLES: dict[str, tuple] = {"2026.10-intake-1": NEW_TABLES, "2026.10-llm-1"
 assert STEPS[-1][0] == models.SCHEMA_VERSION, "SCHEMA_VERSION должна совпадать с последним шагом migrate.STEPS"
 
 
-def chain_from(version: Optional[str]) -> Optional[list[Step]]:
+def chain_from(version: str | None) -> list[Step] | None:
     """Шаги от version до текущей схемы; None - от этой версии обновления нет(неизвестная/старая)."""
     if version == BASELINE:
         return list(STEPS)
@@ -161,12 +161,12 @@ def chain_from(version: Optional[str]) -> Optional[list[Step]]:
     return None
 
 
-def tables_after(version: Optional[str]) -> set:
+def tables_after(version: str | None) -> set:
     """Таблицы, которые добавили шаги после version(version - из цепочки; иначе - пусто): в данных этой версии их нет."""
     return {t for name, _ in chain_from(version) or [] for t in STEP_TABLES.get(name, ())}
 
 
-def _sqlite_file(eng: Engine) -> Optional[Path]:
+def _sqlite_file(eng: Engine) -> Path | None:
     if eng.dialect.name != "sqlite":
         return None
     db = eng.url.database
@@ -176,7 +176,7 @@ def _sqlite_file(eng: Engine) -> Optional[Path]:
     return path if path.is_file() else None
 
 
-def backup_sqlite(eng: Engine, old_version: Optional[str], reason: str = "перед обновлением схемы") -> Optional[Path]:
+def backup_sqlite(eng: Engine, old_version: str | None, reason: str = "перед обновлением схемы") -> Path | None:
     """Файловая SQLite: копия sqlite3 backup API(согласована при WAL) в "<db>.bak-<old>-<UTC YYYYmmddTHHMMSSZ>";
     :memory: и PostgreSQL → None. Лог: "Резервная копия БД перед обновлением схемы: {path}"(reason - другой повод,
     например удаление демо-данных)."""
@@ -184,7 +184,7 @@ def backup_sqlite(eng: Engine, old_version: Optional[str], reason: str = "пер
     if src_path is None:
         return None
     tag = re.sub(r"[^A-Za-z0-9._-]", "_", old_version or "none")
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     dest = src_path.with_name(f"{src_path.name}.bak-{tag}-{stamp}")
     n = 1
     while dest.exists():
@@ -203,12 +203,12 @@ def backup_sqlite(eng: Engine, old_version: Optional[str], reason: str = "пер
     return dest
 
 
-def _current_version(conn: Connection) -> Optional[str]:
+def _current_version(conn: Connection) -> str | None:
     meta = table("meta", column("key"), column("value"))
     return conn.execute(select(meta.c.value).where(meta.c.key == "schema_version")).scalar()
 
 
-def upgrade(eng: Engine, version: Optional[str]) -> None:
+def upgrade(eng: Engine, version: str | None) -> None:
     """backup_sqlite → шаги в одной транзакции(eng.begin()); на PostgreSQL первым запросом pg_advisory_xact_lock(724001);
     затем UPDATE meta schema_version. Лог: "Схема БД обновлена: {old} → {new}, данные сохранены"."""
     steps = chain_from(version)

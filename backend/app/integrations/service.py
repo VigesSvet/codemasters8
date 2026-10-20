@@ -14,7 +14,7 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session
@@ -59,7 +59,7 @@ class Invalid(Exception):
 
 # ---------- строки подключений ----------
 
-def row(db: Session, code: str, *, create: bool = False) -> Optional[models.Collector]:
+def row(db: Session, code: str, *, create: bool = False) -> models.Collector | None:
     """Строка подключения; create - создать, если нет(INSERT … ON CONFLICT DO NOTHING и перечитывание)."""
     C = models.Collector
     r = db.get(C, code)
@@ -70,7 +70,7 @@ def row(db: Session, code: str, *, create: bool = False) -> Optional[models.Coll
     return r
 
 
-def keys_changed(conn: Connector, r: Optional[models.Collector]) -> bool:
+def keys_changed(conn: Connector, r: models.Collector | None) -> bool:
     """Отпечатки ключей, с которыми прошла последняя проверка, не совпадают с текущими на сервере."""
     saved = ((r.facts or {}).get("keyFp") if r is not None else None) or {}
     if not isinstance(saved, dict) or not saved:
@@ -81,11 +81,11 @@ def keys_changed(conn: Connector, r: Optional[models.Collector]) -> bool:
 
 @dataclass
 class _Jobs:
-    test: Optional[models.Job] = None
-    collect: Optional[models.Job] = None
+    test: models.Job | None = None
+    collect: models.Job | None = None
 
 
-def _active_jobs(db: Session, codes: Optional[list] = None) -> dict[str, _Jobs]:
+def _active_jobs(db: Session, codes: list | None = None) -> dict[str, _Jobs]:
     J = models.Job
     q = select(J).where(J.status.in_(jobs.ACTIVE), J.kind.in_(("collect", "test")))
     if codes:
@@ -97,8 +97,8 @@ def _active_jobs(db: Session, codes: Optional[list] = None) -> dict[str, _Jobs]:
     return out
 
 
-def effective_status(db: Session, conn: Connector, r: Optional[models.Collector], now: datetime,
-                     active: Optional[_Jobs] = None) -> tuple[str, Optional[str]]:
+def effective_status(db: Session, conn: Connector, r: models.Collector | None, now: datetime,
+                     active: _Jobs | None = None) -> tuple[str, str | None]:
     """(статус, пояснение) с наложениями §10.4."""
     s = get_settings()
     if conn.missing(s, r):
@@ -139,7 +139,7 @@ def run_out(db: Session, run: models.CollectionRun) -> dict:
             "error": run.error, "notes": list(run.notes or [])[-100:], "retry_at": retry_at}
 
 
-def start_run(db: Session, run_id: int, now: datetime) -> Optional[models.CollectionRun]:
+def start_run(db: Session, run_id: int, now: datetime) -> models.CollectionRun | None:
     """Запуск - "выполняется"(время начала - первое)."""
     run = db.get(models.CollectionRun, run_id)
     if run is None:
@@ -150,8 +150,8 @@ def start_run(db: Session, run_id: int, now: datetime) -> Optional[models.Collec
     return run
 
 
-def finish_run(db: Session, run_id: int, status: str, *, error_code: Optional[str] = None,
-               error: Optional[str] = None, now: Optional[datetime] = None) -> None:
+def finish_run(db: Session, run_id: int, status: str, *, error_code: str | None = None,
+               error: str | None = None, now: datetime | None = None) -> None:
     run = db.get(models.CollectionRun, run_id)
     if run is None:
         return
@@ -160,8 +160,8 @@ def finish_run(db: Session, run_id: int, status: str, *, error_code: Optional[st
     run.error = redact(error) if error else None
 
 
-def transition(db: Session, code: str, status: str, detail: Optional[str] = None, *,
-               at: Optional[datetime] = None, audit: bool = True) -> None:
+def transition(db: Session, code: str, status: str, detail: str | None = None, *,
+               at: datetime | None = None, audit: bool = True) -> None:
     """Хранимый статус подключения; при смене - событие журнала "Источник "…": {статус}. {пояснение}"."""
     conn = registry.get(code)
     r = row(db, code, create=True)
@@ -174,7 +174,7 @@ def transition(db: Session, code: str, status: str, detail: Optional[str] = None
         _event(db, "data", SYSTEM, what, at=at)
 
 
-def not_configured_detail(conn: Connector, s, r: Optional[models.Collector], missing: list[str]) -> str:
+def not_configured_detail(conn: Connector, s, r: models.Collector | None, missing: list[str]) -> str:
     """Текст 409 "не настроено": каких переменных окружения нет на сервере. Не хватает не переменной, а условия(нет
     сессии Telegram: TG_SESSION_PATH задан, нужен вход) - пояснение самого подключения(missing_detail), а не совет
     задать переменную, которая уже задана."""
@@ -188,7 +188,7 @@ def not_configured_detail(conn: Connector, s, r: Optional[models.Collector], mis
 
 
 def request_run(db: Session, code: str, *, trigger: str, who: str,
-                now: Optional[datetime] = None) -> tuple[models.CollectionRun, bool]:
+                now: datetime | None = None) -> tuple[models.CollectionRun, bool]:
     """Запуск проверки(trigger test) или сбора(manual / schedule) в очередь. Уже есть активный - он и возвращается
     (created=False). Без commit."""
     conn = registry.get(code)
@@ -228,7 +228,7 @@ def request_run(db: Session, code: str, *, trigger: str, who: str,
     return run, True
 
 
-def _stopped(r: Optional[models.Collector]) -> bool:
+def _stopped(r: models.Collector | None) -> bool:
     return bool(r is not None and (r.facts or {}).get("stopped"))
 
 
@@ -273,7 +273,7 @@ def collect_all(db: Session, who: str, now: datetime) -> dict:
 
 # ---------- настройки ----------
 
-def _diff(label: str, old: Any, new: Any) -> Optional[str]:
+def _diff(label: str, old: Any, new: Any) -> str | None:
     if isinstance(new, list):
         before = list(old or [])
         added = [x for x in new if x not in before]
@@ -289,7 +289,7 @@ def _diff(label: str, old: Any, new: Any) -> Optional[str]:
     return f"{label}: {new}"
 
 
-def patch(db: Session, code: str, body: schemas.ConnectorPatchIn, *, now: Optional[datetime] = None) -> None:
+def patch(db: Session, code: str, body: schemas.ConnectorPatchIn, *, now: datetime | None = None) -> None:
     """Настройки подключения администратором: включение сбора, период, списки источников. Изменения - в журнал от имени
     автора. Rejected(409) / Invalid(422) / base.ConfigError(422, loc config.поле). Без commit."""
     conn = registry.get(code)
@@ -384,9 +384,9 @@ def _last_runs(db: Session) -> dict[str, models.CollectionRun]:
     return {r.collector: r for r in db.scalars(select(R).where(R.id.in_(ids)))} if ids else {}
 
 
-def connector_out(db: Session, conn: Connector, r: Optional[models.Collector], *, now: datetime,
-                  active: Optional[_Jobs] = None, counts: Optional[dict] = None,
-                  last: Optional[models.CollectionRun] = None) -> dict:
+def connector_out(db: Session, conn: Connector, r: models.Collector | None, *, now: datetime,
+                  active: _Jobs | None = None, counts: dict | None = None,
+                  last: models.CollectionRun | None = None) -> dict:
     s = get_settings()
     status, detail = effective_status(db, conn, r, now, active)
     caps = {"test": False, "collect": False, "toggle": False, "configure": False, "connect": False,
@@ -439,7 +439,7 @@ def public_worker(w: dict) -> dict:
     return {**w, "id": None}
 
 
-def view(db: Session, codes: Optional[list] = None, *, now: Optional[datetime] = None) -> list[dict]:
+def view(db: Session, codes: list | None = None, *, now: datetime | None = None) -> list[dict]:
     """ConnectorOut по реестру(порядок страницы) или по выбранным кодам."""
     now = models.as_utc(now) or models.utcnow()
     codes = [c for c in registry.CONNECTORS if codes is None or c in codes]
@@ -451,7 +451,7 @@ def view(db: Session, codes: Optional[list] = None, *, now: Optional[datetime] =
                           counts=counts.get(c), last=last.get(c)) for c in codes]
 
 
-def _stopped_at(lease: models.WorkerLease) -> Optional[datetime]:
+def _stopped_at(lease: models.WorkerLease) -> datetime | None:
     raw = (lease.info or {}).get("stoppedAt")
     try:
         return models.as_utc(datetime.fromisoformat(str(raw))) if raw else None
@@ -459,7 +459,7 @@ def _stopped_at(lease: models.WorkerLease) -> Optional[datetime]:
         return None
 
 
-def worker_info(db: Session, now: Optional[datetime] = None) -> dict:
+def worker_info(db: Session, now: datetime | None = None) -> dict:
     """Жив ли воркер: пульс любого worker:* не старше 120 с и воркер не отметил остановку(stoppedAt не раньше
     последнего пульса - release_lease при штатной остановке)."""
     now = models.as_utc(now) or models.utcnow()
@@ -478,14 +478,14 @@ def worker_info(db: Session, now: Optional[datetime] = None) -> dict:
             "id": (lease.info or {}).get("id") or lease.holder}
 
 
-def processing_view(item: Optional[models.IngestItem]) -> Optional[dict]:
+def processing_view(item: models.IngestItem | None) -> dict | None:
     """AdOut.processing - состояние анализа собранной публикации."""
     return item.processing_view() if item is not None else None
 
 
 # ---------- квоты ----------
 
-def reserve_quota(name: str, limit: int, now: Optional[datetime] = None, *, amount: int = 1) -> bool:
+def reserve_quota(name: str, limit: int, now: datetime | None = None, *, amount: int = 1) -> bool:
     """Учесть amount единиц квоты(по умолчанию один запрос) атомарно, в своей сессии(commit - до сетевого вызова):
     UPDATE … count + amount WHERE count + amount <= limit; строки нет - создать и повторить. False - квота исчерпана."""
     Q = models.QuotaCounter
@@ -506,7 +506,7 @@ def reserve_quota(name: str, limit: int, now: Optional[datetime] = None, *, amou
         return False
 
 
-def adjust_quota(name: str, delta: int, now: Optional[datetime] = None) -> None:
+def adjust_quota(name: str, delta: int, now: datetime | None = None) -> None:
     """Поправка учтённого расхода(резерв → фактический): UPDATE … count + delta атомарно, не ниже нуля, в своей
     сессии. Строки нет - ничего не делает(резерва не было)."""
     Q = models.QuotaCounter
@@ -552,7 +552,7 @@ def record_reject(code: str, status: int, detail: str) -> None:
                                 "lastCode": int(status), "lastDetail": (redact(str(detail or ""), limit=200) or "")}
             r.state = state
             db.commit()
-    except Exception:  # noqa: BLE001 - учёт отказа не должен ломать ответ клиенту
+    except Exception:
         log.warning("Отказ клиенту (%s, HTTP %s) не записан в состояние подключения", code, status, exc_info=True)
 
 
@@ -564,7 +564,7 @@ def reset_reject_throttle(code: str) -> None:
             del _REJECT_AT[key]
 
 
-def last_reject(r: Optional[models.Collector]) -> Optional[dict]:
+def last_reject(r: models.Collector | None) -> dict | None:
     """Последний записанный отказ: {"at": datetime, "code": int, "detail": str} или None."""
     rej = ((r.state or {}).get("rejects") if r is not None else None) or {}
     at = rej.get("lastAt")

@@ -2,7 +2,7 @@
 сервисному токену, заявка JSON и multipart, повторная доставка и версии, заявитель отдельно от публикации, статус заявки
 для бота, статус подключения и приёмка по §14 плана. Модуль подключения импортируется внутри тестов(ground rule 12)."""
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 
 import pytest
 from sqlalchemy import func, select
@@ -288,7 +288,7 @@ def test_decision_fields_and_validation(client, bot):
                        (body(url="javascript:alert(1)"), "url"), (body(externalId="a b"), "externalId"),
                        (body(externalId="x" * 129), "externalId"), (body(platform="vk"), "platform"),
                        (body(text="я" * 100001), "text"),
-                       (body(submittedAt=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()), "submittedAt"),
+                       (body(submittedAt=(datetime.now(UTC) + timedelta(hours=1)).isoformat()), "submittedAt"),
                        (body(media=[{"key": str(i)} for i in range(11)]), "media")):
         r = post(client, bad)
         assert r.status_code == 422, (bad, r.text)
@@ -317,7 +317,7 @@ def test_decision_fields_and_validation(client, bot):
 
 def test_submission_status_and_updates(client, bot):
     eid = "-1001234567890/777"  # ID с "/" - маршрут {external_id:path}
-    t_before = datetime.now(timezone.utc) - timedelta(seconds=1)
+    t_before = datetime.now(UTC) - timedelta(seconds=1)
     ad_id = post(client, body(externalId=eid)).json()["adId"]
     r = client.get(f"{URL}/submissions/{eid}", headers=KEY)
     assert r.status_code == 200, r.text
@@ -328,7 +328,7 @@ def test_submission_status_and_updates(client, bot):
     assert client.get(f"{URL}/submissions/nope:1", headers=KEY).json() == {"detail": "Заявка не найдена"}
     assert client.get(f"{URL}/submissions/nope:1", headers=KEY).status_code == 404
 
-    t_mid = datetime.now(timezone.utc)
+    t_mid = datetime.now(UTC)
     r = client.patch(f"/api/ads/{ad_id}/status", json={"status": "in_review", "author": AUTHOR})
     assert r.status_code == 200, r.text
     got = client.get(f"{URL}/submissions/{eid}", headers=BEARER).json()

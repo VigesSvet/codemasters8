@@ -7,7 +7,7 @@ import json
 import logging
 import shutil
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from functools import partial
 from pathlib import Path
 
@@ -21,7 +21,7 @@ from app.db import Base, SessionLocal, engine
 
 SNAP = snapshot.DIR
 MAN = snapshot.manifest(SNAP)
-NOW = datetime(2026, 10, 19, 3, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 19, 3, 0, tzinfo=UTC)
 AUTHOR = "Омарова Ж."
 SECRET = "sk-ant-api03-TESTSECRETVALUE0123456789abcdef"
 ADMIN_TOKEN = "t-admin-0123456789abcdef0123"
@@ -136,7 +136,7 @@ def test_committed_snapshot_api_views():
     """Ответы API для офлайн-режима: ЖК с "Проверкой по рекламе", реклама с анализом ИИ, объекты из рекламы, риск по
     каждому ЖК; картинки - по карте media.json на файлы набора."""
     api = SNAP / "api"
-    load = lambda n: json.loads((api / f"{n}.json").read_text(encoding="utf-8"))  # noqa: E731
+    load = lambda n: json.loads((api / f"{n}.json").read_text(encoding="utf-8"))
     cxs, ads, risk, mm = load("complexes"), load("ads"), load("risk"), load("media")
     assert len(cxs) == MAN["tables"]["complexes"]["rows"] and all(c.get("screening") for c in cxs)
     assert len(ads) == MAN["tables"]["ads"]["rows"] and all(a.get("llm") for a in ads)

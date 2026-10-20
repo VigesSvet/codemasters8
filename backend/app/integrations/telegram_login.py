@@ -25,7 +25,6 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from .. import logs, models
 from ..settings import Settings, get_settings
@@ -79,7 +78,7 @@ def _pending_age(data: dict) -> float:
     return (models.utcnow() - sent).total_seconds()
 
 
-def _load_pending(s: Settings) -> Optional[dict]:
+def _load_pending(s: Settings) -> dict | None:
     """Ожидание кода или None(нет файла). Нечитаемый файл удаляется."""
     path = pending_path(s)
     try:
@@ -150,7 +149,7 @@ async def _connect(session: str, s: Settings):
 async def _close(client) -> None:
     try:
         await client.disconnect()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
 
@@ -160,14 +159,14 @@ def _save_session(client) -> str:
     return value
 
 
-async def _who(client) -> Optional[str]:
+async def _who(client) -> str | None:
     """"@username" авторизованной сессии или None."""
     if not await client.is_user_authorized():
         return None
     return tg._me_label(await client.get_me())
 
 
-async def _existing(s: Settings) -> Optional[str]:
+async def _existing(s: Settings) -> str | None:
     """Авторизованная сессия в файле: "@username" или None(нет файла или сессия недействительна)."""
     session = tg.read_session(s.tg_session_path)
     if not session:
@@ -365,7 +364,7 @@ async def _dispatch(args, s: Settings, stale: bool) -> tuple[int, str]:
     return OK, await _interactive(s, args.force)
 
 
-def _telegram_error(e: BaseException) -> Optional[Exit]:
+def _telegram_error(e: BaseException) -> Exit | None:
     from telethon import errors
 
     if isinstance(e, errors.FloodError):
@@ -387,7 +386,7 @@ def _telegram_error(e: BaseException) -> Optional[Exit]:
     return None
 
 
-def main(argv: Optional[list] = None) -> int:
+def main(argv: list | None = None) -> int:
     args = _parser().parse_args(argv)
     logs.install()
     s = get_settings()
@@ -407,7 +406,7 @@ def main(argv: Optional[list] = None) -> int:
         code, message = ERROR, e.detail
     except PermissionError as e:
         code, message = ERROR, f"Нет доступа к каталогу сессии Telegram ({type(e).__name__})"
-    except Exception as e:  # noqa: BLE001 - ошибки Telegram → понятное сообщение и код выхода
+    except Exception as e:
         mapped = _telegram_error(e)
         if mapped is None:
             raise

@@ -3,7 +3,7 @@
 Снимок(score, factors, evidence…) строится один раз в момент создания и дальше не пересчитывается:
 карточка показывает, на каком основании сигнал был сформирован, даже если данные по ЖК потом изменились.
 """
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from sqlalchemy import func, select, update
@@ -19,7 +19,7 @@ from .world import audit, iso, load_complex
 
 router = APIRouter(prefix="/api/signals", tags=["signals"])
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 # id сигнала в пути: в пределах INTEGER, иначе огромный id ронял запрос к БД(500) вместо 422/404
 SignalId = Annotated[int, Path(ge=1, le=2_147_483_647, description="id сигнала")]
 ZONE_NAMES = {z["zone"]: z["name"].lower() for z in MODEL["zones"]["items"]}
@@ -27,13 +27,13 @@ SIGNAL_AD_FIELDS = ("id", "platform", "account", "url", "date", "status", "match
                     "termsReview", "text", "ocr", "image", "price")
 
 
-def _by_date_desc(xs: List[Obj]) -> List[Obj]:
+def _by_date_desc(xs: list[Obj]) -> list[Obj]:
     return sorted(sorted(xs, key=lambda x: x["id"]), key=lambda x: x.get("date") or "", reverse=True)
 
 
 # ---------- снимок ----------
 
-def snapshot(db: Session, cid: str) -> Optional[Obj]:
+def snapshot(db: Session, cid: str) -> Obj | None:
     """Риск и доказательства по ЖК на текущий момент(T-11)."""
     w = load_complex(db, cid)
     if w is None:
@@ -67,7 +67,7 @@ def summary_out(s: models.Signal) -> Obj:
             "createdAt": iso(s.created_at), "createdBy": s.created_by, "decidedAt": iso(s.decided_at), "decidedBy": s.decided_by}
 
 
-def journal(db: Session, sid: int) -> List[Obj]:
+def journal(db: Session, sid: int) -> list[Obj]:
     return audit(db, models.AuditEvent.signal_id == sid)
 
 
@@ -84,7 +84,7 @@ def _get(db: Session, sid: int) -> models.Signal:
     return s
 
 
-def _open_signal(db: Session, cid: str) -> Optional[models.Signal]:
+def _open_signal(db: Session, cid: str) -> models.Signal | None:
     q = select(models.Signal).where(models.Signal.complex_id == cid, models.Signal.status == "new").limit(1)
     return db.scalar(q)
 
@@ -98,7 +98,7 @@ def _event(db: Session, s: models.Signal, who: str, what: str, kind: str = "sign
     db.add(models.AuditEvent(signal_id=s.id, complex_id=s.complex_id, kind=kind, who=who, what=what, at=models.utcnow()))
 
 
-def counts(db: Session) -> Dict[str, int]:
+def counts(db: Session) -> dict[str, int]:
     out = {"new": 0, "confirmed": 0, "returned": 0}
     for status, n in db.execute(select(models.Signal.status, func.count()).group_by(models.Signal.status)):
         out[status] = n
@@ -142,8 +142,8 @@ def create_signal(body: schemas.SignalCreateIn, db: Session = Depends(get_db)):
     return signal_out(db, s)
 
 
-@router.get("", response_model=List[schemas.SignalSummaryOut], response_model_by_alias=True)
-def list_signals(status: Optional[schemas.SignalStatus] = None, complex_id: Optional[str] = Query(None, alias="complexId"),
+@router.get("", response_model=list[schemas.SignalSummaryOut], response_model_by_alias=True)
+def list_signals(status: schemas.SignalStatus | None = None, complex_id: str | None = Query(None, alias="complexId"),
                  db: Session = Depends(get_db)):
     q = select(models.Signal).order_by(models.Signal.id.desc())
     if status:
@@ -185,14 +185,14 @@ def return_signal(sid: SignalId, body: schemas.SignalDecisionIn, db: Session = D
     return _decide(db, sid, body, "returned", "Возвращён на доработку")
 
 
-@router.get("/{sid}/audit", response_model=List[schemas.AuditOut], response_model_by_alias=True)
+@router.get("/{sid}/audit", response_model=list[schemas.AuditOut], response_model_by_alias=True)
 def signal_audit(sid: SignalId, db: Session = Depends(get_db)):
     return journal(db, _get(db, sid).id)
 
 
 @router.get("/{sid}/pdf", response_class=Response,
             responses={200: {"content": {"application/pdf": {}}, "description": "Сигнальная карточка A4"}})
-def signal_pdf(sid: SignalId, author: Optional[str] = Query(None, max_length=128), db: Session = Depends(get_db)):
+def signal_pdf(sid: SignalId, author: str | None = Query(None, max_length=128), db: Session = Depends(get_db)):
     """PDF сигнальной карточки; отмечает выгрузку(exportedAt) и пишет её в журнал. ?author= - кто выгрузил."""
     s = _get(db, sid)
     s.exported_at = models.utcnow()

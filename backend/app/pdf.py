@@ -8,10 +8,10 @@
 ссылки справочные, оценка - не юридическое заключение, "нет разрешения МИО" само по себе не "незаконно".
 """
 import math
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -26,7 +26,7 @@ from reportlab.platypus import HRFlowable, KeepTogether, Paragraph, SimpleDocTem
 from . import law
 from .risk_model import ALMATY, fmt_date
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 
 FONTS = Path(__file__).with_name("fonts")
 FONT, BOLD = "NotoSans", "NotoSans-Bold"
@@ -110,7 +110,7 @@ def when(value: Any) -> str:
     if value is None or value == "":
         return "—"
     if isinstance(value, datetime):
-        d = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        d = value if value.tzinfo else value.replace(tzinfo=UTC)
         return d.astimezone(ALMATY).strftime("%d.%m.%Y %H:%M")
     s = str(value)
     if len(s) <= 10:
@@ -151,7 +151,7 @@ def P(text: str, style: str = "cell") -> Paragraph:
     return Paragraph(text, S[style])
 
 
-def _grid(rows: List[list], widths: List[float], header: bool = False) -> Table:
+def _grid(rows: list[list], widths: list[float], header: bool = False) -> Table:
     t = Table(rows, colWidths=widths, repeatRows=1 if header else 0)
     st = [("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEBELOW", (0, 0), (-1, -1), 0.4, LINE),
           ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
@@ -162,7 +162,7 @@ def _grid(rows: List[list], widths: List[float], header: bool = False) -> Table:
     return t
 
 
-def _kv(rows: List[tuple]) -> Table:
+def _kv(rows: list[tuple]) -> Table:
     return _grid([[P(esc(k), "bold"), v if isinstance(v, Paragraph) else P(v)] for k, v in rows], [46 * mm, WIDTH - 46 * mm])
 
 
@@ -212,7 +212,7 @@ DEMO_DEV = "вымышленная организация (демо)"
 DEMO_COMPLEX = "вымышленный ЖК (демо)"
 
 
-def _demo(x: Optional[Obj]) -> bool:
+def _demo(x: Obj | None) -> bool:
     """Демо-сущность: origin 'demo'; в снимках сигналов до блока E поля нет - тогда тоже демо(других ЖК в реестре нет)."""
     return bool(x) and x.get("origin", "demo") == "demo"
 
@@ -258,7 +258,7 @@ def _sourced(x: Obj) -> str:
     return esc(_pct(x.get("value"))) + (f" — {tail}" if tail else ", без источника")
 
 
-def readiness_lines(c: Obj) -> List[str]:
+def readiness_lines(c: Obj) -> list[str]:
     """Стадия и готовность: "подтверждённая готовность" - только из readiness.confirmed(с источником и датой);
     процент из карточки объекта без источника подтверждением не называется."""
     r = c.get("readiness") or {}
@@ -435,7 +435,7 @@ def _canvas(footer: str):
 
         def __init__(self, *a: Any, **kw: Any) -> None:
             super().__init__(*a, **kw)
-            self._pages: List[dict] = []
+            self._pages: list[dict] = []
 
         def showPage(self) -> None:
             self._pages.append(dict(self.__dict__))
@@ -464,9 +464,9 @@ def story(sig: Obj, generated_at: datetime) -> list:
             + _observations(sig) + _materials(sig) + _status(sig) + _journal(sig))
 
 
-def render_signal(sig: Obj, generated_at: Optional[datetime] = None) -> bytes:
+def render_signal(sig: Obj, generated_at: datetime | None = None) -> bytes:
     """Сигнал в форме API(camelCase, как Signal в types.ts) → PDF."""
-    generated_at = generated_at or datetime.now(timezone.utc)
+    generated_at = generated_at or datetime.now(UTC)
     content = story(sig, generated_at)
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=MARGIN,

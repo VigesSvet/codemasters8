@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -100,7 +100,7 @@ def tmp_dir() -> Path:
 
 # ---------- тип и пределы ----------
 
-def sniff(head: bytes) -> Optional[str]:
+def sniff(head: bytes) -> str | None:
     """MIME по первым байтам файла или None(не поддерживается): JPEG, PNG, GIF, WEBP; MP4/MOV - по основному бренду
     ftyp(HEIC/AVIF/3GP и прочие бренды - None); WEBM - EBML с "webm" в первых 64 байтах."""
     if head.startswith(b"\xff\xd8\xff"):

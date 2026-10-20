@@ -16,7 +16,8 @@ import time
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Optional, Union
+from typing import TYPE_CHECKING, Optional
+from collections.abc import Iterable
 
 import httpx
 from sqlalchemy import func, select, update
@@ -47,12 +48,12 @@ DOWNLOAD_STOP_GRACE_S = 30.0
 class RunContext:
     """Контекст запуска подключения. config, state, payload - копии; сохраняются только через save_state/save_payload."""
 
-    def __init__(self, code: str, connector: Connector, *, settings: Optional[Settings] = None,
-                 run_id: Optional[int] = None, job_id: Optional[int] = None, trigger: str = "manual",
-                 config: Optional[dict] = None, state: Optional[dict] = None, payload: Optional[dict] = None,
-                 now: Optional[datetime] = None, stop: Optional[threading.Event] = None,
-                 external_run_id: Optional[str] = None, ephemeral: bool = False,
-                 owner: Optional[tuple[str, int]] = None):
+    def __init__(self, code: str, connector: Connector, *, settings: Settings | None = None,
+                 run_id: int | None = None, job_id: int | None = None, trigger: str = "manual",
+                 config: dict | None = None, state: dict | None = None, payload: dict | None = None,
+                 now: datetime | None = None, stop: threading.Event | None = None,
+                 external_run_id: str | None = None, ephemeral: bool = False,
+                 owner: tuple[str, int] | None = None):
         """owner - захват задания(воркер, число попыток): save_payload пишет фазы, только пока задание у него
         (jobs.fence); None - без проверки(тесты, прямой вызов)."""
         from .. import jobs
@@ -72,15 +73,15 @@ class RunContext:
         self._owner = owner
         self._soft_deadline = jobs.SOFT_DEADLINE_S
         self._foreign_noted: set[str] = set()
-        self.counts = {k: 0 for k in COUNTERS}
+        self.counts = dict.fromkeys(COUNTERS, 0)
         self.notes: list[dict] = []  # заметки этого запуска(в эфемерном режиме - только здесь)
         self.partial_reasons: list[str] = []
-        self.postponed: Optional[float] = None
-        self.first_failure: Optional[str] = None
-        self._stop_seen: Optional[float] = None  # когда загрузка файла впервые увидела остановку воркера
+        self.postponed: float | None = None
+        self.first_failure: str | None = None
+        self._stop_seen: float | None = None  # когда загрузка файла впервые увидела остановку воркера
 
     @classmethod
-    def ephemeral(cls, code: str, *, config: Optional[dict] = None, state: Optional[dict] = None) -> "RunContext":
+    def ephemeral(cls, code: str, *, config: dict | None = None, state: dict | None = None) -> "RunContext":
         """Проверка из командной строки: без БД и запуска; save_state/save_payload меняют только память."""
         from . import registry
 
@@ -89,7 +90,7 @@ class RunContext:
     # ---------- время и остановка ----------
 
     @property
-    def external_run_id(self) -> Optional[str]:
+    def external_run_id(self) -> str | None:
         """Внешний запуск этого запуска(Apify): есть - второй платный запуск не начинать."""
         return self._external_run_id
 
@@ -127,13 +128,13 @@ class RunContext:
 
     # ---------- сеть ----------
 
-    def client(self, *, timeout: float = 20.0, headers: Optional[dict] = None, base_url: str = "",
+    def client(self, *, timeout: float = 20.0, headers: dict | None = None, base_url: str = "",
                follow_redirects: bool = False) -> httpx.Client:
         return http.client(timeout=timeout, headers=headers, base_url=base_url, follow_redirects=follow_redirects)
 
-    def download_media(self, url: str, *, key: str, kind: MediaKind = "image", role: Optional[str] = None,
-                       allowed_hosts: Optional[Iterable[str]] = None, auth_headers: Optional[dict] = None,
-                       auth_hosts: Iterable[str] = (), max_bytes: Optional[int] = None) -> MediaIn:
+    def download_media(self, url: str, *, key: str, kind: MediaKind = "image", role: str | None = None,
+                       allowed_hosts: Iterable[str] | None = None, auth_headers: dict | None = None,
+                       auth_hosts: Iterable[str] = (), max_bytes: int | None = None) -> MediaIn:
         """Файл по ссылке → хранилище. Никогда не бросает: ошибка - MediaIn "failed"(403/404/410 - "unavailable")
         с причиной без query и токенов. При остановке воркера загрузка прерывается через DOWNLOAD_STOP_GRACE_S с."""
         allowed = media.VIDEO_TYPES if kind == "video" else media.IMAGE_TYPES
@@ -152,21 +153,21 @@ class RunContext:
             return MediaIn(key=key, kind=kind, role=role, status="failed", error=e.detail, origin_url=origin)
         except ValueError as e:  # учётные данные в обычных заголовках - ошибка подключения, файл не загружается
             return MediaIn(key=key, kind=kind, role=role, status="failed", error=redact(str(e)), origin_url=origin)
-        except Exception as e:  # noqa: BLE001 - сбой одного файла не останавливает запуск
+        except Exception as e:
             log.warning("Файл %s (%s) не загружен: %s", key, origin, type(e).__name__)
             return MediaIn(key=key, kind=kind, role=role, status="failed",
                            error=f"Файл не загружен ({type(e).__name__})", origin_url=origin)
 
-    def store_media(self, data: Union[bytes, Path], *, key: str, kind: MediaKind = "image",
-                    role: Optional[str] = None, origin_ref: Optional[str] = None,
-                    meta: Optional[dict] = None) -> MediaIn:
+    def store_media(self, data: bytes | Path, *, key: str, kind: MediaKind = "image",
+                    role: str | None = None, origin_ref: str | None = None,
+                    meta: dict | None = None) -> MediaIn:
         """Байты или временный файл(забирается) → хранилище; вид файла - по сигнатуре. Никогда не бросает."""
         try:
             stored = media.store_file(Path(data)) if isinstance(data, (str, Path)) else media.store_bytes(bytes(data))
         except media.MediaRejected as e:
             return MediaIn(key=key, kind=kind, role=role, status="failed", error=e.detail, origin_ref=origin_ref,
                            meta=dict(meta or {}))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.warning("Файл %s не сохранён: %s", key, type(e).__name__)
             return MediaIn(key=key, kind=kind, role=role, status="failed",
                            error=f"Файл не сохранён ({type(e).__name__})", origin_ref=origin_ref,
@@ -181,17 +182,17 @@ class RunContext:
 
     # ---------- приём ----------
 
-    def _namespace(self, namespace: Optional[str]) -> str:
+    def _namespace(self, namespace: str | None) -> str:
         return namespace or self.connector.platform or self.code
 
-    def known(self, external_id: str, *, namespace: Optional[str] = None) -> Optional["Known"]:
+    def known(self, external_id: str, *, namespace: str | None = None) -> Optional["Known"]:
         """Что уже принято по внешнему ID(без сети): какие файлы загружены, последняя версия содержимого."""
         if self._ephemeral:
             return None
         with SessionLocal() as db:
             return ingest.known(db, self._namespace(namespace), str(external_id))
 
-    def ingest(self, pub: Publication, *, note: Optional[str] = None) -> "IngestResult":
+    def ingest(self, pub: Publication, *, note: str | None = None) -> "IngestResult":
         """Публикация → единый приём: файлы, которые ещё нужны, скачиваются(без открытой сессии), затем запись - в
         своей транзакции. Собранная другим источником - не перезаписывается(учитывается как "без изменений")."""
         if self._ephemeral:
@@ -222,7 +223,7 @@ class RunContext:
         return res
 
     @staticmethod
-    def _owner_name(owner: Optional[str]) -> str:
+    def _owner_name(owner: str | None) -> str:
         from . import registry
 
         try:
@@ -230,7 +231,7 @@ class RunContext:
         except KeyError:
             return owner or "другой источник"
 
-    def touch(self, external_id: str, *, namespace: Optional[str] = None) -> bool:
+    def touch(self, external_id: str, *, namespace: str | None = None) -> bool:
         """Публикация есть в источнике и не менялась(без содержимого): "последний раз видели" и счётчики."""
         if self._ephemeral:
             return False
@@ -322,7 +323,7 @@ class RunContext:
                 job.payload = {**(job.payload or {}), **patch}
                 db.commit()
 
-    def set_external_run(self, external_run_id: str, *, cost_usd: Optional[float] = None) -> None:
+    def set_external_run(self, external_run_id: str, *, cost_usd: float | None = None) -> None:
         """Внешний запуск(Apify Run ID) и его стоимость - сразу в БД(до следующего сетевого шага)."""
         self._external_run_id = str(external_run_id)[:64]
         if self._ephemeral or self.run_id is None:

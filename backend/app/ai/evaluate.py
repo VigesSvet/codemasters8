@@ -6,20 +6,20 @@ catalog того же файла: вымышленные ЖК, только дл
 (не ниже lowConfidence) предложил бы не тот ЖК или ЖК там, где его быть не должно.
 """
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..risk_model import SHARED
 from . import ENGINE, analyze, case_catalog
 from .matching import Catalog
 from .terms import LABELS
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 
 CASES = SHARED / "ai_cases.json"
 TERM_KEYS = ("kind", "amount", "currency", "unit", "percent", "months", "money")
 
 
-def load_cases() -> List[Obj]:
+def load_cases() -> list[Obj]:
     return json.loads(CASES.read_text(encoding="utf-8"))["cases"]
 
 
@@ -45,12 +45,12 @@ def _term_text(t: Obj) -> str:
 def run_case(case: Obj, cat: Catalog) -> Obj:
     an = analyze(cat, case.get("text"), case.get("ocr"), case.get("account"), case.get("platform"), case.get("url"))
     exp = case["expected"]
-    exp_terms: List[Obj] = exp.get("terms") or []
+    exp_terms: list[Obj] = exp.get("terms") or []
     got_terms = [{k: t[k] for k in (*TERM_KEYS, "from", "confidence", "low") if k in t} for t in an["terms"]]
     found = [e for e in exp_terms if any(term_ok(e, g) for g in got_terms)]
     correct = [g for g in got_terms if any(term_ok(e, g) for e in exp_terms)]
     hyps = an["hypotheses"]
-    top: Optional[Obj] = hyps[0] if hyps else None
+    top: Obj | None = hyps[0] if hyps else None
     want = exp.get("complexId")
     notes = [case["note"]] if case.get("note") else []
     if want:
@@ -84,11 +84,11 @@ def run_case(case: Obj, cat: Catalog) -> Obj:
     }
 
 
-def run(cat: Optional[Catalog] = None) -> Obj:
+def run(cat: Catalog | None = None) -> Obj:
     cat = cat or case_catalog()
     rows = [run_case(c, cat) for c in load_cases()]
     counts = [r.pop("_counts") for r in rows]
-    s = lambda key: sum(int(c[key]) for c in counts)  # noqa: E731
+    s = lambda key: sum(int(c[key]) for c in counts)
     link_cases = s("linkCase")
     return {
         "engine": ENGINE,

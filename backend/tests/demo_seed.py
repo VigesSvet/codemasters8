@@ -7,8 +7,9 @@ live_start - "боевой" старт без демо-набора и без с
 из него(прежний SAQ_DEMO_DATA=0); live() - переключить старт на live_start и пересоздать БД."""
 import json
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, Iterator, List, Type, get_args
+from datetime import datetime, UTC
+from typing import Any, get_args
+from collections.abc import Iterator
 
 from sqlalchemy import select
 
@@ -22,14 +23,14 @@ from app.schemas import AuditKind
 log = logging.getLogger("saq")
 
 SEED = SHARED / "testdata" / "demo_seed.json"
-DATA: Dict[str, Any] = json.loads(SEED.read_text(encoding="utf-8"))
+DATA: dict[str, Any] = json.loads(SEED.read_text(encoding="utf-8"))
 
 
 def _snake(key: str) -> str:
     return "".join("_" + ch.lower() if ch.isupper() else ch for ch in key)
 
 
-def _row(model: Type[Base], d: Dict[str, Any]) -> Base:
+def _row(model: type[Base], d: dict[str, Any]) -> Base:
     """camelCase-ключи верхнего уровня → snake_case; вложенные словари(basis, readiness, photos) - как есть."""
     cols = set(model.__table__.columns.keys())
     data = {_snake(k): v for k, v in d.items() if not k.startswith("_")}
@@ -49,7 +50,7 @@ def utc(value: str, local_time: str = "10:00") -> datetime:
     """Время из сида → UTC. Без смещения - местное время Усть-Каменогорска(UTC+5), как в источниках;
     только дата - фиксация в local_time того же дня. Строки со смещением(+05:00) переводятся как есть."""
     dt = datetime.fromisoformat(value if "T" in value else f"{value}T{local_time}")
-    return (dt if dt.tzinfo else dt.replace(tzinfo=ALMATY)).astimezone(timezone.utc)
+    return (dt if dt.tzinfo else dt.replace(tzinfo=ALMATY)).astimezone(UTC)
 
 
 def _applicants(n: int) -> str:
@@ -58,7 +59,7 @@ def _applicants(n: int) -> str:
     return f"{n} {word}"
 
 
-def _ad_events(ad: Dict[str, Any], names: Dict[str, str]) -> Iterator[Dict[str, Any]]:
+def _ad_events(ad: dict[str, Any], names: dict[str, str]) -> Iterator[dict[str, Any]]:
     """Сбор публикации, гипотеза ИИ о ЖК(при сборе) и - если было - подтверждение привязки аналитиком."""
     at = utc(ad["date"])
     cid = ad.get("complexId") if ad.get("complexId") in names else None
@@ -77,7 +78,7 @@ def _ad_events(ad: Dict[str, Any], names: Dict[str, str]) -> Iterator[Dict[str, 
                "what": f"Привязка к ЖК «{names[cid]}» подтверждена аналитиком"}
 
 
-def _complex_events(c: Dict[str, Any], appeals: List[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
+def _complex_events(c: dict[str, Any], appeals: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:
     """Сведения по ЖК с источником и временем фиксации(ТЗ §4): основание, готовность, обращения, снимки площадки."""
     b = c.get("basis") or {}
     if b.get("source") and b.get("checkedAt"):
@@ -101,7 +102,7 @@ def _complex_events(c: Dict[str, Any], appeals: List[Dict[str, Any]]) -> Iterato
         yield {"at": utc(p["date"], "12:00"), "what": what + note}
 
 
-def journal(data: Dict[str, Any]) -> List[models.AuditEvent]:
+def journal(data: dict[str, Any]) -> list[models.AuditEvent]:
     """Исходный журнал демо-БД, детерминированно: публикации(сбор и привязка), сведения по ЖК, явные события seed.audit."""
     names = {c["id"]: c["name"] for c in data["complexes"]}
     out = [models.AuditEvent(ad_id=ad["id"], **{"who": SYSTEM, **e}) for ad in data["ads"] for e in _ad_events(ad, names)]

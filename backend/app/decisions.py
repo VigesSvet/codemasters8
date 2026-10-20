@@ -16,7 +16,7 @@ R2, R3, R5, R6 - "объект введён", как у любого введё�
 Как решение влияет на оценку и когда снимается новой рекламой - app.screening. Ответ - ЖК в форме GET
 /api/complexes/{id} с пересчитанной оценкой и полем decision.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -29,18 +29,18 @@ from .verification import _complex, _event, _fmt, _row, _src_text, _then
 
 router = APIRouter(tags=["decisions"])
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 NO_DECISION = "Решения аналитика по этому ЖК нет — оценка и так автоматическая"
 NOT_COMMISSIONED = "Действующее решение — «Проверено — замечаний нет», а не отметка «сдан»: отмените его через решение по проверке"
 STAGE_NONE = "не указана"
 D = models.ScreeningDecision
 
 
-def _active(db: Session, cid: str) -> Optional[models.ScreeningDecision]:
+def _active(db: Session, cid: str) -> models.ScreeningDecision | None:
     return db.scalar(select(D).where(D.complex_id == cid, D.status == "active").order_by(D.id.desc()).limit(1))
 
 
-def _state(db: Session, cid: str) -> Optional[Obj]:
+def _state(db: Session, cid: str) -> Obj | None:
     """Решение ЖК так, как его видит оценка: действует или снято новой рекламой(reopened)."""
     return screening.compute(db).decisions.get(cid)
 
@@ -53,7 +53,7 @@ def _label(row: models.ScreeningDecision) -> str:
     return screening.DECISION_LABELS[row.kind]
 
 
-def _stage_name(stage: Optional[str]) -> str:
+def _stage_name(stage: str | None) -> str:
     return f"«{stage}»" if stage else STAGE_NONE
 
 
@@ -62,7 +62,7 @@ def _same(row: models.ScreeningDecision, values: Obj) -> bool:
 
 
 def _record(db: Session, c: models.Complex, kind: str, values: Obj, who: str, what: str,
-            comment: Optional[str]) -> Obj:
+            comment: str | None) -> Obj:
     """Новое решение(прежнее действующее - заменено); у "сдан" - стадия "введён", у прочих - возврат стадии, которую
     поставила прежняя отметка "сдан". Повтор действующего(не снятого рекламой) решения без комментария - без записи."""
     cur = _active(db, c.id)
@@ -70,7 +70,7 @@ def _record(db: Session, c: models.Complex, kind: str, values: Obj, who: str, wh
         st = _state(db, c.id)
         if st is not None and st["status"] == "active":
             return _row(db, c)
-    notes: List[str] = []
+    notes: list[str] = []
     prev = c.stage
     if cur is not None:
         if cur.kind == "commissioned":
@@ -117,7 +117,7 @@ def decide(cid: str, body: schemas.ScreeningDecisionIn, db: Session = Depends(ge
     return _record(db, c, body.decision, values, body.author, what, body.comment)
 
 
-def _cancel(db: Session, cid: str, body: schemas.DecisionCancelIn, only: Optional[str] = None) -> Obj:
+def _cancel(db: Session, cid: str, body: schemas.DecisionCancelIn, only: str | None = None) -> Obj:
     c = _complex(db, cid, lock=True)
     cur = _active(db, c.id)
     if cur is None:
@@ -154,7 +154,7 @@ def cancel_commissioned(cid: str, body: schemas.DecisionCancelIn, db: Session = 
     return _cancel(db, cid, body, only="commissioned")
 
 
-@router.get("/api/complexes/{cid}/screening-decisions", response_model=List[schemas.DecisionRecordOut],
+@router.get("/api/complexes/{cid}/screening-decisions", response_model=list[schemas.DecisionRecordOut],
             response_model_by_alias=True)
 def history(cid: str, db: Session = Depends(get_db)):
     """История решений по ЖК, новые первыми: действующее, заменённые и отменённые(кто, когда, почему)."""

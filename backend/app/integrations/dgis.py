@@ -29,7 +29,8 @@ import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Annotated, Any, Callable, List, Literal, Optional
+from typing import TYPE_CHECKING, Annotated, Any, Literal
+from collections.abc import Callable
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
@@ -104,17 +105,17 @@ class Candidate:
     """Кандидат адреса из 2ГИС. address_name - полный адрес с городом(full_address_name), если 2ГИС его дал."""
     id: str
     name: str
-    full_name: Optional[str]
-    address_name: Optional[str]
-    purpose: Optional[str]
-    type: Optional[str]
-    precision: Optional[str]
+    full_name: str | None
+    address_name: str | None
+    purpose: str | None
+    type: str | None
+    precision: str | None
     lat: float
     lon: float
-    city: Optional[str]
-    building_id: Optional[str] = None
+    city: str | None
+    building_id: str | None = None
 
-    def stored(self, *, distance: Optional[float], recommended: bool) -> dict:
+    def stored(self, *, distance: float | None, recommended: bool) -> dict:
         """Как кандидат хранится в geo_checks.candidates и отдаётся API(camelCase)."""
         return {"id": self.id, "name": self.name, "fullName": self.full_name, "addressName": self.address_name,
                 "purpose": self.purpose, "type": self.type, "precision": self.precision, "lat": self.lat,
@@ -122,7 +123,7 @@ class Candidate:
                 "distanceM": round(distance, 1) if distance is not None else None, "recommended": recommended}
 
 
-def _num(v: Any) -> Optional[float]:
+def _num(v: Any) -> float | None:
     if isinstance(v, bool):
         return None
     try:
@@ -132,11 +133,11 @@ def _num(v: Any) -> Optional[float]:
     return f if math.isfinite(f) else None
 
 
-def _text(v: Any) -> Optional[str]:
+def _text(v: Any) -> str | None:
     return str(v).strip()[:500] or None if v is not None else None
 
 
-def _candidate(item: Any) -> Optional[Candidate]:
+def _candidate(item: Any) -> Candidate | None:
     """Элемент items[] → кандидат; без ID или координат - пропускается."""
     if not isinstance(item, dict) or not item.get("id"):
         return None
@@ -157,7 +158,7 @@ def _candidate(item: Any) -> Optional[Candidate]:
                      building_id=_text(address.get("building_id")))
 
 
-def _code(v: Any) -> Optional[int]:
+def _code(v: Any) -> int | None:
     try:
         return int(v)
     except (TypeError, ValueError):
@@ -223,11 +224,11 @@ def geocode(query: str, *, client: httpx.Client, key: str) -> list[Candidate]:
     raise SourceError(f"2ГИС вернул неожиданный ответ (код {code})", retryable=False)
 
 
-def _same_city(a: Optional[str], b: Optional[str]) -> bool:
+def _same_city(a: str | None, b: str | None) -> bool:
     return bool(a and b and a.strip().casefold() == b.strip().casefold())
 
 
-def recommended(cands: list[Candidate], *, city: str = CITY) -> Optional[str]:
+def recommended(cands: list[Candidate], *, city: str = CITY) -> str | None:
     """ID единственного точного дома(precision exact, тип building) в городе; несколько или ни одного - None
     (выбирает аналитик). Это подсказка, а не решение."""
     exact = [c for c in cands if c.precision == "exact" and (c.type or "building") == "building"
@@ -269,8 +270,8 @@ def _until_midnight(now: datetime) -> float:
 
 
 def reserve(reserve_fn: Callable[[str, int], bool], s: Settings, now: datetime, *,
-            used_fn: Optional[Callable[[str], int]] = None,
-            release_fn: Optional[Callable[[str], None]] = None) -> None:
+            used_fn: Callable[[str], int] | None = None,
+            release_fn: Callable[[str], None] | None = None) -> None:
     """Учесть один запрос до обращения к 2ГИС: сначала счётчик периода, затем дневной. Исчерпан любой - Quota(запрос
     не выполняется); если дневной исчерпан после учёта периода, учёт периода возвращается(release_fn).
     reserve_fn(name, limit) - service.reserve_quota(маршруты) или ctx.reserve_quota(проверка подключения)."""
@@ -309,7 +310,7 @@ def _pause_s(e: RateLimited) -> float:
     return float(e.retry_after or PAUSE_DEFAULT_S)
 
 
-def _pause_of(r: Optional[models.Collector]) -> Optional[dict]:
+def _pause_of(r: models.Collector | None) -> dict | None:
     p = (r.state or {}).get("pause") if r is not None else None
     return p if isinstance(p, dict) else None
 
@@ -320,7 +321,7 @@ def _when(until: datetime, now: datetime) -> str:
     return local_time(until) if same_day else when_text(until)
 
 
-def paused_until(db: Session, s: Settings, now: datetime) -> Optional[datetime]:
+def paused_until(db: Session, s: Settings, now: datetime) -> datetime | None:
     """До какого времени к 2ГИС не обращаться(2ГИС ограничил частоту по текущему ключу); None - паузы нет."""
     from . import service
 
@@ -353,7 +354,7 @@ def _provider_limited(db: Session, s: Settings, now: datetime, e: RateLimited) -
         service.transition(db, CONNECTOR.code, "rate_limited", f"{e.detail} — повтор после {_when(until, now)}",
                            at=now)
         db.commit()
-    except Exception:  # noqa: BLE001
+    except Exception:
         db.rollback()
         log.warning("Пауза 2ГИС не записана в состояние подключения", exc_info=True)
 
@@ -377,7 +378,7 @@ def _lock_name(kind: str, target_id: str) -> str:
     return "dgis-check:" + hashlib.sha256(f"{kind}\n{target_id}".encode()).hexdigest()[:40]
 
 
-def _lock(db: Session, name: str) -> Optional[str]:
+def _lock(db: Session, name: str) -> str | None:
     """Взять блокировку сверки объекта(строка worker_leases): свободна или истекла - метка владельца, иначе None(идёт
     другая сверка этого объекта). Атомарно на SQLite и PostgreSQL: условный UPDATE истёкшей строки, иначе INSERT … ON
     CONFLICT DO NOTHING. Фиксирует транзакцию. Срок - по часам сервера, а не по _now()."""
@@ -401,7 +402,7 @@ def _unlock(name: str, holder: str) -> None:
             db.execute(delete(L).where(L.name == name, L.holder == holder)
                        .execution_options(synchronize_session=False))
             db.commit()
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("Блокировка сверки 2ГИС не снята — истечёт сама", exc_info=True)
 
 
@@ -468,9 +469,7 @@ def _blank_to_none(v: Any) -> Any:
     return None if isinstance(v, str) and not v.strip() else v
 
 
-GeoQuery = Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
-                                                               max_length=QUERY_MAX),
-                                        AfterValidator(schemas.no_nul)]], BeforeValidator(_blank_to_none)]
+GeoQuery = Annotated[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=QUERY_MAX), AfterValidator(schemas.no_nul)] | None, BeforeValidator(_blank_to_none)]
 TargetId = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=96),
                      AfterValidator(schemas.no_nul)]
 CandidateId = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64),
@@ -480,15 +479,15 @@ CandidateId = Annotated[str, StringConstraints(strip_whitespace=True, min_length
 class GeoCandidateOut(schemas.Camel):
     id: str
     name: str = ""
-    full_name: Optional[str] = None
-    address_name: Optional[str] = None
-    purpose: Optional[str] = None
-    type: Optional[str] = None
-    precision: Optional[str] = None
+    full_name: str | None = None
+    address_name: str | None = None
+    purpose: str | None = None
+    type: str | None = None
+    precision: str | None = None
     lat: float
     lon: float
-    city: Optional[str] = None
-    distance_m: Optional[float] = None  # от точки в карточке на момент сверки
+    city: str | None = None
+    distance_m: float | None = None  # от точки в карточке на момент сверки
     recommended: bool = False  # подсказка: единственный точный дом в городе; не выбор
 
 
@@ -504,28 +503,28 @@ class GeoCheckOut(schemas.Camel):
     provider: str
     query: str
     status: CheckStatus
-    candidates: List[GeoCandidateOut] = []
+    candidates: list[GeoCandidateOut] = []
     fetched_at: schemas.IsoTime = None
     cached: bool = False  # ответ из кэша - 2ГИС повторно не запрашивался
     purged: bool = False  # кандидаты удалены по сроку хранения
-    requested_by: Optional[str] = None
-    chosen_id: Optional[str] = None
-    chosen: Optional[GeoCandidateOut] = None  # выбранный кандидат(остаётся и после удаления кандидатов по сроку)
+    requested_by: str | None = None
+    chosen_id: str | None = None
+    chosen: GeoCandidateOut | None = None  # выбранный кандидат(остаётся и после удаления кандидатов по сроку)
     applied: bool = False
-    prev_point: Optional[GeoPointOut] = None  # точка в карточке до решения
-    decided_by: Optional[str] = None
+    prev_point: GeoPointOut | None = None  # точка в карточке до решения
+    decided_by: str | None = None
     decided_at: schemas.IsoTime = None
-    comment: Optional[str] = None
+    comment: str | None = None
     expires_at: schemas.IsoTime = None
 
 
 class GeoStatusOut(schemas.Camel):
     configured: bool
     used: int
-    limit: Optional[int] = None
-    period_start: Optional[str] = None
+    limit: int | None = None
+    period_start: str | None = None
     used_today: int
-    daily_limit: Optional[int] = None
+    daily_limit: int | None = None
     cache_days: int
 
 
@@ -556,16 +555,16 @@ class _Target:
     kind: str
     id: str
     name: str
-    address: Optional[str]
-    point: Optional[dict]  # {lat, lng} в карточке или None
-    raw: Optional[tuple] = None  # (lat, lng) ЖК как в БД - для условного UPDATE; у объекта открытых данных - None
+    address: str | None
+    point: dict | None  # {lat, lng} в карточке или None
+    raw: tuple | None = None  # (lat, lng) ЖК как в БД - для условного UPDATE; у объекта открытых данных - None
 
     @property
-    def complex_id(self) -> Optional[str]:
+    def complex_id(self) -> str | None:
         return self.id if self.kind == "complex" else None
 
 
-def _point(lat: Any, lng: Any) -> Optional[dict]:
+def _point(lat: Any, lng: Any) -> dict | None:
     la, lo = _num(lat), _num(lng)
     if la is None or lo is None or (la == 0 and lo == 0):
         return None
@@ -594,9 +593,9 @@ def _target(db: Session, kind: str, tid: str) -> _Target:
     return _Target(kind, tid, obj.get("name") or tid, obj.get("address"), _point(obj.get("lat"), obj.get("lng")))
 
 
-def _moved(before: Optional[dict], now: Optional[dict]) -> bool:
+def _moved(before: dict | None, now: dict | None) -> bool:
     """Точка в карточке изменилась после сверки(обе "нет координат" - не изменилась)."""
-    def key(p: Optional[dict]) -> Optional[tuple]:
+    def key(p: dict | None) -> tuple | None:
         return (_num(p.get("lat")), _num(p.get("lng"))) if p else None
     return key(before) != key(now)
 
@@ -611,7 +610,7 @@ def norm_query(query: str) -> str:
     return " ".join(query.casefold().split())[:255]
 
 
-def _audit(db: Session, who: str, what: str, *, complex_id: Optional[str], at: datetime) -> None:
+def _audit(db: Session, who: str, what: str, *, complex_id: str | None, at: datetime) -> None:
     """Событие журнала(data) от имени аналитика; complex_id - только у сверки ЖК(внешний ключ на complexes)."""
     db.add(models.AuditEvent(kind="data", who=who, what=what, at=models.as_utc(at), complex_id=complex_id))
 
@@ -645,7 +644,7 @@ def _key_rejected(db: Session, now: datetime) -> None:
         r.last_error, r.last_error_at = KEY_REJECTED, models.as_utc(now)
         service.transition(db, CONNECTOR.code, "expired", KEY_REJECTED, at=now)
         db.commit()
-    except Exception:  # noqa: BLE001
+    except Exception:
         db.rollback()
         log.warning("Статус подключения 2ГИС не обновлён после отказа ключа", exc_info=True)
 
@@ -668,9 +667,9 @@ def geo_status(db: Session = Depends(get_db)):
             "used_today": used_today, "daily_limit": s.dgis_daily_limit, "cache_days": s.dgis_cache_ttl_days}
 
 
-@router.get("/api/geo/checks", response_model=List[GeoCheckOut], response_model_by_alias=True)
-def geo_checks(target_kind: Optional[TargetKind] = Query(None, alias="targetKind"),
-               target_id: Optional[str] = Query(None, alias="targetId", max_length=96),
+@router.get("/api/geo/checks", response_model=list[GeoCheckOut], response_model_by_alias=True)
+def geo_checks(target_kind: TargetKind | None = Query(None, alias="targetKind"),
+               target_id: str | None = Query(None, alias="targetId", max_length=96),
                limit: int = Query(50, ge=1, le=200), db: Session = Depends(get_db)):
     """Сохранённые сверки объекта, новые первыми - без обращения к 2ГИС."""
     G = models.GeoCheck
@@ -719,7 +718,7 @@ def geo_check(body: GeoCheckIn, request: Request, response: Response, db: Sessio
         _unlock(lock, holder)
 
 
-def _cached(db: Session, t: _Target, qnorm: str, s: Settings, now: datetime) -> Optional[models.GeoCheck]:
+def _cached(db: Session, t: _Target, qnorm: str, s: Settings, now: datetime) -> models.GeoCheck | None:
     """Кэш: последняя сверка того же объекта и запроса моложе DGIS_CACHE_TTL_DAYS с неудалёнными кандидатами. Нет, а
     объект сверяли меньше 10 минут назад(другим запросом) - 429. У объекта из рекламы два запроса(название и адрес):
     интервал считается по каждому запросу."""

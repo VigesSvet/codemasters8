@@ -15,7 +15,8 @@ import threading
 from dataclasses import dataclass, field, fields
 from datetime import date
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any
+from collections.abc import Mapping
 from urllib.parse import urlsplit
 
 log = logging.getLogger("saq.settings")
@@ -44,7 +45,7 @@ class Secret:
 
     __slots__ = ("_v",)
 
-    def __init__(self, value: Optional[str] = ""):
+    def __init__(self, value: str | None = ""):
         self._v = value or ""
 
     def get(self) -> str:
@@ -70,7 +71,7 @@ def _no_secret() -> Secret:
 @dataclass(frozen=True, kw_only=True)
 class Settings:
     # общее
-    env_file: Optional[Path] = None
+    env_file: Path | None = None
     media_root: Path = DEFAULT_MEDIA_ROOT
     media_max_image_mb: int = 10
     media_max_video_mb: int = 200
@@ -83,7 +84,7 @@ class Settings:
     # "Проверка по рекламе"(app.screening): окно свежести рекламы, дней - по дате публикации
     screening_days: int = 120
     worker_poll_s: float = 5.0
-    worker_id: Optional[str] = None
+    worker_id: str | None = None
     job_lease_s: int = 1800
     job_max_s: int = 3600
     user_agent: str = DEFAULT_UA
@@ -98,7 +99,7 @@ class Settings:
     ig_page_size: int = 25
     ig_first_load_max: int = 50
     # Telegram
-    tg_api_id: Optional[int] = None
+    tg_api_id: int | None = None
     tg_api_hash: Secret = field(default_factory=_no_secret)
     tg_phone: Secret = field(default_factory=_no_secret)
     tg_session_path: Path = DEFAULT_TG_SESSION_PATH
@@ -119,7 +120,7 @@ class Settings:
     # 2ГИС
     dgis_api_key: Secret = field(default_factory=_no_secret)
     dgis_quota_limit: int = 900
-    dgis_quota_period_start: Optional[date] = None
+    dgis_quota_period_start: date | None = None
     dgis_daily_limit: int = 50
     dgis_cache_ttl_days: int = 7
     # Krisha
@@ -174,13 +175,13 @@ class Settings:
         """Имена переменных окружения, которые не заданы(только имена, никогда значения)."""
         return [n for n in names if self._value(n) is None]
 
-    def key_fp(self, name: str) -> Optional[str]:
+    def key_fp(self, name: str) -> str | None:
         """Отпечаток заданного значения(sha256[:12]) - заметить смену ключа, не раскрывая его; None - не задано."""
         v = self._value(name)
         return hashlib.sha256(str(v).encode()).hexdigest()[:12] if v is not None else None
 
     @property
-    def public_host(self) -> Optional[str]:
+    def public_host(self) -> str | None:
         """Хост публичного адреса OLX Callback(ngrok): через него доступен только путь обратного вызова. Без
         регистра и конечной точки("x.ngrok-free.dev." - тот же хост)."""
         host = urlsplit(self.olx_redirect_uri).hostname if self.olx_redirect_uri else None
@@ -188,7 +189,7 @@ class Settings:
         return host or None
 
     @property
-    def public_path(self) -> Optional[str]:
+    def public_path(self) -> str | None:
         return (urlsplit(self.olx_redirect_uri).path or "/") if self.public_host else None
 
 
@@ -197,8 +198,8 @@ class _Var:
     env: str
     field: str
     kind: str  # str | secret | token | int | float | bool | path | date | optint | optstr | ua | model | effort
-    lo: Optional[float] = None  # нижняя граница чисел: меньше - значение по умолчанию с предупреждением
-    hi: Optional[float] = None  # верхняя граница чисел: больше - значение по умолчанию с предупреждением
+    lo: float | None = None  # нижняя граница чисел: меньше - значение по умолчанию с предупреждением
+    hi: float | None = None  # верхняя граница чисел: больше - значение по умолчанию с предупреждением
 
 
 VARS: tuple[_Var, ...] = (
@@ -292,7 +293,7 @@ _FILE_CACHE: dict[str, tuple[tuple, dict]] = {}
 _FILE_LOCK = threading.Lock()
 
 
-def env_file_path(environ: Mapping[str, str] = os.environ) -> Optional[Path]:
+def env_file_path(environ: Mapping[str, str] = os.environ) -> Path | None:
     """SAQ_ENV_FILE, если задан(пустая строка - файл отключён), иначе .env в корне репозитория."""
     if "SAQ_ENV_FILE" in environ:
         raw = (environ.get("SAQ_ENV_FILE") or "").strip()
@@ -300,7 +301,7 @@ def env_file_path(environ: Mapping[str, str] = os.environ) -> Optional[Path]:
     return DEFAULT_ENV_FILE
 
 
-def _file_values(path: Optional[Path], warns: Optional[list] = None) -> dict:
+def _file_values(path: Path | None, warns: list | None = None) -> dict:
     """Значения из .env буквально(interpolate=False); нет файла или он не читается - пусто(с предупреждением).
     warns - список для предупреждений: при разборе настроек в лог писать нельзя(маскирование в логах само читает
     настройки - была бы рекурсия), предупреждения выводятся после заполнения кэша."""
@@ -332,7 +333,7 @@ def _file_values(path: Optional[Path], warns: Optional[list] = None) -> dict:
     return values
 
 
-def _raw(name: str, environ: Mapping[str, str], file: Mapping[str, str]) -> Optional[str]:
+def _raw(name: str, environ: Mapping[str, str], file: Mapping[str, str]) -> str | None:
     """Непустое значение окружения, иначе непустое из .env, иначе None."""
     for src in (environ, file):
         v = src.get(name)
@@ -343,7 +344,7 @@ def _raw(name: str, environ: Mapping[str, str], file: Mapping[str, str]) -> Opti
 
 # ---------- разбор значений ----------
 
-def _num(name: str, raw: Optional[str], default, cast, lo, warns: list, hi=None):
+def _num(name: str, raw: str | None, default, cast, lo, warns: list, hi=None):
     if raw is None:
         return default
     fallback = "значение не используется" if default is None else f"используется значение по умолчанию ({default})"
@@ -364,7 +365,7 @@ def _num(name: str, raw: Optional[str], default, cast, lo, warns: list, hi=None)
     return v
 
 
-def _bool(name: str, raw: Optional[str], default: bool, warns: list) -> bool:
+def _bool(name: str, raw: str | None, default: bool, warns: list) -> bool:
     if raw is None:
         return default
     word = raw.lower()
@@ -375,7 +376,7 @@ def _bool(name: str, raw: Optional[str], default: bool, warns: list) -> bool:
     return False
 
 
-def _weak(name: str, value: str) -> Optional[str]:
+def _weak(name: str, value: str) -> str | None:
     if len(value) < TOKEN_MIN_LEN:
         return f"{name} короче {TOKEN_MIN_LEN} символов — считается не заданным"
     if len(set(value)) < TOKEN_MIN_DISTINCT:
@@ -478,7 +479,7 @@ def load_settings(environ: Mapping[str, str] = os.environ) -> Settings:
     return s
 
 
-_CACHED: Optional[Settings] = None
+_CACHED: Settings | None = None
 _LOCK = threading.RLock()
 
 

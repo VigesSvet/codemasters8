@@ -49,7 +49,8 @@ import tempfile
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any
+from collections.abc import Callable, Iterable
 
 from sqlalchemy import DateTime, Integer, func, inspect, select, text
 from sqlalchemy.engine import Connection, Engine
@@ -69,7 +70,7 @@ MAX_PX = 1024
 QUALITY = 75
 VIDEO_NOTE = "не включено в стартовый набор — откройте оригинал"
 CHUNK = 500
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 
 
 class SnapshotError(RuntimeError):
@@ -85,9 +86,9 @@ class Ctx:
     media_dir: Path
     max_px: int = MAX_PX
     quality: int = QUALITY
-    files: Dict[str, Tuple[str, str, int, int, int]] = field(default_factory=dict)  # sha → (sha, mime, size, w, h)
+    files: dict[str, tuple[str, str, int, int, int]] = field(default_factory=dict)  # sha → (sha, mime, size, w, h)
     dropped_media: set = field(default_factory=set)
-    stats: Dict[str, int] = field(default_factory=dict)
+    stats: dict[str, int] = field(default_factory=dict)
 
     def count(self, key: str, n: int = 1) -> None:
         self.stats[key] = self.stats.get(key, 0) + n
@@ -120,7 +121,7 @@ def _llm(row: Obj, ctx: Ctx) -> Obj:
     return {**row, "request_id": None, "error": logs.redact(row.get("error"), limit=None)}
 
 
-def _geo(row: Obj, ctx: Ctx) -> Optional[Obj]:
+def _geo(row: Obj, ctx: Ctx) -> Obj | None:
     """Решения аналитика остаются(выбранный дом, "было → стало"); кандидаты 2ГИС - временный кэш, его нет в наборе.
     Проверка без решения(только кандидаты) не выгружается."""
     if row.get("status") == "candidates":
@@ -129,7 +130,7 @@ def _geo(row: Obj, ctx: Ctx) -> Optional[Obj]:
     return {**row, "candidates": [], "purged_at": row.get("purged_at") or ctx.at.isoformat()}
 
 
-def _media(row: Obj, ctx: Ctx) -> Optional[Obj]:
+def _media(row: Obj, ctx: Ctx) -> Obj | None:
     meta = {k: v for k, v in (row.get("meta") or {}).items() if k not in ("src", "retryAt")}
     row = {**row, "meta": meta, "error": logs.redact(row.get("error"), limit=None)}
     if row["kind"] == "frame":
@@ -171,7 +172,7 @@ def _media(row: Obj, ctx: Ctx) -> Optional[Obj]:
 @dataclass(frozen=True)
 class Spec:
     model: type
-    prepare: Optional[Callable[[Obj, Ctx], Optional[Obj]]] = None  # строка БД → строка набора(None - не выгружать)
+    prepare: Callable[[Obj, Ctx], Obj | None] | None = None  # строка БД → строка набора(None - не выгружать)
 
     @property
     def name(self) -> str:
@@ -179,14 +180,14 @@ class Spec:
 
 
 # Порядок загрузки - по зависимостям(внешние ключи): родительские таблицы раньше
-TABLES: Tuple[Spec, ...] = (
+TABLES: tuple[Spec, ...] = (
     Spec(models.Analyst), Spec(models.Developer), Spec(models.Complex), Spec(models.Ad), Spec(models.Appeal),
     Spec(models.Signal), Spec(models.AuditEvent), Spec(models.Collector, _collector), Spec(models.CollectionRun, _run),
     Spec(models.IngestItem, _item), Spec(models.IngestVersion, _version), Spec(models.MediaAsset, _media),
     Spec(models.LlmAnalysis, _llm), Spec(models.GeoCheck, _geo), Spec(models.DiscoveredObject),
     Spec(models.DiscoveredMention), Spec(models.ScreeningDecision),
 )
-EXCLUDED: Dict[str, str] = {
+EXCLUDED: dict[str, str] = {
     "jobs": "задания воркера — состояние работы, а не данные",
     "worker_leases": "аренды и пульс воркеров",
     "oauth_states": "одноразовые состояния OAuth",
@@ -206,7 +207,7 @@ ALSO_EXCLUDED = {
     "collectorsRuntime": "статус, факты, курсоры и расписание подключений — новое развёртывание проверит их заново",
 }
 # Ответы API для офлайн-режима фронтенда: имя файла → путь GET(asOf - дата расчёта риска и "Проверки по рекламе")
-VIEWS: Tuple[Tuple[str, str, bool], ...] = (
+VIEWS: tuple[tuple[str, str, bool], ...] = (
     ("complexes", "/api/complexes", True), ("developers", "/api/developers", True), ("ads", "/api/ads", False),
     ("appeals", "/api/appeals", False), ("risk", "/api/risk", True), ("stats", "/api/stats", True),
     ("signals", "/api/signals", False), ("analysts", "/api/analysts", False), ("discovered", "/api/discovered", False),
@@ -218,7 +219,7 @@ VIEWS: Tuple[Tuple[str, str, bool], ...] = (
 KEEP_GAIN = 0.9  # исходный JPEG в пределах размера остаётся как есть, если перекодирование не экономит хотя бы 10 %
 
 
-def compress(data: bytes, max_px: int = MAX_PX, quality: int = QUALITY) -> Tuple[bytes, str, int, int]:
+def compress(data: bytes, max_px: int = MAX_PX, quality: int = QUALITY) -> tuple[bytes, str, int, int]:
     """Изображение → (байты, MIME, ширина, высота): длинная сторона не больше max_px(с учётом поворота EXIF), без
     метаданных; JPEG с качеством quality, PNG - только если он меньше JPEG(прозрачность - на белом фоне для JPEG).
     Исходный JPEG без EXIF и не больше max_px остаётся как есть, если перекодирование не экономит 10 %(KEEP_GAIN): так
@@ -271,7 +272,7 @@ TOKENISH = (
 )
 
 
-def leaks(text_: str, secrets: Iterable[str] = ()) -> List[str]:
+def leaks(text_: str, secrets: Iterable[str] = ()) -> list[str]:
     """Что похоже на секрет в тексте: названия находок(не сами значения). secrets - значения секретов из настроек
     (короче 8 символов не проверяются)."""
     found = [name for name, rx in TOKENISH if rx.search(text_)]
@@ -280,10 +281,10 @@ def leaks(text_: str, secrets: Iterable[str] = ()) -> List[str]:
     return found
 
 
-def scan(root: Path, secrets: Iterable[str] = ()) -> Dict[str, List[str]]:
+def scan(root: Path, secrets: Iterable[str] = ()) -> dict[str, list[str]]:
     """Текстовые файлы набора(*.json) с находками leaks: относительный путь → названия находок."""
     secrets = [s for s in secrets if s]
-    out: Dict[str, List[str]] = {}
+    out: dict[str, list[str]] = {}
     for p in sorted(root.rglob("*.json")):
         found = leaks(p.read_text(encoding="utf-8"), secrets)
         if found:
@@ -299,7 +300,7 @@ def _jsonable(col, v: Any) -> Any:
     return v
 
 
-def _read(conn: Connection, model) -> Tuple[List[str], List[Obj]]:
+def _read(conn: Connection, model) -> tuple[list[str], list[Obj]]:
     """Строки таблицы модели - столбцами, которые есть и в модели, и в БД; по возрастанию первичного ключа."""
     t = model.__table__
     have = {c["name"] for c in inspect(conn).get_columns(t.name)}
@@ -314,7 +315,7 @@ def dump(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True) + "\n"
 
 
-def _schema_version(conn: Connection) -> Optional[str]:
+def _schema_version(conn: Connection) -> str | None:
     if "meta" not in inspect(conn).get_table_names():
         return None
     return conn.execute(text("SELECT value FROM meta WHERE key = 'schema_version'")).scalar()
@@ -353,7 +354,7 @@ def _swap(new: Path, out: Path) -> None:
 
 
 def export(eng: Engine, out: Path = DIR, *, max_px: int = MAX_PX, quality: int = QUALITY, views: bool = True,
-           now: Optional[datetime] = None) -> Obj:
+           now: datetime | None = None) -> Obj:
     """Выгрузка набора из БД eng и хранилища MEDIA_ROOT в каталог out(заменяется целиком). Возвращает manifest."""
     at = models.as_utc(now) or models.utcnow().replace(microsecond=0)
     out = Path(out).resolve()
@@ -363,7 +364,7 @@ def export(eng: Engine, out: Path = DIR, *, max_px: int = MAX_PX, quality: int =
         os.chmod(work, 0o755)  # mkdtemp создаёт 0700, а каталог набора - обычный каталог репозитория
         (work / "media").mkdir()
         ctx = Ctx(at=at, media_dir=work / "media", max_px=max_px, quality=quality)
-        tables: Dict[str, Obj] = {}
+        tables: dict[str, Obj] = {}
         with eng.connect() as conn:
             if conn.dialect.name == "postgresql":
                 conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
@@ -437,7 +438,7 @@ def build_views_subprocess(src: Path, as_of: date) -> None:
                                 f"{logs.redact((r.stderr or r.stdout or '').strip()[-2000:], limit=None)}")
 
 
-def build_views(src: Path, as_of: date) -> List[str]:
+def build_views(src: Path, as_of: date) -> list[str]:
     """(в отдельном процессе) Набор src → пустая БД DATABASE_URL(без файлов) → GET /api/… → src/api/<имя>.json."""
     from functools import partial
 
@@ -465,11 +466,11 @@ def build_views(src: Path, as_of: date) -> List[str]:
 
 @dataclass
 class LoadReport:
-    rows: Dict[str, int] = field(default_factory=dict)
+    rows: dict[str, int] = field(default_factory=dict)
     files: int = 0
     registry: int = 0
-    exported_at: Optional[str] = None
-    schema: Optional[str] = None
+    exported_at: str | None = None
+    schema: str | None = None
 
     def line(self) -> str:
         main = ", ".join(f"{k} — {v}" for k, v in self.rows.items() if k in (
@@ -478,7 +479,7 @@ class LoadReport:
                 f"записей открытого реестра — {self.registry}")
 
 
-def manifest(src: Path = DIR) -> Optional[Obj]:
+def manifest(src: Path = DIR) -> Obj | None:
     p = Path(src) / MANIFEST
     return json.loads(p.read_text(encoding="utf-8")) if p.is_file() else None
 
@@ -488,11 +489,11 @@ def is_empty(db: Session) -> bool:
     return all(db.scalar(select(func.count()).select_from(s.model.__table__)) == 0 for s in TABLES)
 
 
-def _compatible(version: Optional[str]) -> bool:
+def _compatible(version: str | None) -> bool:
     return version == models.SCHEMA_VERSION or migrate.chain_from(version) is not None
 
 
-def _prepare(table, rows: List[Obj], name: str) -> List[Obj]:
+def _prepare(table, rows: list[Obj], name: str) -> list[Obj]:
     """Строки набора → значения INSERT: время - datetime; столбцы, которых в наборе нет(набор прежней версии схемы), -
     NULL или server_default, как после шагов migrate; неизвестный столбец - отказ."""
     if not rows:
@@ -534,10 +535,10 @@ def _reset_sequences(db: Session) -> None:
                         "+ 1, false)"), {"t": t.name, "c": col})
 
 
-def _restore_files(src: Path, rows: List[Obj]) -> int:
+def _restore_files(src: Path, rows: list[Obj]) -> int:
     """Изображения набора → хранилище(media.store_bytes: тип по сигнатуре, место на диске), ключ и SHA-256 -
     сверяются."""
-    done: Dict[str, str] = {}
+    done: dict[str, str] = {}
     for r in rows:
         key = r.get("storage_key")
         if not key or r.get("status") != "downloaded" or key in done:
@@ -571,7 +572,7 @@ def load(db: Session, src: Path = DIR, *, files: bool = True) -> LoadReport:
     if not is_empty(db):
         raise SnapshotError("БД не пустая — стартовый набор загружается только в новую БД")
     rep = LoadReport(exported_at=man.get("exportedAt"), schema=man.get("schemaVersion"))
-    media_rows: List[Obj] = []
+    media_rows: list[Obj] = []
     later = migrate.tables_after(man.get("schemaVersion"))
     for s in TABLES:
         info = (man.get("tables") or {}).get(s.name)
@@ -619,7 +620,7 @@ def import_cli(eng: Engine, src: Path) -> int:
         print(f"БД не пустая ({', '.join(busy)}) — стартовый набор загружается только в новую БД, ничего не изменено",
               file=sys.stderr)
         return 2
-    holder: Dict[str, LoadReport] = {}
+    holder: dict[str, LoadReport] = {}
 
     def start(db: Session) -> None:
         from . import demo
@@ -636,7 +637,7 @@ def import_cli(eng: Engine, src: Path) -> int:
     return 0
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m app.snapshot", description="Стартовый набор данных (shared/snapshot)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     pe = sub.add_parser("export", help="выгрузить текущие данные БД и файлы в каталог набора")

@@ -38,7 +38,7 @@ import logging
 import re
 import threading
 from datetime import datetime
-from typing import Annotated, Any, List, Literal, Optional
+from typing import Annotated, Any, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
@@ -134,9 +134,9 @@ class DeliveryCountsOut(Camel):
 class ChannelDeliveryOut(Camel):
     target: str
     status: str
-    error: Optional[str] = None
+    error: str | None = None
     sent_at: IsoTime = None
-    link: Optional[str] = None  # сообщение в публичном канале: https://t.me/<канал>/<id>
+    link: str | None = None  # сообщение в публичном канале: https://t.me/<канал>/<id>
 
 
 class ErrorCountOut(Camel):
@@ -157,14 +157,14 @@ class AlertOut(Camel):
     status_label: str
     created_by: str
     created_at: IsoTime = None
-    decided_by: Optional[str] = None
+    decided_by: str | None = None
     decided_at: IsoTime = None
-    decision_comment: Optional[str] = None
+    decision_comment: str | None = None
     sent_at: IsoTime = None
-    last_error: Optional[str] = None
-    channel: Optional[ChannelDeliveryOut] = None
+    last_error: str | None = None
+    channel: ChannelDeliveryOut | None = None
     subscribers: DeliveryCountsOut = Field(default_factory=DeliveryCountsOut)
-    errors: List[ErrorCountOut] = []  # почему не доставлено подписчикам - до трёх причин
+    errors: list[ErrorCountOut] = []  # почему не доставлено подписчикам - до трёх причин
 
 
 class DistrictCountOut(Camel):
@@ -178,21 +178,21 @@ class AudienceOut(Camel):
     configured: bool  # BOT_TOKEN задан
     admin_configured: bool  # SAQ_ADMIN_TOKEN задан - согласовать есть кому
     worker_alive: bool
-    problem: Optional[str] = None
-    channel: Optional[str] = None
-    channel_problem: Optional[str] = None
+    problem: str | None = None
+    channel: str | None = None
+    channel_problem: str | None = None
     district: str = ""
     subscribers: int = 0  # подписчики района и "всех районов" - получат предупреждение по ЖК этого района
     everywhere: int = 0
-    districts: List[DistrictCountOut] = []
+    districts: list[DistrictCountOut] = []
 
 
 class CheckOut(Camel):
     ok: bool
     detail: str
-    bot: Optional[str] = None
-    channel: Optional[str] = None
-    channel_title: Optional[str] = None
+    bot: str | None = None
+    channel: str | None = None
+    channel_title: str | None = None
 
 
 District = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64), AfterValidator(no_nul)]
@@ -204,14 +204,14 @@ class SubscriptionIn(Camel):
 
     model_config = ConfigDict(extra="forbid")
 
-    districts: Annotated[List[District], Field(max_length=50)] = []
+    districts: Annotated[list[District], Field(max_length=50)] = []
 
 
 class SubscriptionOut(Camel):
     chat_id: str
-    districts: List[str]
+    districts: list[str]
     everywhere: bool
-    status: Optional[Literal["created", "updated", "unchanged"]] = None
+    status: Literal["created", "updated", "unchanged"] | None = None
 
 
 class DistrictOut(Camel):
@@ -221,7 +221,7 @@ class DistrictOut(Camel):
 
 # ---------- канал и сообщение ----------
 
-def channel(s: Settings) -> tuple[Optional[str], Optional[str]]:
+def channel(s: Settings) -> tuple[str | None, str | None]:
     """Канал ГАСК из TG_ALERTS_CHANNEL: (канал, None); не задан - (None, None); неверный - (None, пояснение).
     Ссылка t.me/<имя> принимается как @<имя>."""
     raw = (s.tg_alerts_channel or "").strip()
@@ -245,7 +245,7 @@ def hashtag(district: str) -> str:
 def render(a: models.ResidentAlert) -> str:
     """Текст сообщения Telegram(parse_mode HTML): заголовок жирным, текст, хэштег района и подпись."""
     foot = " · ".join(x for x in (hashtag(a.district), SIGNATURE) if x)
-    esc = lambda v: html.escape(v or "", quote=False)  # noqa: E731
+    esc = lambda v: html.escape(v or "", quote=False)
     return f"<b>{esc(a.title)}</b>\n{esc(a.text)}\n\n{esc(foot)}"
 
 
@@ -312,7 +312,7 @@ def call(cli: httpx.Client, token: str, method: str, payload: dict) -> Any:
     raise _ChatRejected(code, redact(str(body.get("description") or f"HTTP {code}"), limit=300) or "")
 
 
-def chat_reason(kind: str, target: Optional[str], description: str) -> tuple[str, bool]:
+def chat_reason(kind: str, target: str | None, description: str) -> tuple[str, bool]:
     """Отказ Telegram по получателю → (пояснение по-русски, снять подписку). Подписка снимается, когда писать этому
     жителю больше нельзя: заблокировал бота, удалил аккаунт, чат не найден, не начинал диалог с ботом."""
     d = (description or "").lower()
@@ -335,7 +335,7 @@ def chat_reason(kind: str, target: Optional[str], description: str) -> tuple[str
     return f"Telegram не принял сообщение: {description}", False
 
 
-def send(cli: httpx.Client, token: str, target: str, text: str) -> Optional[int]:
+def send(cli: httpx.Client, token: str, target: str, text: str) -> int | None:
     """sendMessage → message_id(или None, если Telegram его не вернул)."""
     res = call(cli, token, "sendMessage", {"chat_id": target, "text": text, "parse_mode": "HTML",
                                            "link_preview_options": {"is_disabled": True}})
@@ -399,7 +399,7 @@ def _tally(db: Session, ids: list[int]) -> dict[int, dict]:
     return out
 
 
-def _channel_out(row: Optional[models.AlertDelivery]) -> Optional[dict]:
+def _channel_out(row: models.AlertDelivery | None) -> dict | None:
     if row is None:
         return None
     link = None
@@ -429,7 +429,7 @@ def _get(db: Session, aid: int) -> models.ResidentAlert:
     return a
 
 
-def _pending(db: Session, cid: str) -> Optional[models.ResidentAlert]:
+def _pending(db: Session, cid: str) -> models.ResidentAlert | None:
     A = models.ResidentAlert
     return db.scalar(select(A).where(A.complex_id == cid, A.status == "pending").limit(1))
 
@@ -454,11 +454,11 @@ def _move(db: Session, a: models.ResidentAlert, frm: tuple, to: str, **values) -
     db.refresh(a)
 
 
-def _then(text: str, comment: Optional[str]) -> str:
+def _then(text: str, comment: str | None) -> str:
     return f"{text}{'' if text.endswith('.') else '.'} Комментарий: {comment}" if comment else text
 
 
-def _whom(ch: Optional[str], subs: int, district: str) -> str:
+def _whom(ch: str | None, subs: int, district: str) -> str:
     where = f"района «{district}»" if district else "всех районов"
     parts = ([f"канал {ch}"] if ch else []) + ([f"подписчики {where} в боте ({subs})"] if subs else [])
     return " и ".join(parts)
@@ -471,8 +471,8 @@ def _ready(s: Settings) -> None:
 
 # ---------- маршруты: сотрудники ----------
 
-@router.get("/api/alerts", response_model=List[AlertOut], response_model_by_alias=True)
-def list_alerts(complex_id: Optional[str] = Query(None, alias="complexId", max_length=32),
+@router.get("/api/alerts", response_model=list[AlertOut], response_model_by_alias=True)
+def list_alerts(complex_id: str | None = Query(None, alias="complexId", max_length=32),
                 limit: int = Query(50, ge=1, le=200), db: Session = Depends(get_db)):
     """Предупреждения, новые первыми; по ЖК - complexId. Получатели - только счётчики, без chat_id."""
     A = models.ResidentAlert
@@ -666,13 +666,13 @@ def _subscription(db: Session, chat_id: str) -> list[str]:
     return sorted(db.scalars(select(S.district).where(S.chat_id == chat_id)))
 
 
-def _sub_out(chat_id: str, districts: list[str], status: Optional[str] = None) -> dict:
+def _sub_out(chat_id: str, districts: list[str], status: str | None = None) -> dict:
     everywhere = ALL in districts
     return {"chat_id": chat_id, "districts": [] if everywhere else districts, "everywhere": everywhere,
             "status": status}
 
 
-@router.get("/api/intake/telegram/districts", response_model=List[DistrictOut], response_model_by_alias=True,
+@router.get("/api/intake/telegram/districts", response_model=list[DistrictOut], response_model_by_alias=True,
             dependencies=[Depends(auth.require_service)])
 def districts(db: Session = Depends(get_db)):
     """Районы ЖК для выбора подписки в боте(по числу ЖК). "*" - все районы - в списке нет, его принимает PUT."""
@@ -754,7 +754,7 @@ def _settle_interrupted(db: Session, alert_id: int, now: datetime) -> int:
     return res.rowcount or 0
 
 
-def _claim(alert_id: int, now: datetime) -> Optional[tuple[int, str, str]]:
+def _claim(alert_id: int, now: datetime) -> tuple[int, str, str] | None:
     """Следующая доставка "ожидает" → "отправляется"(условный UPDATE, своя транзакция): (id, вид, получатель) или
     None."""
     D = models.AlertDelivery
@@ -782,7 +782,7 @@ def _settle(did: int, now: datetime, **values) -> None:
         db.commit()
 
 
-def _sent(did: int, kind: str, message_id: Optional[int], now: datetime) -> None:
+def _sent(did: int, kind: str, message_id: int | None, now: datetime) -> None:
     extra = {"target": None} if kind == "subscriber" else {}
     _settle(did, now, status="sent", sent_at=now, message_id=message_id, error=None, **extra)
 
@@ -822,7 +822,7 @@ def _summary(t: dict) -> str:
     return "; ".join(parts) or "получателей нет"
 
 
-def finalize(db: Session, a: models.ResidentAlert, now: datetime, error: Optional[str] = None) -> None:
+def finalize(db: Session, a: models.ResidentAlert, now: datetime, error: str | None = None) -> None:
     """Итог отправки по доставкам(без commit): всем - "отправлено", части - "частично", никому - "не отправлено";
     событие журнала ЖК от "Системы". error - почему отправка остановлена(доставки "ожидает" остаются для повтора)."""
     t = _tally(db, [a.id])[a.id]
@@ -856,7 +856,7 @@ def abandoned(db: Session, job: models.Job, reason: str, now: datetime) -> None:
     finalize(db, a, now, reason)
 
 
-def _alert_id(payload: Optional[dict]) -> int:
+def _alert_id(payload: dict | None) -> int:
     try:
         return int((payload or {}).get("alertId") or 0)
     except (TypeError, ValueError):
@@ -883,7 +883,7 @@ def _give_up(info, detail: str) -> None:
     _outcome(info, apply)
 
 
-def _later(info, seconds: float, detail: Optional[str] = None) -> None:
+def _later(info, seconds: float, detail: str | None = None) -> None:
     """Продолжить тем же заданием через seconds с(без расхода попытки): лимит Telegram, очередная партия, остановка
     воркера."""
     def apply(db, job, a, now):
@@ -918,7 +918,7 @@ def _done(info, sent: int) -> None:
     _outcome(info, apply)
 
 
-def run_job(info, *, now: datetime, stop: Optional[threading.Event] = None) -> None:
+def run_job(info, *, now: datetime, stop: threading.Event | None = None) -> None:
     """Задание "alert": доставки "ожидает" по одной(см. описание модуля). Итог задания и предупреждения - только пока
     задание у этого захвата(jobs.fence)."""
     alert_id = _alert_id(info.payload)
@@ -969,7 +969,7 @@ def run_job(info, *, now: datetime, stop: Optional[threading.Event] = None) -> N
                 return
             except _ChatRejected as e:
                 _rejected(did, kind, target, e, info.now())
-            except Exception:  # noqa: BLE001 - непредвиденная ошибка: доставка снова "ожидает", задание - повтор
+            except Exception:
                 _release(did, info.now())
                 log.exception("Предупреждение №%s: доставка не выполнена", alert_id)
                 _retry(info, "Внутренняя ошибка отправки — подробности в журнале воркера")

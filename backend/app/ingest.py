@@ -23,7 +23,7 @@ import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -65,7 +65,7 @@ class Known:
     downloaded_keys: set[str]
     failed_keys: dict[str, int]  # ключ → попыток(failed / pending / unavailable / skipped)
     text: str
-    price: Optional[str]
+    price: str | None
     extra: dict
     media_keys: list[str]
 
@@ -83,7 +83,7 @@ class IngestResult:
     media_new: int  # файлов сохранено сейчас
     media_failed: int  # не загружено(failed / unavailable)
     analysis_queued: bool
-    owner: Optional[str] = None  # foreign: подключение-владелец
+    owner: str | None = None  # foreign: подключение-владелец
     media_pending: int = 0  # ждут загрузки заданием анализа(ссылки приёма через API)
 
 
@@ -180,7 +180,7 @@ def content_hash(pub: Publication) -> str:
 
 # ---------- что уже принято ----------
 
-def known(db: Session, namespace: str, external_id: str) -> Optional[Known]:
+def known(db: Session, namespace: str, external_id: str) -> Known | None:
     I, A, V = models.IngestItem, models.MediaAsset, models.IngestVersion
     item = db.scalar(select(I).where(I.platform == namespace, I.external_id == external_id))
     if item is None:
@@ -200,7 +200,7 @@ def known(db: Session, namespace: str, external_id: str) -> Optional[Known]:
                  list(ver.media_keys or []) if ver else [])
 
 
-def resolve_media(pub: Publication, k: Optional[Known]) -> Publication:
+def resolve_media(pub: Publication, k: Known | None) -> Publication:
     """Сеть, без БД: ленивые загрузки(MediaIn.fetch) вызываются только для файлов, которые ещё нужны(новая публикация
     или k.needs(key)); исключение загрузчика - файл "failed" с причиной, публикация принимается без него."""
     out = []
@@ -212,7 +212,7 @@ def resolve_media(pub: Publication, k: Optional[Known]) -> Publication:
             got = m.fetch()
             if not isinstance(got, MediaIn):
                 raise TypeError("загрузчик не вернул файл")
-        except Exception as e:  # noqa: BLE001 - сбой одного файла не останавливает приём публикации
+        except Exception as e:
             log.warning("Файл %s публикации %s не загружен: %s", m.key, pub.external_id, type(e).__name__)
             got = MediaIn(key=m.key, kind=m.kind, role=m.role, status="failed",
                           error=redact(str(e) or type(e).__name__) or "Файл не загружен")
@@ -265,7 +265,7 @@ def _apply(a: models.MediaAsset, m: MediaIn, now: datetime) -> str:
     return "none"
 
 
-def _cover(assets) -> Optional[str]:
+def _cover(assets) -> str | None:
     """Изображение публикации: первое загруженное текущее изображение не-обложка, затем обложка."""
     imgs = [a for a in sorted(assets, key=lambda a: a.position)
             if a.status == "downloaded" and a.kind == "image" and a.current]
@@ -293,8 +293,8 @@ def has_decisions(ad: models.Ad) -> bool:
                 or ad.status not in ("new", "needs_check"))
 
 
-def enqueue_analysis(db: Session, ad_id: str, item: Optional[models.IngestItem] = None, *,
-                     payload: Optional[dict] = None, priority: int = 0) -> bool:
+def enqueue_analysis(db: Session, ad_id: str, item: models.IngestItem | None = None, *,
+                     payload: dict | None = None, priority: int = 0) -> bool:
     """Задание анализа публикации(одно активное на публикацию) и состояние "в очереди" у записи приёма. payload и
     priority - у нового задания(дозапрос Claude, повторный анализ, пересчёт правил); активное задание остаётся как
     есть, но ждущий пересчёт правил(rulesOnly) становится полным анализом, если ставится обычный."""
@@ -318,7 +318,7 @@ def enqueue_analysis(db: Session, ad_id: str, item: Optional[models.IngestItem] 
 
 
 def _ensure_ad(db: Session, item: models.IngestItem, fields: dict, actor: Actor, at: datetime,
-               note: Optional[str]) -> models.Ad:
+               note: str | None) -> models.Ad:
     ad = db.get(models.Ad, item.ad_id)
     if ad is None:  # публикацию удалили вне приёма - создаётся заново с тем же id
         ad = ads_service.create_ad(db, fields, actor=actor, at=at, note=note, ad_id=item.ad_id)
@@ -341,9 +341,9 @@ def _update_ad(db: Session, ad: models.Ad, values: dict) -> None:
     raise RuntimeError(f"Публикацию {ad.id} одновременно меняют — новая версия не записана, повторите приём")
 
 
-def ingest_publication(db: Session, pub: Publication, *, collector: str, run_id: Optional[int] = None,
-                       actor: Actor = COLLECTOR, note: Optional[str] = None, external_run_id: Optional[str] = None,
-                       raw_extra: Optional[dict] = None) -> IngestResult:
+def ingest_publication(db: Session, pub: Publication, *, collector: str, run_id: int | None = None,
+                       actor: Actor = COLLECTOR, note: str | None = None, external_run_id: str | None = None,
+                       raw_extra: dict | None = None) -> IngestResult:
     """Публикация → БД в сессии db(без сети, без commit). Ошибка - исключение: вызывающий откатывает транзакцию,
     и публикация, запись приёма, версия и файлы не остаются наполовину."""
     I = models.IngestItem

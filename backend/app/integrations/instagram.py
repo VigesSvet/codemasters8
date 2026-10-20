@@ -30,8 +30,9 @@ import hmac
 import json
 import logging
 import re
-from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Optional
+from datetime import datetime, timedelta, UTC
+from typing import TYPE_CHECKING, Any, Optional
+from collections.abc import Callable, Iterable
 from urllib.parse import urlsplit
 
 import httpx
@@ -98,12 +99,12 @@ ACCOUNT_MISSING = "аккаунт не найден или не професси
 class GraphError(Exception):
     """Ошибка из конверта ответа Graph API {"error": {"code", "error_subcode", "message", "is_transient"}}."""
 
-    def __init__(self, code: int, subcode: Optional[int], message: str, transient: bool, status: int):
+    def __init__(self, code: int, subcode: int | None, message: str, transient: bool, status: int):
         self.code, self.subcode, self.message, self.transient, self.status = code, subcode, message, transient, status
         super().__init__(f"Graph API: код {code}" + (f"/{subcode}" if subcode else "") + f" — {message}")
 
 
-def _int(v: Any) -> Optional[int]:
+def _int(v: Any) -> int | None:
     try:
         return int(v)
     except (TypeError, ValueError):
@@ -117,7 +118,7 @@ def _num(v: Any) -> float:
         return 0.0
 
 
-def graph_error(body: Any, status: int = 200) -> Optional[GraphError]:
+def graph_error(body: Any, status: int = 200) -> GraphError | None:
     """GraphError из тела ответа или None(ошибки в конверте нет)."""
     err = body.get("error") if isinstance(body, dict) else None
     if not isinstance(err, dict):
@@ -133,7 +134,7 @@ def appsecret_proof(token: str, app_secret: str) -> str:
 
 
 def graph_get(client: httpx.Client, path: str, params: dict, s: Settings, *,
-              token: Optional[str] = None) -> tuple[dict, httpx.Headers]:
+              token: str | None = None) -> tuple[dict, httpx.Headers]:
     """GET {path} относительно базового адреса Graph API. Токен - заголовком клиента(token - другой токен, например
     токен приложения для debug_token); при META_APP_SECRET - appsecret_proof к этому токену. Ошибки → §10.1
     (map_error; исходная GraphError - в __cause__). Абсолютные ссылки(paging.next) не открываются."""
@@ -204,7 +205,7 @@ def usage_pct(headers: Any) -> int:
     return int(best)
 
 
-def regain_seconds(headers: Any) -> Optional[float]:
+def regain_seconds(headers: Any) -> float | None:
     """estimated_time_to_regain_access(минуты) из X-Business-Use-Case-Usage → секунды; нет или 0 - None."""
     mins = max([_num(e.get("estimated_time_to_regain_access")) for e in _buc_entries(headers)] or [0.0])
     return mins * 60 if mins > 0 else None
@@ -228,11 +229,11 @@ def map_error(err: GraphError, headers: Any = None) -> ConnectorError:
     return SourceError(f"Ошибка Graph API (код {c}{sub}): {msg}", retryable=False)
 
 
-def _cause(e: BaseException) -> Optional[GraphError]:
+def _cause(e: BaseException) -> GraphError | None:
     return e.__cause__ if isinstance(e.__cause__, GraphError) else None
 
 
-def _account_missing(g: Optional[GraphError]) -> bool:
+def _account_missing(g: GraphError | None) -> bool:
     """Business Discovery не нашёл аккаунт(нет такого или он не профессиональный): 110/2207013 или(#100) "Invalid
     user id"."""
     if g is None:
@@ -241,7 +242,7 @@ def _account_missing(g: Optional[GraphError]) -> bool:
         g.code == 100 and "invalid user id" in g.message.lower())
 
 
-def _unsupported_field(g: Optional[GraphError], enabled: Iterable[str]) -> Optional[str]:
+def _unsupported_field(g: GraphError | None, enabled: Iterable[str]) -> str | None:
     """(#100) о необязательном поле, которое ещё запрашивается, → имя поля."""
     if g is None or g.code != 100:
         return None
@@ -251,7 +252,7 @@ def _unsupported_field(g: Optional[GraphError], enabled: Iterable[str]) -> Optio
     return None
 
 
-def bd_fields(username: str, *, limit: int, after: Optional[str] = None, with_children: bool = True,
+def bd_fields(username: str, *, limit: int, after: str | None = None, with_children: bool = True,
               with_name: bool = True, without: Iterable[str] = ()) -> str:
     """fields запроса Business Discovery: профиль и страница публикаций(media.limit(N)[.after(C)]); without -
     необязательные поля публикации, которые Business Discovery не отдаёт(thumbnail_url, media_product_type)."""
@@ -289,13 +290,13 @@ def normalize_account(s: str) -> str:
     return v
 
 
-def _parse_time(v: Any) -> Optional[datetime]:
+def _parse_time(v: Any) -> datetime | None:
     """"2026-10-09T11:10:23+0000" → UTC."""
     if not v:
         return None
     s = str(v).strip()
     try:
-        return datetime.strptime(s, "%Y-%m-%dT%H:%M:%S%z").astimezone(timezone.utc)
+        return datetime.strptime(s, "%Y-%m-%dT%H:%M:%S%z").astimezone(UTC)
     except ValueError:
         pass
     try:
@@ -305,7 +306,7 @@ def _parse_time(v: Any) -> Optional[datetime]:
     return models.as_utc(dt)
 
 
-def _https(v: Any) -> Optional[str]:
+def _https(v: Any) -> str | None:
     return v.strip() if isinstance(v, str) and v.strip().lower().startswith("https://") else None
 
 
@@ -320,12 +321,12 @@ def _permalink(v: Any, username: str) -> str:
     return f"https://www.instagram.com/{username}/"
 
 
-def _ts(v: Any) -> Optional[datetime]:
+def _ts(v: Any) -> datetime | None:
     n = _int(v)
-    return datetime.fromtimestamp(n, timezone.utc) if n else None
+    return datetime.fromtimestamp(n, UTC) if n else None
 
 
-def _from_iso(v: Any) -> Optional[datetime]:
+def _from_iso(v: Any) -> datetime | None:
     if not v:
         return None
     try:
@@ -336,19 +337,19 @@ def _from_iso(v: Any) -> Optional[datetime]:
 
 # ---------- публикация ----------
 
-def _fetch(ctx: "RunContext", url: str, key: str, kind: str, role: Optional[str]) -> MediaIn:
+def _fetch(ctx: "RunContext", url: str, key: str, kind: str, role: str | None) -> MediaIn:
     """Файл с CDN Instagram - лениво: скачивается при приёме, только если ещё не загружен."""
     def run() -> MediaIn:
         return ctx.download_media(url, key=key, kind=kind, role=role, allowed_hosts=CDN_HOSTS)
     return MediaIn(key=key, kind=kind, role=role, fetch=run, origin_url=http.redact_url(url))
 
 
-def _marker(key: str, kind: str, role: Optional[str], error: str) -> MediaIn:
+def _marker(key: str, kind: str, role: str | None, error: str) -> MediaIn:
     """Файла нет в ответе Instagram: запись "недоступен" с причиной."""
     return MediaIn(key=key, kind=kind, role=role, status="unavailable", error=error)
 
 
-def _node_media(ctx: "RunContext", node: dict, key: str, role: Optional[str]) -> list[MediaIn]:
+def _node_media(ctx: "RunContext", node: dict, key: str, role: str | None) -> list[MediaIn]:
     """Файлы одной публикации или слайда: изображение; видео + обложка; нет media_url - "недоступен"(+ обложка)."""
     ntype = str(node.get("media_type") or "").upper()
     url, thumb = _https(node.get("media_url")), _https(node.get("thumbnail_url"))
@@ -368,7 +369,7 @@ def _node_media(ctx: "RunContext", node: dict, key: str, role: Optional[str]) ->
     return out
 
 
-def _children(m: dict) -> Optional[list]:
+def _children(m: dict) -> list | None:
     ch = m.get("children")
     data = ch.get("data") if isinstance(ch, dict) else None
     return [c for c in data if isinstance(c, dict) and c.get("id")] if isinstance(data, list) else None
@@ -437,7 +438,7 @@ def _digits(value: str, name: str) -> str:
     return v
 
 
-def _pick_ig(pages: Any, page_id: str) -> Optional[str]:
+def _pick_ig(pages: Any, page_id: str) -> str | None:
     """ID профессионального Instagram из списка Страниц: Страница META_PAGE_ID, иначе первая со связанным Instagram."""
     found: list[tuple[str, str]] = []
     for p in pages if isinstance(pages, list) else []:
@@ -515,7 +516,7 @@ class _Run:
         self.ctx.save_state(igUserId=found)
         return found
 
-    def discovery(self, username: str, limit: int, after: Optional[str]) -> dict:
+    def discovery(self, username: str, limit: int, after: str | None) -> dict:
         """Страница business_discovery; (#100) о необязательном поле - запрос без него(совместимость сохраняется)."""
         for _ in range(len(OPTIONAL_FIELDS) + 1):
             fields = bd_fields(username, limit=limit, after=after, with_children=self.ok("children"),
@@ -635,7 +636,7 @@ class InstagramConnector(Connector):
         except ValueError as e:
             raise ConfigError(field_name, str(e), value) from None
 
-    def can_enable(self, row: Optional["Collector"]) -> Optional[str]:
+    def can_enable(self, row: Optional["Collector"]) -> str | None:
         """Краткосрочный токен(истекает в ближайшие сутки по последней проверке) - сбор не включается."""
         facts = (row.facts or {}) if row is not None else {}
         exp = _from_iso(facts.get("expiresAt"))

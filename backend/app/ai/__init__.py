@@ -11,21 +11,22 @@
 """
 import json
 from functools import lru_cache
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Optional
+from collections.abc import Iterable
 
 from ..risk import ad_signals
 from ..risk_model import SHARED, T
 from .matching import Catalog, build_catalog, hypotheses
 from .terms import extract
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 
 ENGINE = "saq-ai-1"
 
 
-def analyze(cat: Catalog, text: Optional[str], ocr: Optional[str] = None, account: Optional[str] = None,
-            platform: Optional[str] = None, url: Optional[str] = None, rejected: Iterable[str] = (),
-            limit: Optional[int] = None) -> Obj:
+def analyze(cat: Catalog, text: str | None, ocr: str | None = None, account: str | None = None,
+            platform: str | None = None, url: str | None = None, rejected: Iterable[str] = (),
+            limit: int | None = None) -> Obj:
     """Analysis: условия оплаты, гипотезы ЖК(до hypothesesTop, без отклонённых аналитиком), сигналы словарей модели,
     найденные телефоны и адреса. platform пока не влияет на результат(зарезервировано)."""
     skip = set(rejected or ())

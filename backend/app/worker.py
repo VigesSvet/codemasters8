@@ -21,7 +21,6 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Optional
 
 from sqlalchemy import delete, text, update
 from sqlalchemy.engine import Engine
@@ -43,17 +42,17 @@ SCHEDULER = "scheduler"
 
 # ---------- схема ----------
 
-def schema_version(eng: Engine) -> Optional[str]:
+def schema_version(eng: Engine) -> str | None:
     """Версия схемы в meta(None - таблиц ещё нет или БД недоступна)."""
     try:
         with eng.connect() as conn:
             return conn.execute(text("SELECT value FROM meta WHERE key = 'schema_version'")).scalar()
-    except Exception:  # noqa: BLE001 - нет таблицы meta или БД ещё не поднялась
+    except Exception:
         return None
 
 
-def wait_for_schema(eng: Engine = default_engine, *, poll: float = 2.0, max_wait: Optional[float] = None,
-                    stop: Optional[threading.Event] = None) -> bool:
+def wait_for_schema(eng: Engine = default_engine, *, poll: float = 2.0, max_wait: float | None = None,
+                    stop: threading.Event | None = None) -> bool:
     """Ждать, пока API создаст или обновит схему до models.SCHEMA_VERSION. False - не дождались(max_wait, остановка)."""
     started = time.monotonic()
     logged = None
@@ -77,8 +76,8 @@ def wait_for_schema(eng: Engine = default_engine, *, poll: float = 2.0, max_wait
 
 # ---------- аренды ----------
 
-def acquire_lease(db: Session, name: str, holder: str, ttl_s: int = 60, now: Optional[datetime] = None,
-                  info: Optional[dict] = None) -> bool:
+def acquire_lease(db: Session, name: str, holder: str, ttl_s: int = 60, now: datetime | None = None,
+                  info: dict | None = None) -> bool:
     """Аренда name за holder: продлить свою или забрать истёкшую(условный UPDATE), нет строки - создать. Фиксирует
     транзакцию. True - аренда у holder."""
     L = models.WorkerLease
@@ -110,28 +109,28 @@ def release_lease(worker_id: str) -> None:
                 own.info = {**(own.info or {}), "stoppedAt": now.isoformat()}  # с долями секунды, как пульс
                 own.expires_at = now
             db.commit()
-    except Exception:  # noqa: BLE001 - при остановке это не ошибка воркера
+    except Exception:
         log.warning("Аренда планировщика не освобождена", exc_info=True)
 
 
 @dataclass
 class Current:
     """Текущее задание воркера - для потока-пульса."""
-    job_id: Optional[int] = None
+    job_id: int | None = None
     started: float = 0.0
     warned: set = field(default_factory=set)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
-    def set(self, job_id: Optional[int]) -> None:
+    def set(self, job_id: int | None) -> None:
         with self.lock:
             self.job_id, self.started = job_id, time.monotonic()
 
-    def get(self) -> tuple[Optional[int], float]:
+    def get(self) -> tuple[int | None, float]:
         with self.lock:
             return self.job_id, self.started
 
 
-def beat(worker_id: str, current: Optional[Current] = None) -> None:
+def beat(worker_id: str, current: Current | None = None) -> None:
     """Один пульс: worker:{id}, аренда планировщика(если у этого воркера), блокировка текущего задания."""
     now = models.utcnow()
     job_id, started = current.get() if current is not None else (None, 0.0)
@@ -157,7 +156,7 @@ def heartbeat(worker_id: str, job_ref: Current, stop: threading.Event) -> None:
     while not stop.is_set():
         try:
             beat(worker_id, job_ref)
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.warning("Пульс воркера %s не записан", worker_id, exc_info=True)
         stop.wait(HEARTBEAT_S)
 
@@ -263,7 +262,7 @@ def backfill(db: Session, now: datetime) -> list[str]:
     try:
         ids = llm.backfill(db, now)
         db.commit()
-    except Exception:  # noqa: BLE001
+    except Exception:
         db.rollback()
         log.warning("Дозапрос анализа ИИ не выполнен", exc_info=True)
         return []
@@ -286,7 +285,7 @@ def gallery_sync(db: Session) -> None:
 
     try:
         rep = gallery.fetch_all(db, missing_only=True)
-    except Exception:  # noqa: BLE001
+    except Exception:
         db.rollback()
         log.warning("Фото объектов с Homeportal не подгружены", exc_info=True)
         return
@@ -306,7 +305,7 @@ def report_local(db: Session) -> None:
     for code, conn in registry.CONNECTORS.items():
         try:
             rep = conn.report(s)
-        except Exception:  # noqa: BLE001 - отчёт одного подключения не мешает остальным
+        except Exception:
             log.warning("Отчёт подключения %s не получен", code, exc_info=True)
             continue
         if rep is None:
@@ -343,13 +342,13 @@ def _tick(worker_id: str, now: datetime) -> None:
         if _housekeeping_due(db, worker_id, now):
             try:
                 housekeeping(db, now)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 db.rollback()
                 log.warning("Уборка не выполнена", exc_info=True)
 
 
-def run_once(*, worker_id: str, now: Optional[datetime] = None, max_jobs: int = 100,
-             current: Optional[Current] = None, stop: Optional[threading.Event] = None) -> int:
+def run_once(*, worker_id: str, now: datetime | None = None, max_jobs: int = 100,
+             current: Current | None = None, stop: threading.Event | None = None) -> int:
     """Один проход: пульс, отчёт, такт лидера, затем задания, пока они есть(не больше max_jobs). Возвращает число
     выполненных заданий. now - время для расписания и захвата(тесты); по умолчанию - текущее."""
     current = current or Current()
@@ -368,7 +367,7 @@ def run_once(*, worker_id: str, now: Optional[datetime] = None, max_jobs: int = 
         current.set(job_id)
         try:
             jobs.execute(job_id, worker_id=worker_id, now=t, stop=stop)
-        except Exception:  # noqa: BLE001 - ошибка записи итога: задание останется "выполняется" до recover_stale
+        except Exception:
             log.exception("Задание №%s: итог не записан", job_id)
         finally:
             current.set(None)
@@ -382,7 +381,7 @@ def _configured(s) -> list[str]:
     return [code for code, conn in registry.CONNECTORS.items() if not conn.missing(s)]
 
 
-def main(argv: Optional[list] = None) -> int:
+def main(argv: list | None = None) -> int:
     p = argparse.ArgumentParser(prog="python -m app.worker", description="Воркер сбора публикаций и анализа")
     p.add_argument("--once", action="store_true", help="один проход и выход")
     p.add_argument("--id", help="ID воркера (по умолчанию SAQ_WORKER_ID или имя хоста)")
@@ -404,7 +403,7 @@ def main(argv: Optional[list] = None) -> int:
         log.info("Воркер %s: выполнено заданий: %s", worker_id, n)
         return 0
     previous = {}
-    hb: Optional[threading.Thread] = None
+    hb: threading.Thread | None = None
     for sig in (signal.SIGTERM, signal.SIGINT):
         previous[sig] = signal.signal(sig, lambda *_: stop.set())
     try:
@@ -426,7 +425,7 @@ def main(argv: Optional[list] = None) -> int:
         while not stop.is_set():
             try:
                 n = run_once(worker_id=worker_id, current=current, stop=stop)
-            except Exception:  # noqa: BLE001 - сбой БД и т. п.: пауза и следующий проход
+            except Exception:
                 log.exception("Проход воркера не выполнен")
                 n = 0
             if not n:

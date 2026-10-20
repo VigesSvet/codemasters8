@@ -12,12 +12,13 @@ import math
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any
+from collections.abc import Iterable
 
 from ..risk_model import BUILT, T
 from .nlp import Tok, fold_homoglyphs, jaccard, phone_digits, phones, plain, skeleton, stem, tokens
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 
 # Вклад признаков в логит уверенности; BIAS - сдвиг: одно точное название ≈ 0.8, один адрес "ул./пр./на + улица + дом"
 # ≈ 0.71, улица и дом без "ул./пр./на" ≈ 0.48(низкая: "в Казахстане 66 …" - не обязательно адрес), один аккаунт или
@@ -69,7 +70,7 @@ def _prefix_eq(t: str, s: str, keep: int = 2) -> bool:
     return len(s) >= 4 and len(t) >= 4 and (t.startswith(s[:n]) or s.startswith(t[:max(4, len(t) - keep)]))
 
 
-def account_keys(value: Optional[str]) -> Set[str]:
+def account_keys(value: str | None) -> set[str]:
     """"@altai.build", "https://instagram.com/altai.build/", "t.me/nord_hills_uka", "ertis-invest.kz" → ключи для сравнения."""
     s = (value or "").strip().lower()
     if not s:
@@ -100,38 +101,38 @@ class Entry:
     name: str
     address: str
     district: str
-    developer_id: Optional[str]
+    developer_id: str | None
     built: bool
-    name_norm: Tuple[str, ...]
-    name_sk: Tuple[str, ...]
-    name_stem: Tuple[str, ...]  # скелеты основ слов названия(без падежных окончаний)
-    alt_sk: Tuple[Tuple[str, ...], ...]  # другие написания: "Нұр Әлем" по-русски - "Нур Элем"(ә → э)
-    street_sk: Tuple[str, ...]
-    house: Optional[str]
-    district_sk: Tuple[str, ...]
+    name_norm: tuple[str, ...]
+    name_sk: tuple[str, ...]
+    name_stem: tuple[str, ...]  # скелеты основ слов названия(без падежных окончаний)
+    alt_sk: tuple[tuple[str, ...], ...]  # другие написания: "Нұр Әлем" по-русски - "Нур Элем"(ә → э)
+    street_sk: tuple[str, ...]
+    house: str | None
+    district_sk: tuple[str, ...]
 
 
 @dataclass
 class Catalog:
     """Справочник для сопоставления: ЖК, застройщики(аккаунты, сайты, телефоны), история аккаунтов."""
-    entries: List[Entry]
-    developers: Dict[str, Obj]
-    dev_by_key: Dict[str, str] = field(default_factory=dict)
-    dev_by_phone: Dict[str, str] = field(default_factory=dict)
-    history: Dict[str, Dict[str, int]] = field(default_factory=dict)  # ключ аккаунта → {ЖК: подтверждённых публикаций}
+    entries: list[Entry]
+    developers: dict[str, Obj]
+    dev_by_key: dict[str, str] = field(default_factory=dict)
+    dev_by_phone: dict[str, str] = field(default_factory=dict)
+    history: dict[str, dict[str, int]] = field(default_factory=dict)  # ключ аккаунта → {ЖК: подтверждённых публикаций}
 
-    def complexes_of(self, dev_id: str) -> List[Entry]:
+    def complexes_of(self, dev_id: str) -> list[Entry]:
         own = [e for e in self.entries if e.developer_id == dev_id]
         active = [e for e in own if not e.built]
         return active or own
 
 
-def _natural(cid: str) -> Tuple[int, str]:
+def _natural(cid: str) -> tuple[int, str]:
     return len(cid), cid
 
 
 def build_catalog(complexes: Iterable[Obj], developers: Iterable[Obj], ads: Iterable[Obj] = (),
-                  exclude_ad: Optional[str] = None) -> Catalog:
+                  exclude_ad: str | None = None) -> Catalog:
     entries = []
     for c in sorted(complexes, key=lambda c: _natural(c["id"])):
         name_toks = tokens(c["name"], drop_stop=True)
@@ -174,18 +175,18 @@ class Feature:
     feature: str
     detail: str
     weight: float
-    quote: Optional[str] = None
+    quote: str | None = None
     strength: float = 0.0  # сходство названия(для подборок)
 
 
-def _windows(toks: List[Tok], k: int):
+def _windows(toks: list[Tok], k: int):
     for i in range(len(toks)):
         for size in sorted({max(1, k - 1), k, k + 1}):
             if i + size <= len(toks):
                 yield toks[i:i + size]
 
 
-def name_similarity(e: Entry, toks: List[Tok]) -> Optional[Tuple[str, float, List[Tok]]]:
+def name_similarity(e: Entry, toks: list[Tok]) -> tuple[str, float, list[Tok]] | None:
     """Лучшее совпадение названия ЖК в тексте: ('name', 1.0) - точное; ('name', 0.95) - в другом падеже, с заглавной
     ("в Тихом береге"; "на тихом берегу" - не название); ('translit', 0.95) - тот же скелет(другая письменность,
     "НОРДХИЛЛС" без пробела, "Нур Элем" для "Нұр Әлем"); ('translit', сходство × 0.95) - нечёткое(опечатка, окончание)."""
@@ -194,7 +195,7 @@ def name_similarity(e: Entry, toks: List[Tok]) -> Optional[Tuple[str, float, Lis
     k = len(e.name_sk)
     variants = [("".join(sk), [s for s in sk if s not in GENERIC and not s.isdigit()]) for sk in (e.name_sk, *e.alt_sk)]
     numbers = [n for n in e.name_norm if n.isdigit()]
-    best: Optional[Tuple[str, float, List[Tok]]] = None
+    best: tuple[str, float, list[Tok]] | None = None
     for win in _windows(toks, k):
         norms = tuple(t.norm for t in win)
         if norms == e.name_norm:
@@ -225,11 +226,11 @@ def _near(word: str, token: str) -> bool:
     return jaccard(word, token) >= 0.45
 
 
-def _quote(text: str, win: List[Tok]) -> str:
+def _quote(text: str, win: list[Tok]) -> str:
     return text[win[0].start:win[-1].end]
 
 
-def _prefix(toks: List[Tok], i: int) -> Optional[int]:
+def _prefix(toks: list[Tok], i: int) -> int | None:
     """Начало "ул.", "пр.", "пр-т", "б-р", "на", "по", "адрес" перед улицей(позиция в тексте) или None."""
     p = toks[i - 1].norm if i > 0 else ""
     pp = toks[i - 2].norm if i > 1 else ""
@@ -238,7 +239,7 @@ def _prefix(toks: List[Tok], i: int) -> Optional[int]:
     return toks[i - 1].start if p in _ADDR_PREFIX else None
 
 
-def _house(toks: List[Tok], street_end: int, k: int, text: str) -> Optional[str]:
+def _house(toks: list[Tok], street_end: int, k: int, text: str) -> str | None:
     """Цифры номера дома в токене k: сразу после улицы(пробел, запятая, "д.") и без единицы после числа."""
     if k >= len(toks) or not toks[k].norm[:1].isdigit():
         return None
@@ -248,7 +249,7 @@ def _house(toks: List[Tok], street_end: int, k: int, text: str) -> Optional[str]
     return digits
 
 
-def _street(e: Entry, toks: List[Tok], text: str) -> Optional[Feature]:
+def _street(e: Entry, toks: list[Tok], text: str) -> Feature | None:
     """Адрес ЖК в тексте: "ул./пр./на" + улица + номер дома - сильный признак; улица и дом без "ул./пр./на" - средний
     (слово-улица может быть просто словом: "в Казахстане 66 …"); улица с "ул./пр./на" без номера - слабый; та же улица
     с другим номером дома - не признак(это другой дом). Число с единицей("9 этаж", "52 м²", "18 лет") или через
@@ -257,7 +258,7 @@ def _street(e: Entry, toks: List[Tok], text: str) -> Optional[Feature]:
     if not m:
         return None
     house = re.match(r"\d+", e.house).group() if e.house else None
-    found: Optional[Feature] = None
+    found: Feature | None = None
     for i in range(len(toks) - m + 1):
         if not all(_prefix_eq(toks[i + j].sk, e.street_sk[j]) for j in range(m)):
             continue
@@ -282,7 +283,7 @@ def _street(e: Entry, toks: List[Tok], text: str) -> Optional[Feature]:
     return found
 
 
-def _district(e: Entry, toks: List[Tok], text: str) -> Optional[Feature]:
+def _district(e: Entry, toks: list[Tok], text: str) -> Feature | None:
     m = len(e.district_sk)
     if not m:
         return None
@@ -301,8 +302,8 @@ def _dev_name(cat: Catalog, dev_id: str) -> str:
     return (cat.developers.get(dev_id) or {}).get("name") or dev_id
 
 
-def hypotheses(cat: Catalog, text: Optional[str], ocr: Optional[str] = None, account: Optional[str] = None,
-               url: Optional[str] = None) -> Tuple[List[Obj], Obj]:
+def hypotheses(cat: Catalog, text: str | None, ocr: str | None = None, account: str | None = None,
+               url: str | None = None) -> tuple[list[Obj], Obj]:
     """Все гипотезы не ниже hypothesisMin по убыванию уверенности(при равенстве - по порядку ЖК) и сведения для
     выдачи: найденные телефоны, адреса, число упомянутых ЖК."""
     sources = [(s, src) for s, src in ((text or "", "text"), (ocr or "", "ocr")) if s.strip()]
@@ -311,11 +312,11 @@ def hypotheses(cat: Catalog, text: Optional[str], ocr: Optional[str] = None, acc
     # позиции те же - цитата дословная
     name_toks = {src: [tokens(s, drop_stop=True)] + ([tokens(fold_homoglyphs(plain(s)), drop_stop=True)] if src == "ocr" else [])
                  for s, src in sources}
-    feats: Dict[str, List[Feature]] = {e.id: [] for e in cat.entries}
+    feats: dict[str, list[Feature]] = {e.id: [] for e in cat.entries}
 
     for e in cat.entries:
         # название и адрес: берём лучшее из текста и скриншота(при равенстве - текст)
-        best_name: Optional[Feature] = None
+        best_name: Feature | None = None
         for s, src in sources:
             hits = [h for nt in name_toks[src] for h in [name_similarity(e, nt)] if h]
             if not hits:
@@ -405,7 +406,7 @@ def hypotheses(cat: Catalog, text: Optional[str], ocr: Optional[str] = None, acc
         out.append(h)
     order = {e.id: i for i, e in enumerate(cat.entries)}
     out.sort(key=lambda h: (-h["confidence"], order[h["complexId"]]))
-    addresses: List[str] = []
+    addresses: list[str] = []
     for s, _ in sources:
         addresses += [m.group().strip(" ,") for m in ADDRESS_IN_TEXT.finditer(s)]
     # адрес ЖК, найденный и без "ул."("квартиры на Утепова 18")

@@ -2,7 +2,7 @@ import logging
 import re
 from contextlib import asynccontextmanager
 from datetime import date
-from typing import List, Optional, get_args
+from typing import get_args
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -190,30 +190,30 @@ def risk_model():
     return MODEL
 
 
-@app.get("/api/risk", response_model=List[schemas.RiskRowOut], response_model_by_alias=True)
-def risk_all(as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
+@app.get("/api/risk", response_model=list[schemas.RiskRowOut], response_model_by_alias=True)
+def risk_all(as_of: date | None = AsOf, db: Session = Depends(get_db)):
     return world.risk_all(db, as_of)
 
 
 # ---------- справочники ----------
 
-@app.get("/api/analysts", response_model=List[schemas.AnalystOut], response_model_by_alias=True)
+@app.get("/api/analysts", response_model=list[schemas.AnalystOut], response_model_by_alias=True)
 def analysts(db: Session = Depends(get_db)):
     """Аналитики для входа без пароля(пилот; в эксплуатации - ЭЦП/SSO); name пишется автором в журнал."""
     return world.by_id(db.scalars(select(models.Analyst)))
 
 
-@app.get("/api/developers", response_model=List[schemas.DeveloperListOut], response_model_by_alias=True)
-def developers(as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
+@app.get("/api/developers", response_model=list[schemas.DeveloperListOut], response_model_by_alias=True)
+def developers(as_of: date | None = AsOf, db: Session = Depends(get_db)):
     """Застройщики с "Проверкой по рекламе"(screening): худшая оценка их ЖК - предварительная, не вывод о нарушении."""
     r = screening.compute(db, as_of)
     return screening.developer_rows(world.by_id(db.scalars(select(models.Developer))), r)
 
 
-@app.get("/api/complexes", response_model=List[schemas.ComplexListOut], response_model_by_alias=True)
-def complexes(zone: Optional[schemas.Zone] = None, screening_status: Optional[schemas.ScreeningStatus] = Query(
+@app.get("/api/complexes", response_model=list[schemas.ComplexListOut], response_model_by_alias=True)
+def complexes(zone: schemas.Zone | None = None, screening_status: schemas.ScreeningStatus | None = Query(
                   None, alias="screening", description="Только ЖК с этой оценкой «Проверка по рекламе»"),
-              as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
+              as_of: date | None = AsOf, db: Session = Depends(get_db)):
     """ЖК с основанием по открытым данным(permit), "Проверкой по рекламе"(screening) и объектами из рекламы(advert)."""
     items = world.by_id(db.scalars(select(models.Complex)))
     if zone:  # ЖК, риск по которому не оценивается(реестр без проверенных сведений), ни в одну зону не входит
@@ -247,21 +247,21 @@ def _then(text: str, more: str) -> str:
 
 
 @app.get("/api/complexes/{cid}", response_model=schemas.ComplexListOut, response_model_by_alias=True)
-def complex_one(cid: str, as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
+def complex_one(cid: str, as_of: date | None = AsOf, db: Session = Depends(get_db)):
     c = _complex(db, cid)
     return screening.complex_rows(db, [c], screening.compute(db, as_of))[0]
 
 
 @app.get("/api/complexes/{cid}/risk", response_model=schemas.RiskOut, response_model_by_alias=True)
-def complex_risk(cid: str, as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
+def complex_risk(cid: str, as_of: date | None = AsOf, db: Session = Depends(get_db)):
     r = world.risk_for(db, cid, as_of)
     if r is None:
         raise registry.not_found(db, cid)
     return r
 
 
-@app.get("/api/appeals", response_model=List[schemas.AppealOut], response_model_by_alias=True)
-def appeals(complex_id: Optional[str] = Query(None, alias="complexId"), db: Session = Depends(get_db)):
+@app.get("/api/appeals", response_model=list[schemas.AppealOut], response_model_by_alias=True)
+def appeals(complex_id: str | None = Query(None, alias="complexId"), db: Session = Depends(get_db)):
     q = select(models.Appeal).order_by(models.Appeal.date.desc(), models.Appeal.id)
     if complex_id:
         q = q.where(models.Appeal.complex_id == complex_id)
@@ -270,8 +270,8 @@ def appeals(complex_id: Optional[str] = Query(None, alias="complexId"), db: Sess
 
 # ---------- публикации ----------
 
-@app.get("/api/ads", response_model=List[schemas.AdOut], response_model_by_alias=True)
-def ads(status: Optional[str] = None, platform: Optional[str] = None, db: Session = Depends(get_db)):
+@app.get("/api/ads", response_model=list[schemas.AdOut], response_model_by_alias=True)
+def ads(status: str | None = None, platform: str | None = None, db: Session = Depends(get_db)):
     """Публикации, новые первыми; при одинаковой дате - по id(порядок одинаков на SQLite и PostgreSQL - офлайн-копия
     набора, app.snapshot, совпадает с ответом API)."""
     q = select(models.Ad).order_by(models.Ad.date.desc(), models.Ad.id)
@@ -390,10 +390,10 @@ def set_complex(aid: str, body: schemas.AdComplexIn, db: Session = Depends(get_d
 
 # ---------- журнал(ТЗ §7 "Контроль решений", §4 "источник и время фиксации") ----------
 
-@app.get("/api/audit", response_model=List[schemas.AuditOut], response_model_by_alias=True)
-def audit_all(ad_id: Optional[str] = Query(None, alias="adId"), complex_id: Optional[str] = Query(None, alias="complexId"),
-              signal_id: Optional[int] = Query(None, alias="signalId", ge=1, le=2_147_483_647),
-              kind: Optional[List[str]] = Query(None, description="Вид события; несколько — повтором параметра или через запятую"),
+@app.get("/api/audit", response_model=list[schemas.AuditOut], response_model_by_alias=True)
+def audit_all(ad_id: str | None = Query(None, alias="adId"), complex_id: str | None = Query(None, alias="complexId"),
+              signal_id: int | None = Query(None, alias="signalId", ge=1, le=2_147_483_647),
+              kind: list[str] | None = Query(None, description="Вид события; несколько — повтором параметра или через запятую"),
               limit: int = Query(200, ge=1, le=500, description="Последние N событий (отдаются по возрастанию времени)"),
               human: bool = Query(False, description="Только действия людей: без событий «Системы» и импорта данных"),
               db: Session = Depends(get_db)):
@@ -413,12 +413,12 @@ def audit_all(ad_id: Optional[str] = Query(None, alias="adId"), complex_id: Opti
     return audit(db, *where, limit=limit)
 
 
-@app.get("/api/ads/{aid}/audit", response_model=List[schemas.AuditOut], response_model_by_alias=True)
+@app.get("/api/ads/{aid}/audit", response_model=list[schemas.AuditOut], response_model_by_alias=True)
 def ad_audit(aid: str, db: Session = Depends(get_db)):
     return audit(db, models.AuditEvent.ad_id == _ad(db, aid).id)
 
 
-@app.get("/api/complexes/{cid}/audit", response_model=List[schemas.AuditOut], response_model_by_alias=True)
+@app.get("/api/complexes/{cid}/audit", response_model=list[schemas.AuditOut], response_model_by_alias=True)
 def complex_audit(cid: str, db: Session = Depends(get_db)):
     """Журнал объекта: сведения и их источники, публикации по ЖК, сигналы и их выгрузка, запросы сведений."""
     return audit(db, models.AuditEvent.complex_id == _complex(db, cid).id)
@@ -459,7 +459,7 @@ def _drifted(ad: models.Ad, h: dict) -> bool:
     return abs(h["confidence"] - stored) >= 0.05 or h["low"] != (stored < T["lowConfidence"])
 
 
-def _link_note(db: Session, cat, ad: models.Ad, shown: List[dict]) -> Optional[str]:
+def _link_note(db: Session, cat, ad: models.Ad, shown: list[dict]) -> str | None:
     """Текущая привязка - гипотеза, а анализ её не поддерживает(не в топе или признаков нет) или оценивает иначе, чем
     при сборе(у одной привязки - одна уверенность: расхождение объясняется прямо, ТЗ §6 "неуверенные выводы маркируются")."""
     if not ad.complex_id or _confirmed(ad):
@@ -629,7 +629,7 @@ def ai_eval():
 
 
 @app.get("/api/stats")
-def stats(as_of: Optional[date] = AsOf, db: Session = Depends(get_db)):
+def stats(as_of: date | None = AsOf, db: Session = Depends(get_db)):
     zones = {"red": 0, "yellow": 0, "green": 0}
     not_assessed = 0
     for r in world.risk_all(db, as_of):
@@ -682,12 +682,12 @@ for _router in connectors.routers():
 
 # ---------- предупреждения жителям: согласование и отправка в Telegram, подписки от бота заявок(app.alerts) ----------
 
-from .alerts import router as alerts_router  # noqa: E402
+from .alerts import router as alerts_router
 
 app.include_router(alerts_router)
 
 # ---------- кто продаёт: связанные продавцы, аномальная цена, связи застройщика - гипотезы вне балла(app.sellers) ----------
 
-from .sellers import router as sellers_router  # noqa: E402
+from .sellers import router as sellers_router
 
 app.include_router(sellers_router)

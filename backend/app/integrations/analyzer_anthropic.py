@@ -18,8 +18,9 @@ import email.utils
 import logging
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from datetime import datetime, UTC
+from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
 
 from ..logs import redact
 from ..settings import Settings, get_settings
@@ -61,11 +62,11 @@ def supports_fallbacks(model: str) -> bool:
     return model in FALLBACK_MODELS
 
 
-def price(model: Optional[str]) -> tuple[float, float, float, float]:
+def price(model: str | None) -> tuple[float, float, float, float]:
     return PRICES.get(model or "", MAX_PRICE)
 
 
-def cost_usd(model: Optional[str], input_tokens: int = 0, output_tokens: int = 0, cache_creation: int = 0,
+def cost_usd(model: str | None, input_tokens: int = 0, output_tokens: int = 0, cache_creation: int = 0,
              cache_read: int = 0) -> float:
     p_in, p_out, p_cw, p_cr = price(model)
     return (input_tokens * p_in + output_tokens * p_out + cache_creation * p_cw + cache_read * p_cr) / 1_000_000
@@ -92,7 +93,7 @@ def _close(client: Any) -> None:
     if callable(close):
         try:
             close()
-        except Exception:  # noqa: BLE001 - закрытие пула соединений не должно ронять анализ
+        except Exception:
             pass
 
 
@@ -105,8 +106,8 @@ class CallError(Exception):
 
     RETRYABLE = frozenset({"rate", "server", "network"})
 
-    def __init__(self, kind: str, detail: str, *, status: Optional[int] = None, retry_after: Optional[float] = None,
-                 request_id: Optional[str] = None):
+    def __init__(self, kind: str, detail: str, *, status: int | None = None, retry_after: float | None = None,
+                 request_id: str | None = None):
         self.kind, self.status, self.retry_after = kind, status, retry_after
         self.detail = redact(detail, limit=ERROR_MAX) or ""
         self.request_id = request_id
@@ -127,7 +128,7 @@ class CallError(Exception):
         return SourceError(self.detail, retryable=self.retryable)
 
 
-def _seconds(raw: Any, scale: float = 1.0) -> Optional[float]:
+def _seconds(raw: Any, scale: float = 1.0) -> float | None:
     try:
         v = float(raw) / scale
     except (TypeError, ValueError):
@@ -135,7 +136,7 @@ def _seconds(raw: Any, scale: float = 1.0) -> Optional[float]:
     return v if math.isfinite(v) and v >= 0 else None
 
 
-def _retry_after(headers: Any) -> Optional[float]:
+def _retry_after(headers: Any) -> float | None:
     """retry-after-ms(миллисекунды) или retry-after(секунды или HTTP-дата); нет или не разобрать - None."""
     get = getattr(headers, "get", None)
     if not callable(get):
@@ -154,8 +155,8 @@ def _retry_after(headers: Any) -> Optional[float]:
     except (TypeError, ValueError):
         return None
     if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
-    return max((when - datetime.now(timezone.utc)).total_seconds(), 0.0)
+        when = when.replace(tzinfo=UTC)
+    return max((when - datetime.now(UTC)).total_seconds(), 0.0)
 
 
 def _api_message(e: Any) -> str:
@@ -166,7 +167,7 @@ def _api_message(e: Any) -> str:
     return redact(str(msg), limit=200) if isinstance(msg, str) and msg.strip() else ""
 
 
-def classify(e: BaseException, s: Optional[Settings] = None) -> CallError:
+def classify(e: BaseException, s: Settings | None = None) -> CallError:
     """Исключение SDK → CallError(самые частные классы первыми)."""
     if isinstance(e, CallError):
         return e
@@ -230,11 +231,11 @@ def build_request(s: Settings, *, system: str, user: str, schema: dict) -> dict:
 @dataclass
 class Reply:
     """Ответ модели: stop_reason, текст(JSON по схеме), кто ответил, токены, оценка стоимости."""
-    stop_reason: Optional[str]
+    stop_reason: str | None
     text: str
-    served_model: Optional[str]
-    request_id: Optional[str] = None
-    refusal_category: Optional[str] = None
+    served_model: str | None
+    request_id: str | None = None
+    refusal_category: str | None = None
     fallback: bool = False
     tokens: dict = field(default_factory=dict)  # input, output, cache_read, cache_creation
     cost_usd: float = 0.0
@@ -244,7 +245,7 @@ def _n(v: Any) -> int:
     return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else 0
 
 
-def usage_cost(usage: Any, requested: str, served: Optional[str]) -> tuple[dict, float]:
+def usage_cost(usage: Any, requested: str, served: str | None) -> tuple[dict, float]:
     """Токены и стоимость ответа. С серверным fallback верхний usage - только попытка, давшая ответ; полный расход -
     по usage.iterations(каждая попытка - по цене своей модели)."""
     entries = [x for x in (getattr(usage, "iterations", None) or []) if hasattr(x, "input_tokens")]
@@ -285,7 +286,7 @@ def send(s: Settings, request: dict) -> Reply:
     client = CLIENT_FACTORY(s)
     try:
         resp = client.beta.messages.create(**request)
-    except Exception as e:  # noqa: BLE001 - любая ошибка SDK - типизированный CallError
+    except Exception as e:
         raise classify(e, s) from None
     finally:
         _close(client)
@@ -297,7 +298,7 @@ def retrieve_model(s: Settings) -> Any:
     client = CLIENT_FACTORY(s)
     try:
         return client.models.retrieve(s.anthropic_model)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise classify(e, s) from None
     finally:
         _close(client)
@@ -320,7 +321,7 @@ class AnthropicAnalyzer(Connector):
                   "OCR. Статус, привязку к ЖК и вывод о нарушении ИИ не задаёт. Текст публикации и OCR отправляются в "
                   "Anthropic; дневной бюджет — {ANTHROPIC_DAILY_BUDGET_USD} USD.")
 
-    def computed_status(self, db, row, now: datetime) -> Optional[tuple[str, str]]:
+    def computed_status(self, db, row, now: datetime) -> tuple[str, str] | None:
         """Нет пакета SDK - "ошибка"; ключ отклонён, ошибка - хранимый статус с пояснением; дневной бюджет исчерпан -
         "пауза: лимит"(вычисляется по счётчику расхода); иначе - хранимый."""
         if anthropic is None:

@@ -8,7 +8,7 @@ backend/tests/demo_seed.py), которые подставляют свой ст
 удаляет python -m app.demo purge."""
 import logging
 from pathlib import Path
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from sqlalchemy import MetaData, Table, inspect, select
 from sqlalchemy.engine import Engine
@@ -22,7 +22,7 @@ from .settings import get_settings
 log = logging.getLogger("saq")
 
 
-def start(db: Session, *, src: Optional[Path] = None, files: bool = True) -> None:
+def start(db: Session, *, src: Path | None = None, files: bool = True) -> None:
     """Старт API после создания и обновления схемы(в сессии db, без commit). Пустая БД(snapshot.is_empty) - стартовый
     набор src(по умолчанию shared/snapshot; files=False - без файлов изображений); набора нет - только открытый
     реестр, с предупреждением. Затем карточки ЖК по открытому реестру(на свежем наборе - без изменений) и подсказка,
@@ -59,11 +59,11 @@ def _app_tables(eng: Engine) -> set:
     return (set(Base.metadata.tables) | LEGACY_TABLES) & set(inspect(eng).get_table_names())
 
 
-def _version(eng: Engine, tables: set) -> Optional[str]:
+def _version(eng: Engine, tables: set) -> str | None:
     return _meta(eng, tables, "schema_version")
 
 
-def _meta(eng: Engine, tables: set, key: str) -> Optional[str]:
+def _meta(eng: Engine, tables: set, key: str) -> str | None:
     if "meta" not in tables:
         return None
     with SessionLocal(bind=eng) as db:
@@ -85,7 +85,7 @@ def _drop_app_tables(eng: Engine) -> None:
                 Table(name, MetaData()).drop(conn)
 
 
-def init_db(eng: Engine = default_engine, start: Optional[Callable[[Session], None]] = None) -> None:
+def init_db(eng: Engine = default_engine, start: Callable[[Session], None] | None = None) -> None:
     """Нет таблиц приложения → таблицы + старт(START: пустая БД - стартовый набор). Известная прошлая версия схемы →
     обновление на месте с резервной копией(migrate.upgrade), данные сохраняются. Неизвестная версия(или нет meta) →
     таблицы приложения пересоздаются, но только если в базе нет собранных/внесённых данных(migrate.durable_rows); иначе

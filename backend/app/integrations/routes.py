@@ -10,7 +10,7 @@
 """
 import logging
 import uuid
-from typing import Any, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -137,8 +137,8 @@ def collect_connector(code: registry.ConnectorCode, body: schemas.AdminActionIn,
 
 # ---------- запуски ----------
 
-@router.get("/api/collection-runs", response_model=List[schemas.RunOut], response_model_by_alias=True)
-def runs(request: Request, source: Optional[str] = Query(None, max_length=32),
+@router.get("/api/collection-runs", response_model=list[schemas.RunOut], response_model_by_alias=True)
+def runs(request: Request, source: str | None = Query(None, max_length=32),
          limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_db)):
     """Запуски сбора и проверок, новые первыми; без токена администратора - без автора, ошибок, заметок и стоимости."""
     R = models.CollectionRun
@@ -248,7 +248,7 @@ async def intake(request: Request) -> JSONResponse:
 
 # ---------- версии публикации ----------
 
-@router.get("/api/ads/{aid}/versions", response_model=List[schemas.AdVersionOut], response_model_by_alias=True)
+@router.get("/api/ads/{aid}/versions", response_model=list[schemas.AdVersionOut], response_model_by_alias=True)
 def ad_versions(aid: str, db: Session = Depends(get_db)):
     """Версии содержимого собранной публикации в источнике, новые первыми; у ручных и демо-публикаций - []."""
     if db.get(models.Ad, aid) is None:
@@ -264,7 +264,7 @@ def ad_versions(aid: str, db: Session = Depends(get_db)):
 
 # ---------- анализ ИИ: "Проанализировать ещё раз" ----------
 
-def _active_analysis(db: Session, aid: str) -> Optional[models.Job]:
+def _active_analysis(db: Session, aid: str) -> models.Job | None:
     """Задание анализа публикации, которое выполняется(у него dedupe_key уже обнулён), иначе - в очереди; None - нет."""
     J = models.Job
     found = list(db.scalars(select(J).where(J.kind == "analyze", J.ad_id == aid, J.status.in_(jobs.ACTIVE))

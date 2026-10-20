@@ -7,20 +7,20 @@ why}]; у факторов те же ссылки(без why) - поле law в 
 юридическое заключение, и "нет разрешения МИО" само по себе не значит "незаконно"(ст. 8 п. 6 - гарантия ЕО).
 """
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 from .risk_model import FACTORS, SHARED
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 
 LAW: Obj = json.loads((SHARED / "law.json").read_text(encoding="utf-8"))
 ACT: Obj = LAW["act"]
-ARTICLES: Dict[str, Obj] = {a["num"]: a for a in LAW["articles"]}
-REFS: Dict[str, List[Obj]] = LAW["refs"]
+ARTICLES: dict[str, Obj] = {a["num"]: a for a in LAW["articles"]}
+REFS: dict[str, list[Obj]] = LAW["refs"]
 NUANCE: str = LAW["nuance"]
 
 
-def refs(code: str) -> List[Obj]:
+def refs(code: str) -> list[Obj]:
     """Ссылки на нормы по коду: у фактора - поле law модели риска, у документа основания - refs из law.json."""
     f = FACTORS.get(code)
     if f is not None:

@@ -1,7 +1,7 @@
 """Нормативная база(shared/law.json, app.law): структура, ссылки факторов модели риска на статьи, тексты оснований,
 нормативная база в PDF сигнальной карточки и в GET /api/risk/model."""
 import re
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from app import law, pdf
 from app.risk_model import FACTORS, MODEL
@@ -81,7 +81,7 @@ def test_pdf_has_basis_and_law_block(client):
     r = client.post("/api/signals", json={"complexId": "c2", "author": "Тест"})
     assert r.status_code == 201, r.text
     sig = client.get(f"/api/signals/{r.json()['id']}").json()
-    text = _text(pdf.story(sig, datetime.now(timezone.utc)))
+    text = _text(pdf.story(sig, datetime.now(UTC)))
     assert law.basis_text("R1") in text and law.basis_text("R3") in text
     assert "Нормативная база" in text and "не юридическое заключение" in text and law.NUANCE in text
     for num in ("7", "8", "18", "23"):

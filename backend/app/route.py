@@ -9,8 +9,8 @@
 праздников): срок этапа - конец N-го рабочего дня после дня его начала(SLA). Согласует в пилоте роль "Ведущий аналитик"
 (an2): учётная запись ищется по имени автора, роль - из таблицы analysts; сервер имя автора не проверяет(вход пилотный).
 """
-from datetime import date, datetime, time, timedelta, timezone
-from typing import Any, Dict, List, Literal, Optional
+from datetime import date, datetime, time, timedelta, UTC
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import model_validator
@@ -25,12 +25,12 @@ from .world import iso
 
 router = APIRouter(prefix="/api/signals", tags=["signals"])
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 
 # ---------- константы маршрута(единственное место) ----------
 
-SLA_DAYS: Dict[str, int] = {"analysis": 2, "approval": 1}  # рабочих дней на этап
-STAGE_LABELS: Dict[str, str] = {
+SLA_DAYS: dict[str, int] = {"analysis": 2, "approval": 1}  # рабочих дней на этап
+STAGE_LABELS: dict[str, str] = {
     "analysis": "Разбор аналитиком",
     "approval": "На согласовании у руководителя",
     "confirmed": "Подтверждён",
@@ -62,7 +62,7 @@ def due_at(start: datetime, days: int) -> datetime:
         d += timedelta(days=1)
         if d.weekday() < 5:
             n += 1
-    return datetime.combine(d, time(23, 59, 59), ALMATY).astimezone(timezone.utc)
+    return datetime.combine(d, time(23, 59, 59), ALMATY).astimezone(UTC)
 
 
 def _dt(x: Any) -> datetime:
@@ -71,27 +71,27 @@ def _dt(x: Any) -> datetime:
 
 # ---------- этапы из журнала ----------
 
-def _comment(what: str) -> Optional[str]:
+def _comment(what: str) -> str | None:
     return what.split(COMMENT_SEP, 1)[1] if COMMENT_SEP in what else None
 
 
-def _what(prefix: str, comment: Optional[str]) -> str:
+def _what(prefix: str, comment: str | None) -> str:
     return prefix + (f"{COMMENT_SEP}{comment}" if comment else "")
 
 
-def _stage(stage: str, at: datetime, who: str, comment: Optional[str] = None) -> Obj:
+def _stage(stage: str, at: datetime, who: str, comment: str | None = None) -> Obj:
     days = SLA_DAYS.get(stage)
     return {"stage": stage, "label": STAGE_LABELS[stage], "startedAt": at, "startedBy": who, "comment": comment,
             "slaDays": days, "dueAt": due_at(at, days) if days else None, "endedAt": None, "endedBy": None,
             "outcome": None, "outcomeComment": None, "overdue": False}
 
 
-def build(s: models.Signal, events: List[Obj], now: Optional[datetime] = None) -> Obj:
+def build(s: models.Signal, events: list[Obj], now: datetime | None = None) -> Obj:
     """Этапы маршрута сигнала по его журналу(по возрастанию времени) и статусу; now - для просрочки текущего этапа."""
     now = models.as_utc(now) if now else clock()
     hist = [_stage("analysis", _dt(s.created_at), s.created_by)]
 
-    def close(at: datetime, who: str, outcome: str, comment: Optional[str]) -> None:
+    def close(at: datetime, who: str, outcome: str, comment: str | None) -> None:
         cur = hist[-1]
         cur.update(endedAt=at, endedBy=who, outcome=outcome, outcomeComment=comment)
 
@@ -141,7 +141,7 @@ def is_approver(db: Session, author: str) -> bool:
     return bool(a and a.role.startswith(APPROVER_ROLE))
 
 
-def route_of(db: Session, s: models.Signal, now: Optional[datetime] = None) -> Obj:
+def route_of(db: Session, s: models.Signal, now: datetime | None = None) -> Obj:
     return build(s, signals.journal(db, s.id), now)
 
 
@@ -164,7 +164,7 @@ def list_routes(db: Session = Depends(get_db)):
     """Маршрут всех сигналов кратко(этап, срок, просрочка) - для колонки "Срок" реестра и панели статистики."""
     sigs = list(db.scalars(select(models.Signal).order_by(models.Signal.id.desc())))
     E = models.AuditEvent
-    by: Dict[int, List[Obj]] = {}
+    by: dict[int, list[Obj]] = {}
     for e in db.scalars(select(E).where(E.signal_id.is_not(None), E.kind == "signal").order_by(E.at, E.id)):
         by.setdefault(e.signal_id, []).append({"at": e.at, "who": e.who, "what": e.what, "kind": e.kind})
     now = clock()

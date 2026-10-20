@@ -12,7 +12,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import update
 from sqlalchemy.orm import Session
@@ -55,7 +55,7 @@ class Actor:
     trusted: bool = True
 
 
-def analyst(author: Optional[str]) -> Actor:
+def analyst(author: str | None) -> Actor:
     """Аналитик из формы ручного ввода; без имени - "Система"(как раньше в POST /api/ads)."""
     return Actor(author or SYSTEM)
 
@@ -89,7 +89,7 @@ def local_minutes(dt: datetime) -> str:
     return models.as_utc(dt).astimezone(ALMATY).replace(tzinfo=None).isoformat(timespec="minutes")
 
 
-def safe_url(u: Optional[str]) -> str:
+def safe_url(u: str | None) -> str:
     """Ссылка на публикацию: только http(s)://, без пробелов и управляющих символов, до 512 символов; иначе ""
     (javascript:, data:, обрезанная ссылка - хуже, чем никакой)."""
     v = (u or "").strip() if isinstance(u, str) else ""
@@ -128,7 +128,7 @@ def match_obj(ad) -> dict:
     return {"text": ad.text, "ocr": ad.ocr, "account": None if bot else ad.account, "url": None if bot else ad.url}
 
 
-def _event(db: Session, kind: str, who: str, what: str, at: Optional[datetime] = None, **refs) -> models.AuditEvent:
+def _event(db: Session, kind: str, who: str, what: str, at: datetime | None = None, **refs) -> models.AuditEvent:
     e = models.AuditEvent(kind=kind, who=who, what=what, at=models.as_utc(at) if at else models.utcnow(), **refs)
     db.add(e)
     return e
@@ -145,8 +145,8 @@ def _attach_upload(db: Session, ad: models.Ad) -> None:
                .values(ad_id=ad.id).execution_options(synchronize_session=False))
 
 
-def create_ad(db: Session, fields: dict, *, actor: Actor, at: Optional[datetime] = None, note: Optional[str] = None,
-              catalog=None, ad_id: Optional[str] = None) -> models.Ad:
+def create_ad(db: Session, fields: dict, *, actor: Actor, at: datetime | None = None, note: str | None = None,
+              catalog=None, ad_id: str | None = None) -> models.Ad:
     """Новая публикация в сессии db(flush, без commit). Ручной ввод: AdExists(такой id есть), ComplexNotFound(нет
     ЖК); собранная: id - ad_id или UUID hex(32 символа), статус "new", без привязки и гипотез."""
     if actor.trusted:
@@ -154,7 +154,7 @@ def create_ad(db: Session, fields: dict, *, actor: Actor, at: Optional[datetime]
     return _create_collected(db, dict(fields), actor, at, note, ad_id)
 
 
-def _create_manual(db: Session, data: dict, actor: Actor, catalog, ad_id: Optional[str]) -> models.Ad:
+def _create_manual(db: Session, data: dict, actor: Actor, catalog, ad_id: str | None) -> models.Ad:
     """Ручное добавление публикации. Без complexId ЖК подбирает ИИ: лучшая гипотеза с уверенностью от lowConfidence
     становится привязкой-гипотезой(в балл ЖК не входит до подтверждения аналитиком). С complexId и linkConfirmed -
     аналитик выбрал ЖК сам: привязка сразу факт."""
@@ -208,8 +208,8 @@ def _create_manual(db: Session, data: dict, actor: Actor, catalog, ad_id: Option
 AD_COLUMNS = frozenset(models.Ad.__table__.columns.keys())
 
 
-def _create_collected(db: Session, fields: dict, actor: Actor, at: Optional[datetime], note: Optional[str],
-                      ad_id: Optional[str]) -> models.Ad:
+def _create_collected(db: Session, fields: dict, actor: Actor, at: datetime | None, note: str | None,
+                      ad_id: str | None) -> models.Ad:
     data = {k: v for k, v in sanitize_collected(fields).items() if k in AD_COLUMNS}
     when = models.as_utc(at) if at else models.utcnow()
     data["id"] = ad_id or uuid.uuid4().hex

@@ -8,7 +8,6 @@
 import argparse
 import json
 import sys
-from typing import Optional
 
 from .. import logs
 from ..ingest import scrub
@@ -52,7 +51,7 @@ def check_one(code: str) -> str:
         status = {"not_configured": "not_configured", "auth_expired": "expired", "access_denied": "denied",
                   "access_check": "access_check"}.get(e.code, "error")
         return f"{code}: {conn.status_label(status)} — {e.detail}"
-    except Exception as e:  # noqa: BLE001 - отчёт, а не падение
+    except Exception as e:
         return f"{code}: ошибка — {type(e).__name__}: {logs.redact(str(e))}"
     status = "ready" if res.ok else "error"
     out = f"{code}: {conn.status_label(status)} — {res.detail}"
@@ -68,7 +67,7 @@ def check_one(code: str) -> str:
     return out
 
 
-def main(argv: Optional[list] = None) -> int:
+def main(argv: list | None = None) -> int:
     p = argparse.ArgumentParser(prog="python -m app.integrations.smoke",
                                 description="Живая проверка подключений (без сохранения публикаций)")
     p.add_argument("codes", nargs="*", help=f"коды подключений: {', '.join(registry.MODULES)} (по умолчанию — все)")

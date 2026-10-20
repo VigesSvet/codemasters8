@@ -23,10 +23,10 @@ import tempfile
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Callable, Iterable, Optional
+from collections.abc import Callable, Iterable
 from urllib.parse import urljoin, urlsplit
 
 import httpcore
@@ -46,7 +46,7 @@ def _system_resolve(host: str, port: int) -> list[str]:
     return out
 
 
-TRANSPORT: Optional[httpx.BaseTransport] = None  # тесты: httpx.MockTransport
+TRANSPORT: httpx.BaseTransport | None = None  # тесты: httpx.MockTransport
 RESOLVER: Callable[[str, int], list[str]] = _system_resolve
 SLEEP: Callable[[float], None] = time.sleep
 MONOTONIC: Callable[[], float] = time.monotonic
@@ -66,7 +66,7 @@ class DownloadError(Exception):
     network | too_large | bad_type | host_not_allowed | cancelled; detail - по-русски, ссылка только в замаскированном
     виде; retryable - сеть, тайм-аут, HTTP 5xx и 429, прерванная остановкой воркера загрузка(повтор имеет смысл)."""
 
-    def __init__(self, code: str, detail: str, *, retryable: Optional[bool] = None):
+    def __init__(self, code: str, detail: str, *, retryable: bool | None = None):
         detail = logs.redact(detail) or ""
         super().__init__(detail)
         self.code, self.detail = code, detail
@@ -111,7 +111,7 @@ def is_public_ip(ip: str) -> bool:
     return all(_public(a) for a in _embedded(addr))
 
 
-def _literal(host: str) -> Optional[str]:
+def _literal(host: str) -> str | None:
     h = host.strip("[]").split("%", 1)[0]
     try:
         ipaddress.ip_address(h)
@@ -177,7 +177,7 @@ def redact_url(url: str) -> str:
     return logs.redact(f"{p.scheme.lower()}://{netloc}{path}", limit=512) or ""
 
 
-def _norm_host(host: str) -> Optional[str]:
+def _norm_host(host: str) -> str | None:
     h = (host or "").strip().rstrip(".").lower()
     if not h:
         return None
@@ -242,7 +242,7 @@ def _pinned(base_url: str):
     return pin
 
 
-def client(*, timeout: float = 20.0, headers: Optional[dict] = None, base_url: str = "",
+def client(*, timeout: float = 20.0, headers: dict | None = None, base_url: str = "",
            follow_redirects: bool = False) -> httpx.Client:
     """Клиент API источника: без прокси из окружения и без cookie; User-Agent - SAQ_USER_AGENT. С base_url запросы
     допускаются только на этот хост по https(event hook на каждый запрос, включая перенаправления)."""
@@ -304,7 +304,7 @@ def _limits(timeout: float, left: float) -> httpx.Timeout:
 
 
 def _save(resp: httpx.Response, url: str, max_bytes: int, allowed_mime: set, deadline: float,
-          cancel: Optional[Callable[[], bool]] = None) -> Fetched:
+          cancel: Callable[[], bool] | None = None) -> Fetched:
     fd, name = tempfile.mkstemp(dir=media.tmp_dir(), prefix="dl-")
     path = Path(name)
     try:
@@ -342,10 +342,10 @@ def _save(resp: httpx.Response, url: str, max_bytes: int, allowed_mime: set, dea
 
 
 def fetch_to_temp(url: str, *, max_bytes: int, allowed_mime: Iterable[str],
-                  allowed_hosts: Optional[Iterable[str]] = None, auth_headers: Optional[dict] = None,
-                  auth_hosts: Iterable[str] = (), timeout: float = 30.0, total_timeout: Optional[float] = None,
-                  max_redirects: int = 3, headers: Optional[dict] = None,
-                  cancel: Optional[Callable[[], bool]] = None) -> Fetched:
+                  allowed_hosts: Iterable[str] | None = None, auth_headers: dict | None = None,
+                  auth_hosts: Iterable[str] = (), timeout: float = 30.0, total_timeout: float | None = None,
+                  max_redirects: int = 3, headers: dict | None = None,
+                  cancel: Callable[[], bool] | None = None) -> Fetched:
     """Файл по ссылке → временный файл в media.tmp_dir()(дальше - media.store_file). Ошибки - DownloadError;
     временный файл при ошибке удаляется. Учётные данные заголовками в headers - ValueError(только auth_headers).
     cancel() → True - загрузка прерывается перед запросом или на следующем блоке(DownloadError "cancelled"):
@@ -431,7 +431,7 @@ def retry_after(headers, default: float) -> float:
         s = str(raw).strip()
         try:
             secs = float(int(s)) if s.isdigit() else (
-                parsedate_to_datetime(s).astimezone(timezone.utc) - datetime.now(timezone.utc)).total_seconds()
+                parsedate_to_datetime(s).astimezone(UTC) - datetime.now(UTC)).total_seconds()
         except (TypeError, ValueError, OverflowError):
             secs = float(default)
     return float(min(max(secs, 1.0), 86400.0))

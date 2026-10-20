@@ -12,7 +12,7 @@
 скачивает: аналитик открывает их сам.
 """
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,7 +21,7 @@ from . import models
 from .ai.nlp import phone_digits
 from .sellers import NOTE, bin_valid, contacts, fmt_phone
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 
 LOOKUPS = [
     {"label": "КГД МФ РК — поиск налогоплательщика", "url": "https://portal.kgd.gov.kz/ru/pages/info-services/find-taxpayer",
@@ -36,17 +36,17 @@ LOOKUPS = [
 HYPOTHESIS = "Совпадение руководителя, телефона или уполномоченной компании — гипотеза для проверки, а не вывод об аффилированности."
 
 
-def _norm(s: Optional[str]) -> str:
+def _norm(s: str | None) -> str:
     t = re.sub(r"[«»\"'“”„]", "", (s or "").lower().replace("ё", "е"))
     t = re.sub(r"\b(тоо|ао|ип|too|llp)\b|товарищество с ограниченной ответственностью", " ", t)
     return re.sub(r"\s+", " ", t).strip()
 
 
-def _ad_phones(text: Optional[str], ocr: Optional[str]) -> List[str]:
+def _ad_phones(text: str | None, ocr: str | None) -> list[str]:
     return [c.value for c in contacts(text, ocr) if c.kind in ("phone", "wa")]
 
 
-def compute(db: Session, dev_id: str, groups: Optional[List[Obj]] = None) -> Optional[Obj]:
+def compute(db: Session, dev_id: str, groups: list[Obj] | None = None) -> Obj | None:
     """Связи застройщика; None - застройщика нет. groups - группы продавцов(app.sellers.compute), чтобы назвать общие."""
     D, C, A, R = models.Developer, models.Complex, models.Ad, models.SourceRecord
     dev = db.get(D, dev_id)
@@ -59,7 +59,7 @@ def compute(db: Session, dev_id: str, groups: Optional[List[Obj]] = None) -> Opt
                                  A.link_confirmed_by)).all())
 
     # телефоны каждого застройщика: из публикаций его ЖК и из карточки
-    phones: Dict[str, Dict[str, List[str]]] = {d.id: {} for d in devs}
+    phones: dict[str, dict[str, list[str]]] = {d.id: {} for d in devs}
     for d in devs:
         for p in d.phones or []:
             phones[d.id].setdefault(phone_digits(p), [])
@@ -72,7 +72,7 @@ def compute(db: Session, dev_id: str, groups: Optional[List[Obj]] = None) -> Opt
     own_cx = [c for c in cx if c.developer_id == dev.id]
     own_ads = [a for a in ads if dev_of.get(a.complex_id) == dev.id]
     recs = list(db.scalars(select(R).where(R.developer_bin == dev.bin))) if dev.bin else []
-    agents: Dict[str, Obj] = {}
+    agents: dict[str, Obj] = {}
     for r in recs:
         if r.agent:
             k = r.agent_bin or _norm(r.agent)
@@ -84,7 +84,7 @@ def compute(db: Session, dev_id: str, groups: Optional[List[Obj]] = None) -> Opt
     rec_dates = [r.collected_at.date().isoformat() for r in recs if r.collected_at]
 
     # совпадения с другими застройщиками
-    others: Dict[str, Obj] = {}
+    others: dict[str, Obj] = {}
 
     def other(d) -> Obj:
         return others.setdefault(d.id, {"id": d.id, "name": d.name, "bin": d.bin or None, "reasons": []})
@@ -92,7 +92,7 @@ def compute(db: Session, dev_id: str, groups: Optional[List[Obj]] = None) -> Opt
     director = _norm(dev.director)
     my_phones = set(phones[dev.id])
     agent_keys = {k for k in agents} | {_norm(x["name"]) for x in agents.values()}
-    other_agents: Dict[str, set] = {}
+    other_agents: dict[str, set] = {}
     for r in db.scalars(select(R).where(R.developer_bin.is_not(None), R.developer_bin != (dev.bin or "-"))):
         if r.agent:
             other_agents.setdefault(r.developer_bin, set()).update({r.agent_bin or _norm(r.agent), _norm(r.agent)})
@@ -126,7 +126,7 @@ def compute(db: Session, dev_id: str, groups: Optional[List[Obj]] = None) -> Opt
                 other(d)["reasons"].append({"kind": "seller", "label": "общий продавец в рекламе", "value": g["title"],
                                             "groupKey": g["key"]})
 
-    accounts: Dict[str, int] = {}
+    accounts: dict[str, int] = {}
     for a in own_ads:
         accounts[f"{a.platform}:{a.account}"] = accounts.get(f"{a.platform}:{a.account}", 0) + 1
     return {

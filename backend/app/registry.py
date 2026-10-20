@@ -6,7 +6,8 @@
 проверенных сведений(risk.assessed).
 """
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
+from collections.abc import Iterable
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -20,7 +21,7 @@ from .models import iso
 
 router = APIRouter(tags=["sources"])
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 SYSTEM = "Система"
 DEMO = {"code": "demo", "name": "Демонстрационный набор (вымышленные ЖК)", "url": None,
         "note": "Вымышленные ЖК, застройщики, публикации и обращения для сценариев проверки (ТЗ §5). Только на них "
@@ -41,7 +42,7 @@ def _record_dict(r: models.SourceRecord) -> Obj:
     return schemas.SourceRecordOut.model_validate(r).model_dump(by_alias=True)
 
 
-def records(db: Session, key: Optional[str] = None) -> List[Obj]:
+def records(db: Session, key: str | None = None) -> list[Obj]:
     R = models.SourceRecord
     q = select(R).order_by(R.key, R.row, R.id)
     if key is not None:
@@ -58,7 +59,7 @@ def not_found(db: Session, cid: str, detail: str = "ЖК не найден") -> 
     return HTTPException(404, NOT_SCORED if is_object(db, cid) else detail)
 
 
-def _sorted(rs: Iterable[Obj]) -> List[Obj]:
+def _sorted(rs: Iterable[Obj]) -> list[Obj]:
     order = {s: i for i, s in enumerate(importer.SOURCE_ORDER)}
     return sorted(rs, key=lambda r: (order.get(r["source"], 9), r.get("row") or 0, r["id"]))
 
@@ -82,7 +83,7 @@ def _same(row: models.SourceRecord, values: Obj) -> bool:
     return True
 
 
-def upsert(db: Session, recs: Iterable[Obj], file: Optional[str], at: datetime) -> Dict[str, int]:
+def upsert(db: Session, recs: Iterable[Obj], file: str | None, at: datetime) -> dict[str, int]:
     """Дедупликация по(source, sourceRecordId): новые - вставка, изменившиеся - обновление, прочие без изменений."""
     R = models.SourceRecord
     recs = list(recs)
@@ -110,7 +111,7 @@ def _plural(n: int, one: str, few: str, many: str) -> str:
     return one if tail == 1 and tens != 11 else few if 2 <= tail <= 4 and not 12 <= tens <= 14 else many
 
 
-def seed(db: Session, data: Optional[Obj]) -> Optional[models.AuditEvent]:
+def seed(db: Session, data: Obj | None) -> models.AuditEvent | None:
     """Записи из shared/registry_ust_kamenogorsk.json(собраны импортёром) + событие журнала о загрузке."""
     if not data or not data.get("records"):
         return None
@@ -132,18 +133,18 @@ def seed(db: Session, data: Optional[Obj]) -> Optional[models.AuditEvent]:
 
 # ---------- объекты ----------
 
-def objects(db: Session) -> List[Obj]:
+def objects(db: Session) -> list[Obj]:
     return importer.group(records(db))
 
 
-def _by_key(rs: Iterable[Obj]) -> Dict[str, List[Obj]]:
-    out: Dict[str, List[Obj]] = {}
+def _by_key(rs: Iterable[Obj]) -> dict[str, list[Obj]]:
+    out: dict[str, list[Obj]] = {}
     for r in rs:
         out.setdefault(r["key"], []).append(r)
     return out
 
 
-def registry(db: Session, q: Optional[str] = None, with_coords: Optional[bool] = None) -> Obj:
+def registry(db: Session, q: str | None = None, with_coords: bool | None = None) -> Obj:
     rs = records(db)
     objs = importer.group(rs)
     if q and q.strip():
@@ -154,7 +155,7 @@ def registry(db: Session, q: Optional[str] = None, with_coords: Optional[bool] =
             "withoutCoords": out["withoutCoords"] if with_coords is not True else []}
 
 
-def sources(db: Session) -> List[Obj]:
+def sources(db: Session) -> list[Obj]:
     R = models.SourceRecord
     rows = db.execute(select(R.source, func.count(R.id), func.count(func.distinct(R.key)), func.max(R.collected_at),
                              func.max(R.provider_loaded_at)).group_by(R.source)).all()
@@ -162,7 +163,7 @@ def sources(db: Session) -> List[Obj]:
     out = [{"code": code, **importer.SOURCES[code], "records": stat[code][0], "objects": stat[code][1],
             "collectedAt": iso(stat[code][2]), "providerLoadedAt": stat[code][3]}
            for code in importer.SOURCE_ORDER if code in stat]
-    count = lambda m: db.scalar(select(func.count()).select_from(m).where(m.origin == "demo"))  # noqa: E731
+    count = lambda m: db.scalar(select(func.count()).select_from(m).where(m.origin == "demo"))
     counts = {"complexes": count(models.Complex), "developers": count(models.Developer), "ads": count(models.Ad),
               "appeals": count(models.Appeal)}
     if any(counts.values()):  # после python -m app.demo purge демо-набора нет - и строки о нём нет
@@ -173,7 +174,7 @@ def sources(db: Session) -> List[Obj]:
 
 # ---------- эндпоинты ----------
 
-@router.get("/api/sources", response_model=List[schemas.SourceInfoOut], response_model_by_alias=True)
+@router.get("/api/sources", response_model=list[schemas.SourceInfoOut], response_model_by_alias=True)
 def list_sources(db: Session = Depends(get_db)):
     """Источники данных: что загружено, сколько записей, когда собрано; демо-набор - отдельной строкой.
     Автоматической синхронизации с реестрами нет - записи появляются только импортом файла."""
@@ -181,9 +182,9 @@ def list_sources(db: Session = Depends(get_db)):
 
 
 @router.get("/api/registry", response_model=schemas.RegistryOut, response_model_by_alias=True)
-def list_registry(q: Optional[str] = Query(None, max_length=200, description="Поиск: название, адрес, застройщик, БИН, "
+def list_registry(q: str | None = Query(None, max_length=200, description="Поиск: название, адрес, застройщик, БИН, "
                                                                                "номер документа, кадастровый номер"),
-                  with_coords: Optional[bool] = Query(None, alias="withCoords",
+                  with_coords: bool | None = Query(None, alias="withCoords",
                                                       description="true — только с координатами, false — только без"),
                   db: Session = Depends(get_db)):
     """Объекты открытых данных(группы записей источников). Риска, зон и сигналов нет - это сведения источников."""
@@ -198,7 +199,7 @@ def registry_item(key: str, db: Session = Depends(get_db)):
     return {"object": importer.group(rs)[0], "records": _sorted(rs)}
 
 
-def _author(*values: Optional[str]) -> str:
+def _author(*values: str | None) -> str:
     for v in values:
         if v is not None and "\x00" in v:
             raise RequestValidationError([{"type": "value_error", "loc": ("body", "author"), "msg": schemas.NUL_MSG,
@@ -212,8 +213,8 @@ def _author(*values: Optional[str]) -> str:
 @router.post("/api/sources/import", response_model=schemas.ImportReportOut, response_model_by_alias=True,
              responses={413: {"description": "Файл больше 5 МБ"}, 415: {"description": "Не .xlsx и не .csv"},
                         422: {"description": "Файл повреждён или не в формате набора"}})
-def import_sources(file: UploadFile = File(...), author: Optional[str] = Form(None, max_length=512),
-                   author_q: Optional[str] = Query(None, alias="author", max_length=512), db: Session = Depends(get_db)):
+def import_sources(file: UploadFile = File(...), author: str | None = Form(None, max_length=512),
+                   author_q: str | None = Query(None, alias="author", max_length=512), db: Session = Depends(get_db)):
     """Импорт xlsx/csv(формат docs/Усть-Каменогорск_объекты.xlsx, ≤ 5 МБ): тот же парсер, что у python -m app.importer;
     дедупликация по(источник, ID в источнике) - новые вставляются, изменившиеся обновляются. Отчёт - в ответе,
     событие - в журнале(kind data). Это загрузка файла, а не синхронизация с реестром."""

@@ -16,7 +16,8 @@ complexes.cover. Фото на риск и "Проверку по рекламе
 import argparse
 import logging
 import uuid
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any
+from collections.abc import Iterable
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -30,7 +31,7 @@ from .db import get_db
 log = logging.getLogger("saq.gallery")
 router = APIRouter(tags=["gallery"])
 
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 OPERATOR = "gallery"  # origin_ref и role фото оператора
 HP_HOST = "api.homeportal.kz"
 HP_API = f"https://{HP_HOST}/api/v1"
@@ -45,26 +46,26 @@ NOT_IN_GALLERY = "Такого фото нет среди фото объект�
 NO_HOMEPORTAL = "У объекта нет карточки Homeportal в открытом реестре — фото можно загрузить вручную"
 
 
-def _key_cid(key: str) -> Optional[str]:
+def _key_cid(key: str) -> str | None:
     parts = (key or "").split(":")
     return parts[1] if len(parts) >= 3 else None
 
 
-def _ads_by_complex(attributed: Dict[str, List[Tuple[str, str]]]) -> Dict[str, List[Tuple[str, bool]]]:
+def _ads_by_complex(attributed: dict[str, list[tuple[str, str]]]) -> dict[str, list[tuple[str, bool]]]:
     """ЖК → [(публикация, привязка подтверждена)]: подтверждённые первыми."""
-    out: Dict[str, List[Tuple[str, bool]]] = {}
+    out: dict[str, list[tuple[str, bool]]] = {}
     for cid, items in attributed.items():
         out[cid] = sorted(((aid, kind == "confirmed") for aid, kind in items), key=lambda x: not x[1])
     return out
 
 
 def collect(db: Session, complexes: Iterable[models.Complex],
-            attributed: Optional[Dict[str, List[Tuple[str, str]]]] = None) -> Dict[str, List[Obj]]:
+            attributed: dict[str, list[tuple[str, str]]] | None = None) -> dict[str, list[Obj]]:
     """ЖК → фото объекта(GalleryPhotoOut), обложка первой: закреплённая, иначе по порядку источников."""
     cxs = list(complexes)
     ids = {c.id for c in cxs}
     A = models.MediaAsset
-    own: Dict[str, List[models.MediaAsset]] = {}
+    own: dict[str, list[models.MediaAsset]] = {}
     q = select(A).where(A.status == "downloaded", A.ad_id.is_(None),
                         or_(A.source_key.like(f"{OPERATOR}:%"), A.source_key.like("homeportal:%")))
     for a in db.scalars(q.order_by(A.created_at.desc(), A.position)):
@@ -73,16 +74,16 @@ def collect(db: Session, complexes: Iterable[models.Complex],
             own.setdefault(cid, []).append(a)
     by_cx = _ads_by_complex(attributed or {})
     ad_ids = {aid for cid in ids for aid, _ in by_cx.get(cid, [])}
-    pics: Dict[str, List[models.MediaAsset]] = {}
-    ads: Dict[str, models.Ad] = {}
+    pics: dict[str, list[models.MediaAsset]] = {}
+    ads: dict[str, models.Ad] = {}
     if ad_ids:
         for a in db.scalars(select(A).where(A.ad_id.in_(ad_ids), A.status == "downloaded", A.current.is_(True),
                                             A.kind == "image").order_by(A.position)):
             pics.setdefault(a.ad_id, []).append(a)
         ads = {x.id: x for x in db.scalars(select(models.Ad).where(models.Ad.id.in_(list(pics))))} if pics else {}
-    out: Dict[str, List[Obj]] = {}
+    out: dict[str, list[Obj]] = {}
     for c in cxs:
-        items: List[Obj] = []
+        items: list[Obj] = []
         for a in own.get(c.id, []):
             m = a.meta or {}
             if a.origin_ref == OPERATOR:
@@ -144,7 +145,7 @@ def _row(db: Session, cid: str) -> Obj:
     return row(db, _complex(db, cid))
 
 
-def _form_author(author: Optional[str], note: Optional[str]) -> schemas.GalleryUploadIn:
+def _form_author(author: str | None, note: str | None) -> schemas.GalleryUploadIn:
     from .verification import _form_errors
     try:
         return schemas.GalleryUploadIn.model_validate({k: v for k, v in {"author": author, "note": note}.items() if v is not None})
@@ -156,7 +157,7 @@ def _form_author(author: Optional[str], note: Optional[str]) -> schemas.GalleryU
              status_code=201,
              responses={413: {"description": "Файл больше 10 МБ"}, 415: {"description": "Не изображение"},
                         429: {"description": "Слишком много загрузок"}, 507: {"description": "Мало места"}})
-def upload(cid: str, file: UploadFile = File(...), author: Optional[str] = Form(None), note: Optional[str] = Form(None),
+def upload(cid: str, file: UploadFile = File(...), author: str | None = Form(None), note: str | None = Form(None),
            db: Session = Depends(get_db)):
     """Фото объекта от оператора(multipart: file, author, note?): те же пределы, что у скриншота(10 МБ, JPEG / PNG /
     WEBP / GIF по сигнатуре, часовой лимит ручных загрузок). Без закреплённой обложки новое фото становится обложкой."""
@@ -248,9 +249,9 @@ def fetch_route(cid: str, body: schemas.AuthorIn, db: Session = Depends(get_db))
     return _row(db, cid)
 
 
-def _attributed(db: Session, cid: str) -> Dict[str, List[Tuple[str, str]]]:
+def _attributed(db: Session, cid: str) -> dict[str, list[tuple[str, str]]]:
     from . import screening
-    out: List[Tuple[str, str]] = []
+    out: list[tuple[str, str]] = []
     for f in screening.load_facts(db).values():
         kind = f.targets().get(cid)
         if kind:
@@ -260,11 +261,11 @@ def _attributed(db: Session, cid: str) -> Dict[str, List[Tuple[str, str]]]:
 
 # ---------- Homeportal ----------
 
-def homeportal_pages(db: Session, c: models.Complex) -> List[str]:
+def homeportal_pages(db: Session, c: models.Complex) -> list[str]:
     """Ссылки на карточки Homeportal из записей открытого реестра этого ЖК(projects/{id}, Illegal-projects/{id})."""
     from . import screening
     _, rs = screening.registry_groups(db, [c])[c.id]
-    out: List[str] = []
+    out: list[str] = []
     for r in rs:
         url = r.get("sourceUrl") or ""
         if r.get("source") in HP_SOURCES and "homeportal.kz" in url and url not in out:
@@ -272,7 +273,7 @@ def homeportal_pages(db: Session, c: models.Complex) -> List[str]:
     return out
 
 
-def _api_path(page: str) -> Optional[Tuple[str, str]]:
+def _api_path(page: str) -> tuple[str, str] | None:
     """Карточка Homeportal → (путь API, id объекта)."""
     parts = [p for p in urlsplit(page).path.split("/") if p]
     if len(parts) < 2 or not parts[-1].isdigit():
@@ -290,7 +291,7 @@ def _quote_url(url: str) -> str:
     return urlunsplit((s.scheme, s.netloc, quote(s.path), s.query, ""))
 
 
-def fetch_homeportal(db: Session, c: models.Complex, pages: List[str]) -> Obj:
+def fetch_homeportal(db: Session, c: models.Complex, pages: list[str]) -> Obj:
     """Фото карточек Homeportal → хранилище и MediaAsset(без commit). Уже загруженные(тот же id фото) пропускаются."""
     from .integrations import http
 
@@ -307,7 +308,7 @@ def fetch_homeportal(db: Session, c: models.Complex, pages: List[str]) -> Obj:
                 r = cl.get(f"{HP_API}/{path}")
                 r.raise_for_status()
                 images = ((r.json() or {}).get("data") or {}).get("images") or []
-            except Exception as e:  # noqa: BLE001 - источник недоступен: причина в отчёт
+            except Exception as e:
                 rep["errors"].append(f"{page}: {type(e).__name__}")
                 continue
             for n, im in enumerate(images[:HP_MAX]):
@@ -336,7 +337,7 @@ def fetch_homeportal(db: Session, c: models.Complex, pages: List[str]) -> Obj:
     return rep
 
 
-def fetch_all(db: Session, only: Optional[List[str]] = None, *, missing_only: bool = False) -> List[Tuple[str, Obj]]:
+def fetch_all(db: Session, only: list[str] | None = None, *, missing_only: bool = False) -> list[tuple[str, Obj]]:
     """Фото карточек Homeportal по всем ЖК с такими записями(only - только эти); missing_only - только ЖК, у которых
     фото Homeportal ещё нет(такт воркера: новые карточки реестра получают фото сами). Каждый ЖК - своей транзакцией."""
     A = models.MediaAsset
@@ -357,7 +358,7 @@ def fetch_all(db: Session, only: Optional[List[str]] = None, *, missing_only: bo
     return out
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     from .db import SessionLocal
 
     ap = argparse.ArgumentParser(prog="python -m app.gallery", description="Фото объектов для карточек ЖК")

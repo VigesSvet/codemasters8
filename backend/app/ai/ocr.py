@@ -15,14 +15,14 @@ import subprocess
 import tempfile
 import time
 from io import BytesIO
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from PIL import Image, ImageOps
 
 from ..schemas import AD_TEXT_MAX
 
 log = logging.getLogger("saq.ocr")
-Obj = Dict[str, Any]
+Obj = dict[str, Any]
 
 TESSERACT = os.getenv("TESSERACT_CMD", "tesseract")
 LANGS = ("rus", "kaz", "eng")
@@ -53,13 +53,13 @@ class OcrError(Exception):
         self.status, self.detail = status, detail
 
 
-def _run(args: List[str], data: Optional[bytes] = None, timeout: float = 10) -> subprocess.CompletedProcess:
+def _run(args: list[str], data: bytes | None = None, timeout: float = 10) -> subprocess.CompletedProcess:
     """Запуск tesseract(точка подмены в тестах). OMP_THREAD_LIMIT=1 - без перегрузки CPU при параллельных запросах."""
     env = {**os.environ, "OMP_THREAD_LIMIT": "1"}
     return subprocess.run(args, input=data, capture_output=True, timeout=timeout, env=env, check=False)
 
 
-def _which() -> Optional[str]:
+def _which() -> str | None:
     return shutil.which(TESSERACT)
 
 
@@ -90,13 +90,13 @@ def status() -> Obj:
 
 # ---------- файл ----------
 
-def _sniff(raw: bytes) -> Optional[str]:
+def _sniff(raw: bytes) -> str | None:
     if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
         return "WEBP"
     return next((fmt for sig, fmt in SIGNATURES if raw.startswith(sig)), None)
 
 
-def _unsupported(raw: bytes, ctype: str) -> Optional[str]:
+def _unsupported(raw: bytes, ctype: str) -> str | None:
     """Это изображение, но в формате, который здесь не распознаётся: "HEIC", "SVG", "image/x-icon"…; иначе None."""
     if raw[4:8] == b"ftyp" and raw[8:12] in HEIF_BRANDS:
         return HEIF_BRANDS[raw[8:12]]
@@ -106,7 +106,7 @@ def _unsupported(raw: bytes, ctype: str) -> Optional[str]:
     return ctype if ctype.startswith("image/") and ctype not in TYPES else None
 
 
-def load(raw: bytes, content_type: Optional[str] = None) -> Image.Image:
+def load(raw: bytes, content_type: str | None = None) -> Image.Image:
     """Проверенное и декодированное изображение или OcrError(413/415/422)."""
     if not raw:
         raise OcrError(422, "Файл пустой — загрузите скриншот объявления")
@@ -132,17 +132,17 @@ def load(raw: bytes, content_type: Optional[str] = None) -> Image.Image:
         raise
     except Image.DecompressionBombError:
         raise OcrError(413, f"Изображение слишком большое (до {MAX_PIXELS // 1_000_000} Мп) — уменьшите его") from None
-    except Exception as e:  # noqa: BLE001 - любой сбой декодера означает битый файл
+    except Exception as e:
         # текст Pillow("cannot identify image file <_io.BytesIO …>", "image file is truncated") - для журнала, не для аналитика
         log.warning("OCR: файл %s (%s, %d байт) не декодируется: %s", fmt, ctype or "тип не указан", len(raw), e)
         raise OcrError(422, f"Файл {fmt} повреждён и не читается — сохраните скриншот заново (PNG или JPEG)") from None
     return im
 
 
-def preprocess(im: Image.Image) -> Tuple[Image.Image, List[str]]:
+def preprocess(im: Image.Image) -> tuple[Image.Image, list[str]]:
     """Подготовка для Tesseract: поворот по EXIF, прозрачность → белый фон, оттенки серого, увеличение мелких,
     уменьшение огромных, автоконтраст. Возвращает изображение и список шагов(по-русски) для показа аналитику."""
-    steps: List[str] = []
+    steps: list[str] = []
     im = ImageOps.exif_transpose(im)
     if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
         rgba = im.convert("RGBA")
@@ -166,10 +166,10 @@ def preprocess(im: Image.Image) -> Tuple[Image.Image, List[str]]:
     return im, steps
 
 
-def parse_tsv(tsv: str) -> Tuple[str, Optional[float]]:
+def parse_tsv(tsv: str) -> tuple[str, float | None]:
     """TSV Tesseract → текст по строкам(абзацы - через пустую строку) и средняя уверенность слов 0…1."""
-    lines: Dict[Tuple[int, int, int, int], List[str]] = {}
-    confs: List[float] = []
+    lines: dict[tuple[int, int, int, int], list[str]] = {}
+    confs: list[float] = []
     for row in tsv.splitlines()[1:]:
         cols = row.split("\t")
         if len(cols) < 12 or cols[0] != "5":
@@ -203,12 +203,12 @@ def clip(text: str, limit: int = AD_TEXT_MAX) -> str:
     return (head[:cut] if cut > 0 else head).rstrip()
 
 
-def recognize(raw: bytes, content_type: Optional[str] = None) -> Obj:
+def recognize(raw: bytes, content_type: str | None = None) -> Obj:
     """OcrResult: {text, engine, confidence?, languages, durationMs, version?, preprocess, detail?}."""
     started = time.perf_counter()
     im = load(raw, content_type)
     st = status()
-    ms = lambda: math.floor((time.perf_counter() - started) * 1000)  # noqa: E731
+    ms = lambda: math.floor((time.perf_counter() - started) * 1000)
     if not st["available"]:
         return {"text": "", "engine": "none", "languages": [], "durationMs": ms(), "detail": st.get("detail")}
     im, steps = preprocess(im)
