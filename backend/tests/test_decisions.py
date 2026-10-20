@@ -9,13 +9,13 @@ from datetime import date, timedelta
 from functools import partial
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, event, select
 from sqlalchemy.exc import IntegrityError
 
 import demo_seed
 from test_discovery import claude_ad, result
 
-from app import models, screening, seed, snapshot
+from app import demo, models, registry, schemas, screening, seed, snapshot
 from app.db import SessionLocal, engine
 from app.risk_model import BUILT
 from app.schemas import today_local
@@ -109,7 +109,7 @@ def rule_ad(client, cid: str, text: str, when: str) -> str:
 
 
 def local_minutes(days: float = 0) -> str:
-    return screening._local_minutes(models.utcnow() + timedelta(days=days))
+    return schemas.local_minutes(models.utcnow() + timedelta(days=days))
 
 
 # ---------- маршруты: проверка входа, автор, ошибки ----------
@@ -287,6 +287,21 @@ def test_no_issues_reopened_by_new_concerning_ad(client, env):
     got = r.json()
     assert got["decision"]["status"] == "active" and got["screening"]["variant"] == "analyst"
     assert rows(AB) == [("no_issues", "superseded", None), ("no_issues", "active", None)]
+
+
+def test_free_form_ad_date_does_not_break_screening(client, env):
+    """Ad.date - строка: дата со смещением за границей допустимых(ручной ввод её теперь не принимает - 422, но в БД
+    она могла остаться от прежних версий) не роняет оценку всех ЖК."""
+    live(env)
+    no_issues(client, AB)
+    aid = rule_ad(client, AB, "Бронь квартир, старт продаж", local_minutes())
+    with SessionLocal() as db:
+        db.get(models.Ad, aid).date = "9999-12-31T23:59-12:00"
+        db.commit()
+    assert client.get("/api/complexes").status_code == 200
+    got = cx(client, AB)
+    assert got["decision"]["status"] == "reopened"  # строка не разобрана - сравнение по дате, как раньше
+    assert client.get("/api/stats").status_code == 200
 
 
 def test_commissioned_reopens_only_for_construction_or_new_queue(client, env):
@@ -478,6 +493,20 @@ def test_rules_pure_functions():
     assert screening.after("2026-10-19", "2026-10-19T10:05") is False  # дата без времени - со следующего дня
     assert screening.after("2026-10-20", "2026-10-19T10:05") is True
     assert screening.after("", "2026-10-19T10:05") is False
+    # время со смещением - в местное(UTC+5), пробел вместо "T" - то же время
+    assert screening.after("2026-10-19T05:05:00Z", "2026-10-19T10:05") is True
+    assert screening.after("2026-10-19T05:04:59+00:00", "2026-10-19T10:05") is False
+    assert screening.after("2026-10-19 10:05", "2026-10-19T10:05") is True
+    assert screening._local_stamp("2026-10-19T22:30:00+00:00") == "2026-10-20T03:30"  # день публикации - местный
+    assert screening._local_stamp("2026-10-19") == "2026-10-19" and screening._local_stamp("вчера вечером") == "вчера вечером"
+    # перевод за границу допустимых дат - строка как есть, а не OverflowError на всю оценку
+    assert screening._local_stamp("9999-12-31T23:59-12:00") == "9999-12-31T23:59-12:00"
+    assert screening.after("9999-12-31T23:59-12:00", "2026-10-19T10:05") is True
+    assert screening._fmt_day("2026-10-19T22:30:00Z") == "20.10.2026"  # подпись дня - местная, как окно свежести
+    # первая публикация после решения - по местному времени, а не по строке: 05:30Z - это 10:30, позже 10:10
+    utc = (_facts("utc", "2026-10-19T05:30:00Z", concerning=[("booking", "бронь")]), "rules")
+    local = (_facts("local", "2026-10-19T10:10", concerning=[("booking", "бронь")]), "rules")
+    assert screening.reopen_trigger("no_issues", "2026-10-19T10:00", [utc, local])["fact"].id == "local"
     assert screening.act_text("12", "2026-09-01") == "акт № 12 от 01.09.2026"
     assert screening.act_text("№12", "2026-09-01") == "акт №12 от 01.09.2026"
     assert screening.act_text(None, "2026-09-01") == "акт от 01.09.2026"
@@ -512,3 +541,162 @@ def test_rules_pure_functions():
     out, view = screening.with_decision(auto, {**d, "kind": "no_issues", "reason": "Сверено с ГАСК."}, [inst])
     assert out["status"] == "check" and view["status"] == "reopened" and out["reasons"][1:] == auto["reasons"]
     assert view["reopenedBy"] == {"adId": "inst", "date": "2026-10-12T10:00", "signal": "installment", "quote": "рассрочка"}
+
+
+# ---------- оценка одного ЖК(compute_complex) против оценки всех(compute) ----------
+
+def _same_as_compute(as_of: date | None = None) -> set[str]:
+    """compute_complex по каждому ЖК даёт по нему те же сведения, что compute(и тот же ответ API); итог - основания
+    отнесения публикаций, которые встретились(что покрыл сценарий)."""
+    kinds: set[str] = set()
+    with SessionLocal() as db:
+        full = screening.compute(db, as_of)
+        cxs = list(db.scalars(select(models.Complex).order_by(models.Complex.id)))
+        assert cxs
+        for c in cxs:
+            one = screening.compute_complex(db, c, as_of)
+
+            def only(d: dict, cid: str = c.id) -> dict:
+                return {cid: d[cid]} if cid in d else {}
+
+            got = (one.complexes, one.permits, one.decisions, one.attributed, one.advert, one.suggest, one.homeportal)
+            want = (only(full.complexes), only(full.permits), only(full.decisions), only(full.attributed),
+                    only(full.advert), only(full.suggest), full.homeportal & {c.id})
+            assert got == want, c.id
+            assert (one.developers, one.as_of, one.days) == ({}, full.as_of, full.days)
+            assert screening.complex_rows(db, [c], one) == screening.complex_rows(db, [c], full), c.id
+            assert [(f.id, k) for _, f, k in screening.attributed_to(db, c.id)] == full.attributed.get(c.id, [])
+            kinds.update(k for _, k in full.attributed.get(c.id, []))
+    return kinds
+
+
+def test_compute_complex_matches_compute_demo(client):
+    assert {"confirmed", "rules"} <= _same_as_compute()
+
+
+def test_compute_complex_matches_compute_live(client, env):
+    """Все пути отнесения(подтверждённая привязка, гипотеза правил по привязке и по журналу - в том числе перекрытая
+    "ЖК не определён", кандидат Claude - в том числе низкой уверенности, отклонённый, в прежнем ответе, объект из
+    рекламы), отклонённая публикация, решения аналитика(действует и снято рекламой), id ЖК не латиницей."""
+    live(env)
+    advertised()
+    kok = advertised("a-көктем", "Көктем Тест")  # в JSON ответа Claude в SQLite - \u-экранирование
+    no_issues(client, AB)
+    backdate(AB, 3)
+    rule_ad(client, AB, "Бронь квартир, старт продаж", local_minutes())  # подтверждённая, снимает решение
+    commission(client, ORDA)
+    r = client.post("/api/ads", json={"platform": "instagram", "account": "@seller", "text": "Квартиры, рассрочка",
+                                      "date": local_minutes(-2), "complexId": NOMAD, "author": AUTHOR})
+    assert r.status_code == 201, r.text  # привязка без подтверждения - гипотеза правил
+    claude_ad("Orda — рассрочка 0%", result(signals=[("installment", "рассрочка 0%")],
+                                           candidates=[(ORDA, "high"), (AB, "low")]))  # AB низкой - не отнесена
+    claude_ad("Көктем: бронь", result(signals=[("booking", "бронь")], candidates=[(kok, "medium")],
+                                      stage=("under_construction", "строится")))
+    rejected = claude_ad("Nomad: ДДУ", result(signals=[("ddu", "ДДУ")], candidates=[(NOMAD, "high"), (ORDA, "medium")]))
+    dismissed = claude_ad("Orda: бронь", result(signals=[("booking", "бронь")], candidates=[(ORDA, "high")]))
+    renewed = claude_ad("Квартиры, бронь", result(signals=[("booking", "бронь")], candidates=[(AB, "high")]),
+                        days_ago=5)
+    mention = claude_ad("Квартиры в ЖК Гранд Орда, бронь", result(signals=[("booking", "бронь")],
+                                                                 mentions=[("Гранд Орда", "", "ЖК Гранд Орда")]))
+    hyp = claude_ad("Квартиры у реки, взнос 10%", result(signals=[("down_payment", "взнос 10%")]))
+    gone = claude_ad("Квартиры, ДДУ", result(signals=[("ddu", "ДДУ")]))
+    now = models.utcnow()
+    with SessionLocal() as db:
+        db.get(models.Ad, rejected).rejected_links = [NOMAD]
+        db.get(models.Ad, dismissed).status = "dismissed"
+        # новый ответ Claude по той же публикации ЖК не называет: прежний(с AB) - не основание
+        db.add(models.LlmAnalysis(ad_id=renewed, content_hash="f" * 64, model="m", prompt_version="p", status="done",
+                                  result=result(signals=[("booking", "бронь")]), created_at=now, updated_at=now))
+        E = partial(models.AuditEvent, kind="ai", who=screening.SYSTEM)
+        db.add_all([E(ad_id=hyp, complex_id=NOMAD, what=f"{screening.HYPOTHESIS_PREFIX}Nomad Test», уверенность 60%",
+                      at=now),
+                    E(ad_id=gone, complex_id=ORDA, what=f"{screening.HYPOTHESIS_PREFIX}Orda», уверенность 55%",
+                      at=now - timedelta(minutes=5)),
+                    E(ad_id=gone, complex_id=None, what=f"{screening.NO_HYPOTHESIS_PREFIX} (уверенность ниже порога)",
+                      at=now)])
+        db.commit()
+        oid = db.scalar(select(models.DiscoveredMention.object_id).where(models.DiscoveredMention.ad_id == mention))
+    r = client.post(f"/api/discovered/{oid}/link", json={"author": AUTHOR, "complexId": NOMAD})
+    assert r.status_code == 200, r.text
+
+    assert {"confirmed", "rules", "claude", "discovered"} <= _same_as_compute()
+    assert _same_as_compute(TODAY - timedelta(days=200))  # окно свежести в прошлом - тоже то же
+    with SessionLocal() as db:
+        got = {cid: {f.id: k for _, f, k in screening.attributed_to(db, cid)} for cid in (AB, ORDA, NOMAD, kok)}
+        assert screening.compute_complex(db, db.get(models.Complex, AB)).decisions[AB]["status"] == "reopened"
+        assert screening.compute_complex(db, db.get(models.Complex, ORDA)).decisions[ORDA]["status"] == "active"
+    assert got[NOMAD].get(hyp) == "rules" and got[NOMAD].get(mention) == "discovered" and rejected not in got[NOMAD]
+    assert got[ORDA].get(rejected) == "claude" and dismissed not in got[ORDA] and gone not in got[ORDA]
+    assert renewed not in got[AB] and len(got[kok]) == 1
+
+
+# ---------- записи открытых данных карточек реестра(registry_groups) ----------
+
+def _groups_from_whole_registry(db, cxs: list[models.Complex]) -> dict:
+    """registry_groups, как до чтения по ключам: все записи реестра, ключ карточки - по demo.complex_id каждого ключа."""
+    by_key: dict[str, list[dict]] = {}
+    for r in registry.records(db):
+        by_key.setdefault(r["key"], []).append(r)
+    key_of = {demo.complex_id(k): k for k in by_key}
+    out = {}
+    for c in cxs:
+        key = key_of.get(c.id) if c.origin == "registry" else None
+        out[c.id] = (key, by_key.get(key, []) if key else [])
+    return out
+
+
+def _source_record_selects(fn):
+    """(итог fn(), SELECT к source_records, выполненные fn())."""
+    seen: list[str] = []
+
+    def on(conn, cursor, statement, *_):
+        if statement.lstrip().upper().startswith("SELECT") and "source_records" in statement:
+            seen.append(statement)
+
+    event.listen(engine, "before_cursor_execute", on)
+    try:
+        out = fn()
+    finally:
+        event.remove(engine, "before_cursor_execute", on)
+    return out, seen
+
+
+def test_registry_groups_read_only_registry_cards(client, env):
+    """registry_groups по каждому ЖК - то же, что по всему реестру: карточки "r-<ключ>"(в том числе ключ ровно на
+    границе длины id), "rh-<sha1>"(длинный ключ; ключ - по названию карточки, у переименованной - перебором длинных
+    ключей), карточка реестра, записи которой удалены, ЖК из рекламы. Записи читаются только по ключам карточек; для ЖК
+    не из реестра к source_records запросов нет. compute_complex - то же, что compute."""
+    live(env)
+    advertised()
+    edge, long_, renamed = "x" * (demo.ID_MAX - 2), "y" * (demo.ID_MAX - 1), "z" * (demo.ID_MAX + 8)
+    with SessionLocal() as db:
+        recs = [{"key": key, "source": source, "sourceName": key, "sourceRecordId": f"{key[:8]}-{source}",
+                 "name": f"ЖК «{key}»", "developer": "ТОО «Граница»", "developerBin": "123456789012",
+                 "fundingText": "Гарантия ЕО", "fundingMethod": "guarantee", "docNumber": "1",
+                 "sourceUrl": "https://homeportal.kz/ru/projects/1", "lat": 49.95, "lng": 82.6, "row": n}
+                for n, (key, source) in enumerate([(edge, "homeportal"), (edge, "ashyq"), (long_, "homeportal"),
+                                                   (renamed, "homeportal")])]
+        registry.upsert(db, recs, "edge.xlsx", models.utcnow())
+        demo.import_registry(db)
+        db.get(models.Complex, demo.complex_id(renamed)).name = "Переименован аналитиком"
+        db.execute(delete(models.SourceRecord).where(models.SourceRecord.key == "asyltas"))  # карточка без записей
+        db.commit()
+    rh, rh_renamed = demo.complex_id(long_), demo.complex_id(renamed)
+    assert demo.complex_id(edge) == f"r-{edge}" and rh.startswith("rh-") and rh_renamed.startswith("rh-")
+    with SessionLocal() as db:
+        cxs = list(db.scalars(select(models.Complex).order_by(models.Complex.id)))
+        assert {f"r-{edge}", rh, rh_renamed, "r-asyltas", ORDA, NOMAD} <= {c.id for c in cxs}
+        full = _groups_from_whole_registry(db, cxs)
+        assert (full[rh][0], len(full[rh][1]), full[f"r-{edge}"][0], len(full[f"r-{edge}"][1])) == (long_, 1, edge, 2)
+        assert (full[rh_renamed][0], len(full[rh_renamed][1])) == (renamed, 1)
+        assert full["r-asyltas"] == (None, []) and full[NOMAD] == (None, []) and full[ORDA][1]
+        assert screening.registry_groups(db, cxs) == full
+        for c in cxs:
+            got, sql = _source_record_selects(lambda c=c: screening.registry_groups(db, [c]))
+            assert got == {c.id: full[c.id]}, c.id
+            if c.origin != "registry":
+                assert sql == [], c.id
+            assert all("WHERE" in q for q in sql), (c.id, sql)  # не весь реестр
+            # перебор длинных ключей - только у карточки "rh-", ключ которой не восстановить по названию
+            assert any("DISTINCT" in q for q in sql) == (c.id == rh_renamed), (c.id, sql)
+    _same_as_compute()

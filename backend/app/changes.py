@@ -5,7 +5,8 @@
 last_run_id. Публикация считается удалённой(deleted), если:
 - позже её аккаунт собирался успешно(у других его публикаций last_run_id новее) - аккаунт в сборе есть;
 - она не старше самой старой публикации аккаунта, увиденной в последнем таком запуске, - то есть была бы в окне сбора;
-- после неё прошло не меньше MIN_MISSED запусков этого подключения(один пропуск - ещё не удаление: сбой ответа).
+- после неё прошло не меньше MIN_MISSED завершённых запусков этого подключения(один пропуск - ещё не удаление: сбой
+  ответа; идущий запуск не считается - до публикации он может ещё дойти).
 Иначе - present(видели в последнем сборе аккаунта) или unknown с причиной: вытеснена из окна новыми публикациями,
 аккаунт позже не собирался, пропущена в одном запуске, площадка без окна по аккаунту. Krisha - всегда unknown: выдача -
 первые страницы поиска(порядок меняется, объявление может уйти дальше), карточки закрыты проверкой доступа(HTTP 468),
@@ -16,9 +17,10 @@ last_run_id. Публикация считается удалённой(deleted)
 (пословный diff по LCS), удалённые условия оплаты(словарь markers.money модели риска и суммы), смена файлов.
 """
 import re
-from datetime import datetime, timedelta, UTC
-from typing import Any
 from collections.abc import Iterable, Sequence
+from datetime import UTC, datetime, timedelta
+from itertools import pairwise
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -30,6 +32,7 @@ from .risk_model import MARKERS
 
 Obj = dict[str, Any]
 MIN_MISSED = 2  # запусков подключения без публикации, после которых отсутствие - удаление
+COUNTED_RUNS = ("succeeded", "partial")  # завершённые сборы, в которых публикацию не нашли
 WINDOWED = ("instagram", "tiktok")  # сборщики с окном последних публикаций по аккаунту
 FRAGMENT_MAX = 160
 FRAGMENTS = 5
@@ -90,7 +93,8 @@ def _merge(ops: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:
     """Склеить соседние куски одного вида; пробел между двумя удалёнными(добавленными) словами - к ним же."""
     ops = list(ops)
     out: list[tuple[str, str]] = []
-    for k, (op, t) in enumerate(ops):
+    for k, (kind, t) in enumerate(ops):
+        op = kind
         if op == "eq" and t.isspace() and out and out[-1][0] != "eq" and k + 1 < len(ops) and ops[k + 1][0] == out[-1][0]:
             op = out[-1][0]
         if out and out[-1][0] == op:
@@ -202,10 +206,10 @@ def classify(item: Obj, siblings: list[Obj], runs: list[Obj]) -> Obj:
     by_id = {r["id"]: r for r in runs}
     lr = by_id.get(latest) or {}
     checked = _iso(lr.get("finishedAt") or lr.get("createdAt")) or seen
-    if latest <= mine:
-        return {"status": "present", "how": "Найдена в последнем сборе аккаунта", "checkedAt": seen, **base}
     missed = sum(1 for r in runs if mine < r["id"] <= latest and r.get("trigger") != "test"
-                 and r.get("status") in ("succeeded", "partial", "running"))
+                 and r.get("status") in COUNTED_RUNS) if latest > mine else 0
+    if missed == 0:  # после неё не было завершённого сбора аккаунта(или идёт сбор, который до неё ещё не дошёл)
+        return {"status": "present", "how": "Найдена в последнем сборе аккаунта", "checkedAt": seen, **base}
     base["missedRuns"] = missed
     window = [s for s in others if s.get("lastRunId") == latest]
     oldest = min((d for d in (_ts(s.get("publishedAt")) for s in window) if d), default=None)
@@ -235,7 +239,8 @@ def _runs(db: Session, collectors: Iterable[str]) -> dict[str, list[Obj]]:
     cols = list(set(collectors))
     if not cols:
         return out
-    for r in db.scalars(select(R).where(R.collector.in_(cols)).order_by(R.id)):
+    q = select(R.id, R.collector, R.status, R.trigger, R.finished_at, R.created_at).where(R.collector.in_(cols))
+    for r in db.execute(q.order_by(R.id)):
         out.setdefault(r.collector, []).append({"id": r.id, "status": r.status, "trigger": r.trigger,
                                                 "finishedAt": r.finished_at, "createdAt": r.created_at})
     return out
@@ -247,8 +252,9 @@ def _saved(db: Session, item_ids: list[int]) -> dict[int, Obj]:
     out: dict[int, Obj] = {}
     if not item_ids:
         return out
-    for v in db.scalars(select(V).where(V.item_id.in_(item_ids)).order_by(V.item_id, V.version)):
-        out[v.item_id] = {"savedAt": _iso(v.collected_at), "version": v.version}
+    q = select(V.item_id, V.version, V.collected_at).where(V.item_id.in_(item_ids)).order_by(V.item_id, V.version)
+    for item_id, version, collected_at in db.execute(q):
+        out[item_id] = {"savedAt": _iso(collected_at), "version": version}
     return out
 
 
@@ -258,16 +264,22 @@ def statuses(db: Session, items: list[models.IngestItem] | None = None) -> dict[
     rows = items if items is not None else list(db.scalars(select(I)))
     if not rows:
         return {}
+    # публикации тех же(подключение, аккаунт): одним запросом на подключение, а не на каждый аккаунт
+    accounts: dict[str, set[str]] = {}
+    for r in rows:
+        accounts.setdefault(r.collector, set()).add(r.account)
     groups: dict[tuple[str, str], list[Obj]] = {}
-    pairs = {(r.collector, r.account) for r in rows}
-    for col, acc in pairs:
-        groups[(col, acc)] = [_item_obj(x) for x in db.scalars(select(I).where(I.collector == col, I.account == acc))]
-    runs = _runs(db, [c for c, _ in pairs])
+    by_id: dict[int, Obj] = {}
+    for col, accs in accounts.items():
+        for x in db.scalars(select(I).where(I.collector == col, I.account.in_(accs))):
+            obj = by_id[x.id] = _item_obj(x)
+            groups.setdefault((col, x.account), []).append(obj)
+    runs = _runs(db, accounts)
     saved = _saved(db, [r.id for r in rows])
     out: dict[str, Obj] = {}
     for r in rows:
-        sib = groups[(r.collector, r.account)]
-        me = next((s for s in sib if s["id"] == r.id), _item_obj(r))
+        me = by_id.get(r.id) or _item_obj(r)
+        sib = groups.get((r.collector, r.account)) or [me]
         st = classify(me, sib, runs.get(r.collector, []))
         out[r.ad_id] = {**st, **saved.get(r.id, {"savedAt": _iso(r.collected_at), "version": r.version}),
                         "collector": r.collector}
@@ -284,23 +296,49 @@ def source_status(db: Session, ad_id: str) -> Obj:
 
 # ---------- лента изменений ----------
 
-def _version_obj(v: models.IngestVersion) -> Obj:
+def _version_obj(v: Any) -> Obj:
+    """Версия(строка IngestVersion или её столбцы) → {version, text, price, mediaKeys, collectedAt}."""
     return {"version": v.version, "text": v.text, "price": v.price, "mediaKeys": list(v.media_keys or []),
             "collectedAt": _iso(v.collected_at)}
 
 
 def recent_changes(db: Session, days: int = 30, limit: int = 100, now: datetime | None = None) -> Obj:
-    """Изменения содержимого(пары соседних версий) и удалённые в источнике публикации за days дней, новые первыми."""
+    """Изменения содержимого(пары соседних версий) за days дней и все удалённые в источнике публикации, новые первыми."""
     now = now or datetime.now(UTC)
     since = now - timedelta(days=days)
     I, V, A = models.IngestItem, models.IngestVersion, models.Ad
     items = {i.id: i for i in db.scalars(select(I))}
-    ads = {a.id: a for a in db.scalars(select(A).where(A.id.in_([i.ad_id for i in items.values()])))} if items else {}
-    multi = [i for i in items.values() if (i.version or 1) > 1]
+    multi = [i.id for i in items.values() if (i.version or 1) > 1]
     vers: dict[int, list[Obj]] = {}
     if multi:
-        for v in db.scalars(select(V).where(V.item_id.in_([i.id for i in multi])).order_by(V.item_id, V.version)):
+        q = (select(V.item_id, V.version, V.text, V.price, V.media_keys, V.collected_at)
+             .where(V.item_id.in_(multi)).order_by(V.item_id, V.version))
+        for v in db.execute(q):
             vers.setdefault(v.item_id, []).append(_version_obj(v))
+
+    pairs: list[tuple[models.IngestItem, Obj, Obj]] = []
+    for iid, vs in vers.items():
+        for prev, cur in pairwise(vs):
+            at = _ts(cur.get("collectedAt"))
+            if at is None or at >= since:
+                pairs.append((items[iid], prev, cur))
+    # новые первыми; пословный diff(LCS) - только пока не набралось limit изменений, а не для всех пар за days дней
+    pairs.sort(key=lambda p: p[2].get("collectedAt") or "", reverse=True)
+    changes: list[tuple[models.IngestItem, Obj]] = []
+    for i, prev, cur in pairs:
+        if len(changes) >= limit:
+            break
+        ch = change_of(prev, cur)
+        if ch["kinds"]:
+            changes.append((i, ch))
+    st = statuses(db, list(items.values()))
+    deleted = [(i, st[i.ad_id]) for i in items.values() if st.get(i.ad_id, {}).get("status") == "deleted"]
+    deleted.sort(key=lambda d: d[1].get("lastSeenAt") or "", reverse=True)
+    deleted = deleted[:limit]
+
+    # ЖК и начало текста - только у публикаций, попавших в ответ
+    shown = {i.ad_id for i, _ in changes + deleted}
+    ads = {a.id: a for a in db.execute(select(A.id, A.complex_id, A.text).where(A.id.in_(shown)))} if shown else {}
 
     def head(i: models.IngestItem) -> Obj:
         a = ads.get(i.ad_id)
@@ -308,28 +346,12 @@ def recent_changes(db: Session, days: int = 30, limit: int = 100, now: datetime 
                 "complexId": a.complex_id if a is not None else None,
                 "text": _short((a.text if a is not None else "") or "", 200)}
 
-    changes: list[Obj] = []
-    for iid, vs in vers.items():
-        for prev, cur in zip(vs, vs[1:]):
-            at = _ts(cur.get("collectedAt"))
-            if at is not None and at < since:
-                continue
-            ch = change_of(prev, cur)
-            if ch["kinds"]:
-                changes.append({**head(items[iid]), **ch})
-    changes.sort(key=lambda c: c.get("at") or "", reverse=True)
-    st = statuses(db, list(items.values()))
-    deleted = []
-    for i in items.values():
-        s = st.get(i.ad_id) or {}
-        if s.get("status") == "deleted":
-            deleted.append({**head(i), **s})
-    deleted.sort(key=lambda d: d.get("lastSeenAt") or "", reverse=True)
     counts: dict[str, int] = {"present": 0, "deleted": 0, "unknown": 0}
     for s in st.values():
         counts[s["status"]] = counts.get(s["status"], 0) + 1
-    return {"generatedAt": now.isoformat(timespec="seconds"), "days": days, "changes": changes[:limit],
-            "deleted": deleted[:limit], "sourceStatus": counts, "items": len(items),
+    return {"generatedAt": now.isoformat(timespec="seconds"), "days": days,
+            "changes": [{**head(i), **ch} for i, ch in changes],
+            "deleted": [{**head(i), **s} for i, s in deleted], "sourceStatus": counts, "items": len(items),
             "limits": ("Удаление определяется по отсутствию в сборах Instagram и TikTok (окно последних публикаций "
                        "аккаунта); у Krisha, Telegram и ручных публикаций — не определяется. Изменения — по версиям, "
                        "которые сохранил приём: правка между двумя сборами без смены содержимого не видна.")}

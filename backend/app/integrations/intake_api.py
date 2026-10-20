@@ -14,8 +14,8 @@ from .base import Connector, when_text
 RECENT = timedelta(days=7)
 
 
-def intake_status(db, row, now: datetime, *, collector: str, last_at: datetime | None, denied: str,
-                  rejected: str, working: str, never: str) -> tuple[str, str]:
+def intake_status(row, now: datetime, *, last_at: datetime | None, denied: str, rejected: str, working: str,
+                  never: str) -> tuple[str, str]:
     """Общее правило статуса приёмника(API и бот): отказ новее последнего успеха → denied / error; успех за 7 дней →
     working; иначе waiting. Тексты - с "{when}" и "{detail}"."""
     from . import service
@@ -50,7 +50,7 @@ class IntakeApiConnector(Connector):
     def computed_status(self, db, row, now: datetime) -> tuple[str, str] | None:
         I = models.IngestItem
         last = models.as_utc(db.scalar(select(func.max(I.collected_at)).where(I.collector == self.code)))
-        return intake_status(db, row, now, collector=self.code, last_at=last,
+        return intake_status(row, now, last_at=last,
                              denied="Клиент приёма обращается с неверным токеном (последняя попытка {when})",
                              rejected="Последняя публикация отклонена: {detail}",
                              working="Последняя публикация: {when}", never="Публикаций через API ещё не было")

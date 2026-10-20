@@ -3,6 +3,7 @@
 // Поиск — тот же, что в шапке и реестре (find.ts / search.ts): название, адрес, застройщик, БИН, уполномоченная компания.
 import type { Complex, Developer, RegistryObject, SourceRecord } from '../data/types'
 import { finder, rankObject } from './find'
+import { externalUrl } from './platform'
 import { isDemo } from './provenance'
 
 /** Документ основания по способам ст. 7 Закона: гарантия ЕО, разрешение МИО (ЖАО), участие банка второго уровня */
@@ -56,6 +57,7 @@ export interface FactRecord {
   /** Код источника: homeportal | homeportal_section | ashyq */
   source: string
   sourceName: string
+  /** Ссылка на запись источника - только http(s)(externalUrl); другая схема или не ссылка - null, ссылки "Открыть" нет */
   url: string | null
   collectedAt: string | null
   providerLoadedAt: string | null
@@ -79,7 +81,7 @@ export interface CheckFacts {
 }
 
 const fact = (r: SourceRecord): FactRecord => ({
-  number: r.docNumber ?? null, date: r.docDate ?? null, source: r.source, sourceName: r.sourceName ?? r.source, url: r.sourceUrl ?? null,
+  number: r.docNumber ?? null, date: r.docDate ?? null, source: r.source, sourceName: r.sourceName ?? r.source, url: externalUrl(r.sourceUrl) ?? null,
   collectedAt: r.collectedAt ?? null, providerLoadedAt: r.providerLoadedAt ?? null,
   start: r.start ?? null, end: r.plannedEnd ?? null, section: r.sourceSection ?? null,
 })

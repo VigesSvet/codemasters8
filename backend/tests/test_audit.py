@@ -244,6 +244,41 @@ def test_manual_ad_events(client):
         assert client.post("/api/ads", json={**body, **bad}).status_code == 422, bad
 
 
+def test_manual_ad_id_and_source(client):
+    """id - сегмент адреса /api/ads/{id}: "/" или пробел сделали бы публикацию недоступной; источник ручного ввода -
+    только "manual": "bot" выдал бы запись аналитика за заявку жителя."""
+    body = {"platform": "instagram", "account": "@x", "text": "Продаю гараж"}
+    for bad in ({"id": "a/b"}, {"id": "a b"}, {"source": "bot"}, {"source": "parser"}):
+        r = client.post("/api/ads", json={**body, **bad})
+        assert r.status_code == 422 and r.json()["detail"][0]["loc"][-1] in bad, bad
+    r = client.post("/api/ads", json={**body, "id": "m-1_x"})
+    assert r.status_code == 201 and r.json()["id"] == "m-1_x" and r.json()["source"] == "manual"
+    assert client.get("/api/ads/m-1_x/audit").status_code == 200
+    r = client.post("/api/ads", json={**body, "source": "manual"})
+    assert r.status_code == 201 and r.json()["source"] == "manual"
+
+
+@pytest.mark.parametrize("who", ["Система", " система "])
+def test_system_author_is_reserved(client, who):
+    """"Система" - автор только автоматических записей: решение человека от этого имени выглядело бы в журнале
+    автоматическим. Ни одна запись не появляется."""
+    sid = client.post("/api/signals", json={"complexId": "c2", "author": AUTHOR}).json()["id"]
+    before = _log(client, "/api/audit", limit=500)
+    calls = [("PATCH", "/api/ads/a2/status", {"status": "in_review", "author": who}),
+             ("POST", "/api/ads/a2/comments", {"author": who, "text": "ok"}),
+             ("POST", "/api/signals", {"complexId": "c4", "author": who}),
+             ("POST", f"/api/signals/{sid}/confirm", {"author": who, "comment": "Сверено"}),
+             ("POST", f"/api/signals/{sid}/return", {"author": who, "comment": "Не подтвердилось"}),
+             ("POST", "/api/ads", {"platform": "instagram", "account": "@x", "text": "ok", "author": who})]
+    for method, path, body in calls:
+        r = client.request(method, path, json=body)
+        assert r.status_code == 422, (path, r.text)
+        assert [(d["loc"][-1], d["msg"]) for d in r.json()["detail"]] == [
+            ("author", "Имя «Система» зарезервировано за автоматическими записями")], path
+    assert _log(client, "/api/audit", limit=500) == before
+    assert client.get(f"/api/signals/{sid}").json()["status"] == "new"
+
+
 def test_manual_ad_cannot_carry_decision(client):
     """Решение по публикации - только через PATCH /status(автор, основание, событие kind='status'). При создании статус
     решения - 422: иначе "Нарушение подтверждено" сделало бы гипотезу-привязку фактом и дало R2/R3 без следа решения."""
@@ -395,8 +430,10 @@ def test_analysts(client):
 
 # ---------- ошибки ----------
 
-def test_unhandled_error_is_json_500(client, monkeypatch, caplog):
+def test_unhandled_error_is_json_500(client, env, monkeypatch, caplog):
     from app import main
+
+    env(SAQ_CORS_ORIGINS="http://localhost:5180")
 
     def boom(*_a, **_kw):
         raise RuntimeError("сломалось")
@@ -406,7 +443,8 @@ def test_unhandled_error_is_json_500(client, monkeypatch, caplog):
         r = client.get("/api/ads/a1/score", headers={"Origin": "http://localhost:5180"})
     assert r.status_code == 500 and r.headers["content-type"] == "application/json"
     assert r.json() == {"detail": "Внутренняя ошибка сервера. Подробности — в журнале API."}
-    assert r.headers.get("access-control-allow-origin") == "*"  # фронт с другого адреса тоже увидит detail
+    # фронт с другого адреса(SAQ_CORS_ORIGINS) тоже увидит detail
+    assert r.headers.get("access-control-allow-origin") == "http://localhost:5180"
     assert any("Необработанная ошибка" in rec.getMessage() and rec.exc_info for rec in caplog.records)
     # остальные ответы не затронуты
     assert client.get("/api/ads/nope/score").status_code == 404
@@ -462,3 +500,41 @@ def test_nul_bytes_are_422(client):
 @pytest.mark.parametrize("path", ["/api/ads/a1/audit", "/api/complexes/c2/audit", "/api/audit"])
 def test_audit_times_are_utc(client, path):
     assert all(e["at"].endswith("+00:00") for e in _log(client, path))
+
+
+# ---------- события подключений - только администратору ----------
+
+@pytest.mark.visitor
+def test_connector_events_only_for_admin(client, admin_headers):
+    """События подключений(kind "connector": пояснения проверок с аккаунтами, изменения настроек, вход в OLX) скрыты
+    от посетителя во всех чтениях журнала, как и полные сведения подключений; администратор(X-Admin-Token) видит всё.
+    "Только действия людей"(human) их не показывает никому: это не решения аналитиков."""
+    from app import models
+    from app.db import SessionLocal
+
+    events = {"Источник «Telegram»: работает. Подключено: @operator": {},
+              "Настройки «OLX» изменены администратором": {"complex_id": "c2"},
+              "Аккаунт OLX подключён": {"ad_id": "a1", "complex_id": "c2"}}
+    with SessionLocal() as db:
+        for what, refs in events.items():
+            db.add(models.AuditEvent(kind="connector", who="Администратор", what=what, at=models.utcnow(), **refs))
+        db.commit()
+
+    def connector(path, headers=None, **params):
+        r = client.get(path, params=params, headers=headers or {})
+        assert r.status_code == 200, r.text
+        return {e["what"] for e in r.json() if e["kind"] == "connector"}
+
+    reads = [("/api/audit", {"limit": 500}), ("/api/audit", {"kind": "connector"}), ("/api/audit", {"complexId": "c2"}),
+             ("/api/ads/a1/audit", {}), ("/api/complexes/c2/audit", {})]
+    for path, params in reads:
+        for headers in (None, {"X-Admin-Token": "t-wrong-0123456789abcdef0123"}):  # без токена и с неверным
+            assert connector(path, headers, **params) == set(), (path, params, headers)
+    assert connector("/api/audit", admin_headers, kind="connector") == set(events)
+    assert connector("/api/audit", admin_headers, limit=500) == set(events)
+    on_complex = {"Настройки «OLX» изменены администратором", "Аккаунт OLX подключён"}
+    assert connector("/api/audit", admin_headers, complexId="c2") == on_complex
+    assert connector("/api/complexes/c2/audit", admin_headers) == on_complex
+    assert connector("/api/ads/a1/audit", admin_headers) == {"Аккаунт OLX подключён"}
+    for headers in (None, admin_headers):
+        assert connector("/api/audit", headers, human="true", limit=500) == set()

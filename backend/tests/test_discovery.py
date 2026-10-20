@@ -382,6 +382,41 @@ def test_create_complex_from_candidate_reruns_rules_without_claude(client, run_w
     assert r.status_code == 409
 
 
+def test_create_complex_race_is_409(client, env, monkeypatch):
+    """Два аналитика одновременно создают карточку по объекту: id карточки уже занят - 409, а не 500; объект не
+    меняется."""
+    live(env)
+    o = nova_object()
+    monkeypatch.setattr(discovery, "new_complex_id", lambda db, key: "r-orda")
+    r = client.post(f"/api/discovered/{o.id}/create-complex", json={"author": AUTHOR, "name": "Nova Park"})
+    assert r.status_code == 409 and r.json()["detail"] == discovery.DECIDED
+    (o,) = objects()
+    assert (o.status, o.complex_id) == ("new", None)
+    assert client.get("/api/complexes/r-orda").json()["name"] == "Orda"
+
+
+def test_ensure_developer_bin_first_and_placeholder(client):
+    def dev_row(did: str, name: str, bin_: str) -> models.Developer:
+        return models.Developer(id=did, name=name, bin=bin_, director="", registered="", objects=0, unfinished=0,
+                                phones=[], origin="demo")
+
+    with SessionLocal() as db:
+        db.add_all([dev_row("dz", "ТОО «Nova Build»", "111111111111"), dev_row("dw", "ТОО «Wide»", "")])
+        db.flush()
+        ensure = discovery.ensure_developer
+        assert ensure(db, 'TOO "Nova Build"', None)[0].id == "dz"  # по названию(без формы собственности)
+        assert ensure(db, "Другое название", "111111111111")[0].id == "dz"  # БИН важнее названия
+        assert ensure(db, "ТОО «Wide»", "333333333333")[0].id == "dw"  # у найденного по названию БИН нет
+        # то же название, но другой БИН - другое юрлицо: свой застройщик, а не чужой
+        d, created = ensure(db, "ТОО «Nova Build»", "222222222222")
+        assert (d.id, d.bin, created) == ("ad-222222222222", "222222222222", True)
+        # в названии только форма собственности - "не установлен"; повтор не падает на занятом id
+        a, _ = ensure(db, "ТОО", None)
+        b, created = ensure(db, "«ТОО»", None)
+        assert a.id == b.id == discovery.UNKNOWN_DEV and not created
+        db.rollback()
+
+
 def test_link_and_dismiss(client, env):
     live(env)
     claude_ad("Квартиры в ЖК Гранд Орда, бронь", result(signals=[("booking", "бронь")],

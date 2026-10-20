@@ -153,6 +153,17 @@ def test_pdf_export(client):
     client.post(f"/api/signals/{sid}/confirm", json={"author": "Тест", "comment": "ok"})
     assert client.get(f"/api/signals/{sid}/pdf").status_code == 200  # и после решения
 
+    # автор выгрузки - как в формах: NUL(PostgreSQL его не хранит), "Система" и длинное имя - 422, пустое - "Аналитик"
+    for bad in ("Те\x00ст", "Система", " система ", "x" * 129):
+        assert client.get(f"/api/signals/{sid}/pdf", params={"author": bad}).status_code == 422, bad
+    assert client.get(f"/api/signals/{sid}/pdf", params={"author": "  Иванов   И. "}).status_code == 200
+    for empty in ("", "  "):  # фронтенд без входа шлёт ?author=
+        assert client.get(f"/api/signals/{sid}/pdf", params={"author": empty}).status_code == 200
+    r = client.get(f"/api/signals/{sid}/pdf", params={"author": "Система"})
+    assert r.json()["detail"][0]["loc"] == ["query", "author"]
+    who = [e["who"] for e in client.get(f"/api/signals/{sid}/audit").json() if e["kind"] == "export"]
+    assert who == ["Тест", "Аналитик", "Иванов И.", "Аналитик", "Аналитик"]
+
 
 def test_pdf_survives_unprintable_text(client):
     client.post("/api/ads", json={"platform": "telegram", "account": "@x <b>&", "complexId": "c14", "matchConfidence": 0.9,

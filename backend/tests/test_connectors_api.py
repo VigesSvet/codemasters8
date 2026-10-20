@@ -2,17 +2,18 @@
 права администратора, настройки, запуски, "Обновить всё", изоляция модулей, защита публичного адреса."""
 import json
 import re
+import uuid
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 
-from conftest import FAKE_ADMIN_TOKEN
+from conftest import FAKE_ADMIN_TOKEN, png_bytes
 
-from app import models
+from app import ingest, jobs, llm, main, media, models, schemas
 from app.db import SessionLocal
 from app.integrations import registry, service
-from app.integrations.base import ConfigError, Connector
+from app.integrations.base import ConfigError, Connector, Publication
 
 AUTHOR = "Омарова Ж."
 ORDER = ["instagram", "telegram", "tiktok", "krisha", "telegram_bot", "intake", "dgis", "anthropic", "olx"]
@@ -138,7 +139,8 @@ def test_patch_auth_and_validation(client, env, monkeypatch):
     with SessionLocal() as db:
         what = db.scalars(select(models.AuditEvent).where(models.AuditEvent.what.like("Настройки источника%"))).all()
         assert [(e.kind, e.who, e.what) for e in what] == [
-            ("data", AUTHOR, "Настройки источника «Instagram» изменены: аккаунты: +@tumar.group.astana, +@altai.build")]
+            ("connector", AUTHOR, "Настройки источника «Instagram» изменены: аккаунты: +@tumar.group.astana, "
+                                  "+@altai.build")]
         assert service.row(db, "instagram").updated_by == AUTHOR
     # "Система" - зарезервированное имя
     r = client.patch("/api/sources/instagram", headers=admin(), json={"author": "система", "enabled": False})
@@ -215,6 +217,33 @@ def test_disable_keeps_deferred_paid_run(client, env):
         db.commit()
     client.patch("/api/sources/tiktok", headers=admin(), json={"author": AUTHOR, "enabled": False})
     assert client.get(f"/api/collection-runs/{run_id}").json()["status"] == "cancelled"
+
+
+def test_disable_keeps_collect_claimed_meanwhile(client, env, monkeypatch):
+    """Воркер захватил сбор между чтением задания и отменой: выключение его не отменяет(jobs.cancel - только "ещё в
+    очереди"), и запуск не помечается "отменён" посреди выполнения."""
+    env(SAQ_ADMIN_TOKEN=FAKE_ADMIN_TOKEN)
+    r = client.patch("/api/sources/krisha", headers=admin(), json={"author": AUTHOR, "enabled": True})
+    assert r.status_code == 200, r.text
+    collect = client.post("/api/sources/krisha/collect", headers=admin(), json={"author": AUTHOR})
+    assert collect.status_code == 202
+    run_id = collect.json()["id"]
+    active = jobs.active
+
+    def claimed_meanwhile(db, dedupe_key):
+        job = active(db, dedupe_key)  # прочитано "в очереди"
+        J = models.Job
+        db.execute(update(J).where(J.id == job.id).values(status="running", locked_by="w-1")
+                   .execution_options(synchronize_session=False))  # а строку уже захватил воркер
+        return job
+
+    monkeypatch.setattr(jobs, "active", claimed_meanwhile)
+    r = client.patch("/api/sources/krisha", headers=admin(), json={"author": AUTHOR, "enabled": False})
+    assert r.status_code == 200 and r.json()["enabled"] is False
+    with SessionLocal() as db:
+        job = db.scalars(select(models.Job).where(models.Job.run_id == run_id)).one()
+        assert (job.status, job.locked_by, job.finished_at) == ("running", "w-1", None)
+    assert client.get(f"/api/collection-runs/{run_id}").json()["status"] != "cancelled"
 
 
 # ---------- вид для посетителя ----------
@@ -300,6 +329,42 @@ def test_admin_token_gets_full_view(client, env):
     assert (body["admin"], body["adminConfigured"]) == (False, False)
 
 
+def test_public_view_is_allowlist():
+    """Вид для посетителя - по списку разрешённых полей: новое поле сведений(текст ошибки, список, словарь) по
+    умолчанию скрыто, а не показано."""
+    run = {"id": 1, "status": "failed", "error": "ответ 503", "notes": [{"text": "заметка"}], "newDetail": "секрет",
+           "newList": ["a"], "newMap": {"k": "v"}}
+    assert service.public_run(run) == {"id": 1, "status": "failed", "error": None, "notes": [], "newDetail": None,
+                                       "newList": [], "newMap": {}}
+    c = {"code": "krisha", "status": "error", "via": "https://api.example", "facts": {"account": "@x"},
+         "last_run": run, "newDetail": "секрет"}
+    assert service.public_connector(c) == {"code": "krisha", "status": "error", "via": "", "facts": {},
+                                           "last_run": service.public_run(run), "newDetail": None}
+    assert service.public_worker({"alive": True, "last_seen_at": None, "id": "host-01"}) == {
+        "alive": True, "last_seen_at": None, "id": None}
+
+
+def test_transition_event_is_connector_kind(client):
+    """Смена статуса подключения - событие вида connector(в пояснении - аккаунты, модель, лимиты: посетителю их не
+    показывают); тот же статус и audit=False - без события."""
+    def events() -> list[tuple]:
+        with SessionLocal() as db:
+            E = models.AuditEvent
+            return [(e.kind, e.who, e.what) for e in db.scalars(select(E).where(E.what.like("Источник «Krisha.kz»%"))
+                                                               .order_by(E.id))]
+
+    with SessionLocal() as db:
+        service.transition(db, "krisha", "ready", "Подключено: @operator.test")
+        service.transition(db, "krisha", "ready", "Подключено: @operator.test")  # статус тот же
+        service.transition(db, "krisha", "error", "ответ 503", audit=False)
+        service.transition(db, "krisha", "ready")
+        db.commit()
+    label = registry.get("krisha").status_label("ready")
+    assert events() == [("connector", "Система", f"Источник «Krisha.kz»: {label}. Подключено: @operator.test"),
+                        ("connector", "Система", f"Источник «Krisha.kz»: {label}")]
+    assert service.AUDIT_KIND in schemas.AuditKind.__args__
+
+
 # ---------- запуски ----------
 
 def test_test_collect_and_runs(client, env):
@@ -333,7 +398,7 @@ def test_test_collect_and_runs(client, env):
     assert client.get("/api/collection-runs", params={"limit": 0}).status_code == 422
 
 
-def test_collect_all(client, env, monkeypatch):
+def test_collect_all(client, env):
     env(SAQ_ADMIN_TOKEN=FAKE_ADMIN_TOKEN, APIFY_TOKEN=SECRETS["APIFY_TOKEN"])
     with SessionLocal() as db:
         for code, values in (("krisha", {"enabled": True, "status": "working"}),
@@ -352,6 +417,76 @@ def test_collect_all(client, env, monkeypatch):
     again = client.post("/api/sources/collect-all", headers=admin(), json={"author": AUTHOR}).json()
     assert {s["code"]: s["reason"] for s in again["skipped"]}["krisha"] == "уже идёт"
     assert client.post("/api/sources/collect-all", json={"author": AUTHOR}).status_code == 401
+
+
+def test_collect_all_skips_rejected_connector(client, env, monkeypatch):
+    """Отказ постановки одного подключения(гонка с параллельной постановкой) - причина пропуска, а не 500 на всё
+    "Обновить всё"."""
+    env(SAQ_ADMIN_TOKEN=FAKE_ADMIN_TOKEN)
+    with SessionLocal() as db:
+        r = service.row(db, "krisha", create=True)
+        r.enabled, r.status = True, "working"
+        db.commit()
+
+    def rejected(*_a, **_kw):
+        raise service.Rejected(409, "Запуск уже идёт")
+
+    monkeypatch.setattr(service, "request_run", rejected)
+    r = client.post("/api/sources/collect-all", headers=admin(), json={"author": AUTHOR})
+    assert r.status_code == 200, r.text
+    assert r.json()["queued"] == []
+    assert {s["code"]: s["reason"] for s in r.json()["skipped"]}["krisha"] == "Запуск уже идёт"
+
+
+def test_interval_change_pulls_next_run(client, env):
+    """Регрессия: период сокращён(неделя → 2 часа), а следующий сбор оставался по прежнему периоду - через неделю.
+    Пауза после ошибки при этом не сокращается."""
+    env(SAQ_ADMIN_TOKEN=FAKE_ADMIN_TOKEN)
+    now = models.utcnow()
+    with SessionLocal() as db:
+        r = service.row(db, "krisha", create=True)
+        r.status, r.interval_min, r.next_run_at = "working", 10080, now + timedelta(days=7)
+        db.commit()
+    r = client.patch("/api/sources/krisha", headers=admin(), json={"author": AUTHOR, "intervalMin": 120})
+    assert r.status_code == 200, r.text
+    with SessionLocal() as db:
+        got = models.as_utc(service.row(db, "krisha").next_run_at)
+    assert now + timedelta(minutes=119) < got <= models.utcnow() + timedelta(minutes=120)
+    paused = now + timedelta(days=1)
+    with SessionLocal() as db:
+        r = service.row(db, "krisha")
+        r.status, r.next_run_at = "error", paused
+        db.commit()
+    r = client.patch("/api/sources/krisha", headers=admin(), json={"author": AUTHOR, "intervalMin": 180})
+    assert r.status_code == 200, r.text
+    with SessionLocal() as db:
+        got = models.as_utc(service.row(db, "krisha").next_run_at)
+    assert abs((got - paused).total_seconds()) < 1
+
+
+def test_disable_keeps_collect_claimed_by_worker(client, env):
+    """Регрессия: воркер захватил сбор между чтением задания и отменой - задание и запуск не становятся
+    "отменёнными" посреди выполнения(отмена - условным UPDATE "ещё в очереди")."""
+    env(SAQ_ADMIN_TOKEN=FAKE_ADMIN_TOKEN)
+    with SessionLocal() as db:
+        r = service.row(db, "krisha", create=True)
+        r.enabled, r.status = True, "working"
+        run, _ = service.request_run(db, "krisha", trigger="manual", who=AUTHOR)
+        db.commit()
+        run_id = run.id
+    with SessionLocal() as db:
+        stale = jobs.active(db, "collect:krisha")
+        assert stale is not None and stale.status == "queued"
+        with SessionLocal() as worker:  # захват воркером после чтения
+            worker.execute(update(models.Job).where(models.Job.id == stale.id)
+                           .values(status="running", locked_by="w-1"))
+            worker.commit()
+        service._cancel_queued_collect(db, "krisha", models.utcnow())
+        db.commit()
+    with SessionLocal() as db:
+        job = db.scalars(select(models.Job).where(models.Job.run_id == run_id)).one()
+        assert (job.status, job.locked_by) == ("running", "w-1")
+        assert db.get(models.CollectionRun, run_id).status == "queued"
 
 
 # ---------- изоляция модулей ----------
@@ -421,7 +556,10 @@ def test_public_host_guard(client, env):
             assert client.get(path, headers=headers).status_code == 404, (headers, path)
     assert client.get("/api/ads").status_code == 200  # обычный адрес - как раньше
     env(OLX_REDIRECT_URI=None)
-    assert client.get("/api/ads", headers=host).status_code == 200
+    # без OLX Callback имя туннеля - неизвестное имя сервера: 400 HostAllowlist(защита от подмены DNS), а не API
+    r = client.get("/api/ads", headers=host)
+    assert (r.status_code, r.json()) == (400, {"detail": main.HostAllowlist.REJECTED})
+    assert client.get("/api/ads", headers={"Host": "localhost"}).status_code == 200
 
 
 def test_open_data_sources_unchanged(client):
@@ -429,6 +567,57 @@ def test_open_data_sources_unchanged(client):
     assert r.status_code == 200
     codes = [s["code"] for s in r.json()]
     assert "homeportal" in codes and not set(codes) & set(ORDER)  # открытые данные, не подключения
+
+
+def test_reanalyze_job_claimed_by_worker(client, env, monkeypatch):
+    """Регрессия: воркер захватил задание анализа между чтением и записью - ответ 200 "анализ уже идёт", захваченное
+    задание не меняется, события "Запрошен повторный анализ" нет(а не 202 и force у уже выполняющегося задания)."""
+    env(SAQ_ADMIN_TOKEN=FAKE_ADMIN_TOKEN)
+    pub = Publication(platform="instagram", external_id="17900000000000099", account="@someone.kz",
+                      url="https://www.instagram.com/p/X99/", text="Бронь квартиры за 100 000 ₸ до сдачи дома",
+                      collected_at=models.utcnow())
+    with SessionLocal() as db:
+        res = ingest.ingest_publication(db, pub, collector="intake", note="тест")
+        db.commit()
+    aid = res.ad_id
+    J = models.Job
+
+    def claim_meanwhile(*_a, **_kw):  # бюджет проверяется между чтением задания и записью
+        with SessionLocal() as worker:
+            worker.execute(update(J).where(J.ad_id == aid, J.status == "queued")
+                           .values(status="running", locked_by="w-1", dedupe_key=None))
+            worker.commit()
+
+    monkeypatch.setattr(llm, "unavailable", lambda *_a: None)
+    monkeypatch.setattr(llm, "budget_problem", claim_meanwhile)
+    r = client.post(f"/api/ads/{aid}/reanalyze", headers=admin(), json={"author": AUTHOR})
+    assert r.status_code == 200, r.text
+    with SessionLocal() as db:
+        (job,) = db.scalars(select(J).where(J.ad_id == aid, J.kind == "analyze")).all()
+        assert (job.status, (job.payload or {}).get("force")) == ("running", None)
+        events = db.scalars(select(models.AuditEvent.what).where(models.AuditEvent.ad_id == aid)).all()
+    assert not any(e.startswith("Запрошен повторный анализ") for e in events)
+
+
+def test_media_served_only_with_allowed_type(client):
+    """Тип файла в ответе - только из разрешённых(изображения, видео): запись с другим типом отдаётся как
+    application/octet-stream, а не как страница со скриптом на адресе API."""
+    st = media.store_bytes(png_bytes(), allowed=media.IMAGE_TYPES)
+    now = models.utcnow()
+    ids = {}
+    with SessionLocal() as db:
+        for mime in ("image/png", "text/html"):
+            ids[mime] = uuid.uuid4().hex
+            db.add(models.MediaAsset(id=ids[mime], kind="image", role="attachment", origin_ref="upload",
+                                     status="downloaded", attempts=1, mime=mime, size=st.size, sha256=st.sha256,
+                                     storage_key=st.storage_key, meta={}, created_at=now, downloaded_at=now))
+        db.commit()
+    ok = client.get(f"/api/media/{ids['image/png']}")
+    assert (ok.status_code, ok.headers["content-type"]) == (200, "image/png")
+    bad = client.get(f"/api/media/{ids['text/html']}")
+    assert (bad.status_code, bad.headers["content-type"]) == (200, "application/octet-stream")
+    assert bad.headers["x-content-type-options"] == "nosniff"
+    assert client.get("/api/media/" + "0" * 32).status_code == 404
 
 
 def test_reject_recording_throttled(client, env):

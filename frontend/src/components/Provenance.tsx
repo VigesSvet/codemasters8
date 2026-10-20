@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import type { BasisSource } from '../data/types'
 import { useT } from '../lib/i18n'
+import { externalUrl } from '../lib/platform'
 import { ADVERTISED_LABEL, ADVERTISED_NOTE, OPEN_DATA_NOTE, REGISTRY_LABEL, when } from '../lib/provenance'
 import { IcCheck, IcDatabase, IcDoc, IcExternal, IcHelp, IcInfo, IcMegaphone } from '../ui/icons'
 import { AiBadge, Confidence } from './Hypothesis'
@@ -22,10 +23,13 @@ const HINT: Record<OriginKind, string> = {
   advertised: `${ADVERTISED_NOTE}. Формальный риск не оценивается, пока по объекту нет проверенных данных`,
 }
 
-/** Ссылка на источник: внешняя, в новой вкладке */
-export const SrcLink = ({ url, children }: { url: string; children?: ReactNode }) => (
-  <a className="link prov-a" href={url} target="_blank" rel="noreferrer">{children ?? 'источник'}<IcExternal size={12} /></a>
-)
+/** Ссылка на источник: внешняя, в новой вкладке. Только http(s)(externalUrl) - другой адрес не исполняется как javascript:,
+ *  подпись остаётся текстом без ссылки */
+export const SrcLink = ({ url, children }: { url: string; children?: ReactNode }) => {
+  const href = externalUrl(url)
+  if (!href) return <span className="prov-a">{children ?? 'источник'}</span>
+  return <a className="link prov-a" href={href} target="_blank" rel="noreferrer">{children ?? 'источник'}<IcExternal size={12} /></a>
+}
 
 interface OriginProps {
   kind: OriginKind

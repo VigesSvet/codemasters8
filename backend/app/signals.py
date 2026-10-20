@@ -6,6 +6,8 @@
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
+from fastapi.exceptions import RequestValidationError
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -13,9 +15,9 @@ from sqlalchemy.orm import Session
 from . import models, registry, schemas
 from .db import get_db
 from .pdf import render_signal
-from .risk import ad_signals, factor_r1
+from .risk import ad_signals, by_date_desc
 from .risk_model import MODEL
-from .world import audit, iso, load_complex
+from .world import audit, basis_documents, iso, load_complex
 
 router = APIRouter(prefix="/api/signals", tags=["signals"])
 
@@ -27,10 +29,6 @@ SIGNAL_AD_FIELDS = ("id", "platform", "account", "url", "date", "status", "match
                     "termsReview", "text", "ocr", "image", "price")
 
 
-def _by_date_desc(xs: list[Obj]) -> list[Obj]:
-    return sorted(sorted(xs, key=lambda x: x["id"]), key=lambda x: x.get("date") or "", reverse=True)
-
-
 # ---------- снимок ----------
 
 def snapshot(db: Session, cid: str) -> Obj | None:
@@ -40,11 +38,8 @@ def snapshot(db: Session, cid: str) -> Obj | None:
         return None
     c = w.complexes[0]
     risk = w.risk(c)
-    docs = next(f["items"] for f in risk["factors"] if f["code"] == "R1")
-    if not docs:  # у введённого объекта R1 не применяется - документы-основания берём тем же движком
-        docs = factor_r1({**c, "stage": None})["items"]
     ads = [{**{k: a.get(k) for k in SIGNAL_AD_FIELDS}, "signals": ad_signals(a)}
-           for a in _by_date_desc([a for a in w.ads if a["status"] != "dismissed"])]
+           for a in by_date_desc([a for a in w.ads if a["status"] != "dismissed"])]
     return {
         "complex": c,
         "risk": risk,
@@ -52,9 +47,9 @@ def snapshot(db: Session, cid: str) -> Obj | None:
             "complex": c,
             "developer": w.developers.get(c["developerId"]),
             "ads": ads,
-            "appeals": _by_date_desc([a for a in w.appeals if a["status"] != "rejected"]),
+            "appeals": by_date_desc([a for a in w.appeals if a["status"] != "rejected"]),
             "photos": c.get("photos") or [],
-            "documents": docs,
+            "documents": basis_documents(c, risk),
         },
     }
 
@@ -77,7 +72,7 @@ def signal_out(db: Session, s: models.Signal) -> Obj:
             "fileName": s.file_name, "exportedAt": iso(s.exported_at), "journal": journal(db, s.id)}
 
 
-def _get(db: Session, sid: int) -> models.Signal:
+def get_or_404(db: Session, sid: int) -> models.Signal:
     s = db.get(models.Signal, sid)
     if s is None:
         raise HTTPException(404, "Сигнал не найден")
@@ -96,6 +91,23 @@ def _conflict(s: models.Signal) -> HTTPException:
 
 def _event(db: Session, s: models.Signal, who: str, what: str, kind: str = "signal") -> None:
     db.add(models.AuditEvent(signal_id=s.id, complex_id=s.complex_id, kind=kind, who=who, what=what, at=models.utcnow()))
+
+
+_HUMAN_NAME = TypeAdapter(schemas.HumanName)
+
+
+def _exporter(author: str | None) -> str:
+    """Автор выгрузки PDF: пустой - "Аналитик", иначе проверяется как автор в формах(HumanName): NUL - 422, а не ошибка
+    PostgreSQL(500), "Система" - 422(человек не пишет в журнал от имени системы). Параметр маршрута - обычная строка,
+    проверка - здесь: пустой ?author=(фронтенд без входа) даёт подпись "Аналитик", а ошибка - 422 с loc
+    ["query", "author"], как у проверки самого FastAPI."""
+    who = " ".join((author or "").split())
+    if not who:
+        return "Аналитик"
+    try:
+        return _HUMAN_NAME.validate_python(who)
+    except ValidationError as e:
+        raise RequestValidationError([{**err, "loc": ("query", "author")} for err in e.errors(include_url=False)]) from None
 
 
 def counts(db: Session) -> dict[str, int]:
@@ -155,11 +167,12 @@ def list_signals(status: schemas.SignalStatus | None = None, complex_id: str | N
 
 @router.get("/{sid}", response_model=schemas.SignalOut, response_model_by_alias=True)
 def get_signal(sid: SignalId, db: Session = Depends(get_db)):
-    return signal_out(db, _get(db, sid))
+    return signal_out(db, get_or_404(db, sid))
 
 
-def _decide(db: Session, sid: int, body: schemas.SignalDecisionIn, status: str, what: str) -> Obj:
-    s = _get(db, sid)
+def decide(db: Session, sid: int, body: schemas.SignalDecisionIn, status: str, what: str) -> models.Signal:
+    """Решение по сигналу - только из "new"(условный UPDATE: из двух одновременных решений второе получит 409)."""
+    s = get_or_404(db, sid)
     now = models.utcnow()
     res = db.execute(update(models.Signal).where(models.Signal.id == sid, models.Signal.status == "new")
                      .values(status=status, decided_at=now, decided_by=body.author, decision_comment=body.comment)
@@ -172,32 +185,33 @@ def _decide(db: Session, sid: int, body: schemas.SignalDecisionIn, status: str, 
     _event(db, s, body.author, f"{what}. {body.comment}")
     db.commit()
     db.refresh(s)
-    return signal_out(db, s)
+    return s
 
 
 @router.post("/{sid}/confirm", response_model=schemas.SignalOut, response_model_by_alias=True)
 def confirm_signal(sid: SignalId, body: schemas.SignalDecisionIn, db: Session = Depends(get_db)):
-    return _decide(db, sid, body, "confirmed", "Сигнал подтверждён")
+    return signal_out(db, decide(db, sid, body, "confirmed", "Сигнал подтверждён"))
 
 
 @router.post("/{sid}/return", response_model=schemas.SignalOut, response_model_by_alias=True)
 def return_signal(sid: SignalId, body: schemas.SignalDecisionIn, db: Session = Depends(get_db)):
-    return _decide(db, sid, body, "returned", "Возвращён на доработку")
+    return signal_out(db, decide(db, sid, body, "returned", "Возвращён на доработку"))
 
 
 @router.get("/{sid}/audit", response_model=list[schemas.AuditOut], response_model_by_alias=True)
 def signal_audit(sid: SignalId, db: Session = Depends(get_db)):
-    return journal(db, _get(db, sid).id)
+    return journal(db, get_or_404(db, sid).id)
 
 
 @router.get("/{sid}/pdf", response_class=Response,
             responses={200: {"content": {"application/pdf": {}}, "description": "Сигнальная карточка A4"}})
 def signal_pdf(sid: SignalId, author: str | None = Query(None, max_length=128), db: Session = Depends(get_db)):
     """PDF сигнальной карточки; отмечает выгрузку(exportedAt) и пишет её в журнал. ?author= - кто выгрузил."""
-    s = _get(db, sid)
+    who = _exporter(author)
+    s = get_or_404(db, sid)
     s.exported_at = models.utcnow()
     s.file_name = s.file_name or f"signal-{s.code}.pdf"
-    _event(db, s, " ".join((author or "").split()) or "Аналитик", "Выгружен PDF", kind="export")
+    _event(db, s, who, "Выгружен PDF", kind="export")
     db.flush()
     data = render_signal(signal_out(db, s), generated_at=s.exported_at)
     db.commit()

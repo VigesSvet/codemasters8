@@ -31,12 +31,13 @@ import contextlib
 import hashlib
 import json
 import logging
+import math
 import random
 import re
 import weakref
 from typing import TYPE_CHECKING, Any
 from collections.abc import Callable, Iterable, Iterator
-from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
 import httpx
@@ -108,11 +109,9 @@ _HOT = re.compile(r"(?:^|[-_])(?:hot|urgent)(?:$|[-_])", re.I)
 _USER_TYPE = re.compile(r"^user-([a-z]{2,32})$")
 _DEVELOPER_TAIL = re.compile(r"(?:^|\s)от\s+застройщика(?:\s|$).*$", re.I | re.S)
 _COMPLEX_PREFIX = re.compile(r"^\s*(?:ЖК|жилой комплекс)\s+", re.I)
-_BLOCK_MARKERS = (("safelinechallenge", "SafeLine"), ("/.safeline/", "SafeLine"), ("safeline", "SafeLine"),
-                  ("captcha", "CAPTCHA"))
+_BLOCK_MARKERS = (("safeline", "SafeLine"), ("captcha", "CAPTCHA"))  # safelinechallenge, /.safeline/ - тоже safeline
 _PHOTO_SIZE = re.compile(r"-(?:\d{2,5}x\d{2,5}|full)$", re.I)  # "1-750x470", "1-280x175", "1-full"
 _PHOTO_FORMATS = frozenset({"webp", "jpg", "jpeg", "png", "avif"})  # каталог формата: /webp/90/…, /jpg/90/…
-_DROP_KEYS = {"user", "config", "ipinfo", "centrifuge", "views", "cookiedomain"}
 
 # Белые списки снимка window.data
 SEARCH_FIELDS = ("nbTotal", "ids", "page")
@@ -187,7 +186,7 @@ def _scalar(v: Any) -> Any:
     if v is None or isinstance(v, (bool, int)):
         return v
     if isinstance(v, float):
-        return v if v == v and v not in (float("inf"), float("-inf")) else None
+        return v if math.isfinite(v) else None
     if isinstance(v, str):
         return v[:SCALAR_MAX]
     return None
@@ -246,7 +245,7 @@ def extract_window_data(html: str) -> dict | None:
     for pos in _assignments(text):
         try:
             obj, _ = decoder.raw_decode(text, pos)
-        except ValueError:
+        except (ValueError, RecursionError):  # RecursionError - вложенность глубже предела интерпретатора("[[[[…")
             continue
         if isinstance(obj, dict):
             return obj
@@ -281,8 +280,10 @@ def _advert(a: Any) -> dict:
         src = _https(p.get("src") if isinstance(p, dict) else p)
         if src and src not in photos:
             photos.append(src)
+            if len(photos) >= MAX_PHOTOS:
+                break
     if photos:
-        out["photos"] = [{"src": src} for src in photos[:MAX_PHOTOS]]
+        out["photos"] = [{"src": src} for src in photos]
     return out
 
 
@@ -296,14 +297,12 @@ def _ids(v: Any) -> list[str]:
 
 
 def sanitize_window_data(d: Any) -> dict:
-    """Снимок window.data без сведений пользователя и служебных данных: user, config, ipInfo, app*, centrifuge, views,
-    cookieDomain отбрасываются, затем остаётся только белый список(search, advert, adverts)."""
+    """Снимок window.data без сведений пользователя и служебных данных: остаётся только белый список(search, advert,
+    adverts и их поля) - user, config, ipInfo, app*, centrifuge, views, cookieDomain в снимок не попадают."""
     if not isinstance(d, dict):
         return {}
-    kept = {k: v for k, v in d.items()
-            if not (str(k).lower() in _DROP_KEYS or str(k).lower().startswith("app"))}
     out: dict = {}
-    search = kept.get("search")
+    search = d.get("search")
     if isinstance(search, dict):
         s: dict = {}
         for k in SEARCH_FIELDS:
@@ -318,9 +317,9 @@ def sanitize_window_data(d: Any) -> dict:
             if isinstance(v, int) and not isinstance(v, bool):
                 s[k] = v
         out["search"] = s
-    if isinstance(kept.get("advert"), dict):
-        out["advert"] = _advert(kept["advert"])
-    adverts = kept.get("adverts")
+    if isinstance(d.get("advert"), dict):
+        out["advert"] = _advert(d["advert"])
+    adverts = d.get("adverts")
     if isinstance(adverts, dict):
         adverts = list(adverts.values())
     if isinstance(adverts, list):
@@ -518,13 +517,13 @@ def parse_card(html: str) -> dict:
 # ---------- ссылки и настройки ----------
 
 def _is_krisha(url: str) -> bool:
+    """https://krisha.kz без логина и с портом по умолчанию - по разбору httpx, тем же, что у запроса: urlsplit иначе
+    понимает пробелы, управляющие символы и "\\" в ссылке."""
     try:
-        p = urlsplit(url)
-        port = p.port
-    except ValueError:
+        u = httpx.URL(url)
+        return u.scheme == "https" and u.host == HOST and not u.userinfo and u.port is None
+    except (httpx.InvalidURL, UnicodeError):  # IDNAError - подкласс UnicodeError
         return False
-    return (p.scheme.lower() == "https" and (p.hostname or "").lower() == HOST and "@" not in p.netloc
-            and port in (None, 443))
 
 
 def card_url(external_id: str) -> str:
@@ -624,14 +623,14 @@ def fetch(ctx: "RunContext", client: httpx.Client, url: str) -> httpx.Response:
             with client.stream("GET", current) as resp:
                 location = resp.headers.get("location")
                 if resp.status_code in REDIRECTS and location:
-                    current = urljoin(current, location)
+                    # тем же разбором, что у запроса; некорректный Location httpx отклоняет ещё в send
+                    # (RemoteProtocolError - сетевая ошибка ниже)
+                    current = str(resp.request.url.join(location))
                     continue
                 content = _read(resp, current)
                 headers = [(k, v) for k, v in resp.headers.multi_items()
                            if k.lower() not in ("content-encoding", "content-length", "transfer-encoding")]
                 return httpx.Response(resp.status_code, headers=headers, content=content, request=resp.request)
-        except (SourceError, _Exhausted):
-            raise
         except http.DownloadError as e:  # клиент привязан к krisha.kz: запрос к другому хосту отклонён до отправки
             raise SourceError(e.detail, retryable=False) from None
         except httpx.TimeoutException:
@@ -643,7 +642,7 @@ def fetch(ctx: "RunContext", client: httpx.Client, url: str) -> httpx.Response:
                       retryable=False)
 
 
-def _status_error(resp: httpx.Response, what: str) -> Exception | None:
+def _status_error(resp: httpx.Response, what: str) -> RateLimited | SourceError | None:
     """Ответ не 200(проверка доступа уже исключена) → ошибка источника; 200 - None."""
     code = resp.status_code
     if code == 200:
@@ -672,9 +671,10 @@ def robots(ctx: "RunContext", client: httpx.Client) -> RobotFileParser:
         code = resp.status_code
         if code == 429 or code >= 500:
             err = _status_error(resp, "robots.txt")
-            if isinstance(err, SourceError):
-                err.detail = f"robots.txt Krisha недоступен (HTTP {code}) — сбор отложен до получения правил"
-            raise err  # type: ignore[misc]
+            if isinstance(err, RateLimited):
+                raise err
+            raise SourceError(f"robots.txt Krisha недоступен (HTTP {code}) — сбор отложен до получения правил",
+                              retryable=True)
         text = resp.text[:ROBOTS_MAX] if code == 200 else ""
         ctx.save_state(robots={"text": text, "at": now.timestamp(), "status": code})
     rp.parse(text.splitlines())
@@ -716,12 +716,16 @@ def _playwright_browser():
 
 
 def _route_guard(route) -> None:
-    """Браузер обращается только к BROWSER_HOSTS(krisha.kz, CDN фото и их поддомены); остальные запросы прерываются."""
+    """Браузер загружает только документы(нужен лишь ответ навигации: стили, картинки и прочее - лишние запросы к
+    сайту мимо счётчика запуска) и только по https с BROWSER_HOSTS(krisha.kz, CDN фото и их поддомены); остальные
+    запросы прерываются."""
+    req = route.request
     try:
-        host = urlsplit(route.request.url).hostname or ""
+        u = urlsplit(req.url)
+        scheme, host = u.scheme.lower(), u.hostname or ""
     except ValueError:
-        host = ""
-    if http.host_allowed(host, BROWSER_HOSTS):
+        scheme, host = "", ""
+    if req.resource_type == "document" and scheme == "https" and http.host_allowed(host, BROWSER_HOSTS):
         route.continue_()
     else:
         route.abort()
@@ -875,8 +879,8 @@ class KrishaConnector(Connector):
         facts["card"] = "ok"
         return CheckResult(True, f"Выдача и карточки объявлений доступны ({found})", facts)
 
-    def _fetch_card(self, ctx: "RunContext", client: httpx.Client, url: str,
-                    facts: dict | None = None, *, browser_first: bool = False) -> tuple[str | None, str | None]:
+    def _fetch_card(self, ctx: "RunContext", client: httpx.Client, url: str, facts: dict, *,
+                    browser_first: bool = False) -> tuple[str | None, str | None]:
         """Карточка: (причина проверки доступа, None) | (None, html) | (None, None) - ошибка(в facts["cardError"]).
         Закрыта проверкой - при KRISHA_PLAYWRIGHT=1 одна попытка через браузер с выключенным JavaScript."""
         reason: str | None = None
@@ -884,8 +888,7 @@ class KrishaConnector(Connector):
             try:
                 resp = fetch(ctx, client, url)
             except SourceError as e:
-                if facts is not None:
-                    facts.update(card="error", cardError=e.detail)
+                facts.update(card="error", cardError=e.detail)
                 return None, None
             reason = detect_block(resp.status_code, resp.headers, resp.text)
             if not reason:
@@ -893,15 +896,13 @@ class KrishaConnector(Connector):
                 if isinstance(err, RateLimited):
                     raise err
                 if err is not None:
-                    if facts is not None:
-                        facts.update(card="error", cardError=str(getattr(err, "detail", err)))
+                    facts.update(card="error", cardError=err.detail)
                     return None, None
                 return None, resp.text
         on, why = _browser_enabled(ctx)
         if why:
             ctx.note(why, "warn")
-        if facts is not None:
-            facts["playwright"] = "выполнялась" if on else "не выполнялась"
+        facts["playwright"] = "выполнялась" if on else "не выполнялась"
         if not on:
             return reason, None
         try:
@@ -1028,9 +1029,7 @@ class KrishaConnector(Connector):
                 if cards and not any(c["sellerType"] for c in cards) and not b.seller_noted:
                     b.seller_noted = True
                     ctx.note(NO_SELLER_MARKUP, "warn")
-                for card in fresh:
-                    if card["id"] in found:
-                        continue
+                for card in fresh:  # ID карточек страницы не повторяются(parse_search)
                     found[card["id"]] = card
                     kind = self._search_item(ctx, card, url, pending)
                     if kind == "changed":

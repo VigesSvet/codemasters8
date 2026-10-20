@@ -19,7 +19,7 @@ from conftest import mp4_bytes, png_bytes
 from app import analysis, db as app_db, ingest, jobs, media, models, video, worker
 from app.ads_service import BOT
 from app.db import SessionLocal
-from app.integrations import registry, service
+from app.integrations import base, registry, service
 from app.integrations.base import (AccessBlocked, AuthExpired, BadConfig, CheckResult, Connector, Deferred, MediaIn,
                                    Publication, RateLimited, SourceError)
 
@@ -127,9 +127,10 @@ def events(*where) -> list[str]:
 
 
 def source_events() -> list[str]:
-    """События подключений и сборов в журнале(без исходного журнала демо-набора)."""
+    """События подключений(вид service.AUDIT_KIND) и сборов("data") в журнале(без исходного журнала демо-набора)."""
     E = models.AuditEvent
-    return events(E.kind == "data", E.what.like("Источник «%") | E.what.like("Сбор «%"))
+    return events((E.kind == service.AUDIT_KIND) & E.what.like("Источник «%")
+                  | (E.kind == "data") & E.what.like("Сбор «%"))
 
 
 def skipped(out: dict) -> dict:
@@ -912,7 +913,7 @@ def test_analysis_failure_exhausted(client, run_worker, ocr_stub, monkeypatch):
     res = take(ig_pub())
 
     def boom(*a, **kw):
-        raise RuntimeError("каталог недоступен")
+        raise analysis.AnalysisFailed("каталог недоступен")
 
     monkeypatch.setattr(analysis.world, "catalog", boom)
     now = models.utcnow()
@@ -1173,3 +1174,526 @@ def test_pg_analyze_claim_one_per_ad_under_race(client):
         a.close()
     assert got == {"id": None}
     assert count(models.Job, models.Job.ad_id == ad, models.Job.status == "running") == 1
+
+
+# ---------- регрессии ревью: изоляция сбоев, гонка с пульсом, пределы пауз ----------
+
+def test_handler_crash_retries_then_abandons(client, run_worker, use, monkeypatch, caplog):
+    """Регрессия: исключение, вышедшее из обработчика мимо его итогов(ошибка в записи итога), оставляло задание
+    "выполняется" до recover_stale(30 мин), и оно возвращалось в очередь без паузы и без итога запуска."""
+    def broken(info, **kw):
+        raise RuntimeError("сбой записи итога")
+
+    monkeypatch.setitem(jobs.HANDLERS, "collect", broken)
+    use(Fake(max_attempts=2))
+    set_row(status="working")
+    run_id = request()
+    now = models.utcnow()
+    with caplog.at_level(logging.ERROR, logger="saq.jobs"):
+        assert run_worker(now=now) == 1
+    job = job_of(run_id)
+    assert (job.status, job.locked_by, job.last_error) == ("queued", None, jobs.CRASHED)
+    assert models.as_utc(job.run_after) > now + timedelta(seconds=40)  # повтор с паузой, не сразу
+    assert "необработанная ошибка обработчика" in caplog.text
+    run_worker(now=now + timedelta(hours=2))  # попытки исчерпаны - итог брошенного задания
+    run, r = get(models.CollectionRun, run_id), row()
+    assert (job_of(run_id).status, run.status, run.error_code, run.error) == ("failed", "failed", "internal",
+                                                                              jobs.CRASHED)
+    assert (r.status, r.failures) == ("error", 1)
+
+
+def test_analysis_handler_crash_marks_item(client, run_worker, monkeypatch):
+    res = take(ig_pub())
+
+    def broken(info, **kw):
+        with SessionLocal() as db:
+            db.execute(update(models.IngestItem).where(models.IngestItem.ad_id == info.ad_id)
+                       .values(analysis_status="running"))
+            db.commit()
+        raise RuntimeError("сбой")
+
+    monkeypatch.setitem(jobs.HANDLERS, "analyze", broken)
+    with SessionLocal() as db:
+        db.execute(update(models.Job).where(models.Job.ad_id == res.ad_id).values(max_attempts=2))
+        db.commit()
+    now = models.utcnow()
+    run_worker(now=now)
+    assert get(models.IngestItem, res.item_id).analysis_status == "queued"
+    run_worker(now=now + timedelta(hours=2))
+    item = get(models.IngestItem, res.item_id)
+    assert (item.analysis_status, item.analysis_error) == ("failed", jobs.CRASHED)
+    assert f"Анализ публикации не выполнен: {jobs.CRASHED} — проверьте вручную" in ad_events(res.ad_id, "system")
+
+
+def test_recover_stale_skips_lock_renewed_after_read(client):
+    """Регрессия: пульс продлил блокировку между чтением зависших заданий и "замком" fence - живое задание всё равно
+    возвращалось в очередь и выполнялось вторым воркером."""
+    now = models.utcnow()
+    old = now - timedelta(hours=2)
+    with SessionLocal() as db:
+        alive = models.Job(kind="collect", status="running", collector="krisha", attempts=1, max_attempts=3,
+                           locked_by="w1", locked_at=old, run_after=old)
+        orphan = models.Job(kind="collect", status="running", collector="krisha", attempts=1, max_attempts=3,
+                            locked_by="w2", locked_at=None, run_after=old)
+        db.add_all([alive, orphan])
+        db.commit()
+    cutoff = now - timedelta(seconds=1800)
+    with SessionLocal() as a:
+        job = a.get(models.Job, alive.id)
+        with SessionLocal() as b:  # пульс воркера w1
+            b.execute(update(models.Job).where(models.Job.id == alive.id).values(locked_at=now))
+            b.commit()
+        assert jobs._requeue(a, job.id, job.locked_by, job.attempts, now, "тест", stale_before=cutoff) is None
+        a.commit()
+    assert get(models.Job, alive.id).status == "running"
+    with SessionLocal() as db:  # блокировка без времени - тоже брошенное задание
+        assert jobs.recover_stale(db, now, 1800) == 1
+    assert (get(models.Job, orphan.id).status, get(models.Job, alive.id).status) == ("queued", "running")
+
+
+def test_recover_stale_isolates_failing_job(client, monkeypatch, caplog):
+    """Сбой итога одного брошенного задания не держит возврат остальных(каждое - своей транзакцией)."""
+    from app import alerts
+
+    def boom(*a, **kw):
+        raise RuntimeError("сбой итога предупреждения")
+
+    monkeypatch.setattr(alerts, "abandoned", boom)
+    old = models.utcnow() - timedelta(hours=2)
+    with SessionLocal() as db:
+        bad = models.Job(kind="alert", status="running", attempts=1, max_attempts=1, locked_by="w9", locked_at=old,
+                         run_after=old, payload={"alertId": 1})
+        good = models.Job(kind="collect", status="running", collector="krisha", attempts=1, max_attempts=3,
+                          locked_by="w9", locked_at=old, run_after=old)
+        db.add_all([bad, good])
+        db.commit()
+        bad_id, good_id = bad.id, good.id
+        with caplog.at_level(logging.ERROR, logger="saq.jobs"):
+            assert jobs.recover_stale(db, models.utcnow(), 1800) == 1
+    assert (get(models.Job, bad_id).status, get(models.Job, good_id).status) == ("running", "queued")
+    assert f"Задание №{bad_id}: итог брошенного задания не записан" in caplog.text
+
+
+def test_scheduler_and_tick_isolate_failures(client, run_worker, use, env, monkeypatch, caplog):
+    """Сбой одного подключения не мешает расписанию остальных; сбой отчёта или шага такта лидера - выполнению
+    заданий."""
+    env(APIFY_TOKEN=APIFY)
+
+    def boom(*a, **kw):
+        raise RuntimeError("сбой подключения")
+
+    use(Fake(missing=boom))
+    set_row(enabled=True, status="ready")
+    use(PaidFake(collect=lambda ctx: ctx.ingest(pub(5, platform="tiktok", url="https://www.tiktok.com/@x/video/5"))))
+    set_row("tiktok", enabled=True, status="ready")
+    now = models.utcnow()
+    with SessionLocal() as db, caplog.at_level(logging.ERROR, logger="saq.worker"):
+        assert len(worker.schedule_due(db, now)) == 1
+        db.rollback()
+    assert "Расписание подключения krisha не обработано" in caplog.text
+    monkeypatch.setattr(jobs, "recover_stale", boom)
+    monkeypatch.setattr(worker, "report_local", boom)
+    assert run_worker(now=now) == 1
+    assert get(models.CollectionRun, row("tiktok").last_run_id).status == "succeeded"
+    assert "Возврат зависших заданий не выполнен" in caplog.text and "Отчёт подключений не записан" in caplog.text
+
+
+@pytest.mark.parametrize(("secs", "expected"), [(float("nan"), 3600), (float("inf"), base.MAX_PAUSE_S)])
+def test_rate_limit_pause_bounded(client, run_worker, use, secs, expected):
+    """Регрессия: NaN или бесконечная пауза от источника роняла запись итога(timedelta) - задание оставалось
+    "выполняется"."""
+    def collect(ctx):
+        raise RateLimited(retry_after=secs)
+
+    use(Fake(collect=collect))
+    run_id = request()
+    now = models.utcnow()
+    run_worker(now=now)
+    assert (get(models.CollectionRun, run_id).status, job_of(run_id).status) == ("rate_limited", "done")
+    assert abs((models.as_utc(row().next_run_at) - now).total_seconds() - expected) < 5
+    with SessionLocal() as db:
+        job = db.get(models.Job, job_of(run_id).id)
+        job.status, job.attempts = "running", 1
+        assert jobs.defer(db, job, float("inf"), None, now=now)
+        assert (models.as_utc(job.run_after) - now).total_seconds() == base.MAX_PAUSE_S
+        db.rollback()
+
+
+@pytest.mark.parametrize(("secs", "expected"), [(float("nan"), 360 * 60), (float("inf"), base.MAX_PAUSE_S)])
+def test_postpone_pause_bounded(client, run_worker, use, secs, expected):
+    """Регрессия: NaN или бесконечная пауза ctx.postpone роняла запись итога успешного сбора(timedelta) - сбор
+    повторялся как упавший."""
+    use(Fake(collect=lambda ctx: ctx.postpone(secs, "Пауза")))
+    run_id = request()
+    now = models.utcnow()
+    run_worker(now=now)
+    assert (get(models.CollectionRun, run_id).status, job_of(run_id).status) == ("succeeded", "done")
+    assert abs((models.as_utc(row().next_run_at) - now).total_seconds() - expected) < 5
+
+
+def test_pause_bounded_at_source():
+    """Пауза от источника ограничена там, где её задают(RateLimited, RunContext.postpone): NaN - значение по
+    умолчанию, бесконечность и отрицательное - в пределах 0…MAX_PAUSE_S, и для любого читателя retry_after/postponed."""
+    from app.integrations.context import RunContext
+
+    assert [RateLimited(retry_after=s).retry_after for s in (float("nan"), float("inf"), -5, 120, None)] == [
+        3600, base.MAX_PAUSE_S, 0, 120, 3600]
+    ctx = RunContext("krisha", registry.get("krisha"), ephemeral=True)
+    ctx.postpone(float("nan"), "Пауза")
+    assert ctx.postponed == 0
+    ctx.postpone(float("inf"), "Пауза")
+    assert ctx.postponed == base.MAX_PAUSE_S
+
+
+def test_cancel_only_queued_job(client):
+    """jobs.cancel - условным UPDATE "ещё в очереди": захваченное воркером задание не отменяется посреди выполнения."""
+    now = models.utcnow()
+    with SessionLocal() as db:
+        queued, _ = jobs.enqueue(db, "collect", collector="krisha")
+        claimed, _ = jobs.enqueue(db, "collect", collector="tiktok")
+        db.commit()
+        db.execute(update(models.Job).where(models.Job.id == claimed.id).values(status="running", locked_by="w-1"))
+        db.commit()
+        assert jobs.cancel(db, queued, now=now) is True
+        assert jobs.cancel(db, claimed, now=now) is False
+        db.commit()
+        assert (queued.status, queued.locked_by) == ("cancelled", None)
+        assert abs((models.as_utc(queued.finished_at) - now).total_seconds()) < 1
+        assert (claimed.status, claimed.locked_by, claimed.finished_at) == ("running", "w-1", None)
+        assert jobs.cancel(db, queued, now=now) is False  # повтор - уже отменено
+
+
+def test_planned_continuation_not_counted_as_deferral(client):
+    """Плановое продолжение(planned) не расходует предел отсрочек MAX_DEFERRALS, но у него свой потолок."""
+    now = models.utcnow()
+    with SessionLocal() as db:
+        job, _ = jobs.enqueue(db, "alert", payload={"deferrals": jobs.MAX_DEFERRALS})
+        job.status, job.attempts = "running", 1
+        assert jobs.defer(db, job, 0.0, None, now=now, planned=True)
+        assert (job.status, job.attempts, job.payload) == ("queued", 0, {"deferrals": jobs.MAX_DEFERRALS,
+                                                                         "continuations": 1})
+        job.status, job.payload = "running", {"continuations": jobs.MAX_CONTINUATIONS}
+        assert jobs.defer(db, job, 0.0, None, now=now, planned=True) is False
+        assert job.payload == {"continuations": jobs.MAX_CONTINUATIONS + 1}
+        job.payload = {"deferrals": jobs.MAX_DEFERRALS}
+        assert jobs.defer(db, job, 0.0, None, now=now) is False  # обычная отсрочка - по-прежнему в пределе
+        db.rollback()
+
+
+def test_deferred_notes_phase_saved_by_connector(client, run_worker, use):
+    """Регрессия: смена этапа, сохранённая подключением через ctx.save_payload до Deferred, не попадала в заметки
+    запуска - "до" читалось уже после сохранения."""
+    def collect(ctx):
+        phase = "dataset" if ctx.payload.get("phase") == "poll" else "poll"
+        ctx.save_payload(phase=phase)
+        raise Deferred(10)
+
+    use(Fake(collect=collect))
+    run_id = request()
+    now = models.utcnow()
+    run_worker(now=now)
+    run_worker(now=now + timedelta(minutes=1))
+    texts = [n["text"] for n in get(models.CollectionRun, run_id).notes]
+    assert any("(этап: poll)" in t for t in texts) and any("(этап: dataset)" in t for t in texts), texts
+
+
+def test_pass_time_bound_returns_to_leader_tick(client, use):
+    """Проход демона ограничен по времени(max_s): после первого задания, если срок прошёл, - новый проход с тактом
+    лидера, а не следующие задания из длинной очереди."""
+    use(Fake())
+    use(IgFake())
+    with SessionLocal() as db:
+        for code in ("krisha", "instagram"):
+            jobs.enqueue(db, "collect", collector=code)
+        db.commit()
+    assert worker.run_once(worker_id="test", max_s=0) == 1
+    assert worker.run_once(worker_id="test", max_s=0) == 1
+    assert worker.run_once(worker_id="test", max_s=0) == 0
+
+
+def test_requeue_own_after_failed_job_keeps_read_claim(client, monkeypatch):
+    """Регрессия: после отката итога одного задания объекты сессии истекали, захват следующего перечитывался - и
+    задание, которое тем временем захватил другой воркер, requeue_own возвращал в очередь у живого исполнителя."""
+    from app import alerts
+
+    old = models.utcnow() - timedelta(minutes=5)
+    with SessionLocal() as db:
+        bad = models.Job(kind="alert", status="running", attempts=1, max_attempts=1, locked_by="w9", locked_at=old,
+                         run_after=old, payload={"alertId": 1})
+        db.add(bad)
+        db.flush()
+        other = models.Job(kind="collect", status="running", collector="krisha", attempts=1, max_attempts=3,
+                           locked_by="w9", locked_at=old, run_after=old)
+        db.add(other)
+        db.commit()
+        bad_id, other_id = bad.id, other.id
+
+    def boom(*a, **kw):
+        raise RuntimeError("сбой итога предупреждения")
+
+    monkeypatch.setattr(alerts, "abandoned", boom)
+    with SessionLocal() as db:
+        rollback = db.rollback
+
+        def reclaimed_after_rollback():
+            rollback()
+            with SessionLocal() as b:  # пока идёт возврат: второе задание уже у другого воркера(новый захват)
+                b.execute(update(models.Job).where(models.Job.id == other_id).values(locked_by="w10", attempts=2))
+                b.commit()
+
+        db.rollback = reclaimed_after_rollback
+        assert jobs.requeue_own(db, "w9") == 0
+    job = get(models.Job, other_id)
+    assert (job.status, job.locked_by, job.attempts) == ("running", "w10", 2)
+    assert get(models.Job, bad_id).status == "running"
+
+
+def test_scheduler_rejected_isolated_and_partial_run_not_committed(client, use, env, monkeypatch, caplog):
+    """Отказ постановки одного подключения(service.Rejected) не мешает остальным; прочий сбой постановки - выше:
+    запуск без задания не остаётся в сессии такта."""
+    env(APIFY_TOKEN=APIFY)
+    use(Fake())
+    set_row(enabled=True, status="ready")
+    use(PaidFake())
+    set_row("tiktok", enabled=True, status="ready")
+    real = service.request_run
+
+    def rejected(db, code, **kw):
+        if code == "krisha":
+            raise service.Rejected(409, "Запуск уже идёт")
+        return real(db, code, **kw)
+
+    monkeypatch.setattr(service, "request_run", rejected)
+    now = models.utcnow()
+    with SessionLocal() as db, caplog.at_level(logging.WARNING, logger="saq.worker"):
+        assert len(worker.schedule_due(db, now)) == 1
+        db.rollback()
+    assert "Подключение krisha: запуск по расписанию не поставлен" in caplog.text
+
+    def broken(db, kind, **kw):
+        raise RuntimeError("очередь меняется слишком часто")
+
+    monkeypatch.setattr(service, "request_run", real)
+    monkeypatch.setattr(jobs, "enqueue", broken)
+    with SessionLocal() as db:
+        with pytest.raises(RuntimeError):
+            worker.schedule_due(db, now)
+        db.rollback()
+    assert count(models.CollectionRun) == 0
+
+
+def test_analysis_db_error_text_not_shown(client, run_worker, ocr_stub, monkeypatch):
+    """Текст ошибки БД(запрос SQL с параметрами) не попадает в публикацию - только в журнал воркера."""
+    from sqlalchemy.exc import OperationalError
+
+    res = take(ig_pub())
+
+    def boom(*a, **kw):
+        raise OperationalError("SELECT secret FROM ads WHERE id = ?", ("ad-1",), Exception("disk I/O error"))
+
+    monkeypatch.setattr(analysis.world, "catalog", boom)
+    with SessionLocal() as db:
+        db.execute(update(models.Job).where(models.Job.ad_id == res.ad_id).values(max_attempts=1))
+        db.commit()
+    assert run_worker() == 1
+    p = client.get(f"/api/ads/{res.ad_id}").json()["processing"]
+    assert (p["status"], p["error"]) == ("failed", jobs.ANALYSIS_DB)
+    assert not any("SELECT" in e for e in ad_events(res.ad_id, "system"))
+
+
+@pytest.mark.parametrize(("exc", "shown"), [
+    (FileNotFoundError(2, "No such file", "/srv/saq/media/ab/cd.jpg"), jobs.ANALYSIS_FAILED),
+    (ValueError("ключ хранилища вне MEDIA_ROOT: '../../etc/passwd'"), jobs.ANALYSIS_FAILED),
+    (analysis.media.MediaRejected(507, "Недостаточно места"), "Недостаточно места"),
+    (analysis.http.DownloadError("http_404", "Файл недоступен (404)"), "Файл недоступен (404)"),
+])
+def test_analysis_failure_shows_only_safe_text(client, run_worker, ocr_stub, monkeypatch, caplog, exc, shown):
+    """Аналитик видит только причину, написанную для него(AnalysisFailed, отказ хранилища или загрузки); текст прочих
+    исключений(пути, ключи хранилища) - общий, а сам он - в журнале воркера."""
+    res = take(ig_pub())
+
+    def boom(*a, **kw):
+        raise exc
+
+    monkeypatch.setattr(analysis.world, "catalog", boom)
+    with SessionLocal() as db:
+        db.execute(update(models.Job).where(models.Job.ad_id == res.ad_id).values(max_attempts=1))
+        db.commit()
+    with caplog.at_level(logging.ERROR, logger="saq.jobs"):
+        assert run_worker() == 1
+    p = client.get(f"/api/ads/{res.ad_id}").json()["processing"]
+    assert (p["status"], p["error"]) == ("failed", shown)
+    assert f"Анализ публикации не выполнен: {shown} — проверьте вручную" in ad_events(res.ad_id, "system")
+    assert str(exc) in caplog.text  # исходный текст - в журнале воркера
+
+
+# ---------- один SAQ_WORKER_ID - один процесс-демон ----------
+
+def _worker_lease(worker_id: str, *, expires: datetime, **info) -> None:
+    """Аренда worker:{id}, как её оставил другой процесс(info: instance, host, pid)."""
+    with SessionLocal() as db:
+        db.merge(models.WorkerLease(name=f"worker:{worker_id}", holder=worker_id, expires_at=expires,
+                                    heartbeat_at=expires - timedelta(seconds=worker.WORKER_LEASE_TTL_S),
+                                    info={"id": worker_id, **info}))
+        db.commit()
+
+
+def _running_job(worker_id: str) -> int:
+    with SessionLocal() as db:
+        job = models.Job(kind="collect", status="running", collector="krisha", attempts=1, max_attempts=3,
+                         locked_by=worker_id, locked_at=models.utcnow(), run_after=models.utcnow())
+        db.add(job)
+        db.commit()
+        return job.id
+
+
+def _dead_pid() -> int:
+    import subprocess
+    import sys
+
+    p = subprocess.Popen([sys.executable, "-c", "pass"])
+    p.wait()
+    return p.pid
+
+
+def test_take_worker_id_waits_only_for_live_other_process(client):
+    """Аренда worker:{id} при старте: другой живой процесс с тем же ID её держит; истёкшая(процесс упал давно),
+    отпущенная при остановке(release_lease) и прошлый запуск на этом же хосте, который уже завершён(перезапуск
+    контейнера - снова pid 1, или такого pid нет), - нет."""
+    import os
+    import socket
+
+    now = models.utcnow()
+    fresh, host = now + timedelta(seconds=60), socket.gethostname()
+    cases = [  # (info, срок аренды, держит ли её другой процесс)
+        ({"instance": "a", "host": "other-host", "pid": 1}, fresh, True),
+        ({"instance": "a", "host": host, "pid": os.getppid()}, fresh, True),  # жив на этом хосте
+        ({"host": host, "pid": 1}, fresh, os.getpid() != 1),  # пульс прежней версии(без instance), pid 1 жив
+        ({"instance": "a", "host": "other-host", "pid": 1}, now - timedelta(seconds=1), False),  # пульс устарел
+        ({"instance": "a", "host": host, "pid": os.getpid()}, fresh, False),  # перезапуск контейнера: pid тот же
+        ({"instance": "a", "host": host, "pid": _dead_pid()}, fresh, False),  # перезапуск на хосте: процесса нет
+        ({"instance": worker.INSTANCE, "host": "other-host", "pid": 1}, fresh, False),  # этот же процесс
+    ]
+    for i, (info, expires, busy) in enumerate(cases):
+        wid = f"w-take-{i}"
+        _worker_lease(wid, expires=expires, **info)
+        with SessionLocal() as db:
+            got = worker.take_worker_id(db, wid, now)
+        lease = get(models.WorkerLease, f"worker:{wid}")
+        if busy:
+            assert got == {"id": wid, **info} and lease.info == {"id": wid, **info}, info
+        else:
+            assert got is None and lease.info["instance"] == worker.INSTANCE, info
+            assert models.as_utc(lease.expires_at) > now and lease.info["host"] == host
+    # остановлен штатно: release_lease истекает аренду сразу
+    worker.beat("w-take-stop")
+    worker.release_lease("w-take-stop")
+    with SessionLocal() as db:
+        lease = db.get(models.WorkerLease, "worker:w-take-stop")
+        lease.info = {**lease.info, "instance": "a", "host": "other-host"}
+        db.commit()
+        assert worker.take_worker_id(db, "w-take-stop") is None
+    with SessionLocal() as db:  # строки нет - создаётся
+        assert worker.take_worker_id(db, "w-take-new") is None
+    assert get(models.WorkerLease, "worker:w-take-new").info["instance"] == worker.INSTANCE
+
+
+def test_take_worker_id_one_of_two_simultaneous_starts(client, monkeypatch):
+    """Два процесса с одним ID стартуют одновременно и оба видят устаревшую аренду: получает её один(условный UPDATE
+    по прочитанной строке), второй ждёт."""
+    now = models.utcnow()
+    _worker_lease("w-race", expires=now - timedelta(seconds=5), instance="dead", host="other-host", pid=1)
+    real, raced = worker._held_elsewhere, []
+
+    def racing(lease, at):
+        if not raced:  # пока этот процесс решает, другой успевает взять аренду
+            raced.append(True)
+            monkeypatch.setattr(worker, "INSTANCE", "other")
+            with SessionLocal() as other:
+                assert worker.take_worker_id(other, "w-race", at) is None
+            monkeypatch.undo()
+        return real(lease, at)
+
+    monkeypatch.setattr(worker, "_held_elsewhere", racing)
+    with SessionLocal() as db:
+        assert worker.take_worker_id(db, "w-race", now) == {}
+    assert get(models.WorkerLease, "worker:w-race").info["instance"] == "other"
+
+
+def test_second_worker_with_same_id_keeps_live_jobs(client, monkeypatch, caplog):
+    """Регрессия: второй процесс с тем же SAQ_WORKER_ID(docker compose run worker, --scale) при старте возвращал в
+    очередь выполняемые задания живого первого - платный сбор шёл дважды. Теперь он ждёт остановки первого."""
+    import os
+    import signal
+
+    _worker_lease("w-dup", expires=models.utcnow() + timedelta(seconds=60), instance="first", host="other-host", pid=1)
+    job_id = _running_job("w-dup")
+    real, polls = worker.take_worker_id, []
+
+    def taking(db, worker_id, now=None):
+        polls.append(real(db, worker_id, now))
+        os.kill(os.getpid(), signal.SIGTERM)  # второй процесс останавливают, пока он ждёт
+        return polls[-1]
+
+    monkeypatch.setattr(worker, "take_worker_id", taking)
+    monkeypatch.setattr(worker, "run_once", lambda **kw: pytest.fail("второй процесс не должен выполнять задания"))
+    with caplog.at_level(logging.WARNING, logger="saq.worker"):
+        assert worker.main(["--id", "w-dup"]) == 0
+    assert polls == [{"id": "w-dup", "instance": "first", "host": "other-host", "pid": 1}]
+    assert "Воркер w-dup уже запущен другим процессом (хост other-host, pid 1)" in caplog.text
+    job = get(models.Job, job_id)
+    assert (job.status, job.locked_by, job.attempts) == ("running", "w-dup", 1)
+    lease = get(models.WorkerLease, "worker:w-dup")  # пульс первого не тронут и не отмечен остановленным
+    assert lease.info["instance"] == "first" and "stoppedAt" not in lease.info
+
+
+def test_once_skipped_while_same_id_is_live(client, monkeypatch, caplog):
+    """--once с ID живого процесса не выполняет задания и не трогает его пульс: иначе отметка остановки при выходе
+    --once показала бы живой процесс остановленным, и третий процесс с тем же ID вернул бы в очередь его задания."""
+    _worker_lease("w-once", expires=models.utcnow() + timedelta(seconds=60), instance="daemon", host="other-host",
+                  pid=1)
+    monkeypatch.setattr(worker, "run_once", lambda **kw: pytest.fail("--once не должен выполнять задания"))
+    with caplog.at_level(logging.WARNING, logger="saq.worker"):
+        assert worker.main(["--once", "--id", "w-once"]) == 0
+    assert "Воркер w-once уже запущен другим процессом (хост other-host, pid 1) — запуск пропущен" in caplog.text
+    lease = get(models.WorkerLease, "worker:w-once")
+    assert lease.info["instance"] == "daemon" and "stoppedAt" not in lease.info
+    assert models.as_utc(lease.expires_at) > models.utcnow()
+
+
+def test_restarted_worker_requeues_own_jobs_at_once(client, monkeypatch):
+    """Перезапуск после падения(контейнер: тот же хост и pid 1, аренда ещё не истекла) - задания прошлого запуска
+    возвращаются в очередь сразу, без ожидания; затем - обычная работа и отметка остановки на выходе."""
+    import os
+    import signal
+    import socket
+
+    _worker_lease("w-re", expires=models.utcnow() + timedelta(seconds=60), instance="crashed",
+                  host=socket.gethostname(), pid=os.getpid())
+    job_id = _running_job("w-re")
+    seen = []
+
+    def run_once(**kw):
+        job, lease = get(models.Job, job_id), get(models.WorkerLease, "worker:w-re")
+        seen.append((job.status, job.locked_by, lease.info["instance"]))
+        os.kill(os.getpid(), signal.SIGTERM)
+        return 0
+
+    monkeypatch.setattr(worker, "run_once", run_once)
+    assert worker.main(["--id", "w-re"]) == 0
+    assert seen == [("queued", None, worker.INSTANCE)]
+    assert "stoppedAt" in get(models.WorkerLease, "worker:w-re").info
+
+
+def test_release_lease_keeps_other_process_pulse(client):
+    """Остановка процесса не отмечает остановленным пульс, который последним записал другой процесс с тем же ID."""
+    worker.beat("w-rel")
+    with SessionLocal() as db:
+        lease = db.get(models.WorkerLease, "worker:w-rel")
+        lease.info = {**lease.info, "instance": "other"}
+        db.commit()
+    worker.release_lease("w-rel")
+    lease = get(models.WorkerLease, "worker:w-rel")
+    assert "stoppedAt" not in lease.info and models.as_utc(lease.expires_at) > models.utcnow()
+    with SessionLocal() as db:
+        assert service.worker_info(db)["alive"] is True

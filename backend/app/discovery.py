@@ -22,7 +22,6 @@
 администратору(POST /api/discovered/import, python -m app.demo add-advertised).
 """
 import hashlib
-import logging
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -31,17 +30,15 @@ from collections.abc import Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import auth, importer, models, schemas, screening
 from .ai.nlp import STOP, jaccard, skeleton, words
 from .db import SessionLocal, get_db
 
-log = logging.getLogger("saq.discovery")
-
 router = APIRouter(tags=["discovery"])
 
-SYSTEM = "Система"
 ADVERTISED = "advertised"
 UNKNOWN_DEV = screening.PLACEHOLDER_DEV
 UNKNOWN_DEV_NAME = "Застройщик не установлен (ЖК по рекламе)"
@@ -53,7 +50,9 @@ QUOTES_MAX = 3
 FUZZY = 0.8
 FUZZY_MIN = 6  # символов ключа без пробелов, с которых допустимо нечёткое совпадение
 STAGES = ("under_construction", "completed", "unknown")
+GEO_MAX = 4  # сверок 2ГИС в карточке объекта
 NOT_FOUND = "Объект из рекламы не найден"
+DECIDED = "Решение по объекту уже принял другой аналитик — обновите страницу"
 NAME_EMPTY = "В названии нет букв и цифр"
 RULES_REASON = "карточка ЖК создана по рекламе"
 
@@ -157,15 +156,16 @@ class Matcher:
 
     @classmethod
     def load(cls, db: Session) -> "Matcher":
-        from . import demo, registry
+        from . import demo
 
         m = cls()
         for c in db.scalars(select(models.Complex).order_by(models.Complex.id)):
             m.add_complex(c)
         cards = {e.complex_id for e in m.known}
-        names: dict[str, set] = {}
-        for r in registry.records(db):
-            names.setdefault(r["key"], set()).add(r["name"])
+        R = models.SourceRecord
+        names: dict[str, set[str]] = {}
+        for key, name in db.execute(select(R.key, R.name)):  # только названия - без разбора записей в схему API
+            names.setdefault(key, set()).add(name)
         for key, ns in sorted(names.items()):
             cid = demo.complex_id(key)
             for n in sorted(ns):
@@ -204,8 +204,8 @@ class Matcher:
 
 def _merge(old: Iterable[str], new: Iterable[str], limit: int) -> list[str]:
     out: list[str] = []
-    for x in [*old, *new]:
-        x = " ".join(str(x or "").split())
+    for raw in [*old, *new]:
+        x = " ".join(str(raw or "").split())
         if x and x not in out:
             out.append(x)
     return out[:limit]
@@ -331,32 +331,34 @@ def new_complex_id(db: Session, key: str) -> str:
         return cid
     n = 0
     while True:
-        cid = "ah-" + hashlib.sha1(f"{key}#{n}".encode()).hexdigest()[:16]
+        cid = "ah-" + hashlib.sha1(f"{key}#{n}".encode(), usedforsecurity=False).hexdigest()[:16]
         if db.get(models.Complex, cid) is None:
             return cid
         n += 1
 
 
 def ensure_developer(db: Session, name: str | None, bin_: str | None) -> tuple[models.Developer, bool]:
-    """Застройщик ЖК по рекламе: существующий по БИН или названию(без формы собственности и кавычек), иначе новый
-    (origin "advertised"); без названия и БИН - "Застройщик не установлен". (застройщик, создан ли)."""
+    """Застройщик ЖК по рекламе: существующий по БИН, иначе по названию(без формы собственности и кавычек) - но не с
+    другим БИН, иначе новый(origin "advertised"); без названия(или только "ТОО") и БИН - "Застройщик не установлен".
+    Возвращает(застройщик, создан ли)."""
     D = models.Developer
-    if not name and not bin_:
-        d = db.get(D, UNKNOWN_DEV)
-        if d is not None:
-            return d, False
-        d = D(id=UNKNOWN_DEV, name=UNKNOWN_DEV_NAME, bin="", director="", registered="", objects=0, unfinished=0,
-              site=None, instagram=None, phones=[], origin=ADVERTISED)
-        db.add(d)
-        db.flush()
-        return d, True
     org = importer.org_name(name) if name else ""
-    for d in db.scalars(select(D).order_by(D.id)):
-        if (bin_ and d.bin == bin_) or (org and importer.org_name(d.name) == org):
-            return d, False
-    did = f"ad-{bin_}" if bin_ else "ad-" + hashlib.sha1(org.encode("utf-8")).hexdigest()[:12]
-    d = D(id=did, name=(name or f"БИН {bin_}")[:255], bin=bin_ or "", director="", registered="", objects=0,
-          unfinished=0, site=None, instagram=None, phones=[], origin=ADVERTISED)
+    if not org and not bin_:
+        did, dname = UNKNOWN_DEV, UNKNOWN_DEV_NAME
+    else:
+        devs = list(db.scalars(select(D).order_by(D.id)))
+        hit = next((d for d in devs if bin_ and d.bin == bin_), None) or next(
+            (d for d in devs if org and importer.org_name(d.name) == org and not (bin_ and d.bin and d.bin != bin_)),
+            None)
+        if hit is not None:
+            return hit, False
+        did = f"ad-{bin_}" if bin_ else "ad-" + hashlib.sha1(org.encode(), usedforsecurity=False).hexdigest()[:12]
+        dname = (name or f"БИН {bin_}")[:255]
+    d = db.get(D, did)  # заглушка или id, занятый застройщиком, чьи название или БИН с тех пор изменили
+    if d is not None:
+        return d, False
+    d = D(id=did, name=dname, bin=bin_ or "", director="", registered="", objects=0, unfinished=0, site=None,
+          instagram=None, phones=[], origin=ADVERTISED)
     db.add(d)
     db.flush()
     return d, True
@@ -454,7 +456,7 @@ def import_advertised(db: Session, items: Iterable[Any], *, author: str, note: s
             rep.skipped.append(f"{it.name}: {NAME_EMPTY.lower()}")
             continue
         alias_names = [a for a in (clean_name(x) for x in it.aliases) if a and a.casefold() != name.casefold()]
-        keys = [k] + [name_keys(a) for a in alias_names if name_keys(a).key]
+        keys = [k, *(ak for ak in map(name_keys, alias_names) if ak.key)]
         known = next((e for e in (m.known_match(x) for x in keys) if e is not None), None)
         found = next((e for e in (m.object_match(x) for x in keys) if e is not None), None)
         c: models.Complex | None = None
@@ -477,9 +479,11 @@ def import_advertised(db: Session, items: Iterable[Any], *, author: str, note: s
             if c.lat is None and it.lat is not None:
                 c.lat, c.lng = it.lat, it.lng
                 changed.append("координаты")
-            if obj is None:
+            if obj is None or obj.complex_id != c.id:
+                # объект с тем же названием не привязан или привязан к другому ЖК - дополняется объект этой карточки
                 O = models.DiscoveredObject
-                obj = db.scalar(select(O).where(O.complex_id == c.id, O.status == "linked").order_by(O.id).limit(1))
+                own = db.scalar(select(O).where(O.complex_id == c.id, O.status == "linked").order_by(O.id).limit(1))
+                obj = own or obj
             if obj is None:
                 obj = _new_object(db, name, k.key[:255], it.address or None, now, origin="import")
                 obj.status, obj.complex_id, obj.decided_by, obj.decided_at = "linked", c.id, author, now
@@ -551,21 +555,29 @@ def _obj(db: Session, oid: int) -> models.DiscoveredObject:
     return o
 
 
-def _geo(db: Session, oid: int) -> list[dict]:
-    """Последние сверки 2ГИС объекта - по одной на запрос, новые первыми."""
+def _geo(db: Session, oids: list[int]) -> dict[str, list[dict]]:
+    """Последние сверки 2ГИС объектов(по str(id)) - по одной на запрос, не больше GEO_MAX, новые первыми. Два запроса
+    на все объекты: сначала выбираются id сверок, затем читаются только они(с кандидатами)."""
     from .integrations import dgis
     from .settings import get_settings
 
     G = models.GeoCheck
-    s = get_settings()
-    out, seen = [], set()
-    for g in db.scalars(select(G).where(G.target_kind == "discovered", G.target_id == str(oid))
-                        .order_by(G.fetched_at.desc(), G.id.desc()).limit(20)):
-        if g.query_norm in seen:
+    picked: dict[str, list[int]] = {}
+    seen: set[tuple[str, str]] = set()
+    for gid, tid, qn in db.execute(select(G.id, G.target_id, G.query_norm)
+                                   .where(G.target_kind == "discovered", G.target_id.in_([str(i) for i in oids]))
+                                   .order_by(G.fetched_at.desc(), G.id.desc())):
+        gids = picked.setdefault(tid, [])
+        if (tid, qn) in seen or len(gids) >= GEO_MAX:
             continue
-        seen.add(g.query_norm)
-        out.append(dgis.GeoCheckOut.model_validate(dgis.check_out(g, s)).model_dump(by_alias=True))
-    return out[:4]
+        seen.add((tid, qn))
+        gids.append(gid)
+    if not picked:
+        return {}
+    s = get_settings()
+    rows = {g.id: g for g in db.scalars(select(G).where(G.id.in_([i for gids in picked.values() for i in gids])))}
+    return {tid: [dgis.GeoCheckOut.model_validate(dgis.check_out(rows[i], s)).model_dump(by_alias=True) for i in gids]
+            for tid, gids in picked.items()}
 
 
 def discovered_out(db: Session, objs: list[models.DiscoveredObject], as_of: date | None = None) -> list[dict]:
@@ -582,12 +594,18 @@ def discovered_out(db: Session, objs: list[models.DiscoveredObject], as_of: date
     facts = screening.load_facts(db, {r.ad_id for rs in mentions.values() for r in rs})
     names = dict(db.execute(select(models.Complex.id, models.Complex.name)
                             .where(models.Complex.id.in_([o.complex_id for o in objs if o.complex_id]))).all())
+    geo = _geo(db, ids)
     days = int(get_settings().screening_days)
     as_of = as_of or screening.today()
+    since = as_of.toordinal() - days
+
+    def ad_date(r: models.DiscoveredMention) -> str:
+        f = facts.get(r.ad_id)
+        return (f.date if f else None) or ""
+
     out = []
     for o in objs:
-        rs = sorted(mentions.get(o.id, []), key=lambda r: ((facts.get(r.ad_id).date if facts.get(r.ad_id) else "")
-                                                           or "", r.id), reverse=True)
+        rs = sorted(mentions.get(o.id, []), key=lambda r: (ad_date(r), r.id), reverse=True)
         quotes, sources = [], {}
         stage = {"under_construction": 0, "completed": 0, "unknown": 0, "quotes": []}
         types: dict[str, int] = {}
@@ -606,7 +624,6 @@ def discovered_out(db: Session, objs: list[models.DiscoveredObject], as_of: date
                 ads.append((f, "mention"))
                 for t in dict.fromkeys(t for t, _ in f.concerning + f.supporting):
                     types[t] = types.get(t, 0) + 1
-        since = as_of.toordinal() - days
         concerning = [f for f, _ in ads if f.concerning]
         permit = {"status": "unknown", "text": "Нет в открытых данных: объект известен только по рекламе",
                   "source": None, "url": None, "registryKey": None, "registryStage": None, "verified": False}
@@ -621,7 +638,7 @@ def discovered_out(db: Session, objs: list[models.DiscoveredObject], as_of: date
             "saleSignals": {"ads": len(ads), "concerning": len(concerning),
                             "recentConcerning": sum(1 for f in concerning if f.day and f.day.toordinal() >= since),
                             "types": types, "lastAdAt": max((f.date for f, _ in ads if f.date), default=None)},
-            "geo": _geo(db, o.id), "screening": sc})
+            "geo": geo.get(str(o.id), []), "screening": sc})
     return out
 
 
@@ -673,20 +690,18 @@ def geo_discovered(body: schemas.DiscoveredGeoIn, request: Request, response: Re
         if dgis.norm_query(q) != dgis.norm_query(queries[0]):
             queries.append(q)
     checks, errors, fresh = [], [], False
-    for q in queries:
-        sub = Response()
+    for i, q in enumerate(queries):
         try:
             got = dgis.geo_check(dgis.GeoCheckIn(target_kind="discovered", target_id=str(oid), query=q[:dgis.QUERY_MAX],
-                                                 author=body.author, force=body.force), request, sub, db)
+                                                 author=body.author, force=body.force), request, Response(), db)
         except HTTPException as e:
-            if e.status_code in (401, 403) or (not checks and q == queries[-1]):
+            # нет прав - сразу; не удалась последняя, а удачных нет - ошибка последней(иначе - в errors ответа)
+            if e.status_code in (401, 403) or (not checks and i == len(queries) - 1):
                 raise
             errors.append({"query": q, "status": e.status_code, "detail": str(e.detail)})
             continue
         fresh = fresh or not got.get("cached")
         checks.append(dgis.GeoCheckOut.model_validate(got).model_dump(by_alias=True))
-    if not checks and errors:
-        raise HTTPException(errors[0]["status"], errors[0]["detail"])
     response.status_code = 201 if fresh else 200
     return {"checks": checks, "errors": errors}
 
@@ -734,18 +749,22 @@ def create_complex(body: schemas.DiscoveredCreateIn, oid: int = OID, db: Session
         if lat is None:
             lat, lng = cand.get("lat"), cand.get("lon")
     now = models.utcnow()
-    d, dev_created = ensure_developer(db, body.developer_name, body.developer_bin)
-    c = models.Complex(id=new_complex_id(db, k.key), developer_id=d.id,
-                       **_complex_values(name, body.address, lat, lng))
-    db.add(c)
-    db.flush()
+    try:
+        d, dev_created = ensure_developer(db, body.developer_name, body.developer_bin)
+        c = models.Complex(id=new_complex_id(db, k.key), developer_id=d.id,
+                           **_complex_values(name, body.address, lat, lng))
+        db.add(c)
+        db.flush()
+    except IntegrityError:  # тот же объект параллельно решает другой аналитик: id карточки или застройщика занят
+        db.rollback()
+        raise HTTPException(409, DECIDED) from None
     O = models.DiscoveredObject
     res = db.execute(update(O).where(O.id == oid, O.status.in_(("new", "dismissed")))
                      .values(status="linked", complex_id=c.id, decided_by=body.author, decided_at=now)
                      .execution_options(synchronize_session=False))
     if res.rowcount != 1:
         db.rollback()
-        raise HTTPException(409, "Решение по объекту уже принял другой аналитик — обновите страницу")
+        raise HTTPException(409, DECIDED)
     db.refresh(o)
     _add_alias(o, name)  # название карточки - тоже написание объекта: его упоминания попадут к этому ЖК
     if geo is not None:
@@ -767,8 +786,8 @@ def create_complex(body: schemas.DiscoveredCreateIn, oid: int = OID, db: Session
     _event(db, body.author, "; ".join(parts) + ". Сведения рекламы, аналитиком не проверены", complex_id=c.id, at=now)
     rerun_rules(db, _mention_ads(db, oid))
     db.commit()
-    r = screening.compute(db)
-    return screening.complex_rows(db, [db.get(models.Complex, c.id)], r)[0]
+    row = db.get(models.Complex, c.id)
+    return screening.complex_rows(db, [row], screening.compute_complex(db, row))[0]
 
 
 @router.post("/api/discovered/{oid}/link", response_model=schemas.DiscoveredOut, response_model_by_alias=True,
@@ -787,12 +806,13 @@ def link_discovered(body: schemas.DiscoveredLinkIn, oid: int = OID, db: Session 
     old = o.complex_id if o.status == "linked" else None
     now = models.utcnow()
     O = models.DiscoveredObject
-    res = db.execute(update(O).where(O.id == oid, O.status == o.status)
+    # то же состояние, что прочитано: и статус, и привязка(иначе два аналитика молча перепривязали бы объект)
+    res = db.execute(update(O).where(O.id == oid, O.status == o.status, O.complex_id == o.complex_id)
                      .values(status="linked", complex_id=c.id, decided_by=body.author, decided_at=now)
                      .execution_options(synchronize_session=False))
     if res.rowcount != 1:
         db.rollback()
-        raise HTTPException(409, "Решение по объекту уже принял другой аналитик — обновите страницу")
+        raise HTTPException(409, DECIDED)
     if old and old != c.id:
         oldname = db.scalar(select(models.Complex.name).where(models.Complex.id == old)) or old
         _event(db, body.author, f"Объект из рекламы «{o.name}» отвязан от ЖК «{oldname}»: привязан к ЖК «{c.name}»",
@@ -815,13 +835,13 @@ def dismiss_discovered(body: schemas.DiscoveredDismissIn, oid: int = OID, db: Se
     old = o.complex_id if o.status == "linked" else None
     now = models.utcnow()
     O = models.DiscoveredObject
-    res = db.execute(update(O).where(O.id == oid, O.status == o.status)
+    res = db.execute(update(O).where(O.id == oid, O.status == o.status, O.complex_id == o.complex_id)
                      .values(status="dismissed", complex_id=None, note=body.reason, decided_by=body.author,
                              decided_at=now)
                      .execution_options(synchronize_session=False))
     if res.rowcount != 1:
         db.rollback()
-        raise HTTPException(409, "Решение по объекту уже принял другой аналитик — обновите страницу")
+        raise HTTPException(409, DECIDED)
     tail = ""
     if old:
         oldname = db.scalar(select(models.Complex.name).where(models.Complex.id == old)) or old

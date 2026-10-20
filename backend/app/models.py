@@ -12,7 +12,7 @@ from .db import Base
 # Версия схемы БД. Меняется только добавлением шага в migrate.STEPS(последний шаг = SCHEMA_VERSION): база известной
 # прошлой версии обновляется на месте с резервной копией, неизвестной - пересоздаётся, только если в ней нет собранных и
 # внесённых данных(см. seed.init_db, migrate).
-SCHEMA_VERSION = "2026.10-alerts-1"
+SCHEMA_VERSION = "2026.10-audit-2"
 
 # JSON со слежением за изменениями верхнего уровня(row.state["x"] = 1 сохраняется при commit). Код всё равно
 # переприсваивает(row.state = {**row.state, **patch}) и не меняет словари, полученные из другой сессии.
@@ -25,7 +25,7 @@ def utcnow() -> datetime:
 
 
 def as_utc(dt: datetime | None) -> datetime | None:
-    """Наивное(SQLite) → UTC-aware; aware с любым смещением → .astimezone(timezone.utc).
+    """Наивное(SQLite) → UTC-aware; aware с любым смещением → .astimezone(UTC).
     Каждое время, попадающее в SQL(WHERE, UPDATE, INSERT), проходит через as_utc: SQLite отбрасывает пояс связанного
     значения, и 12:00+05:00 сравнивалось бы как 12:00 UTC."""
     if dt is None:
@@ -52,10 +52,7 @@ def insert_ignore(db: Session, model, values: dict, conflict_cols: Iterable[str]
 
 def iso(dt: datetime | None) -> str | None:
     """ISO 8601 с UTC-смещением; наивные значения(SQLite) считаются UTC."""
-    if dt is None:
-        return None
-    dt = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
-    return dt.isoformat(timespec="seconds")
+    return None if dt is None else as_utc(dt).isoformat(timespec="seconds")
 
 
 class Meta(Base):
@@ -266,7 +263,8 @@ class AuditEvent(Base):
     signal_id: Mapped[int | None] = mapped_column(ForeignKey("signals.id"), nullable=True, index=True)
     # system - автоматическое, data - сведения из источника, status/link/comment - работа с публикацией,
     # request - запрос сведений по ЖК, signal/export - сигнальная карточка и её выгрузка, ai - гипотеза ИИ и решения
-    # аналитика по ней, alert - предупреждение жителям: подготовка, согласование, итог отправки(schemas.AuditKind)
+    # аналитика по ней, alert - предупреждение жителям: подготовка, согласование, итог отправки, connector - подключение
+    # источника: смена статуса с пояснением проверки, настройки, аккаунт OLX - сведения администратора(schemas.AuditKind)
     kind: Mapped[str] = mapped_column(String(16), default="system", index=True)
     who: Mapped[str] = mapped_column(String(128))
     what: Mapped[str] = mapped_column(Text)
@@ -689,7 +687,8 @@ class DiscoveredObject(Base):
     реестре их нет. Появляется по ответу Claude(mentionedComplexes) или импортом; решение - за аналитиком: создать
     карточку ЖК(origin "advertised"), привязать к существующему ЖК(название - его другое написание) или отклонить.
 
-    norm_key - ключ сравнения названия(без "ЖК", кавычек и регистра, латиница ≈ кириллица: discovery.name_key).
+    norm_key - ключ сравнения названия(без "ЖК", кавычек и регистра, латиница ≈ кириллица): discovery.norm_key, он
+    строится по discovery.name_keys.
     status: new - ждёт решения; linked - привязан к ЖК complex_id(его упоминания - реклама этого ЖК); dismissed -
     отклонён(note - причина). Счётчики(ads_count, accounts, first_seen, last_seen) пересчитываются по упоминаниям."""
 

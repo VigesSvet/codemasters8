@@ -6,8 +6,9 @@
 подключения(приём, анализатор, OAuth); иначе - хранимый. Значения секретов сюда не попадают: только имена переменных,
 отпечатки и несекретные сведения(facts, очищенные ingest.scrub).
 
-Функции работают в сессии вызывающего и не фиксируют транзакцию; исключения - reserve_quota и record_reject(своя
-короткая сессия: квота учитывается до сетевого вызова, отказ клиента пишется, даже если запрос отклонён).
+Функции работают в сессии вызывающего и не фиксируют транзакцию; исключения - reserve_quota, adjust_quota и
+record_reject(своя короткая сессия: квота учитывается до сетевого вызова, отказ клиента пишется, даже если запрос
+отклонён).
 """
 import logging
 import threading
@@ -32,11 +33,13 @@ log = logging.getLogger("saq.integrations")
 
 KEYS_CHANGED = ("Ключи на сервере изменились после последней проверки — перезапустите воркер и нажмите «Проверить "
                 "подключение»")
-NOT_FOUND = "Подключение не найдено"
 ACTIVE_RUN = ("queued", "running")
 COLLECTABLE = jobs.SCHEDULABLE
 REJECT_THROTTLE_S = 5.0
 WORKER_ALIVE_S = 120
+# Вид событий журнала о подключениях(статус с пояснением проверки, настройки, аккаунт): в них сведения, которые
+# посетителю не показываются(PUBLIC_CONNECTOR_FIELDS), - журнал отдаёт их только администратору
+AUDIT_KIND = "connector"
 CONFIG_LABELS = {"accounts": "аккаунты", "channels": "каналы", "profiles": "профили", "searchUrls": "URL поиска",
                  "cardUrls": "карточки", "resultsPerPage": "результатов на профиль", "downloadVideos": "загрузка видео"}
 
@@ -59,14 +62,16 @@ class Invalid(Exception):
 
 # ---------- строки подключений ----------
 
-def row(db: Session, code: str, *, create: bool = False) -> models.Collector | None:
-    """Строка подключения; create - создать, если нет(INSERT … ON CONFLICT DO NOTHING и перечитывание)."""
+def row(db: Session, code: str, *, create: bool = False, lock: bool = False) -> models.Collector | None:
+    """Строка подключения; create - создать, если нет(INSERT … ON CONFLICT DO NOTHING и перечитывание). lock -
+    SELECT … FOR UPDATE со свежими значениями(на PostgreSQL; SQLite и так пишет по одному): чтение-изменение-запись
+    JSON-полей(state, facts, config) не затирает параллельную запись другого запроса или воркера."""
     C = models.Collector
-    r = db.get(C, code)
+    r = db.get(C, code, with_for_update=lock or None, populate_existing=lock)
     if r is None and create:
         models.insert_ignore(db, C, {"code": code, "enabled": False, "config": {}, "status": "unchecked", "facts": {},
                                      "state": {}, "failures": 0}, ("code",))
-        r = db.get(C, code, populate_existing=True)
+        r = db.get(C, code, with_for_update=lock or None, populate_existing=True)
     return r
 
 
@@ -88,7 +93,7 @@ class _Jobs:
 def _active_jobs(db: Session, codes: list | None = None) -> dict[str, _Jobs]:
     J = models.Job
     q = select(J).where(J.status.in_(jobs.ACTIVE), J.kind.in_(("collect", "test")))
-    if codes:
+    if codes is not None:
         q = q.where(J.collector.in_(codes))
     out: dict[str, _Jobs] = {}
     for j in db.scalars(q.order_by(J.id)):
@@ -113,7 +118,7 @@ def effective_status(db: Session, conn: Connector, r: models.Collector | None, n
         return ("running", None) if active.collect.status == "running" else ("queued", None)
     computed = conn.computed_status(db, r, now)
     if computed is not None:
-        return computed[0], computed[1]
+        return computed
     if r is None:
         return "unchecked", None
     return r.status or "unchecked", r.status_detail
@@ -162,7 +167,8 @@ def finish_run(db: Session, run_id: int, status: str, *, error_code: str | None 
 
 def transition(db: Session, code: str, status: str, detail: str | None = None, *,
                at: datetime | None = None, audit: bool = True) -> None:
-    """Хранимый статус подключения; при смене - событие журнала "Источник "…": {статус}. {пояснение}"."""
+    """Хранимый статус подключения; при смене - событие журнала "Источник "…": {статус}. {пояснение}"(вид
+    AUDIT_KIND: в пояснении - аккаунты, модель, лимиты, тексты ошибок)."""
     conn = registry.get(code)
     r = row(db, code, create=True)
     old = r.status
@@ -171,14 +177,14 @@ def transition(db: Session, code: str, status: str, detail: str | None = None, *
         what = f"Источник «{conn.name}»: {conn.status_label(status)}"
         if r.status_detail:
             what += f". {r.status_detail}"
-        _event(db, "data", SYSTEM, what, at=at)
+        _event(db, AUDIT_KIND, SYSTEM, what, at=at)
 
 
 def not_configured_detail(conn: Connector, s, r: models.Collector | None, missing: list[str]) -> str:
     """Текст 409 "не настроено": каких переменных окружения нет на сервере. Не хватает не переменной, а условия(нет
     сессии Telegram: TG_SESSION_PATH задан, нужен вход) - пояснение самого подключения(missing_detail), а не совет
     задать переменную, которая уже задана."""
-    env = [n for n in missing if n in tuple(conn.required_env or ())]
+    env = [n for n in missing if n in conn.required_env]
     if not env:
         detail = conn.missing_detail(s, r)
         if detail:
@@ -263,11 +269,15 @@ def collect_all(db: Session, who: str, now: datetime) -> dict:
             reason = f"пауза до {local_time(r.next_run_at)}"
         elif r.status not in COLLECTABLE:
             reason = "не настроен" if r.status == "not_configured" else f"статус «{conn.status_label(r.status)}»"
-        if reason:
-            skipped.append({"code": code, "reason": reason})
-            continue
-        run, _ = request_run(db, code, trigger="manual", who=who, now=now)
-        queued.append({"code": code, "run_id": run.id})
+        if reason is None:
+            try:
+                run, _ = request_run(db, code, trigger="manual", who=who, now=now)
+            except Rejected as e:  # одно подключение не роняет "Обновить всё"(гонка с параллельной постановкой)
+                reason = e.detail
+            else:
+                queued.append({"code": code, "run_id": run.id})
+                continue
+        skipped.append({"code": code, "reason": reason})
     return {"queued": queued, "skipped": skipped}
 
 
@@ -291,12 +301,13 @@ def _diff(label: str, old: Any, new: Any) -> str | None:
 
 def patch(db: Session, code: str, body: schemas.ConnectorPatchIn, *, now: datetime | None = None) -> None:
     """Настройки подключения администратором: включение сбора, период, списки источников. Изменения - в журнал от имени
-    автора. Rejected(409) / Invalid(422) / base.ConfigError(422, loc config.поле). Без commit."""
+    автора(вид AUDIT_KIND: списки аккаунтов, каналов и адресов). Rejected(409) / Invalid(422) / base.ConfigError(422,
+    loc config.поле). Без commit."""
     conn = registry.get(code)
     now = models.as_utc(now) or models.utcnow()
     s = get_settings()
     caps = conn.capabilities or {}
-    r = row(db, code, create=True)
+    r = row(db, code, create=True, lock=True)  # config и facts дополняются - не затереть запись воркера
     status_before, _ = effective_status(db, conn, r, now)
     changes: list[str] = []
     fields = body.model_fields_set
@@ -325,6 +336,7 @@ def patch(db: Session, code: str, body: schemas.ConnectorPatchIn, *, now: dateti
             raise Invalid(("body", "intervalMin"), f"Период — от {lo} до {hi} минут", body.interval_min)
         if body.interval_min != (r.interval_min or conn.default_interval_min):
             changes.append(f"период: {body.interval_min} мин")
+            _pull_next_run(r, body.interval_min, now)
         r.interval_min = body.interval_min
     if "enabled" in fields and body.enabled is not None and body.enabled != bool(r.enabled):
         if not caps.get("toggle"):
@@ -346,41 +358,52 @@ def patch(db: Session, code: str, body: schemas.ConnectorPatchIn, *, now: dateti
             _cancel_queued_collect(db, code, now)
     if changes:
         r.updated_by, r.updated_at = body.author, now
-        _event(db, "data", body.author, f"Настройки источника «{conn.name}» изменены: {'; '.join(changes)}", at=now)
+        _event(db, AUDIT_KIND, body.author, f"Настройки источника «{conn.name}» изменены: {'; '.join(changes)}", at=now)
+
+
+def _pull_next_run(r: models.Collector, interval_min: int, now: datetime) -> None:
+    """Период изменён: следующий сбор по расписанию - не позже, чем через новый период(иначе сбор, назначенный по
+    прежнему недельному периоду, ждал бы неделю и после перехода на два часа). Пауза после ошибки или лимита частоты
+    не сокращается - её назначил итог запуска."""
+    if r.status not in ("ready", "working", "partial") or r.next_run_at is None:
+        return
+    latest = now + timedelta(minutes=interval_min)
+    if models.as_utc(r.next_run_at) > latest:
+        r.next_run_at = latest
 
 
 def _cancel_queued_collect(db: Session, code: str, now: datetime) -> None:
     """Сбор выключен: сбор, который ещё ждёт в очереди, отменяется(выполняющийся - доработает). Задание с уже
     начатым внешним запуском(Apify: ждёт между фазами) не отменяется - иначе оплаченный запуск не будет дочитан
-    и его стоимость не запишется; оно доработает, новых по расписанию не будет."""
+    и его стоимость не запишется; оно доработает, новых по расписанию не будет. Задание, которое воркер успел
+    захватить, не отменяется(jobs.cancel - только "ещё в очереди"), и его запуск тоже."""
     job = jobs.active(db, f"collect:{code}")
     if job is None or job.status != "queued":
         return
     run = db.get(models.CollectionRun, job.run_id) if job.run_id is not None else None
     if run is not None and run.external_run_id:
         return
-    jobs.cancel(db, job)
-    if job.run_id is not None:
-        finish_run(db, job.run_id, "cancelled", now=now)
+    if jobs.cancel(db, job, now=now) and run is not None:
+        finish_run(db, run.id, "cancelled", now=now)
 
 
 # ---------- для страницы "Подключения" ----------
 
-def _counts(db: Session) -> dict[str, dict]:
+def _counts(db: Session, codes: list[str]) -> dict[str, dict]:
     I, A = models.IngestItem, models.MediaAsset
     out: dict[str, dict] = {}
     for code, items, ads in db.execute(select(I.collector, func.count(I.id), func.count(func.distinct(I.ad_id)))
-                                       .group_by(I.collector)):
+                                       .where(I.collector.in_(codes)).group_by(I.collector)):
         out[code] = {"items": items, "ads": ads, "media": 0}
     for code, n in db.execute(select(I.collector, func.count(A.id)).join(I, A.item_id == I.id)
-                              .where(A.status == "downloaded").group_by(I.collector)):
+                              .where(A.status == "downloaded", I.collector.in_(codes)).group_by(I.collector)):
         out.setdefault(code, {"items": 0, "ads": 0, "media": 0})["media"] = n
     return out
 
 
-def _last_runs(db: Session) -> dict[str, models.CollectionRun]:
+def _last_runs(db: Session, codes: list[str]) -> dict[str, models.CollectionRun]:
     R = models.CollectionRun
-    ids = [i for (i,) in db.execute(select(func.max(R.id)).group_by(R.collector))]
+    ids = db.scalars(select(func.max(R.id)).where(R.collector.in_(codes)).group_by(R.collector)).all()
     return {r.collector: r for r in db.scalars(select(R).where(R.id.in_(ids)))} if ids else {}
 
 
@@ -388,18 +411,20 @@ def connector_out(db: Session, conn: Connector, r: models.Collector | None, *, n
                   active: _Jobs | None = None, counts: dict | None = None,
                   last: models.CollectionRun | None = None) -> dict:
     s = get_settings()
+    if active is None:
+        active = _active_jobs(db, [conn.code]).get(conn.code, _Jobs())
     status, detail = effective_status(db, conn, r, now, active)
     caps = {"test": False, "collect": False, "toggle": False, "configure": False, "connect": False,
             **(conn.capabilities or {})}
     collector = conn.kind == "collector"
-    act = active or _Jobs()
-    run_job = act.collect or act.test
+    missing = conn.missing(s, r)
+    run_job = active.collect or active.test
     facts = scrub(dict(r.facts or {})) if r is not None else {}
     return {
         "code": conn.code, "kind": conn.kind, "group": conn.group, "platform": conn.platform, "name": conn.name,
         "via": conn.via, "status": status, "status_label": conn.status_label(status), "status_detail": detail,
-        "enabled": bool(r.enabled) if r is not None else False, "configured": not conn.missing(s, r),
-        "missing": conn.missing(s, r), "secret_refs": list(conn.secret_refs),
+        "enabled": bool(r.enabled) if r is not None else False, "configured": not missing,
+        "missing": missing, "secret_refs": list(conn.secret_refs),
         "config": dict(r.config or {}) if r is not None else {}, "config_fields": list(conn.config_fields),
         "options": list(conn.options),
         "interval_min": ((r.interval_min if r is not None else None) or conn.default_interval_min) if collector
@@ -418,25 +443,42 @@ def connector_out(db: Session, conn: Connector, r: models.Collector | None, *, n
     }
 
 
-# Посетителю(без токена администратора) - только состояние: без способа подключения(адреса API, модели, сервисы),
-# имён ключей, списков источников, пояснений и текстов ошибок, фактов проверки(аккаунты, отпечатки ключей), автора,
-# стоимости и заметок запусков, ID воркера
-PUBLIC_CONNECTOR_HIDDEN = {"via": "", "status_detail": None, "missing": [], "secret_refs": [], "config": {},
-                           "last_error": None, "last_error_at": None, "facts": {}}
-PUBLIC_RUN_HIDDEN = {"requested_by": None, "external_run_id": None, "cost_usd": None, "error_code": None,
-                     "error": None, "notes": []}
+# Посетителю(без токена администратора) - только состояние: статусы, расписание, счётчики. Без способа
+# подключения(адреса API, модели, сервисы), имён ключей, списков источников, пояснений и текстов ошибок, фактов
+# проверки(аккаунты, отпечатки ключей), автора, стоимости и заметок запусков, ID воркера. Список разрешённых, а не
+# скрытых полей: новое поле сведений посетителю по умолчанию не видно
+PUBLIC_CONNECTOR_FIELDS = frozenset({
+    "code", "kind", "group", "platform", "name", "status", "status_label", "enabled", "configured", "config_fields",
+    "options", "interval_min", "interval_bounds", "next_run_at", "last_success_at", "checked_at", "counts",
+    "last_run", "active_run_id", "capabilities", "limitation", "contract_verified", "paid", "stopped"})
+PUBLIC_RUN_FIELDS = frozenset({"id", "source", "trigger", "status", "status_label", "created_at", "started_at",
+                               "finished_at", "counts", "retry_at"})
+PUBLIC_WORKER_FIELDS = frozenset({"alive", "last_seen_at"})
+
+
+def _only(d: dict, shown: frozenset[str], blank: dict | None = None) -> dict:
+    """Поля shown - как есть, остальные - пустые: список - [], словарь - {}, обязательное поле - его значение из
+    blank, иначе None."""
+    def empty(k: str, v: Any) -> Any:
+        if blank and k in blank:
+            return blank[k]
+        return type(v)() if isinstance(v, (list, dict)) else None
+    return {k: v if k in shown else empty(k, v) for k, v in d.items()}
 
 
 def public_run(run: dict) -> dict:
-    return {**run, **PUBLIC_RUN_HIDDEN}
+    return _only(run, PUBLIC_RUN_FIELDS)
 
 
 def public_connector(c: dict) -> dict:
-    return {**c, **PUBLIC_CONNECTOR_HIDDEN, "last_run": public_run(c["last_run"]) if c.get("last_run") else None}
+    out = _only(c, PUBLIC_CONNECTOR_FIELDS, {"via": ""})
+    if out.get("last_run"):
+        out["last_run"] = public_run(out["last_run"])
+    return out
 
 
 def public_worker(w: dict) -> dict:
-    return {**w, "id": None}
+    return _only(w, PUBLIC_WORKER_FIELDS)
 
 
 def view(db: Session, codes: list | None = None, *, now: datetime | None = None) -> list[dict]:
@@ -445,8 +487,8 @@ def view(db: Session, codes: list | None = None, *, now: datetime | None = None)
     codes = [c for c in registry.CONNECTORS if codes is None or c in codes]
     rows = {r.code: r for r in db.scalars(select(models.Collector).where(models.Collector.code.in_(codes)))}
     active = _active_jobs(db, codes)
-    counts = _counts(db)
-    last = _last_runs(db)
+    counts = _counts(db, codes)
+    last = _last_runs(db, codes)
     return [connector_out(db, registry.CONNECTORS[c], rows.get(c), now=now, active=active.get(c, _Jobs()),
                           counts=counts.get(c), last=last.get(c)) for c in codes]
 
@@ -476,11 +518,6 @@ def worker_info(db: Session, now: datetime | None = None) -> dict:
     lease = next((x for x in leases if alive(x)), leases[0])
     return {"alive": alive(lease), "last_seen_at": models.as_utc(lease.heartbeat_at),
             "id": (lease.info or {}).get("id") or lease.holder}
-
-
-def processing_view(item: models.IngestItem | None) -> dict | None:
-    """AdOut.processing - состояние анализа собранной публикации."""
-    return item.processing_view() if item is not None else None
 
 
 # ---------- квоты ----------
@@ -545,7 +582,7 @@ def record_reject(code: str, status: int, detail: str) -> None:
                 return
             _REJECT_AT[key] = mono
         with SessionLocal() as db:
-            r = row(db, code, create=True)
+            r = row(db, code, create=True, lock=True)  # state дополняется: не затереть параллельную запись
             state = dict(r.state or {})
             prev = dict(state.get("rejects") or {})
             state["rejects"] = {"count": int(prev.get("count") or 0) + 1, "lastAt": models.utcnow().isoformat(),

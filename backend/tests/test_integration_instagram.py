@@ -885,3 +885,66 @@ def test_acceptance_limit_no_endless_loop(client, configured, graph, run_worker,
     graph.page_errors.clear()
     run_worker(now=now + timedelta(minutes=61))
     assert len(graph.bd_calls()) == 1 and connector(client)["status"] == "working"
+
+
+# ---------- 15. ответы Graph API, которые нельзя разобрать как есть ----------
+
+def test_graph_odd_values_and_errors(client, configured, http_mock, run_ctx, ig):
+    """Infinity/NaN в теле и заголовках(json.loads их принимает) не роняют разбор; 341 - пауза по лимиту; тело,
+    которое не распаковалось, - повторяемая ошибка источника; токен с управляющим символом - ошибка настроек."""
+    from types import SimpleNamespace
+
+    from app.settings import get_settings
+
+    usage = {"X-App-Usage": '{"call_count": 1e999, "total_time": 12}',
+             "X-Business-Use-Case-Usage": json.dumps({BUSINESS_ID: [{"call_count": 5,
+                                                                      "estimated_time_to_regain_access": 1e999}]})}
+    assert ig.usage_pct(usage) == 12 and ig.regain_seconds(usage) is None
+    g = ig.graph_error({"error": {"code": float("inf"), "error_subcode": float("nan"), "message": "x"}})
+    assert (g.code, g.subcode) == (0, None)
+    assert ig._ts(10 ** 20) is None and ig._ts("0") is None
+    limited = ig.map_error(ig.GraphError(341, None, "Application limit reached", False, 400))
+    assert isinstance(limited, ig.RateLimited) and limited.retry_after == 3600
+    http_mock.on("GET", GRAPH + "me/permissions", content=b"not gzip", headers={"Content-Encoding": "gzip"})
+    with ig._client(run_ctx("instagram"), get_settings(), TOKEN) as c, pytest.raises(ig.SourceError) as e:
+        ig.graph_get(c, "me/permissions", {}, get_settings())
+    assert e.value.retryable and "DecodingError" in e.value.detail
+    with pytest.raises(ig.BadConfig):
+        ig._token(SimpleNamespace(meta_user_access_token=SimpleNamespace(get=lambda: "EAAfake\x7ftoken")))
+
+
+def test_cached_ig_user_bound_to_token_and_page(client, env, http_mock, graph, run_ctx, ig):
+    """Найденный прежде Instagram(state.igUserId) используется, только пока не сменились токен, META_PAGE_ID и
+    META_BUSINESS_ID: иначе сбор шёл бы от прежнего аккаунта до следующей проверки."""
+    from app.settings import get_settings
+
+    other = "17841400000000777"
+    env(META_USER_ACCESS_TOKEN=TOKEN, META_PAGE_ID=PAGE_ID)
+    http_mock.on("GET", GRAPH + "me/accounts", json={"data": [
+        {"id": "999", "name": "Другая", "instagram_business_account": {"id": other}},
+        {"id": PAGE_ID, "name": "SAQ Qurylys", "instagram_business_account": {"id": IG_ID}}]})
+
+    def resolve(state: dict) -> tuple[str, int]:
+        ctx = run_ctx("instagram", state=state)
+        with ig._client(ctx, get_settings(), TOKEN) as c:
+            found = ig._Run(ctx, get_settings(), c, []).ig_user_id()
+        return found, sum(r.url.path.endswith("/me/accounts") for r in graph.graph_calls())
+
+    source = ig._ig_source(get_settings())
+    assert TOKEN not in source and PAGE_ID in source
+    assert resolve({"igUserId": other, "igUserFor": source}) == (other, 0)  # кэш того же токена и Страницы
+    assert resolve({"igUserId": other}) == (IG_ID, 1)  # кэш без привязки(до этой проверки) - поиск заново
+    assert collector().state["igUserFor"] == source
+    env(META_PAGE_ID="999")
+    assert resolve(dict(collector().state)) == (other, 2)  # Страница сменилась - поиск заново
+
+
+def test_permalink_only_safe_instagram_links(ig):
+    """Ссылка на публикацию - только https на instagram.com и без символов, которые приём отбросил бы; иначе ссылка
+    на профиль(а не пустая)."""
+    profile = f"https://www.instagram.com/{ACCOUNT}/"
+    assert ig._permalink("https://www.instagram.com/p/C1x/", ACCOUNT) == "https://www.instagram.com/p/C1x/"
+    for bad in ('https://www.instagram.com/p/C1x/"onmouseover=x', "https://www.instagram.com/p/<b>",
+                "https://instagram.com@evil.example/p/1", "http://www.instagram.com/p/C1x/",
+                "https://evil.example/p/1", "https://www.instagram.com/" + "x" * 600, None, 5):
+        assert ig._permalink(bad, ACCOUNT) == profile, bad

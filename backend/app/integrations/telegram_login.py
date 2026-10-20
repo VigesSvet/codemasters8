@@ -23,13 +23,14 @@ import getpass
 import hashlib
 import json
 import sys
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
 from .. import logs, models
 from ..settings import Settings, get_settings
 from . import telegram as tg
-from .base import NotConfigured
+from .base import AuthExpired, ConnectorError, NotConfigured
 
 PENDING_TTL_S = 15 * 60
 OK, ERROR, NO_KEYS, NEED_PASSWORD, INVALID, EXPIRED, FLOOD, BUSY = 0, 1, 2, 3, 4, 5, 6, 7
@@ -79,7 +80,7 @@ def _pending_age(data: dict) -> float:
 
 
 def _load_pending(s: Settings) -> dict | None:
-    """Ожидание кода или None(нет файла). Нечитаемый файл удаляется."""
+    """Ожидание кода или None(нет файла). Нечитаемый файл или файл без сессии и phone_code_hash удаляется."""
     path = pending_path(s)
     try:
         text = tg.read_private(path)
@@ -89,7 +90,8 @@ def _load_pending(s: Settings) -> dict | None:
         return None
     try:
         data = json.loads(text)
-        if not isinstance(data, dict) or data.get("v") != 1:
+        if not isinstance(data, dict) or data.get("v") != 1 \
+                or not all(isinstance(data.get(k), str) and data[k] for k in ("session", "phoneCodeHash")):
             raise ValueError("формат")
     except ValueError:
         path.unlink(missing_ok=True)
@@ -147,10 +149,8 @@ async def _connect(session: str, s: Settings):
 
 
 async def _close(client) -> None:
-    try:
+    with suppress(Exception):  # отключение не меняет итог входа
         await client.disconnect()
-    except Exception:
-        pass
 
 
 def _save_session(client) -> str:
@@ -167,11 +167,14 @@ async def _who(client) -> str | None:
 
 
 async def _existing(s: Settings) -> str | None:
-    """Авторизованная сессия в файле: "@username" или None(нет файла или сессия недействительна)."""
+    """Авторизованная сессия в файле: "@username" или None(нет файла, сессия недействительна или испорчена)."""
     session = tg.read_session(s.tg_session_path)
     if not session:
         return None
-    client = await _connect(session, s)
+    try:
+        client = await _connect(session, s)
+    except AuthExpired:
+        return None
     try:
         return await _who(client)
     finally:
@@ -280,6 +283,7 @@ async def _interactive(s: Settings, force: bool) -> str:
             except errors.SessionPasswordNeededError:
                 for p_attempt in range(3):
                     password = getpass.getpass("Пароль двухфакторной защиты Telegram: ")
+                    logs.register_secret(password)
                     try:
                         user = await client.sign_in(password=password)
                         break
@@ -305,12 +309,16 @@ async def _logout(s: Settings) -> str:
     session = tg.read_session(s.tg_session_path)
     if not session:
         return "Сессии нет"
-    client = await _connect(session, s)
     try:
-        if await client.is_user_authorized():
-            await client.log_out()
-    finally:
-        await _close(client)
+        client = await _connect(session, s)
+    except AuthExpired:
+        pass  # испорченная сессия: выходить не из чего - только удалить файл
+    else:
+        try:
+            if await client.is_user_authorized():
+                await client.log_out()
+        finally:
+            await _close(client)
     Path(s.tg_session_path).unlink(missing_ok=True)
     _drop_pending(s)
     return "Выход выполнен, файл сессии удалён"
@@ -360,6 +368,7 @@ async def _dispatch(args, s: Settings, stale: bool) -> tuple[int, str]:
             password = getpass.getpass("Пароль двухфакторной защиты Telegram: ")
         if not password:
             raise Exit(ERROR, "Пароль пустой — повторите --password")
+        logs.register_secret(password)  # не печатается и не хранится; маскирование - на случай текста ошибки
         return OK, await _with_password(s, password, stale)
     return OK, await _interactive(s, args.force)
 
@@ -402,7 +411,7 @@ def main(argv: list | None = None) -> int:
         code, message = BUSY, MSG_BUSY
     except Exit as e:
         code, message = e.code, e.message
-    except NotConfigured as e:
+    except ConnectorError as e:  # права файла сессии, испорченная сессия в файле ожидания кода
         code, message = ERROR, e.detail
     except PermissionError as e:
         code, message = ERROR, f"Нет доступа к каталогу сессии Telegram ({type(e).__name__})"
@@ -412,7 +421,7 @@ def main(argv: list | None = None) -> int:
             raise
         code, message = mapped.code, mapped.message
     if message:
-        _say(message, err=code not in (OK,) and message not in ("Сессии нет", "Сессия недействительна"))
+        _say(message, err=code != OK and message not in ("Сессии нет", "Сессия недействительна"))
     return code
 
 

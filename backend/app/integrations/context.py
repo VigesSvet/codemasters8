@@ -28,7 +28,7 @@ from ..db import SessionLocal
 from ..logs import redact
 from ..settings import Settings, get_settings
 from . import http
-from .base import Connector, MediaIn, MediaKind, Publication
+from .base import Connector, MediaIn, MediaKind, Publication, pause_seconds
 
 if TYPE_CHECKING:
     from ..ingest import IngestResult, Known
@@ -148,7 +148,8 @@ class RunContext:
             return MediaIn(key=key, kind=kind, role=role, stored=stored, status="downloaded", origin_url=origin)
         except http.DownloadError as e:
             status = "unavailable" if e.code in _UNAVAILABLE else "failed"
-            return MediaIn(key=key, kind=kind, role=role, status=status, error=e.detail, origin_url=origin)
+            return MediaIn(key=key, kind=kind, role=role, status=status, error=e.detail, error_code=e.code,
+                           origin_url=origin)
         except media.MediaRejected as e:
             return MediaIn(key=key, kind=kind, role=role, status="failed", error=e.detail, origin_url=origin)
         except ValueError as e:  # учётные данные в обычных заголовках - ошибка подключения, файл не загружается
@@ -182,22 +183,26 @@ class RunContext:
 
     # ---------- приём ----------
 
-    def _namespace(self, namespace: str | None) -> str:
-        return namespace or self.connector.platform or self.code
+    def _ident(self, namespace: str | None, external_id: str) -> tuple[str, str]:
+        """ingest.ident; пространство не указано - площадка подключения(её ставят публикациям сборщика)."""
+        return ingest.ident(namespace or self.connector.platform, external_id)
 
-    def known(self, external_id: str, *, namespace: str | None = None) -> Optional["Known"]:
-        """Что уже принято по внешнему ID(без сети): какие файлы загружены, последняя версия содержимого."""
+    def _known(self, ident: tuple[str, str]) -> Optional["Known"]:
         if self._ephemeral:
             return None
         with SessionLocal() as db:
-            return ingest.known(db, self._namespace(namespace), str(external_id))
+            return ingest.known(db, *ident)
+
+    def known(self, external_id: str, *, namespace: str | None = None) -> Optional["Known"]:
+        """Что уже принято по внешнему ID(без сети): какие файлы загружены, последняя версия содержимого."""
+        return self._known(self._ident(namespace, external_id))
 
     def ingest(self, pub: Publication, *, note: str | None = None) -> "IngestResult":
         """Публикация → единый приём: файлы, которые ещё нужны, скачиваются(без открытой сессии), затем запись - в
         своей транзакции. Собранная другим источником - не перезаписывается(учитывается как "без изменений")."""
         if self._ephemeral:
             raise RuntimeError("Проверка из командной строки публикации не сохраняет")
-        k = self.known(pub.external_id, namespace=pub.namespace or pub.platform)
+        k = self._known(ingest.pub_ident(pub))  # тот же ключ, под которым ingest_publication запишет публикацию
         if k is not None and k.collector != self.code:
             res = ingest.IngestResult("foreign", k.ad_id, k.item_id, k.version, 0, 0, False, owner=k.collector)
         else:
@@ -212,7 +217,7 @@ class RunContext:
                     db.rollback()
                     raise
         if res.status == "foreign":
-            if res.owner not in self._foreign_noted:
+            if (res.owner or "") not in self._foreign_noted:  # одна заметка на источник-владельца за запуск
                 self._foreign_noted.add(res.owner or "")
                 self.note(f"Публикация {pub.external_id} уже получена через «{self._owner_name(res.owner)}» — "
                           "не перезаписывается")
@@ -236,12 +241,12 @@ class RunContext:
         if self._ephemeral:
             return False
         I = models.IngestItem
+        ns, eid = self._ident(namespace, external_id)
         values = {"collected_at": models.as_utc(self.now())}
         if self.run_id is not None:
             values["last_run_id"] = self.run_id
         with SessionLocal() as db:
-            res = db.execute(update(I).where(I.platform == self._namespace(namespace),
-                                             I.external_id == str(external_id), I.collector == self.code)
+            res = db.execute(update(I).where(I.platform == ns, I.external_id == eid, I.collector == self.code)
                              .values(**values).execution_options(synchronize_session=False))
             db.commit()
         if res.rowcount != 1:
@@ -293,7 +298,7 @@ class RunContext:
 
     def postpone(self, seconds: float, reason: str) -> None:
         """Следующий запуск по расписанию - не раньше чем через seconds с(после успешного завершения)."""
-        self.postponed = max(float(seconds), self.postponed or 0.0)
+        self.postponed = max(pause_seconds(seconds, 0.0), self.postponed or 0.0)
         self.note(reason)
 
     def save_state(self, **patch) -> None:
@@ -304,7 +309,8 @@ class RunContext:
         from . import service
 
         with SessionLocal() as db:
-            row = service.row(db, self.code, create=True)
+            # блокировка строки: параллельная запись маршрута в тот же JSON(пауза 2ГИС) не затирается
+            row = service.row(db, self.code, create=True, lock=True)
             row.state = {**(row.state or {}), **patch}
             db.commit()
 

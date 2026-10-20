@@ -11,6 +11,8 @@
     "SERVICE_API_TOKEN": "сервисный токен бота заявок",
     "SAQ_ALLOW_SCHEMA_RESET": "разрешение пересоздать базу",
     "SAQ_COLLECTED_AUTOLINK": "автопривязка собранных публикаций",
+    "SAQ_CORS_ORIGINS": "адреса интерфейса на другом домене",
+    "SAQ_WEB_HOSTS": "имена интерфейса в сети",
     "SAQ_SCREENING_DAYS": "окно «Проверки по рекламе»",
     "SAQ_WORKER_POLL_S": "пауза опроса воркера",
     "SAQ_WORKER_ID": "имя воркера",

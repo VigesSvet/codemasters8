@@ -65,7 +65,17 @@ const truthy = (x: unknown) => (Array.isArray(x) ? x.length > 0 : x !== null && 
 const pyStr = (v: unknown) => (v === null || v === undefined ? 'None' : v === true ? 'True' : v === false ? 'False' : String(v))
 const cmp = (a: unknown, b: unknown) => ((a as string) < (b as string) ? -1 : (a as string) > (b as string) ? 1 : 0)
 const pct = (x: number) => Math.floor(x * 100 + 0.5)
-const dayNum = (iso: string) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86_400_000
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}/
+/** Дата "YYYY-MM-DD…" → номер дня от 01.01.1970; другой формат или несуществующая дата - null, срок не разобран(как _iso_day
+ *  в risk.py). Не Date.UTC: тот переносит "2025-02-30" на 2 марта, а годы 0-99 считает 1900-ми */
+function isoDay(v: unknown): number | null {
+  if (typeof v !== 'string' || !ISO_DAY.test(v)) return null
+  const y = +v.slice(0, 4), m = +v.slice(5, 7) - 1, d = +v.slice(8, 10)
+  const t = new Date(0)
+  t.setUTCFullYear(y, m, d)
+  // года 0 в Python нет; день или месяц перенесён в другой месяц - такой даты нет
+  return y >= 1 && t.getUTCMonth() === m && t.getUTCDate() === d ? t.getTime() / 86_400_000 : null
+}
 /** «Сегодня» по Усть-Каменогорску (UTC+5, без перехода на летнее время) — как datetime.now(ALMATY) в risk.py:
  *  иначе у браузера в другом поясе около полуночи дата расчёта (и R6) разошлась бы с бэкендом */
 const today = () => new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10)
@@ -75,6 +85,7 @@ const WS = '\\t\\n\\v\\f\\r\\x1c-\\x20\\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u
 const SENTENCE = new RegExp(`(?<=[.!?…])[${WS}]+|\\n+`)
 const WORDS = new RegExp(`[${WS}]+`)
 const BLANK = new RegExp(`^[${WS}]*$`)
+const ENDS_WS = new RegExp(`[${WS}]$`)
 const words = (s: string) => s.split(WORDS).filter(Boolean)
 
 /** Подставляет {ключ} из values; неизвестные ключи оставляет как есть (как fill() в risk_model.py) */
@@ -115,7 +126,10 @@ export function quote(text: string | null | undefined, marker: string): string |
     if (i < 0) continue
     const ws = words(s)
     if (ws.length <= T.quoteMaxWords) return ws.join(' ')
-    const wi = words(s.slice(0, i)).length
+    // номер слова, где начинается маркер: маркер с середины слова("оплат" в "предоплата") - начало этого слова
+    // уже посчитано в head, то же слово, а не следующее(как в risk.py)
+    const head = s.slice(0, i)
+    const wi = words(head).length - (i > 0 && !ENDS_WS.test(head) ? 1 : 0)
     const a = Math.max(0, wi - T.quoteWordsBefore), b = Math.min(ws.length, wi + T.quoteWordsAfter)
     return (a > 0 ? '… ' : '') + ws.slice(a, b).join(' ') + (b < ws.length ? ' …' : '')
   }
@@ -252,8 +266,9 @@ export function factorR5(c: Complex): RiskFactor {
   const pairs = [['declared', 'Заявленная готовность', d], ['confirmed', 'Подтверждённая готовность', k]] as const
   const items = pairs.filter(([, , x]) => truthy(x)).map(([key, label, x]) =>
     item({ kind: 'readiness', ref: key, label, value: x?.value, source: x?.source, date: x?.date }))
+  // готовность - конечное число(как _is_num в risk.py): не true/false, не NaN и не бесконечность
   const ok = (x?: ReadinessValue | null): x is ReadinessValue =>
-    !!x && truthy(x) && typeof x.value === 'number' && truthy(x.source) && truthy(x.date)
+    !!x && truthy(x) && Number.isFinite(x.value) && truthy(x.source) && truthy(x.date)
   if (!(ok(d) && ok(k))) return factor('R5', 'unknown', 'incomplete', null, items)
   // округление до сотых до сравнения и вывода — одинаково с risk.py
   const diff = Math.floor(Math.abs(d.value - k.value) * 100 + 0.5) / 100, hit = diff >= T.readinessGap
@@ -264,8 +279,10 @@ export function factorR5(c: Complex): RiskFactor {
 export function factorR6(c: Complex, asOf: string): RiskFactor {
   if (c.stage === BUILT) return factor('R6', 'clear', 'built')
   const planned = c.plannedEnd
-  if (planned) {
-    const days = dayNum(asOf) - dayNum(planned)
+  const plannedDay = isoDay(planned)
+  if (plannedDay !== null) { // срок в другом формате или несуществующая дата - не просрочка(как в risk.py)
+    // asOf не дата - в risk.py исключение, здесь NaN и просрочки нет
+    const days = (isoDay(asOf) ?? NaN) - plannedDay
     if (days >= T.overdueDays) return factor('R6', 'hit', 'overdue', { plannedEnd: fmtDate(planned), days },
       [item({ kind: 'deadline', ref: 'plannedEnd', label: 'Заявленный срок сдачи', date: planned })])
   }
@@ -323,7 +340,7 @@ export function assessed(c: Complex, ads: Ad[], appeals: Appeal[]): boolean {
   if (model.documents.some((d) => sourced(docSource(b, d.key)))) return true
   if (appeals.some((a) => a.complexId === c.id && a.status === 'verified')) return true
   const k = ((c.readiness || {}) as Partial<Readiness>).confirmed
-  if (k && typeof k.value === 'number' && truthy(k.source) && truthy(k.date)) return true
+  if (k && Number.isFinite(k.value) && truthy(k.source) && truthy(k.date)) return true
   return (c.photos || []).some((p) => truthy(p.date) && truthy(p.source))
 }
 

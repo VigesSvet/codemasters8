@@ -2,6 +2,7 @@
 import io
 import re
 import zipfile
+from datetime import datetime, UTC
 
 from reportlab.platypus import Paragraph, Table
 
@@ -118,3 +119,49 @@ def test_validation(client):
     assert client.post(url + "?format=odt", json=_body()).status_code == 422
     assert client.post("/api/complexes/nope/request-letter", json=_body()).status_code == 404
     assert _requests(client) == []
+
+
+def test_helpers_edge_cases():
+    # дата в имени файла - как в письме(по Алматы), id - только безопасные символы(Content-Disposition)
+    assert letters._file_base("c2", "mio", datetime(2026, 10, 20, 20, 0, tzinfo=UTC)) == "request-c2-mio-20261021"
+    assert letters._file_base('../x"\r\n;', "gask", datetime(2026, 10, 20, 1, 0, tzinfo=UTC)) == "request-x-gask-20261020"
+    # пункты закона: числа по значению, смесь чисел и "ч. N" не роняет сортировку
+    assert sorted(["ч. 1", "10", "2", "1-1", "1"], key=letters._part_key) == ["1", "1-1", "2", "10", "ч. 1"]
+    assert sorted(["2", "1²"], key=letters._part_key) == ["2", "1²"]  # "²" - isdigit, но не число для int()
+    # DOCX: символы вне XML 1.0 вырезаются, разметка экранируется
+    assert letters._xml("a\x01\ufffe\uffff\ud800b <w:t> & 😀\t\n") == "ab &lt;w:t&gt; &amp; 😀\t\n"
+
+
+def test_ad_link_wording_matches_risk_engine():
+    """Публикация со статусом "Нарушение подтверждено" - привязка факт(как в движке риска и PDF карточки), а не
+    "гипотеза ИИ, аналитиком не подтверждена"; проценты гипотезы - половина вверх, как в PDF и во фронтенде."""
+    ad = {"id": "x", "platform": "olx", "account": "@x", "text": "бронь", "matchConfidence": 0.125}
+    assert letters._ad_line({**ad, "status": "confirmed"}, {"factors": []}).endswith("(привязка к ЖК подтверждена аналитиком)")
+    assert letters._ad_line({**ad, "status": "new"}, {"factors": []}).endswith(
+        "(привязка к ЖК — гипотеза ИИ (13%), аналитиком не подтверждена)")
+    assert letters._doc_line({"label": "Разрешение МИО", "value": None}) == (
+        "Разрешение МИО: нет данных — не проверялся: источника и даты сверки нет")
+
+
+def test_law_intro_text():
+    """Дата закона - из law.json(law.act_date_text), текст вступления - прежний."""
+    assert letters.law_intro().startswith(
+        "Сведения запрашиваются для проверки соблюдения требований Закона Республики Казахстан от 7 апреля 2016 года "
+        "№ 486-V «О долевом участии в жилищном строительстве» (https://adilet.zan.kz/rus/docs/Z1600000486")
+
+
+def test_letter_screens_only_its_complex(client, monkeypatch):
+    """Письмо и предпросмотр берут "Проверку по рекламе" одного ЖК(screening.compute_complex), а не оценку всех ЖК;
+    подпись та же, что в карточке ЖК."""
+    from app import screening
+
+    label = client.get("/api/complexes/c2").json()["screening"]["label"]
+
+    def whole_db(*a, **kw):
+        raise AssertionError("оценка всех ЖК ради одного письма")
+    monkeypatch.setattr(screening, "compute", whole_db)
+    monkeypatch.setattr(screening, "load_facts", whole_db)
+    t = _preview(client)["text"]
+    assert f"Проверка по рекламе (предварительная автоматическая оценка, не вывод о нарушении): {label}" in t
+    r = client.post("/api/complexes/c2/request-letter", params={"format": "docx"}, json=_body())
+    assert r.status_code == 200 and len(_requests(client)) == 1

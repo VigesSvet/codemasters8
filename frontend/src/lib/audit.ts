@@ -16,6 +16,8 @@ export const AUDIT_KIND: Record<AuditKind, { name: string; tag: string; Icon: ty
   export: { name: 'выгрузка', tag: 'gray', Icon: IcDownload },
   ai: { name: 'ИИ', tag: 'blue', Icon: IcSparkSearch },
   alert: { name: 'жителям', tag: 'yellow', Icon: IcBell },
+  // события подключений сервер отдаёт только с токеном администратора(GET /api/audit), без ЖК и публикации
+  connector: { name: 'подключения', tag: 'gray', Icon: IcDatabase },
 }
 /** Запись вида «система» от имени человека — его ввод (сервер так пишет «Публикация добавлена вручную»), а не действие системы */
 const MANUAL = { name: 'ввод вручную', tag: 'gray', Icon: IcPencil }

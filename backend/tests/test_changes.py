@@ -1,10 +1,13 @@
 """"Удалено в источнике" и история изменений(app.changes): пословный diff версий, удалённые условия оплаты, статус в
 источнике по окну сбора(classify), GET /api/ads/{id}/source-status и GET /api/changes на приёме Instagram."""
+import dataclasses
 from datetime import datetime, timedelta, UTC
+
+from conftest import png_bytes
 
 from app import changes, ingest, models
 from app.db import SessionLocal
-from app.integrations.base import Publication
+from app.integrations.base import MediaIn, Publication
 
 T0 = datetime(2026, 10, 1, 10, 0, tzinfo=UTC)
 
@@ -78,6 +81,18 @@ def test_classify_present_deleted_window_and_single_miss():
     assert changes.classify(nopub, window + [nopub], RUNS)["status"] == "unknown"
 
 
+def test_classify_running_run_is_not_a_miss():
+    # запуск 5 ещё идёт: окно аккаунта уже обновлено, до публикации сбор не дошёл - это не пропуск
+    runs = [*RUNS[:4], {**RUNS[4], "status": "running", "finishedAt": None}]
+    window = [it(i, 5, 10 + i) for i in range(1, 5)]
+    seen_in_4 = it(11, 4, 12)
+    s = changes.classify(seen_in_4, [*window, seen_in_4], runs)
+    assert s["status"] == "present" and s["missedRuns"] == 0
+    gone = it(9, 2, 12)  # не видели в завершённых 3 и 4 - удалена и без идущего запуска
+    s = changes.classify(gone, [*window, gone], runs)
+    assert s["status"] == "deleted" and s["missedRuns"] == 2
+
+
 def test_classify_krisha_and_other_unknown():
     k = it(1, 1, 1, collector="krisha")
     s = changes.classify(k, [k, it(2, 5, 2, collector="krisha")], RUNS)
@@ -126,11 +141,60 @@ def test_source_status_and_changes_api(client):
     ch = [c for c in d["changes"] if c["adId"] == edited]
     assert len(ch) == 1 and ch[0]["fromVersion"] == 1 and ch[0]["toVersion"] == 2
     assert "terms_removed" in ch[0]["kinds"] and "200 000 ₸" in ch[0]["termsRemoved"] and ch[0]["added"] == ["Рассрочка"]
+    assert ch[0]["text"].startswith("ЖК Тест, пост 3")
     assert [x["adId"] for x in d["deleted"]] == [gone] and d["sourceStatus"]["deleted"] == 1
+    assert d["deleted"][0]["text"].startswith("ЖК Тест, пост 2")
     assert d["limits"] and d["items"] == 4
     assert client.get("/api/changes", params={"days": 0}).status_code == 422
+
+
+def test_changes_diff_only_up_to_limit(client, monkeypatch):
+    # три правки одной публикации, limit 1 - пословный diff только у самой новой пары версий
+    with SessionLocal() as db:
+        for k in range(1, 4):
+            ingest.ingest_publication(db, pub(1, f"ЖК Тест, цена {k} млн", T0 + timedelta(days=k)), collector="instagram",
+                                      run_id=run_row(db, k))
+        db.commit()
+    calls = []
+    real = changes.change_of
+    monkeypatch.setattr(changes, "change_of", lambda a, b: calls.append(b["version"]) or real(a, b))
+    with SessionLocal() as db:
+        d = changes.recent_changes(db, days=3650, limit=1, now=T0 + timedelta(days=10))
+    assert [c["toVersion"] for c in d["changes"]] == [3] and calls == [3]
 
 
 def test_changes_empty(client):
     d = client.get("/api/changes").json()
     assert d["changes"] == [] and d["deleted"] == [] and d["items"] == 0
+
+
+# ---------- ключ записи приёма(ingest.ident): один и тот же при записи и поиске ----------
+
+def test_ident_normalisation():
+    assert ingest.ident(None, " 42 ") == ("other", "42")
+    assert ingest.ident("", 42) == ("other", "42")
+    assert ingest.ident("x" * 20, "a") == ("x" * 16, "a")
+    p = pub(1, "ЖК Тест", T0)
+    assert ingest.pub_ident(p) == ("instagram", "chg-1")
+    assert ingest.pub_ident(dataclasses.replace(p, namespace="tgbot")) == ("tgbot", "chg-1")
+    assert ingest.pub_ident(dataclasses.replace(p, platform="")) == ("other", "chg-1")
+
+
+def test_run_context_finds_item_under_ingest_key(client, run_ctx):
+    """Публикация без площадки записывается в пространство "other" - RunContext.ingest ищет её там же(раньше - в
+    площадке подключения), и повторный приём не скачивает уже загруженный файл заново; touch без пространства - в
+    площадке подключения, ID - без пробелов по краям."""
+    ctx = run_ctx("instagram")
+    fetched: list[int] = []
+
+    def fetch() -> MediaIn:
+        fetched.append(1)
+        return ctx.store_media(png_bytes((7, 8, 9)), key="m")
+    p = dataclasses.replace(pub(1, "ЖК Тест", T0), platform="", external_id=" chg-x ",
+                            media=[MediaIn(key="m", fetch=fetch)])
+    assert ctx.ingest(p).status == "created"
+    assert ctx.ingest(p).status == "unchanged" and fetched == [1]
+    with SessionLocal() as db:
+        assert ingest.known(db, "other", "chg-x").downloaded_keys == {"m"}
+    assert ctx.ingest(pub(2, "ЖК Тест, пост 2", T0)).status == "created"
+    assert ctx.touch(" chg-2 ") is True and ctx.touch("chg-x") is False

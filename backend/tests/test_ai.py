@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 from app.ai import ENGINE, analyze, case_catalog
 from app.ai import ocr as ocr_engine
 from app.ai.evaluate import load_cases, run
-from app.ai.matching import W, account_keys, build_catalog
+from app.ai.matching import W, account_keys, build_catalog, street_house
 from app.ai.nlp import fold_homoglyphs, norm, phone_digits, phones, skeleton_text, tokens
 from app.ai.terms import extract
 from app.risk_model import MARKERS, SHARED, T
@@ -77,6 +77,19 @@ def test_phones():
     assert account_keys("t.me/nord_hills_uka") == {"nord_hills_uka"} and account_keys("https://ertis-invest.kz/flats") == {
         "ertis-invest.kz"}
     assert account_keys("krisha.kz / собственник") == {"krisha.kz / собственник"}  # продавец, а не вся площадка
+    # мобильный хост соцсети и порт - тот же аккаунт; канал Telegram в режиме просмотра - аккаунт после "s/"
+    assert account_keys("https://m.instagram.com/altai.build") == account_keys("instagram.com:443/altai.build") == {
+        "altai.build"}
+    assert account_keys("https://t.me/s/nord_hills_uka") == {"nord_hills_uka"}
+    assert account_keys("https://www.facebook.com/profile.php?id=100012") == {"profile.php?id=100012"}
+    # хост мессенджера, сокращателя или поддомена соцсети - не аккаунт: иначе все такие ссылки были бы одним аккаунтом
+    for link in ("https://wa.me/77001234567", "https://vm.tiktok.com/ZMabc/", "https://web.telegram.org/k/"):
+        assert account_keys(link) == {link.removeprefix("https://").lower()}, link
+    assert not account_keys("https://facebook.com/profile.php") and not account_keys("https://youtube.com/channel/")
+    # "@" перед служебным словом - имя аккаунта, а не раздел соцсети
+    assert account_keys("https://www.youtube.com/@channel") == {"channel"} and account_keys("tiktok.com/@video") == {"video"}
+    # поддомен мессенджера - тоже не аккаунт: приглашения в разные группы WhatsApp - разные ключи
+    assert account_keys("https://chat.whatsapp.com/AbC") != account_keys("https://chat.whatsapp.com/XyZ")
 
 
 # ---------- условия оплаты ----------
@@ -209,6 +222,28 @@ def test_long_texts_are_bounded():
     assert (first["amount"], first["quote"]) == (1000, "Бронь 1 000 ₸")
 
 
+def test_long_digit_runs_and_groups():
+    """Склеенные цифры - не сумма: int на тысячи знаков не сериализуется в JSON(было 500), длинная дробь - в inf;
+    тысячи разрядных групп подряд разбираются линейно(было квадратично - секунды)."""
+    for text in ("Бронь " + "1" * 5000 + " тг", "Цена " + "1" * 400 + ".5 $", "Взнос " + "9" * 400 + ",5 млн тг"):
+        json.dumps(extract(text), allow_nan=False)
+        assert all(t.get("amount") is None for t in extract(text)), text
+    assert _one(extract("Цена 999 999 999 999 тг"), "price")["amount"] == 999999999999
+    assert extract("Цена 999 999 999 999 999к тг") == []  # с множителем "к" - тоже не меньше 10¹⁵
+    # шесть разрядных групп не обрезаются до пяти(было: триллион из квинтиллиона)
+    assert _one(extract("Бронь 1 000 000 000 000 000 000 тг"), "booking").get("amount") is None
+    for unit in ("000 ", "000\u00a0", "1.000"):
+        started = time.perf_counter()
+        extract((unit * 5000)[:20000], (unit * 5000)[:20000])
+        assert time.perf_counter() - started < 2, unit
+
+
+def test_negation_is_a_whole_word():
+    """"нет" в конце другого слова за 16 символов до якоря("Кабинет … бронь") - не отрицание "нет брони"."""
+    assert _one(extract("Кабинет" + " " * 13 + "бронь 50 000 тг"), "booking")["label"] == "Платная бронь"
+    assert _one(extract("Нет" + " " * 13 + "брони"), "booking")["label"] == "Бронь без оплаты"
+
+
 def test_numbers_that_are_not_money():
     assert extract("Продаю гараж, 18 м², ворота новые, цена договорная") == []
     assert extract("Шығыс Тауэр — 18 этажей, сдача 2028 года, IV кв. 2028") == []
@@ -234,8 +269,12 @@ def test_match_features():
     h = _top("Осталось 12 квартир", account="@kvartal.vostok")
     assert (h["complexId"], h["low"]) == ("c9", True) and _features(h) == {"account"}
     assert _top("Осталось 12 квартир", url="https://www.instagram.com/kvartal.vostok/")["complexId"] == "c9"
-    # название ЖК в имени аккаунта
+    # название ЖК в имени аккаунта: целыми словами или, если название длинное, внутри склеенного имени
     assert _top("Старт продаж", account="@belukha.park.sale")["complexId"] == "c10"
+    assert _top("Старт продаж", account="@nordhillsuka")["complexId"] == "c6"
+    orda = build_catalog([{"id": "o1", "name": "ЖК Орда", "address": "", "district": ""}], [])
+    assert analyze(orda, "Старт продаж", account="@orda_kvartiry")["hypotheses"][0]["complexId"] == "o1"
+    assert analyze(orda, "Старт продаж", account="@kordan.estate")["hypotheses"] == []  # "орда" внутри другого слова
     # телефон застройщика с двумя строящимися ЖК - признак делится между ними
     hyps = analyze(case_catalog(), "Звоните +7 7232 00-00-02", None, "@x")["hypotheses"]
     assert {h["complexId"] for h in hyps} == {"c2", "c8"} and all(h["low"] and _features(h) == {"phone"} for h in hyps)
@@ -269,6 +308,44 @@ def test_address_with_and_without_prefix():
     # без "ул./пр./на" улица и дом - признак слабее: слово-улица может быть просто словом
     h = _top("Утепова 18 — старт продаж")
     assert (h["complexId"], h["low"], h["reasons"][0]["weight"]) == ("c11", True, W["address_bare"])
+
+
+@pytest.mark.parametrize("address, street, house", [
+    ("пр. Абая, 172", "Абая", "172"), ("Абая 172", "Абая", "172"), ("ул. Кокжал Барака, д. 18б", "Кокжал Барака", "18б"),
+    # как в открытом реестре: область и город перед улицей, инициалы, участок вместо дома
+    ("Восточно-Казахстанская область, г.Усть-Каменогорск, улица Кокжал Барака, д. 18б", "Кокжал Барака", "18б"),
+    ("пр. И. Есенберлина, д.92", "Есенберлина", "92"), ("ул. Кокжал Барака, уч. 1", "Кокжал Барака", None),
+    ("г.Усть-Каменогорск, улица Кайсенова, участок 55/1", "Кайсенова", None), ("", "", None),
+])
+def test_complex_address_parts(address, street, house):
+    assert street_house(address) == (street, house)
+
+
+def test_registry_style_address_matches():
+    """Адрес ЖК в формате реестра("область, город, улица, д.") раньше не разбирался - адресного признака не было."""
+    cat = build_catalog([{"id": "r1", "name": "Орда", "district": "",
+                          "address": "Восточно-Казахстанская область, г.Усть-Каменогорск, проспект И. Есенберлина, д. 92"},
+                         {"id": "r2", "name": "Бриз", "district": "", "address": "ул. Кокжал Барака, уч. 1"}], [])
+    h = analyze(cat, "Квартиры на Есенберлина 92, звоните")["hypotheses"][0]
+    assert (h["complexId"], h["low"], _features(h)) == ("r1", False, {"address"})
+    # у ЖК участок, а не дом: улица с "ул." и любым номером - слабый признак(дом не сравнить)
+    h = analyze(cat, "Квартиры, ул. Кокжал Барака 19")["hypotheses"][0]
+    assert (h["complexId"], h["low"], h["reasons"][0]["weight"]) == ("r2", True, W["street"])
+    assert h["reasons"][0]["detail"] == "Упомянута улица ЖК (ул. Кокжал Барака, уч. 1)"
+
+
+def test_matching_scales_with_catalog():
+    """Индексы текста строятся один раз, а не на каждый ЖК: 20 000 символов против сотен ЖК - доли секунды(раньше на
+    400 ЖК - больше минуты, открытый /api/analyze был DoS)."""
+    complexes = [{"id": f"x{i}", "name": f"Ромашка {i}", "address": f"ул. Улица{i % 50}, {i}",
+                  "district": "Центр", "developerId": None} for i in range(400)]
+    cat = build_catalog(complexes + SEED["complexes"], SEED["developers"])
+    for text in ("1 " * 10000, "ул. Абая " * 2200, " ".join(c["name"] for c in complexes)[:20000]):
+        started = time.perf_counter()
+        analyze(cat, text, text.upper(), "@x")
+        assert time.perf_counter() - started < 10, text[:20]
+    h = analyze(cat, "Старт продаж: Ромашка 215, ул. Улица15, 215")["hypotheses"][0]
+    assert (h["complexId"], _features(h)) == ("x215", {"name", "address"})
 
 
 def test_name_declension_and_lost_kazakh_letters():
@@ -663,6 +740,14 @@ TSV = ("level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidt
        "5\t1\t2\t1\t1\t1\t10\t90\t120\t30\t70\tДДУ\n")
 
 
+@pytest.fixture(autouse=True)
+def _ocr_status_cache():
+    """Кэш проверки движка(ocr.status) - свой у каждого теста: тесты подменяют программу и её ответы."""
+    ocr_engine.status_cache_clear()
+    yield
+    ocr_engine.status_cache_clear()
+
+
 @pytest.fixture
 def fake_tesseract(monkeypatch):
     """Подмена вызова tesseract: версия, языки(без kaz) и TSV; аргументы распознавания запоминаются."""
@@ -765,7 +850,7 @@ def test_ocr_upload_limit_before_reading_body(client, monkeypatch):
     """Больше 10 МБ - 413 сразу по Content-Length(тело не читается и не ложится во временный файл), а без Content-Length
     (chunked) - как только прочитано больше предела."""
     called = []
-    monkeypatch.setattr(ocr_engine, "recognize", lambda *a: called.append(a))
+    monkeypatch.setattr(ocr_engine, "recognize", lambda *a, **kw: called.append(a))
     big = b"\x89PNG\r\n\x1a\n" + b"\x00" * (ocr_engine.MAX_BYTES + 200_000)
     r = _upload(client, big)
     assert (r.status_code, r.json()["detail"]) == (413, ocr_engine.TOO_BIG) and not called
@@ -839,6 +924,182 @@ def test_ocr_engine_failures(client, monkeypatch, fake_tesseract):
     monkeypatch.setattr(ocr_engine, "_run", crashing)
     r = _upload(client, _png())
     assert r.status_code == 200 and "ошибкой: Error: unknown language" in r.json()["detail"]
+
+    # путь временного файла из сообщения tesseract аналитику не показывается
+    def unreadable(args, data=None, timeout=10):
+        if "tsv" in args:
+            return subprocess.CompletedProcess(args, 1, b"", f"Error in pixRead: cannot read {args[1]}\n".encode())
+        return fake_tesseract_run(args)
+
+    monkeypatch.setattr(ocr_engine, "_run", unreadable)
+    detail = _upload(client, _png()).json()["detail"]
+    assert detail == "Tesseract завершился с ошибкой: Error in pixRead: cannot read page.png", detail
+
+
+def test_ocr_not_started_hides_server_paths(client, monkeypatch, caplog):
+    """Программа не запускается: аналитику - причина без пути к программе, путь - в журнал API."""
+    def denied(args, data=None, timeout=10):
+        raise PermissionError(13, "Permission denied", args[0])
+
+    monkeypatch.setattr(ocr_engine, "_which", lambda: "/opt/secret/bin/tesseract")
+    monkeypatch.setattr(ocr_engine, "_run", denied)
+    with caplog.at_level("WARNING", logger="saq.ocr"):
+        st = client.get("/api/ocr/status").json()
+    assert (st["available"], st["detail"]) == (False, "Tesseract не запускается: Permission denied")
+    assert "/opt/secret" in caplog.text
+
+
+def test_ocr_endpoint_busy_fast_503(client, fake_tesseract, monkeypatch):
+    """Все распознавания заняты: POST /api/ocr не ждёт очереди дольше API_WAIT_S(ожидание занимало бы поток пула API),
+    а сразу отвечает 503 с Retry-After; освободилось место - распознаёт как обычно."""
+    import threading
+
+    slots = threading.BoundedSemaphore(1)
+    monkeypatch.setattr(ocr_engine, "_SLOTS", slots)
+    monkeypatch.setattr(ocr_engine, "API_WAIT_S", 0.05)
+    slots.acquire()
+    t = time.perf_counter()
+    r = _upload(client, _png())
+    assert (r.status_code, r.json()["detail"]) == (503, ocr_engine.BUSY) and r.headers["retry-after"] == "5"
+    assert time.perf_counter() - t < 2 and not [c for c in fake_tesseract if "tsv" in c]
+    slots.release()
+    assert _upload(client, _png()).json()["engine"] == "tesseract"
+    assert slots.acquire(blocking=False)  # место возвращено и после распознавания
+    slots.release()
+
+
+def test_ocr_timeout_setting(monkeypatch, caplog):
+    """SAQ_OCR_TIMEOUT с опечаткой - значение по умолчанию с предупреждением, а не ValueError при импорте(API не запускался)."""
+    for raw, want in (("", 60), ("90", 90), (" 30 ", 30), ("60s", 60), ("0", 60), ("-5", 60), ("1e3", 60)):
+        monkeypatch.setenv("SAQ_OCR_TIMEOUT", raw)
+        caplog.clear()
+        with caplog.at_level("WARNING", logger="saq.ocr"):
+            assert ocr_engine._timeout() == want, raw
+        assert ("SAQ_OCR_TIMEOUT: ожидается" in caplog.text) == (raw.strip() not in ("", "90", "30")), raw
+
+
+def test_ocr_slot_without_wait_queues_and_is_released(monkeypatch):
+    """Анализ публикаций(recognize без wait) ждёт очереди без предела, как раньше; место освобождается и после ошибки."""
+    import threading
+
+    slots = threading.BoundedSemaphore(1)
+    monkeypatch.setattr(ocr_engine, "_SLOTS", slots)
+    slots.acquire()
+    with pytest.raises(ocr_engine.OcrError) as e, ocr_engine._slot(0.01):
+        pass
+    assert (e.value.status, e.value.detail) == (503, ocr_engine.BUSY)
+    threading.Timer(0.2, slots.release).start()
+    t = time.perf_counter()
+    with ocr_engine._slot(None):
+        assert time.perf_counter() - t >= 0.15
+    with pytest.raises(ocr_engine.OcrError) as e:
+        ocr_engine.recognize(b"", "image/png")  # ошибка файла внутри очереди
+    assert e.value.status == 422 and slots.acquire(blocking=False)
+    slots.release()
+
+
+def _probes(calls) -> int:
+    return sum(1 for a in calls if isinstance(a, list) and a[1:] == ["--version"])
+
+
+def test_ocr_status_cached(client, fake_tesseract, monkeypatch):
+    """GET /api/ocr/status открыт: проверка движка(два запуска tesseract) - не на каждый запрос, а раз в STATUS_TTL_S;
+    распознавание берёт тот же результат."""
+    first = client.get("/api/ocr/status").json()
+    for _ in range(5):
+        assert client.get("/api/ocr/status").json() == first
+    assert _upload(client, _png()).json()["engine"] == "tesseract"
+    assert _probes(fake_tesseract) == 1
+    # копия, а не сам кэш: изменение ответа вызывающим не портит следующий
+    ocr_engine.status()["languages"].append("xxx")
+    assert ocr_engine.status()["languages"] == ["rus", "eng"]
+    now = [time.monotonic()]
+    monkeypatch.setattr(ocr_engine.time, "monotonic", lambda: now[0])
+    now[0] += ocr_engine.STATUS_TTL_S - 1
+    ocr_engine.status()
+    assert _probes(fake_tesseract) == 1
+    now[0] += 2  # срок истёк - проверка заново
+    ocr_engine.status()
+    assert _probes(fake_tesseract) == 2
+
+
+def test_ocr_status_unavailable_rechecked_soon(monkeypatch):
+    """Недоступный движок(не запускается, нет языков) перепроверяется через STATUS_RETRY_S, а не через STATUS_TTL_S:
+    установленный после запуска API языковой пакет виден быстро. Нет программы в PATH - без кэша."""
+    langs = [b"List of available languages (1):\nosd\n"]
+    calls = []
+
+    def run(args, data=None, timeout=10):
+        calls.append(args)
+        out = b"tesseract 5.3.0\n" if args[1:] == ["--version"] else langs[0]
+        return subprocess.CompletedProcess(args, 0, out, b"")
+
+    now = [1000.0]
+    monkeypatch.setattr(ocr_engine.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(ocr_engine, "_which", lambda: "/usr/bin/tesseract")
+    monkeypatch.setattr(ocr_engine, "_run", run)
+    assert ocr_engine.status()["available"] is False
+    langs[0] = b"List of available languages (2):\nrus\neng\n"
+    now[0] += ocr_engine.STATUS_RETRY_S - 1
+    assert ocr_engine.status()["available"] is False and _probes(calls) == 1
+    now[0] += 2
+    assert ocr_engine.status()["languages"] == ["rus", "eng"] and _probes(calls) == 2
+    # программу удалили - сразу "не установлен", хотя кэш "доступен" ещё не истёк
+    monkeypatch.setattr(ocr_engine, "_which", lambda: None)
+    assert ocr_engine.status()["detail"] == ocr_engine.NOT_INSTALLED
+    # другая программа(TESSERACT_CMD, PATH) - своя проверка
+    monkeypatch.setattr(ocr_engine, "_which", lambda: "/opt/tesseract")
+    ocr_engine.status()
+    assert _probes(calls) == 3 and calls[-1][0] == "/opt/tesseract"
+
+
+def test_ocr_status_rechecked_after_engine_failure(client, fake_tesseract, monkeypatch):
+    """Распознавание не запустилось или tesseract завершился с ошибкой(удалён языковой пакет) - кэш сбрасывается,
+    следующая проверка запускает tesseract заново."""
+    plain_run = ocr_engine._run
+
+    def exit_error(args):
+        return subprocess.CompletedProcess(args, 1, b"", b"Error: unknown language\n")
+
+    def not_started(args):
+        raise FileNotFoundError(2, "No such file or directory")
+
+    ocr_engine.status()
+    for fail in (exit_error, not_started):
+        def run(args, data=None, timeout=10, fail=fail):
+            return fail(args) if "tsv" in args else plain_run(args)
+
+        monkeypatch.setattr(ocr_engine, "_run", run)
+        before = _probes(fake_tesseract)
+        assert _upload(client, _png()).json()["text"] == ""
+        assert _probes(fake_tesseract) == before  # распознавание взяло кэш
+        ocr_engine.status()
+        assert _probes(fake_tesseract) == before + 1
+
+
+def test_ocr_status_single_flight(monkeypatch):
+    """Истёкший кэш под потоком запросов: tesseract запускает один из них, остальные получают его результат."""
+    import threading
+
+    calls, gate = [], threading.Event()
+
+    def slow(args, data=None, timeout=10):
+        calls.append(args)
+        gate.wait(5)
+        out = b"tesseract 5.3.0\n" if args[1:] == ["--version"] else b"List (1):\nrus\n"
+        return subprocess.CompletedProcess(args, 0, out, b"")
+
+    monkeypatch.setattr(ocr_engine, "_which", lambda: "/usr/bin/tesseract")
+    monkeypatch.setattr(ocr_engine, "_run", slow)
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(ocr_engine.status())) for _ in range(8)]
+    for t in threads:
+        t.start()
+    time.sleep(0.1)
+    gate.set()
+    for t in threads:
+        t.join(5)
+    assert len(results) == 8 and all(r["languages"] == ["rus"] for r in results) and _probes(calls) == 1
 
 
 @pytest.mark.skipif(shutil.which(ocr_engine.TESSERACT) is None, reason="Tesseract не установлен (проверяется в Docker-образе)")

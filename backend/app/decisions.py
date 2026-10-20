@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from . import models, schemas, screening
 from .db import get_db
 from .risk_model import BUILT
-from .verification import _complex, _event, _fmt, _row, _src_text, _then
+from .verification import commit_complex_row, complex_or_404, data_event, fmt_date, source_text, with_comment
 
 router = APIRouter(tags=["decisions"])
 
@@ -40,17 +40,17 @@ def _active(db: Session, cid: str) -> models.ScreeningDecision | None:
     return db.scalar(select(D).where(D.complex_id == cid, D.status == "active").order_by(D.id.desc()).limit(1))
 
 
-def _state(db: Session, cid: str) -> Obj | None:
+def _state(db: Session, c: models.Complex) -> Obj | None:
     """Решение ЖК так, как его видит оценка: действует или снято новой рекламой(reopened)."""
-    return screening.compute(db).decisions.get(cid)
+    return screening.compute_complex(db, c).decisions.get(c.id)
 
 
 def _close(row: models.ScreeningDecision, status: str, who: str, reason: str) -> None:
     row.status, row.closed_by, row.closed_at, row.close_reason = status, who, models.utcnow(), reason
 
 
-def _label(row: models.ScreeningDecision) -> str:
-    return screening.DECISION_LABELS[row.kind]
+def _label(kind: str) -> str:
+    return screening.DECISION_LABELS[kind]
 
 
 def _stage_name(stage: str | None) -> str:
@@ -67,16 +67,18 @@ def _record(db: Session, c: models.Complex, kind: str, values: Obj, who: str, wh
     поставила прежняя отметка "сдан". Повтор действующего(не снятого рекламой) решения без комментария - без записи."""
     cur = _active(db, c.id)
     if cur is not None and cur.kind == kind and not comment and _same(cur, values):
-        st = _state(db, c.id)
+        r = screening.compute_complex(db, c)  # одна оценка - и для проверки "не снято рекламой", и для ответа
+        st = r.decisions.get(c.id)
         if st is not None and st["status"] == "active":
-            return _row(db, c)
+            return screening.complex_rows(db, [c], r)[0]
     notes: list[str] = []
     prev = c.stage
     if cur is not None:
         if cur.kind == "commissioned":
             prev = cur.prev_stage or ""  # стадия до прежней отметки "сдан"
-        _close(cur, "superseded", who, f"заменено решением «{screening.DECISION_LABELS[kind]}»")
-        notes.append(f"прежнее решение «{_label(cur)}» от {_fmt(screening._local_minutes(cur.created_at))} заменено")
+        _close(cur, "superseded", who, f"заменено решением «{_label(kind)}»")
+        when = fmt_date(schemas.local_minutes(cur.created_at))
+        notes.append(f"прежнее решение «{_label(cur.kind)}» от {when} заменено")
         db.flush()  # прежнее решение закрыто до вставки нового - частичный уникальный индекс "одно действующее"
     row = D(complex_id=c.id, kind=kind, status="active", created_by=who, created_at=models.utcnow(),
             prev_stage=prev if kind == "commissioned" else None, comment=comment, **values)
@@ -85,9 +87,8 @@ def _record(db: Session, c: models.Complex, kind: str, values: Obj, who: str, wh
     if new_stage != c.stage:
         notes.append(f"стадия карточки: {_stage_name(c.stage)} → {_stage_name(new_stage)}")
         c.stage = new_stage
-    _event(db, who, _then(what + (f"; {'; '.join(notes)}" if notes else ""), comment), c.id)
-    db.commit()
-    return _row(db, _complex(db, c.id))
+    data_event(db, who, with_comment(what + (f"; {'; '.join(notes)}" if notes else ""), comment), c.id)
+    return commit_complex_row(db, c.id)
 
 
 @router.post("/api/complexes/{cid}/commissioned", response_model=schemas.ComplexListOut, response_model_by_alias=True)
@@ -95,12 +96,12 @@ def mark_commissioned(cid: str, body: schemas.CommissionedIn, db: Session = Depe
     """"Объект сдан": ввод в эксплуатацию подтверждён - акт № (необязателен), дата акта(обязательна, не позже сегодня),
     источник, ссылка, комментарий. Оценка - ok "Дом сдан - замечаний нет"(продажа квартир в сданном доме законна), пока
     новая реклама со стартом продаж или строящейся очередью не снимет решение; стадия карточки - "введён"."""
-    c = _complex(db, cid, lock=True)
+    c = complex_or_404(db, cid, lock=True)
     act = body.act_date.isoformat()
     values = {"act_number": body.act_number, "act_date": act, "source": body.source, "source_url": body.source_url,
               "reason": None}
     what = (f"Объект сдан — ввод в эксплуатацию подтверждён: {screening.act_text(body.act_number, act)}, "
-            f"{_src_text(body.source, body.source_url)}")
+            f"{source_text(body.source, body.source_url)}")
     return _record(db, c, "commissioned", values, body.author, what, body.comment)
 
 
@@ -109,25 +110,25 @@ def mark_commissioned(cid: str, body: schemas.CommissionedIn, db: Session = Depe
 def decide(cid: str, body: schemas.ScreeningDecisionIn, db: Session = Depends(get_db)):
     """"Проверено - замечаний нет": что проверено(не короче 10 символов), источник, ссылка, комментарий. Оценка - ok
     "Проверено - замечаний нет", пока новая реклама с признаком приёма денег не снимет решение."""
-    c = _complex(db, cid, lock=True)
+    c = complex_or_404(db, cid, lock=True)
     values = {"act_number": None, "act_date": None, "source": body.source, "source_url": body.source_url,
               "reason": body.reason}
     what = (f"Проверка по рекламе: проверено — замечаний нет. Что проверено: {body.reason.rstrip('.')}; "
-            f"{_src_text(body.source, body.source_url)}")
+            f"{source_text(body.source, body.source_url)}")
     return _record(db, c, body.decision, values, body.author, what, body.comment)
 
 
 def _cancel(db: Session, cid: str, body: schemas.DecisionCancelIn, only: str | None = None) -> Obj:
-    c = _complex(db, cid, lock=True)
+    c = complex_or_404(db, cid, lock=True)
     cur = _active(db, c.id)
     if cur is None:
         raise HTTPException(404, NO_DECISION)
     if only is not None and cur.kind != only:
         raise HTTPException(409, NOT_COMMISSIONED)
-    st = _state(db, c.id)
+    st = _state(db, c)
     reopened = st is not None and st["status"] == "reopened"
     _close(cur, "cancelled", body.author, body.reason)
-    what = (f"Решение аналитика отменено: «{_label(cur)}» от {_fmt(screening._local_minutes(cur.created_at))} "
+    what = (f"Решение аналитика отменено: «{_label(cur.kind)}» от {fmt_date(schemas.local_minutes(cur.created_at))} "
             f"({cur.created_by}{', уже снято новой рекламой' if reopened else ''}). Причина: {body.reason.rstrip('.')}. "
             "Оценка — автоматическая")
     if cur.kind == "commissioned":
@@ -135,9 +136,8 @@ def _cancel(db: Session, cid: str, body: schemas.DecisionCancelIn, only: str | N
         if back != c.stage:
             what += f"; стадия карточки: {_stage_name(c.stage)} → {_stage_name(back)}"
             c.stage = back
-    _event(db, body.author, what, c.id)
-    db.commit()
-    return _row(db, _complex(db, c.id))
+    data_event(db, body.author, what, c.id)
+    return commit_complex_row(db, c.id)
 
 
 @router.delete("/api/complexes/{cid}/screening-decision", response_model=schemas.ComplexListOut,
@@ -158,5 +158,5 @@ def cancel_commissioned(cid: str, body: schemas.DecisionCancelIn, db: Session = 
             response_model_by_alias=True)
 def history(cid: str, db: Session = Depends(get_db)):
     """История решений по ЖК, новые первыми: действующее, заменённые и отменённые(кто, когда, почему)."""
-    _complex(db, cid)
+    complex_or_404(db, cid)
     return list(db.scalars(select(D).where(D.complex_id == cid).order_by(D.id.desc())))

@@ -3,12 +3,16 @@
 import csv
 import io
 import json
+import re
+import zipfile
 from pathlib import Path
 
 import openpyxl
 import pytest
+from sqlalchemy import event
 
-from app import importer
+from app import importer, models, registry
+from app.db import SessionLocal, engine
 from app.risk_model import SHARED
 
 XLSX = SHARED.parent / "docs" / "Усть-Каменогорск_объекты.xlsx"
@@ -131,6 +135,122 @@ def test_value_normalizers():
     assert importer.object_key('ЖК "AB-Residence 2"') == "ab-residence-2"
     assert importer.org_name('Товарищество с ограниченной ответственностью "НАУАН Корп"') == importer.org_name(
         'ТОО "НАУАН Корп"') == "науан корп"
+
+
+def test_value_normalizers_hostile_values():
+    """Значения из чужого файла не роняют разбор(раньше - 500): смещение вне ±24 ч, переполнение при переводе в UTC,
+    целое больше предела float из xlsx, смещение с секундами длиннее столбца provider_loaded_at."""
+    assert importer._utc("15.10.2026 11:17 +99:00") == (
+        None, "время сбора «15.10.2026 11:17 +99:00» не распознано — не сохранено")
+    assert importer._utc("0001-01-01T00:00+05:00")[0] is None and importer._utc("01.01.0001 00:00 +05:00")[0] is None
+    huge = 10 ** 400
+    assert importer._number(huge) is None and importer._bin(huge)[0] is None and importer._percent(huge)[0] is None
+    assert importer._number("1 234,5") == 1234.5 and importer._number(float("nan")) is None
+    assert importer._local("2026-06-15T17:35:09+05:30:15.123456")[0] is None
+    assert importer._local("2026-06-15T17:35:09+05:00") == ("2026-06-15T17:35:09+05:00", None)
+
+
+def _patched_xlsx(rows, extra: bytes, dimension: bytes | None = None) -> bytes:
+    """Книга _xlsx(rows) с дописанными в лист строками XML(как у файла другого генератора) и, если задан, другим
+    размером листа(dimension)."""
+    src = zipfile.ZipFile(io.BytesIO(_xlsx(rows)))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for info in src.infolist():
+            data = src.read(info.filename)
+            if info.filename == "xl/worksheets/sheet1.xml":
+                data = data.replace(b"</sheetData>", extra + b"</sheetData>")
+                if dimension is not None:
+                    data = re.sub(rb'<dimension ref="[^"]*"\s*/>', dimension, data)
+            z.writestr(info.filename, data)
+    return out.getvalue()
+
+
+def test_xlsx_hostile_sheets():
+    head = ["Источник", "ЖК / объект", "ID в источнике", "Широта"]
+    rows = [head, ["Казреестр — CSV Ashyq Data", "ЖК «Тест»", "t1", None]]
+    # строка за пределами dimension не теряется; ячейка в XFD не раздувает строку до 16384 значений
+    wide = b"".join(b'<row r="%d"><c r="XFD%d"><v>1</v></c></row>' % (i, i) for i in range(4, 200))
+    raw = _patched_xlsx(rows, b'<row r="3"><c r="A3" t="inlineStr"><is><t>ashyq</t></is></c>'
+                              b'<c r="B3" t="inlineStr"><is><t>Second</t></is></c>'
+                              b'<c r="C3" t="inlineStr"><is><t>t2</t></is></c>'
+                              b'<c r="D3"><v>' + b"1" * 400 + b"</v></c></row>" + wide,
+                        dimension=b'<dimension ref="A1:D2"/>')
+    p = importer.parse(raw, "x.xlsx")
+    assert [r["sourceRecordId"] for r in p.records] == ["t1", "t2"] and p.records[1]["lat"] is None
+    sheets = importer._xlsx_sheets(raw)
+    _, got = next(sheets)
+    sheets.close()
+    assert len(got) == 199 and max(map(len, got)) == importer.MAX_COLS
+    # битое значение ячейки всплывает при чтении строк(read_only) - 422, а не 500
+    bad = _patched_xlsx(rows, b'<row r="3"><c r="A3"><v>abc</v></c></row>')
+    with pytest.raises(importer.ImportFailed) as e:
+        importer.parse(bad, "bad.xlsx")
+    assert (e.value.status, e.value.detail) == (422, importer.XLSX_UNREADABLE)
+
+
+def test_csv_rows_capped(monkeypatch):
+    """CSV читается не дальше предела строк(а не весь файл в память дважды) - и 422."""
+    monkeypatch.setattr(importer, "ROWS_CAP", 5)
+    head = ";".join(h for h, _, _ in importer.COLUMNS)
+    data = (head + "\n" + "ashyq;x\n" * 10).encode()
+    with pytest.raises(importer.ImportFailed) as e:
+        importer.parse(data, "many.csv")
+    assert (e.value.status, e.value.detail) == (422, importer.TOO_MANY_ROWS)
+
+
+def test_csv_columns_capped():
+    """Строка CSV из сотен тысяч ";" обрезается до MAX_COLS колонок(иначе - секунды разбора заголовка)."""
+    head = ";".join(h for h, _, _ in importer.COLUMNS)
+    data = (head + "\n" + "ashyq;Тест;" + ";" * 300_000 + "\n").encode()
+    assert max(map(len, importer._csv_rows(data))) == importer.MAX_COLS
+    p = importer.parse(data, "wide.csv")
+    assert p.read == 1 and not p.records  # строка без "ID в источнике" - пропущена, а не 500
+
+
+def _with_part(raw: bytes, part: str, change) -> bytes:
+    """Книга raw, у которой часть part заменена на change(содержимое)."""
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(raw)) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for info in src.infolist():
+            data = src.read(info.filename)
+            z.writestr(info.filename, change(data) if info.filename == part else data)
+    return out.getvalue()
+
+
+def test_xlsx_prescan_limits(monkeypatch):
+    """Книга в десятки КБ, которую openpyxl развернул бы в сотни МБ, и книга с DTD отвергаются до openpyxl - 422."""
+    raw = _xlsx([["Источник", "ЖК / объект", "ID в источнике"], ["ashyq", "Тест", "t1"]])
+    assert [r["sourceRecordId"] for r in importer.parse(raw, "ok.xlsx").records] == ["t1"]
+    sheet = "xl/worksheets/sheet1.xml"
+
+    def into(where: bytes, what: bytes):
+        return lambda data: data.replace(where, where + what, 1)
+
+    def row(n: int) -> bytes:  # детьми строки openpyxl считает все элементы, не только <c>
+        return b'<row r="9">' + b"<x/>" * n + b"</row>"
+
+    cases = {
+        "DTD": (lambda d: b'<!DOCTYPE w [<!ENTITY a "aaaa">]>' + d, None),
+        "row ok": (lambda d: d.replace(b"</sheetData>", row(importer.MAX_ROW_CELLS) + b"</sheetData>"), True),
+        "wide row": (lambda d: d.replace(b"</sheetData>", row(importer.MAX_ROW_CELLS + 1) + b"</sheetData>"), None),
+        "junk": (into(b"<sheetData>", b"<a/>" * (importer.MAX_CHILDREN + 1)), None),
+        "deep": (into(b"<sheetData>", b"<a>" * importer.MAX_DEPTH + b"</a>" * importer.MAX_DEPTH), None),
+    }
+    for name, (change, ok) in cases.items():
+        bad = _with_part(raw, sheet, change)
+        if ok:
+            assert importer.parse(bad, "x.xlsx").records, name
+            continue
+        with pytest.raises(importer.ImportFailed) as e:
+            importer.parse(bad, "x.xlsx")
+        assert (e.value.status, e.value.detail) == (422, importer.XLSX_UNREADABLE), name
+    # строк листа без предела детей(их режет ROWS_CAP при чтении), но все элементы книги - не больше MAX_ELEMENTS
+    many = _with_part(raw, sheet, lambda d: d.replace(b"</sheetData>", b"<row/>" * 2000 + b"</sheetData>"))
+    assert importer.parse(many, "x.xlsx").records
+    monkeypatch.setattr(importer, "MAX_ELEMENTS", 2000)
+    with pytest.raises(importer.ImportFailed):
+        importer.parse(many, "x.xlsx")
 
 
 @need_xlsx
@@ -381,6 +501,108 @@ def test_import_errors(client, monkeypatch):
     assert r.status_code == 422 and "после распаковки" in r.json()["detail"]
     assert client.post("/api/sources/import").status_code == 422  # нет файла
     assert client.get("/api/audit", params={"kind": "data"}).json()[-1]["what"].startswith("Загружены сведения")
+
+
+def _row(**vals):
+    """Строка файла набора: значения по полям записи(camelCase), прочие колонки пусты."""
+    return [vals.get(f) for _, f, _ in importer.COLUMNS]
+
+
+def test_url_normalizer():
+    """Ссылка источника и сайт ЖК - только http(s) с хостом: их показывает жителям страница проверки ЖК."""
+    assert importer._url(" https://homeportal.kz/ru/projects/1 ") == ("https://homeportal.kz/ru/projects/1", None)
+    assert importer._url("HTTP://ashyq.data.gov.kz/x") == ("HTTP://ashyq.data.gov.kz/x", None)
+    assert importer._url(None) == (None, None) and importer._url("  ") == (None, None)
+    for bad in ("javascript:alert(1)", "data:text/html,<b>x</b>", "homeportal.kz/ru/projects/1", "https://", "ftp://x.kz/a"):
+        assert importer._url(bad) == (None, f"ссылка «{bad}» не http(s), не сохранена"), bad
+
+
+def test_import_drops_non_http_links(client):
+    """Ссылка на источник и сайт ЖК не http(s) - не сохраняются, с предупреждением строки; запись импортируется."""
+    head = [h for h, _, _ in importer.COLUMNS]
+    base = {"sourceName": "Казреестр — CSV Ashyq Data", "name": "ЖК «Ссылки»"}
+    rows = [head, _row(**base, sourceRecordId="u1", sourceUrl="javascript:alert(document.domain)",
+                       site="data:text/html,<script>alert(1)</script>"),
+            _row(**base, sourceRecordId="u2", sourceUrl="https://ashyq.data.gov.kz/x", site="http://ssylki.kz")]
+    r = _import(client, _xlsx(rows), "links.xlsx", author=AUTHOR)
+    assert r.status_code == 200, r.text
+    rep = r.json()
+    assert (rep["created"], rep["skipped"], rep["errors"]) == (2, 0, [])
+    assert "Строка 2: Ссылка на источник — ссылка «javascript:alert(document.domain)» не http(s), не сохранена" \
+        in rep["warnings"]
+    assert "Строка 2: Сайт ЖК — ссылка «data:text/html,<script>alert(1)</script>» не http(s), не сохранена" \
+        in rep["warnings"]
+    recs = {x["sourceRecordId"]: x for x in client.get("/api/registry/ssylki").json()["records"]}
+    assert (recs["u1"]["sourceUrl"], recs["u1"]["site"]) == (None, None)
+    assert (recs["u2"]["sourceUrl"], recs["u2"]["site"]) == ("https://ashyq.data.gov.kz/x", "http://ssylki.kz")
+
+
+def test_import_author_system_is_reserved(client):
+    """Явный автор "Система"(в любом регистре и с пробелами) - 422, как у форм(HumanName): импорт человека не выглядит
+    в журнале автоматическим; без автора - по-прежнему "Система"(test_import_skips_and_duplicates)."""
+    head = [h for h, _, _ in importer.COLUMNS]
+    data = _xlsx([head, _row(sourceName="Казреестр — CSV Ashyq Data", name="ЖК «Автор»", sourceRecordId="a1")])
+    before = client.get("/api/sources").json()
+    for form, query in ((" система ", None), ("СИСТЕМА", None), (None, "  Система\t")):
+        r = client.post("/api/sources/import", files={"file": ("a.xlsx", data, "")},
+                        data={"author": form} if form else {}, params={"author": query} if query else {})
+        assert r.status_code == 422, (form, query, r.text)
+        assert r.json()["detail"][0]["loc"] == ["body" if form else "query", "author"]
+        assert "зарезервировано" in r.json()["detail"][0]["msg"]
+    for form, query in (("Иван\x00", None), (None, "Иван\x00")):  # NUL - тоже 422, с местом значения
+        r = client.post("/api/sources/import", files={"file": ("a.xlsx", data, "")},
+                        data={"author": form} if form else {}, params={"author": query} if query else {})
+        assert r.status_code == 422 and r.json()["detail"][0]["loc"] == ["body" if form else "query", "author"]
+    assert client.get("/api/sources").json() == before and client.get("/api/registry/avtor").status_code == 404
+    r = _import(client, data, "a.xlsx", author="  Системный   аналитик ")  # не "Система" - обычное имя
+    assert r.status_code == 200, r.text
+    assert client.get("/api/audit", params={"kind": "data"}).json()[-1]["who"] == "Системный аналитик"
+
+
+def _source_record_selects(fn):
+    """(итог fn(), SELECT к source_records, выполненные fn())."""
+    seen: list[str] = []
+
+    def on(conn, cursor, statement, *_):
+        if statement.lstrip().upper().startswith("SELECT") and "source_records" in statement:
+            seen.append(statement)
+
+    event.listen(engine, "before_cursor_execute", on)
+    try:
+        out = fn()
+    finally:
+        event.remove(engine, "before_cursor_execute", on)
+    return out, seen
+
+
+def test_upsert_reads_only_pairs_from_file(client, monkeypatch):
+    """upsert читает существующие строки только по парам(source, sourceRecordId) из файла - и порциями CHUNK, а не
+    весь реестр; новые, изменившиеся и прежние записи различаются как раньше."""
+    monkeypatch.setattr(registry, "CHUNK", 2)
+    with SessionLocal() as db:
+        old = {r["sourceRecordId"]: r for r in registry.records(db, "zhanym")}
+        a, b = sorted(old)[:2]
+        recs = [{**old[a], "address": "новый адрес"}, old[b],
+                *({**old[a], "sourceRecordId": f"new-{i}"} for i in range(3))]
+        n, sql = _source_record_selects(lambda: registry.upsert(db, recs, "part.xlsx", models.utcnow()))
+        assert n == {"created": 3, "updated": 1, "unchanged": 1}
+        # 5 пар по 2 значения в IN - не меньше 3 запросов, и у каждого - фильтр по ID в источнике
+        assert len(sql) >= 3 and all("source_record_id IN" in q for q in sql), sql
+        db.rollback()
+
+
+def test_import_counts_match_registry(client):
+    """Число записей, объектов и объектов без координат в отчёте импорта(агрегаты SQL) - то же, что у GET /api/registry."""
+    head = [h for h, _, _ in importer.COLUMNS]
+    rows = [head, _row(sourceName="Казреестр — CSV Ashyq Data", name="ЖК «Без точки»", sourceRecordId="c1"),
+            _row(sourceName="Казреестр — CSV Ashyq Data", name="ЖК «С точкой»", sourceRecordId="c2"),
+            _row(sourceName="Homeportal — карточка ЖК", name="ЖК «С точкой»", sourceRecordId="c3", lat=49.95, lng=82.6)]
+    rep = _import(client, _xlsx(rows), "counts.xlsx").json()
+    reg = client.get("/api/registry").json()
+    assert (rep["objects"], rep["withoutCoords"]) == (len(reg["objects"]) + len(reg["withoutCoords"]),
+                                                      len(reg["withoutCoords"]))
+    assert rep["records"] == sum(o["records"] for o in reg["objects"] + reg["withoutCoords"])
+    assert "s-tochkoi" in {o["key"] for o in reg["objects"]} and "bez-tochki" in {o["key"] for o in reg["withoutCoords"]}
 
 
 def test_import_limit_before_reading_body():

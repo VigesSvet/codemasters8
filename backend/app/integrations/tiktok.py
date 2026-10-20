@@ -2,9 +2,11 @@
 
 Сбор идёт фазами одного задания воркера(jobs.payload["phase"]), запрос пользователя не держится открытым:
 1. start - проверка лимитов(минимум Actor, лимит на запуск, дневной бюджет) и POST actors/{actor}/runs с проверенным
-   Input(tiktok_input.json + профили); ID запуска Apify сразу пишется в БД(set_external_run), затем Deferred;
+   Input(tiktok_input.json + профили); ID запуска Apify сразу пишется в БД(set_external_run; не записался - ошибка
+   без повтора), затем Deferred;
 2. poll - GET actor-runs/{id}?waitForFinish=30, пока запуск не завершится; сеть, тайм-аут, 429 и 5xx - снова Deferred
-   (попытка задания не расходуется); после срока - запуск прерывается(abort), стоимость записывается, сбор - ошибка;
+   (попытка задания не расходуется); после срока - запуск прерывается(abort), стоимость записывается(не подтвердил
+   прерывание - не записывается и в дневном лимите считается по лимиту на запуск), сбор - ошибка;
 3. dataset - GET datasets/{id}/items постранично; смещение сохраняется после каждой записи(сбой и остановка воркера
    продолжат с неё); сеть, тайм-аут, 429 и 5xx - Deferred, пока Apify недоступен не дольше DATASET_WAIT_S подряд
    (дальше - ошибка и остановка платного сбора): ни "пауза", ни повтор не завершают задание, иначе расписание начало
@@ -36,6 +38,7 @@ from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -56,7 +59,10 @@ API = "https://api.apify.com/v2/"  # actors/… (префикс /v2/acts/ уст
 APIFY_HOSTS = ("api.apify.com",)
 ACTOR_MIN_CHARGE = 0.5  # minimalMaxTotalChargeUsd Actor(если цены не получены)
 FALLBACK_PRICES = {"actor-start": 0.005, "result": 0.004, "video-download": 0.002}  # оценка сверху, USD
-KV_RE = re.compile(r"^https://api\.apify\.com/v2/key-value-stores/(?P<store>[^/]+)/records/(?P<key>[^?#]+)")
+# запись хранилища: ID хранилища и ключ - по одному сегменту пути(без "/", "\" и пробелов, ключ - не "." и не ".."),
+# query допускается
+KV_RE = re.compile(r"https://api\.apify\.com/v2/key-value-stores/(?P<store>[A-Za-z0-9][A-Za-z0-9~._-]{0,127})/records/"
+                   r"(?P<key>[^/\\?#\s]{1,256})(?:\?[^#\s]*)?")
 INPUT_FILE = Path(__file__).with_name("tiktok_input.json")
 PAGE_LIMIT = 50  # записей Dataset на страницу
 POLL_WAIT_S = 30  # waitForFinish: сколько Apify держит запрос опроса
@@ -72,12 +78,12 @@ SEEN = "profiles"  # collectors.state: собранные прежде проф�
 SEEN_MAX = 200  # сколько профилей помнить(самые давние забываются)
 STATS_MAX = 200  # сколько авторов считать в одном запуске(jobs.payload["profileStats"])
 
-PROFILE_RE = re.compile(r"^[A-Za-z0-9._]{2,24}$")
+PROFILE_RE = re.compile(r"[A-Za-z0-9._]{2,24}")  # только fullmatch
 _PROFILE_URL = re.compile(r"^(?:https?://)?(?:(?:www|m)\.)?tiktok\.com/@([^/?#\s]+)", re.I)
-_ACTOR_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}(?:~[A-Za-z0-9][A-Za-z0-9._-]{0,99})?$")
-_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9~._-]{0,127}$")  # ID запуска / Dataset / хранилища Apify
-_POST_ID = re.compile(r"^\d{1,32}$")  # канонический ID публикации TikTok(как в приёме через API)
-_HTTP_403 = re.compile(r"\bHTTP 403\b")
+_ACTOR_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}(?:~[A-Za-z0-9][A-Za-z0-9._-]{0,99})?")
+_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9~._-]{0,127}")  # ID запуска / Dataset / хранилища Apify
+_POST_ID = re.compile(r"\d{1,32}")  # канонический ID публикации TikTok(как в приёме через API)
+TIKTOK_HOSTS = ("tiktok.com",)  # ссылка на публикацию(webVideoUrl) - только tiktok.com и его поддомены
 RUNNING = frozenset({"READY", "RUNNING", "TIMING-OUT", "ABORTING"})
 FAILED = frozenset({"FAILED", "TIMED-OUT", "ABORTED"})
 
@@ -101,7 +107,7 @@ def normalize_profile(s: Any) -> str:
         v = m.group(1)
     elif v.startswith("@"):
         v = v[1:]
-    if not PROFILE_RE.match(v):
+    if not PROFILE_RE.fullmatch(v):
         raise ValueError(PROFILE_HINT)
     return v.lower()
 
@@ -148,6 +154,18 @@ def build_input(cfg: dict, s: Settings) -> dict:
 
 # ---------- цены и стоимость ----------
 
+def _number(v: Any) -> float | None:
+    """Конечное число из ответа Apify или jobs.payload; bool, NaN, бесконечность(json.loads принимает Infinity),
+    целое больше float и не числа - None."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    try:
+        f = float(v)
+    except OverflowError:
+        return None
+    return f if math.isfinite(f) else None
+
+
 def usd_param(x: float) -> str:
     """Сумма для Apify и текстов без округления и экспоненты: кратчайшая точная запись числа(float(…) == x)."""
     return format(Decimal(repr(float(x))), "f")
@@ -157,13 +175,13 @@ def _event_price(ev: Any) -> float | None:
     """Цена события: eventPriceUsd или(ступенчатые цены) наибольшая из ступеней - оценка сверху."""
     if not isinstance(ev, dict):
         return None
-    flat = ev.get("eventPriceUsd")
-    if isinstance(flat, (int, float)) and not isinstance(flat, bool):
-        return float(flat)
+    flat = _number(ev.get("eventPriceUsd"))
+    if flat is not None:
+        return flat
     tiers = ev.get("eventTieredPricingUsd")
     if isinstance(tiers, dict):
-        vals = [float(t["tieredEventPriceUsd"]) for t in tiers.values() if isinstance(t, dict)
-                and isinstance(t.get("tieredEventPriceUsd"), (int, float))]
+        vals = [v for t in tiers.values() if isinstance(t, dict)
+                and (v := _number(t.get("tieredEventPriceUsd"))) is not None]
         if vals:
             return max(vals)
     return None
@@ -204,12 +222,12 @@ def prices(actor: dict, now: datetime | None = None) -> dict[str, float]:
 
 def min_charge(actor: dict, now: datetime | None = None) -> float:
     """Минимальный лимит расходов на запуск(minimalMaxTotalChargeUsd); не указан - ACTOR_MIN_CHARGE."""
-    v = (_pricing(actor, now) or {}).get("minimalMaxTotalChargeUsd")
-    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else ACTOR_MIN_CHARGE
+    v = _number((_pricing(actor, now) or {}).get("minimalMaxTotalChargeUsd"))
+    return v if v is not None else ACTOR_MIN_CHARGE
 
 
 def _all_prices(p: dict | None) -> dict[str, float]:
-    return {**FALLBACK_PRICES, **{k: float(v) for k, v in (p or {}).items() if isinstance(v, (int, float))}}
+    return {**FALLBACK_PRICES, **{k: f for k, v in (p or {}).items() if (f := _number(v)) is not None}}
 
 
 def estimate_usd(n_items: int, videos: bool, prices: dict) -> float:
@@ -226,14 +244,14 @@ def run_cost(run: dict, prices: dict, items: int = 0, videos: bool = True) -> fl
     run = run or {}
     p = _all_prices(prices)
     top = max(p.values())
-    usage = run.get("usageTotalUsd")
-    usage = float(usage) if isinstance(usage, (int, float)) and not isinstance(usage, bool) else 0.0
+    usage = _number(run.get("usageTotalUsd")) or 0.0
     events = run.get("chargedEventCounts") or {}
     by_events = 0.0
     if isinstance(events, dict):
         for name, n in events.items():
-            if isinstance(n, (int, float)) and not isinstance(n, bool) and n > 0:
-                by_events += float(n) * p.get(str(name), top)
+            count = _number(n)
+            if count is not None and count > 0:
+                by_events += count * p.get(str(name), top)
     return round(max(usage, by_events, estimate_usd(items, videos, prices)), 6)
 
 
@@ -243,14 +261,14 @@ def _token(s: Settings) -> str:
     token = s.apify_token.get() if s.apify_token else ""
     if not token:
         raise NotConfigured("Нет на сервере: APIFY_TOKEN")
-    if not token.isascii() or any(c.isspace() for c in token):
+    if not token.isascii() or not token.isprintable() or any(c.isspace() for c in token):
         raise BadConfig("APIFY_TOKEN содержит недопустимые символы — проверьте значение в .env")
     return token
 
 
 def _actor_id(s: Settings) -> str:
     actor = (s.apify_actor_id or "").strip()
-    if not _ACTOR_RE.match(actor):
+    if not _ACTOR_RE.fullmatch(actor):
         raise BadConfig("APIFY_ACTOR_ID задан неверно — нужен вид «владелец~имя», например clockworks~tiktok-scraper")
     return actor
 
@@ -266,7 +284,7 @@ def _send(c: httpx.Client, method: str, path: str, **kw) -> httpx.Response:
         return c.request(method, path, **kw)
     except httpx.TimeoutException:
         raise SourceError("Apify не ответил вовремя", retryable=True) from None
-    except httpx.TransportError as e:
+    except httpx.RequestError as e:  # сеть, а также тело, которое не распаковалось(DecodingError)
         raise SourceError(f"Сетевая ошибка при обращении к Apify ({type(e).__name__})", retryable=True) from None
 
 
@@ -324,6 +342,8 @@ def _check_limits(s: Settings, minimum: float) -> None:
     cap, budget = float(s.apify_max_total_charge_usd), float(s.apify_daily_budget_usd)
     if not math.isfinite(cap):
         raise BadConfig("APIFY_MAX_TOTAL_CHARGE_USD должен быть конечным числом — исправьте значение в .env")
+    if not math.isfinite(budget):  # NaN отключил бы все сравнения с дневным лимитом
+        raise BadConfig("APIFY_DAILY_BUDGET_USD должен быть конечным числом — исправьте значение в .env")
     if cap < minimum:
         raise BadConfig(f"APIFY_MAX_TOTAL_CHARGE_USD ({usd_param(cap)}) меньше минимума Actor ({minimum:g}) — "
                         "увеличьте лимит в .env")
@@ -346,16 +366,16 @@ def _unconfirmed_usd(state: dict, since: datetime, cap: float) -> float:
         at = _parse_time(e.get("at")) if isinstance(e, dict) else None
         if at is None or at < as_utc(since):
             continue
-        cost = e.get("costUsd")
-        ok = isinstance(cost, (int, float)) and not isinstance(cost, bool) and math.isfinite(cost) and cost >= 0
-        total += float(cost) if ok else cap
+        cost = _number(e.get("costUsd"))
+        total += cost if cost is not None and cost >= 0 else cap
     return total
 
 
 def _parse_time(v: Any) -> datetime | None:
-    if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+    ts = _number(v)
+    if ts is not None and ts > 0:
         try:
-            return datetime.fromtimestamp(float(v), UTC)
+            return datetime.fromtimestamp(ts, UTC)
         except (OverflowError, OSError, ValueError):
             return None
     if isinstance(v, str) and v.strip():
@@ -368,14 +388,19 @@ def _parse_time(v: Any) -> datetime | None:
 
 def _valid_id(v: Any) -> str | None:
     v = str(v or "").strip()
-    return v if _ID_RE.match(v) else None
+    return v if _ID_RE.fullmatch(v) else None
 
 
 # ---------- публикации ----------
 
 def _kv(url: Any) -> str | None:
-    """Ссылка на запись хранилища Apify(Key-value store) или None(CDN TikTok и прочее не используются)."""
-    return url if isinstance(url, str) and KV_RE.match(url.strip()) else None
+    """Ссылка на запись хранилища Apify(Key-value store) или None(CDN TikTok, другие пути API Apify и прочее не
+    используются: с этой ссылкой уходит токен Apify)."""
+    if not isinstance(url, str):
+        return None
+    url = url.strip()
+    m = KV_RE.fullmatch(url)
+    return url if m and m.group("key").strip(".") else None
 
 
 def _kv_media(ctx: "RunContext", url: str, *, key: str, kind: str, role: str | None, token: str) -> MediaIn:
@@ -384,7 +409,7 @@ def _kv_media(ctx: "RunContext", url: str, *, key: str, kind: str, role: str | N
     def fetch() -> MediaIn:
         m = ctx.download_media(url, key=key, kind=kind, role=role, allowed_hosts=APIFY_HOSTS,
                                auth_headers={"Authorization": f"Bearer {token}"}, auth_hosts=APIFY_HOSTS)
-        if m.status != "downloaded" and _HTTP_403.search(m.error or ""):
+        if m.status != "downloaded" and m.error_code == "http_403":
             return dataclasses.replace(m, status="failed", error=KV_403)
         return m
     return MediaIn(key=key, kind=kind, role=role, fetch=fetch, origin_url=http.redact_url(url))
@@ -412,9 +437,8 @@ def _media(it: dict, ctx: "RunContext", pid: str, token: str, videos: bool) -> l
         if not videos:
             out.append(MediaIn(key=key, kind="video", status="skipped", error=VIDEOS_OFF))
         else:
-            urls = [vm.get("downloadAddr")] + list(it.get("mediaUrls") if isinstance(it.get("mediaUrls"), list)
-                                                   else [])
-            url = next((u for u in map(_kv, urls) if u), None)
+            media_urls = it.get("mediaUrls") if isinstance(it.get("mediaUrls"), list) else []
+            url = next((u for u in map(_kv, [vm.get("downloadAddr"), *media_urls]) if u), None)
             out.append(_kv_media(ctx, url, key=key, kind="video", role=None, token=token) if url
                        else _missing(key, "video", None, NO_KV_VIDEO))
     cover = _kv(vm.get("coverUrl"))
@@ -433,27 +457,35 @@ def item_error(it: Any) -> str:
     return f"TikTok: запись Apify не принята — {text}" + (f" ({str(who)[:100]})" if who else "")
 
 
+def _post_url(it: dict, name: str, pid: str) -> str:
+    """Ссылка на публикацию: webVideoUrl, если она на tiktok.com(чужой хост в карточке - ссылка "в никуда" или на
+    подделку), иначе собранная из имени автора и ID; имя не по правилам TikTok - ""."""
+    url = safe_url(it.get("webVideoUrl"))
+    if url and http.host_allowed(urlsplit(url).hostname or "", TIKTOK_HOSTS):
+        return url
+    return f"https://www.tiktok.com/@{name}/video/{pid}" if PROFILE_RE.fullmatch(name) else ""
+
+
 def map_item(it: dict, ctx: "RunContext") -> Publication | None:
     """Запись Dataset → Publication; запись-ошибка({"error": …}) или без ID - None(вызывающий: ctx.item_failed).
     isAd / isSponsored не фильтруют: рекламное предложение бывает и при isAd=false."""
     if not isinstance(it, dict) or it.get("error"):
         return None
     pid = str(it.get("id") or "").strip()
-    if not _POST_ID.match(pid):
+    if not _POST_ID.fullmatch(pid):
         return None
     author = it.get("authorMeta") if isinstance(it.get("authorMeta"), dict) else {}
     name = str(author.get("name") or "").strip().lstrip("@")
-    url = safe_url(it.get("webVideoUrl")) or (f"https://www.tiktok.com/@{name}/video/{pid}" if name else "")
-    reach = it.get("playCount")
+    reach = _number(it.get("playCount"))
     videos = ctx.payload.get("videos")
     if videos is None:
         videos = build_input(ctx.config, ctx.settings)["shouldDownloadVideos"]
     return Publication(
-        platform="tiktok", external_id=pid, account=f"@{name}" if name else "", url=url,
+        platform="tiktok", external_id=pid, account=f"@{name}" if name else "", url=_post_url(it, name, pid),
         text=str(it.get("text") or ""), collected_at=ctx.now(),
         published_at=_parse_time(it.get("createTimeISO")) or _parse_time(it.get("createTime")),
         media=_media(it, ctx, pid, _token(ctx.settings), bool(videos)),
-        reach=int(reach) if isinstance(reach, (int, float)) and not isinstance(reach, bool) and reach >= 0 else None,
+        reach=int(reach) if reach is not None and reach >= 0 else None,
         extra={"isSlideshow": bool(it.get("isSlideshow"))}, raw=it)
 
 
@@ -636,9 +668,18 @@ class TikTokConnector(Connector):
         rid = _valid_id(run.get("id"))
         if rid is None:
             self._unconfirmed(ctx, cap, now, f"HTTP {resp.status_code} без ID запуска")
-        ctx.set_external_run(rid)  # сразу в БД: повтор задания не начнёт второй платный запуск
         deadline = as_utc(now) + timedelta(seconds=int(s.apify_run_timeout_s) + DEADLINE_MARGIN_S)
         seen = ctx.state.get(SEEN) if isinstance(ctx.state.get(SEEN), dict) else {}
+        try:  # сразу в БД: повтор задания найдёт ID у запуска сбора и не начнёт второй платный запуск
+            ctx.set_external_run(rid)
+        except Exception as e:  # ID не записан - повтор начал бы второй платный запуск: ошибка без повтора
+            log.warning("TikTok: ID запуска Apify %s не записан (%s)", rid, type(e).__name__)
+            # стоимость такого запуска не запишется у запуска сбора - до конца суток он в дневном лимите по лимиту
+            self._count_at_cap(ctx, cap, now, f"ID запуска Apify {rid} не записан — в дневном лимите учтён как "
+                                              f"${usd_param(cap)}")
+            raise SourceError(f"Запуск Apify {rid} начат, но не записан — проверьте консоль Apify, затем запустите "
+                              "проверку вручную", retryable=False) from None
+        # сбой этой записи безопасен: ID уже у запуска сбора, повтор задания продолжит с опроса(collect)
         ctx.save_payload(phase="poll", apifyRunId=rid, datasetId=_valid_id(run.get("defaultDatasetId")),
                          kvStoreId=_valid_id(run.get("defaultKeyValueStoreId")), deadline=iso(deadline), prices=pr,
                          videos=videos, offset=0, items=0, perPage=int(body["resultsPerPage"]), maxItems=n,
@@ -651,16 +692,24 @@ class TikTokConnector(Connector):
         """Apify не подтвердил запуск(ответ потерян, 5xx, нет ID), а запуск мог начаться и оплачиваться: повтор мог бы
         оплатить второй - не повторяем(платный сбор останавливается); до конца суток запуск учитывается в дневном
         лимите по лимиту на запуск(D19: запуски неизвестной стоимости входят в бюджет)."""
-        keep = as_utc(now) - timedelta(seconds=UNCONFIRMED_KEEP_S)
-        prev = [e for e in ctx.state.get(UNCONFIRMED) or []
-                if isinstance(e, dict) and (_parse_time(e.get("at")) or keep - timedelta(1)) >= keep]
-        try:  # сбой записи не должен превратить ошибку в повторяемую(повтор - второй POST)
-            ctx.save_state(**{UNCONFIRMED: (prev + [{"at": iso(now), "runId": ctx.run_id, "costUsd": cap}])[-50:]})
-            ctx.note(f"Запуск Apify не подтверждён ({why}) — в дневном лимите учтён как ${usd_param(cap)}", "warn")
-        except Exception as e:
-            log.warning("TikTok: неподтверждённый запуск Apify не записан в дневной лимит (%s)", type(e).__name__)
+        self._count_at_cap(ctx, cap, now, f"Запуск Apify не подтверждён ({why}) — в дневном лимите учтён как "
+                                          f"${usd_param(cap)}")
         raise SourceError(f"Apify не подтвердил запуск Actor ({why}) — запуск мог начаться и оплачиваться; проверьте "
                           "консоль Apify, затем запустите проверку вручную", retryable=False) from None
+
+    @staticmethod
+    def _count_at_cap(ctx: "RunContext", cap: float, now: datetime, note: str) -> None:
+        """Запуск Apify, стоимость которого у запуска сбора не запишется: в collectors.state.unconfirmedStarts(до конца
+        суток - в дневном лимите по лимиту на запуск) и заметка-предупреждение. Никогда не бросает."""
+        keep = as_utc(now) - timedelta(seconds=UNCONFIRMED_KEEP_S)
+        prev = [e for e in ctx.state.get(UNCONFIRMED) or []
+                if isinstance(e, dict) and (at := _parse_time(e.get("at"))) is not None and at >= keep]
+        try:  # сбой записи не должен превратить ошибку в повторяемую(повтор - второй POST)
+            ctx.save_state(**{UNCONFIRMED: (prev + [{"at": iso(now), "runId": ctx.run_id, "costUsd": cap}])[-50:]})
+            ctx.note(note, "warn")
+        except Exception as e:
+            log.warning("TikTok: запуск Apify без записанной стоимости не учтён в дневном лимите (%s)",
+                        type(e).__name__)
 
     def _deadline(self, ctx: "RunContext", s: Settings) -> datetime:
         d = _parse_time(ctx.payload.get("deadline"))
@@ -675,10 +724,10 @@ class TikTokConnector(Connector):
         try:
             resp = c.get(f"actor-runs/{rid}", params={"waitForFinish": POLL_WAIT_S})
         except httpx.HTTPError as e:
-            self._wait(ctx, c, s, rid, deadline, None, f"Apify не ответил при опросе запуска ({type(e).__name__})")
+            self._wait(ctx, c, s, rid, deadline, f"Apify не ответил при опросе запуска ({type(e).__name__})")
             return
         if resp.status_code >= 500 or resp.status_code == 429:
-            self._wait(ctx, c, s, rid, deadline, None, f"Apify временно недоступен (HTTP {resp.status_code})",
+            self._wait(ctx, c, s, rid, deadline, f"Apify временно недоступен (HTTP {resp.status_code})",
                        delay=http.retry_after(resp.headers, POLL_DELAY_S) if resp.status_code == 429 else None)
             return
         if resp.status_code == 404:
@@ -690,7 +739,7 @@ class TikTokConnector(Connector):
             ctx.set_external_run(rid, cost_usd=run_cost(run, pr, 0, videos))
             raise SourceError(f"Запуск Apify завершился со статусом {status}", retryable=False)
         if status != "SUCCEEDED":  # READY / RUNNING / TIMING-OUT / ABORTING и незнакомые - ждать до срока
-            self._wait(ctx, c, s, rid, deadline, run, None)
+            self._wait(ctx, c, s, rid, deadline, None)
             return
         ctx.set_external_run(rid, cost_usd=run_cost(run, pr, 0, videos))  # предварительно; итог - в фазе cost
         ds = _valid_id(ctx.payload.get("datasetId")) or _valid_id(run.get("defaultDatasetId"))
@@ -699,24 +748,27 @@ class TikTokConnector(Connector):
         ctx.save_payload(phase="dataset", datasetId=ds, offset=0, items=0)
 
     def _wait(self, ctx: "RunContext", c: httpx.Client, s: Settings, rid: str, deadline: datetime,
-              run: dict | None, why: str | None, *, delay: float | None = None) -> None:
+              why: str | None, *, delay: float | None = None) -> None:
         """Запуск ещё идёт(или Apify временно не ответил): Deferred до срока; после срока - прервать запуск, записать
-        стоимость и завершить сбор ошибкой."""
+        стоимость(если Apify подтвердил прерывание) и завершить сбор ошибкой."""
         if as_utc(ctx.now()) < deadline:
             if why:
                 log.info("TikTok: %s — повтор опроса запуска %s", why, rid)
             raise Deferred(delay or POLL_DELAY_S)
         pr, videos = ctx.payload.get("prices") or {}, bool(ctx.payload.get("videos", True))
+        aborted: dict | None = None
         try:
             resp = c.post(f"actor-runs/{rid}/abort")
             if 200 <= resp.status_code < 300:
-                run = _data(resp, f"прерывание {rid}")
+                aborted = _data(resp, f"прерывание {rid}")
             else:
                 ctx.note(f"Apify не прервал запуск {rid} (HTTP {resp.status_code}) — проверьте консоль Apify", "warn")
         except (httpx.HTTPError, SourceError) as e:
             ctx.note(f"Запрос на прерывание запуска {rid} не выполнен ({type(e).__name__}) — проверьте консоль Apify",
                      "warn")
-        ctx.set_external_run(rid, cost_usd=run_cost(run or {}, pr, 0, videos))
+        # прерывание не подтверждено - запуск мог продолжаться и расходовать до лимита на запуск: стоимость не
+        # записывается(в дневном лимите такой запуск учитывается по лимиту на запуск), а не занижается по опросу
+        ctx.set_external_run(rid, cost_usd=run_cost(aborted, pr, 0, videos) if aborted is not None else None)
         minutes = round((int(s.apify_run_timeout_s) + DEADLINE_MARGIN_S) / 60)
         raise SourceError(f"Запуск Apify не завершился за {minutes} мин — прерван", retryable=False)
 
@@ -764,7 +816,8 @@ class TikTokConnector(Connector):
                     patch["firstFailure"] = ctx.first_failure
                 ctx.save_payload(**patch)  # после каждой записи: сбой не примет её повторно
             raw_total = (resp.headers.get("x-apify-pagination-total") or "").strip()
-            total = int(raw_total) if raw_total.isdigit() else None
+            # isascii: "²" и прочие цифры Unicode isdigit пропускает, а int() на них падает
+            total = int(raw_total) if raw_total.isascii() and raw_total.isdigit() else None
             if not page or (total is not None and offset >= total) or (total is None and len(page) < PAGE_LIMIT):
                 break
         raise Deferred(COST_DELAY_S, {"phase": "cost"})

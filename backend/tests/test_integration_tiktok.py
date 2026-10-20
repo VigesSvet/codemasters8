@@ -7,6 +7,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -797,10 +798,19 @@ def test_cap_sent_exactly_never_rounded(tk, client, env, http_mock, run_worker):
     full_run(client, tk, run_worker, fake)
     (post,) = fake.posts()
     assert post.url.params["maxTotalChargeUsd"] == "0.5555555555"
+    # "inf" в .env настройки не принимают(значение по умолчанию); бесконечный или NaN лимит, заданный в обход
+    # настроек, проверка лимитов отклоняет - иначе сравнения с дневным лимитом ничего бы не ограничивали
     env(APIFY_MAX_TOTAL_CHARGE_USD="inf", APIFY_DAILY_BUDGET_USD="inf")
     start(client, tk, "test")
     drive(run_worker, steps=1)
-    assert "APIFY_MAX_TOTAL_CHARGE_USD" in conn(client)["lastError"] and len(fake.posts()) == 1
+    c = conn(client)
+    assert (c["facts"]["maxTotalChargeUsd"], c["facts"]["dailyBudgetUsd"]) == (0.5, 1.0) and len(fake.posts()) == 1
+    for cap, budget, name in ((float("inf"), 1.0, "APIFY_MAX_TOTAL_CHARGE_USD"),
+                              (0.5, float("nan"), "APIFY_DAILY_BUDGET_USD")):
+        limits = SimpleNamespace(apify_max_total_charge_usd=cap, apify_daily_budget_usd=budget)
+        with pytest.raises(tiktok.BadConfig) as e:
+            tiktok._check_limits(limits, 0.5)
+        assert e.value.detail.startswith(f"{name} должен быть конечным числом")
 
 
 # ---------- 11. окно выдачи: пропуск публикаций не выглядит полным сбором(план §14) ----------
@@ -963,3 +973,152 @@ def test_window_rules(env):
                          for i in range(tiktok.SEEN_MAX + 20)}}
     kept = window({"a": [1, 1, 1]}, state=many).state["profiles"]
     assert len(kept) == tiktok.SEEN_MAX and "a" in kept and "p000" not in kept and f"p{tiktok.SEEN_MAX + 19}" in kept
+
+
+# ---------- 12. недоверенные поля записи Dataset, ID запуска не записан, прерывание не подтверждено ----------
+
+def test_item_fields_untrusted(tk):
+    """Поля записи Dataset не доверяются: ссылка на публикацию - только tiktok.com, имя автора - по правилам TikTok,
+    файлы с токеном - только записи хранилища Apify одним сегментом пути, нечисловые и бесконечные числа - не числа."""
+    from app.integrations import tiktok
+    from app.integrations.context import RunContext
+
+    ctx = RunContext.ephemeral("tiktok")
+    ctx.payload = {"videos": True}
+    it = item(PID1, kv=False)
+    it["webVideoUrl"] = "https://tiktok.com.evil.example/@tumargroup/video/1"
+    it["playCount"] = float("inf")  # json.loads принимает Infinity
+    it["createTime"], it["createTimeISO"] = 10 ** 400, None  # целое больше float
+    it["mediaUrls"] = [kv_url("../../users/me"), kv_url(".."), f"{API}users/me", kv_url("ok") + "/../x"]
+    pub = tiktok.map_item(it, ctx)
+    assert pub.url == f"https://www.tiktok.com/@tumargroup/video/{PID1}" and pub.reach is None
+    assert pub.published_at is None
+    (video,) = [m for m in pub.media if m.key.endswith(":video")]
+    assert video.origin_url is None and video.fetch().status == "unavailable"  # ни одна ссылка не подошла
+    it["webVideoUrl"] = f"https://m.tiktok.com/v/{PID1}.html"
+    it["authorMeta"] = {"name": "evil/../x?y"}
+    assert tiktok.map_item(it, ctx).url == f"https://m.tiktok.com/v/{PID1}.html"
+    it["webVideoUrl"] = "javascript:alert(1)"
+    assert tiktok.map_item(it, ctx).url == ""  # имя не по правилам - ссылка не собирается
+    assert tiktok._kv(f"  {kv_url('video-a-1')}?signature=abc  ") == f"{kv_url('video-a-1')}?signature=abc"
+    for bad in (kv_url("a b"), kv_url("a\\b"), "http://api.apify.com/v2/key-value-stores/s/records/k",
+                "https://api.apify.com.evil.example/v2/key-value-stores/s/records/k", None, 5):
+        assert tiktok._kv(bad) is None, bad
+    assert tiktok.run_cost({"usageTotalUsd": float("nan"), "chargedEventCounts": {"result": float("inf")}}, {},
+                           0, False) == pytest.approx(0.005)
+    with pytest.raises(tiktok.BadConfig):
+        tiktok._token(SimpleNamespace(apify_token=SimpleNamespace(get=lambda: "apify_api_FAKE\x7f0123456789")))
+
+
+def test_run_id_not_saved_no_second_post(tk, client, http_mock, run_worker, monkeypatch):
+    """Запуск Apify создан, а его ID не записался в БД: повтор задания начал бы второй платный запуск - ошибка без
+    повтора, платный сбор остановлен."""
+    from app.integrations.context import RunContext
+
+    fake = FakeApify(http_mock, [item(PID1)], statuses=("SUCCEEDED",))
+    real, calls = RunContext.set_external_run, {"n": 0}
+
+    def flaky(self, *a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("database is locked")
+        return real(self, *a, **kw)
+    monkeypatch.setattr(RunContext, "set_external_run", flaky)
+    configure(client, tk)
+    run_id = start(client, tk)
+    drive(run_worker, steps=4, step=600)
+    run = run_of(client, run_id)
+    assert run["status"] == "failed" and run["error"].startswith("Запуск Apify Run1 начат, но не записан"), run
+    assert fake.runs == ["Run1"] and len(fake.posts()) == 1 and collect_job().attempts == 1
+    assert conn(client)["stopped"] is True
+    # стоимость у запуска сбора не запишется - до конца суток запуск в дневном лимите по лимиту на запуск
+    with SessionLocal() as db:
+        state = db.scalar(select(models.Collector).where(models.Collector.code == "tiktok")).state
+    (mark,) = state["unconfirmedStarts"]
+    assert mark["costUsd"] == 0.5 and mark["runId"] == run_id
+    assert any("ID запуска Apify Run1 не записан" in n["text"] for n in run["notes"])
+
+
+def test_payload_not_saved_after_run_id_resumes_poll(tk, client, http_mock, run_worker, monkeypatch):
+    """ID запуска записан у запуска сбора, а данные задания - нет: повтор задания без второго платного POST
+    продолжает с опроса этого запуска и дочитывает его, а не останавливает платный сбор."""
+    from app.integrations.context import RunContext
+
+    fake = FakeApify(http_mock, [item(PID1)], statuses=("SUCCEEDED",))
+    fake.kv[f"video-tumargroup-{PID1}"] = mp4_bytes(500)
+    real, calls = RunContext.save_payload, {"n": 0}
+
+    def flaky(self, **patch):
+        if patch.get("phase") == "poll" and not calls["n"]:
+            calls["n"] += 1
+            raise RuntimeError("database is locked")
+        return real(self, **patch)
+    monkeypatch.setattr(RunContext, "save_payload", flaky)
+    configure(client, tk)
+    run_id = start(client, tk)
+    drive(run_worker, steps=8, step=600)
+    run = run_of(client, run_id)
+    assert run["status"] == "succeeded" and run["externalRunId"] == "Run1", run
+    assert fake.runs == ["Run1"] and len(fake.posts()) == 1 and len(ads()) == 1
+
+
+def test_dataset_odd_pagination_total(tk, client, http_mock, run_worker):
+    """X-Apify-Pagination-Total с цифрой Unicode("²": isdigit - да, int() - ValueError) - как без заголовка."""
+    fake = FakeApify(http_mock, [item(PID1)], statuses=("SUCCEEDED",))
+    fake.kv[f"video-tumargroup-{PID1}"] = mp4_bytes(500)
+    fake.mock.on("GET", re.compile(r"/v2/datasets/DsRun1/items"),
+                 handler=lambda req: httpx.Response(200, json=fake.items[int(req.url.params["offset"]):],
+                                                    headers={"X-Apify-Pagination-Total": b"\xb2"}))
+    configure(client, tk)
+    run_id = start(client, tk)
+    drive(run_worker)
+    assert run_of(client, run_id)["status"] == "succeeded" and len(ads()) == 1
+
+
+def test_poll_deadline_abort_not_confirmed_cost_unknown(tk, client, env, http_mock, run_worker):
+    """Срок запуска вышел, а Apify не подтвердил прерывание: стоимость не занижается по последнему опросу - остаётся
+    неизвестной(в дневном лимите запуск считается по лимиту на запуск)."""
+    env(APIFY_RUN_TIMEOUT_S="60")
+    fake = FakeApify(http_mock, [item(PID1)], statuses=("RUNNING",), usage=0.03)
+    http_mock.on("POST", re.compile(r"/v2/actor-runs/Run1/abort"), status=500, json={"error": {"type": "x"}})
+    configure(client, tk)
+    run_id = start(client, tk)
+    drive(run_worker, steps=6, step=100)
+    run = run_of(client, run_id)
+    assert run["status"] == "failed" and run["error"] == "Запуск Apify не завершился за 6 мин — прерван", run
+    assert run["costUsd"] is None and run["externalRunId"] == "Run1" and len(fake.posts()) == 1
+    assert any("Apify не прервал запуск Run1 (HTTP 500)" in n["text"] for n in run["notes"])
+
+
+# ---------- 403 хранилища - по коду ошибки загрузки, не по тексту ----------
+
+def test_download_media_carries_error_code(tk, http_mock, run_ctx):
+    """download_media передаёт код DownloadError: 403/404 - "unavailable" с кодом http_403/http_404."""
+    from app.integrations import tiktok
+
+    ctx = run_ctx("tiktok")
+    for status in (403, 404):
+        http_mock.on("GET", kv_url(f"video-{status}"), status=status, json={"error": {"type": "x"}})
+        m = ctx.download_media(kv_url(f"video-{status}"), key=f"k{status}", kind="video",
+                               allowed_hosts=tiktok.APIFY_HOSTS)
+        assert (m.status, m.error_code) == ("unavailable", f"http_{status}")
+    ok = ctx.download_media(kv_url("missing-host"), key="k", allowed_hosts=("example.org",))
+    assert (ok.status, ok.error_code) == ("failed", "host_not_allowed")
+
+
+def test_kv_media_403_by_code_not_by_text(tk):
+    """_kv_media узнаёт отказ хранилища по коду http_403: текст "HTTP 403" в причине другой ошибки(например, в пути
+    ссылки) не превращает её в отказ, а 403 с другим текстом - превращает."""
+    from app.integrations import tiktok
+    from app.integrations.base import MediaIn
+
+    got: list[MediaIn] = []
+    ctx = SimpleNamespace(download_media=lambda url, **kw: got.pop())
+    lazy = tiktok._kv_media(ctx, kv_url("video-x"), key="k", kind="video", role=None, token=TOKEN)
+    got.append(MediaIn(key="k", status="unavailable", error="Источник ответил HTTP 404 (…/HTTP 403)",
+                       error_code="http_404"))
+    m = lazy.fetch()
+    assert (m.status, m.error) == ("unavailable", "Источник ответил HTTP 404 (…/HTTP 403)")
+    got.append(MediaIn(key="k", status="unavailable", error="Доступ запрещён", error_code="http_403"))
+    m = lazy.fetch()
+    assert (m.status, m.error) == ("failed", tiktok.KV_403)

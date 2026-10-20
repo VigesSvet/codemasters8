@@ -20,8 +20,8 @@
   У ЖК не из демо-набора idle_days пересчитывается по снимкам: от первого до последнего снимка хвостовой серии без
   активности или с низкой(снимки "нет сведений" серию не прерывают); последний снимок с активностью - 0.
 
-Запись ЖК - под блокировкой строки(SELECT … FOR UPDATE на PostgreSQL): две одновременные сверки разных документов не
-теряют друг друга. Повтор той же сверки без комментария журнал не засоряет.
+Запись ЖК - под блокировкой строки(db.get_for_update: SELECT … FOR UPDATE, на SQLite - блокировка записи БД): две
+одновременные сверки разных документов не теряют друг друга. Повтор той же сверки без комментария журнал не засоряет.
 """
 import math
 import uuid
@@ -35,7 +35,7 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from . import media, models, registry, schemas, screening
-from .db import get_db
+from .db import get_db, get_for_update
 from .risk_model import MODEL, T
 
 router = APIRouter(tags=["verification"])
@@ -50,9 +50,10 @@ SITE = "site"  # origin_ref и role файла снимка площадки
 APPEAL_NOT_FOUND = "Обращение не найдено"
 
 
-# ---------- помощники ----------
+# ---------- помощники(общие с app.decisions и app.gallery) ----------
 
-def _fmt(d: Any) -> str:
+def fmt_date(d: Any) -> str:
+    """Дата(date или ISO-строка) → "ДД.ММ.ГГГГ" для журнала; короче даты - как есть."""
     s = d.isoformat() if isinstance(d, date) else str(d or "")
     return f"{s[8:10]}.{s[5:7]}.{s[:4]}" if len(s) >= 10 else s
 
@@ -61,33 +62,36 @@ def _num(x: float) -> Any:
     return int(x) if float(x).is_integer() else x
 
 
-def _then(text: str, comment: str | None) -> str:
+def with_comment(text: str, comment: str | None) -> str:
+    """Текст события журнала с комментарием сотрудника: "<текст>. Комментарий: <комментарий>"."""
     return f"{text}{'' if text.endswith('.') else '.'} Комментарий: {comment}" if comment else text
 
 
-def _complex(db: Session, cid: str, *, lock: bool = False) -> models.Complex:
+def complex_or_404(db: Session, cid: str, *, lock: bool = False) -> models.Complex:
     """ЖК(для записи - под блокировкой строки и с перечитанными полями); ключ объекта открытых данных - 404 с
     объяснением, как у остальных маршрутов ЖК."""
-    c = db.get(models.Complex, cid, with_for_update=lock or None, populate_existing=lock)
+    c = get_for_update(db, models.Complex, cid) if lock else db.get(models.Complex, cid)
     if c is None:
         raise registry.not_found(db, cid)
     return c
 
 
-def _event(db: Session, who: str, what: str, cid: str) -> models.AuditEvent:
+def data_event(db: Session, who: str, what: str, cid: str) -> models.AuditEvent:
+    """Событие журнала объекта вида "данные" от имени сотрудника(без commit)."""
     e = models.AuditEvent(kind="data", who=who, what=what, at=models.utcnow(), complex_id=cid)
     db.add(e)
     return e
 
 
-def _row(db: Session, c: models.Complex) -> Obj:
+def complex_row(db: Session, c: models.Complex) -> Obj:
     """ЖК в форме GET /api/complexes/{id}: с основанием по открытым данным, "Проверкой по рекламе" и подсказками."""
-    return screening.complex_rows(db, [c], screening.compute(db))[0]
+    return screening.complex_rows(db, [c], screening.compute_complex(db, c))[0]
 
 
-def _commit_row(db: Session, cid: str) -> Obj:
+def commit_complex_row(db: Session, cid: str) -> Obj:
+    """commit и ЖК в форме GET /api/complexes/{id} - ответ маршрутов записи."""
     db.commit()
-    return _row(db, _complex(db, cid))
+    return complex_row(db, complex_or_404(db, cid))
 
 
 def _check(source: str | None, url: str | None, checked: str, who: str, comment: str | None, **extra) -> Obj:
@@ -97,7 +101,8 @@ def _check(source: str | None, url: str | None, checked: str, who: str, comment:
     return out
 
 
-def _src_text(source: str, url: str | None) -> str:
+def source_text(source: str, url: str | None) -> str:
+    """"источник: <источник> (<ссылка>)" для журнала."""
     return f"источник: {source}" + (f" ({url})" if url else "")
 
 
@@ -107,10 +112,11 @@ def doc_view(c: models.Complex, suggest: Obj | None) -> list[Obj]:
     """Документы основания: значение, сверка(кто, когда, где), подсказка открытого реестра."""
     b = c.basis or {}
     own = b.get("sources") or {}
+    checks = screening.analyst_checks(b)
     out = []
     for key, d in DOCS.items():
         value = b.get(key, "unknown")
-        p = screening.analyst_checks(b).get(key)
+        p = checks.get(key)
         rec = own.get(key) or {}
         out.append({"doc": key, "label": d["label"], "value": value, "ref": b.get(d["refField"]) or None,
                     "source": p["source"] if p else None, "url": p["url"] if p else None,
@@ -124,8 +130,8 @@ def doc_view(c: models.Complex, suggest: Obj | None) -> list[Obj]:
 def basis_view(cid: str, db: Session = Depends(get_db)):
     """Основание ЖК по документам и перечень ГАСК: что сверено(кто, когда, где) и что называет открытый реестр
     (suggestion - номер и дата документа, источник, ссылка: "Подтвердить - совпадает с источником" в один клик)."""
-    c = _complex(db, cid)
-    key, rs = screening.registry_groups(db, [c])[c.id]
+    c = complex_or_404(db, cid)
+    _, rs = screening.registry_groups(db, [c])[c.id]
     docs = doc_view(c, screening.suggestions(rs) if rs else None)
     pl = c.published_list_check or {}
     listed = {"value": c.in_published_list or "unknown", "source": pl.get("source"), "url": pl.get("url"),
@@ -140,7 +146,7 @@ def verify_basis(cid: str, body: schemas.BasisCheckIn, db: Session = Depends(get
     (или банком), датой сверки(по умолчанию сегодня, не позже сегодня); "нет сведений" - снять сверку. "Есть" по любому
     документу - основание в "Проверке по рекламе"(permitted, сверка аналитика); "нет" по гарантии ЕО и разрешению МИО -
     not_permitted и R1. Риск карточки реестра начинает оцениваться(assessed) с первого сверенного документа."""
-    c = _complex(db, cid, lock=True)
+    c = complex_or_404(db, cid, lock=True)
     before = dict(c.basis or {})
     b = {**before, "sources": dict(before.get("sources") or {})}
     key, ref_field, name = body.doc, DOCS[body.doc]["refField"], DOC_NAMES[body.doc]
@@ -162,18 +168,18 @@ def verify_basis(cid: str, body: schemas.BasisCheckIn, db: Session = Depends(get
         b[ref_field] = body.ref or ""
         b["source"], b["checkedAt"] = body.source, when
         what = (f"Основание сверено: {name} — {TRI[body.value]}" + (f" ({body.ref})" if body.ref else "")
-                + f", {_src_text(body.source, body.source_url)}, сверено {_fmt(when)}")
+                + f", {source_text(body.source, body.source_url)}, сверено {fmt_date(when)}")
     if b == before and not body.comment:
-        return _row(db, c)
+        return complex_row(db, c)
     c.basis = b
-    _event(db, body.author, _then(what, body.comment), c.id)
-    return _commit_row(db, c.id)
+    data_event(db, body.author, with_comment(what, body.comment), c.id)
+    return commit_complex_row(db, c.id)
 
 
 @router.post("/api/complexes/{cid}/published-list", response_model=schemas.ComplexListOut, response_model_by_alias=True)
 def verify_published_list(cid: str, body: schemas.PublishedListIn, db: Session = Depends(get_db)):
     """Сверка с опубликованным перечнем ГАСК(наблюдение O1, вне балла): есть / нет с источником; "нет сведений" - снять."""
-    c = _complex(db, cid, lock=True)
+    c = complex_or_404(db, cid, lock=True)
     before = (c.in_published_list, c.published_list_check)
     when = (body.checked_at or schemas.today_local()).isoformat()
     if body.value == "unknown":
@@ -182,12 +188,12 @@ def verify_published_list(cid: str, body: schemas.PublishedListIn, db: Session =
         value = body.value
         check = _check(body.source, body.source_url, when, body.author, body.comment, value=body.value)
         what = (f"Перечень ГАСК сверен: объект {'есть' if body.value == 'yes' else 'отсутствует'} в опубликованном "
-                f"перечне, {_src_text(body.source, body.source_url)}, сверено {_fmt(when)}")
+                f"перечне, {source_text(body.source, body.source_url)}, сверено {fmt_date(when)}")
     if (value, check) == before and not body.comment:
-        return _row(db, c)
+        return complex_row(db, c)
     c.in_published_list, c.published_list_check = value, check
-    _event(db, body.author, _then(what, body.comment), c.id)
-    return _commit_row(db, c.id)
+    data_event(db, body.author, with_comment(what, body.comment), c.id)
+    return commit_complex_row(db, c.id)
 
 
 # ---------- готовность ----------
@@ -197,7 +203,7 @@ def set_readiness(cid: str, body: schemas.ReadinessIn, db: Session = Depends(get
     """Готовность(R5): заявленная(сайт, реклама застройщика) или подтверждённая(акт осмотра, фото-мониторинг), 0-100 %,
     с источником и датой. Подтверждённая с источником и датой - проверенные сведения(риск карточки реестра оценивается)
     и готовность ЖК(progress)."""
-    c = _complex(db, cid, lock=True)
+    c = complex_or_404(db, cid, lock=True)
     r = {"declared": None, "confirmed": None, **(c.readiness or {})}
     value = _num(body.value)
     rec = {"value": value, "source": body.source, "date": body.date.isoformat(), "by": body.author,
@@ -207,14 +213,14 @@ def set_readiness(cid: str, body: schemas.ReadinessIn, db: Session = Depends(get
     old = r.get(body.kind) or {}
     if (not body.comment and {k: old.get(k) for k in ("value", "source", "date")}
             == {k: rec[k] for k in ("value", "source", "date")}):
-        return _row(db, c)
+        return complex_row(db, c)
     r[body.kind] = rec
     c.readiness = r
     if body.kind == "confirmed":
-        c.progress = int(math.floor(body.value + 0.5))
-    what = f"{READINESS[body.kind]} готовность {value}% — {body.source}, на {_fmt(body.date)}"
-    _event(db, body.author, _then(what, body.comment), c.id)
-    return _commit_row(db, c.id)
+        c.progress = math.floor(body.value + 0.5)  # округление половины вверх(31.5 → 32), а не банковское
+    what = f"{READINESS[body.kind]} готовность {value}% — {body.source}, на {fmt_date(body.date)}"
+    data_event(db, body.author, with_comment(what, body.comment), c.id)
+    return commit_complex_row(db, c.id)
 
 
 # ---------- обращения ----------
@@ -230,7 +236,7 @@ def _applicants(n: int) -> str:
 def add_appeal(cid: str, body: schemas.AppealIn, db: Session = Depends(get_db)):
     """Обращение граждан, внесённое аналитиком: ждёт проверки(status pending - "на проверке"). Коллективное
     непроверенное - R4 "нужна проверка"; проверенное(POST /api/appeals/{id}/verify) - R4."""
-    c = _complex(db, cid)
+    c = complex_or_404(db, cid)
     a = models.Appeal(id=f"ap{uuid.uuid4().hex[:12]}", complex_id=c.id, date=body.date.isoformat(),
                       collective=body.collective, applicants=body.applicants, status="pending", verified_at=None,
                       subject=body.subject, source=body.source, origin="analyst", comment=body.comment,
@@ -238,8 +244,8 @@ def add_appeal(cid: str, body: schemas.AppealIn, db: Session = Depends(get_db)):
     db.add(a)
     head = (f"Внесено коллективное обращение ({_applicants(body.applicants)})" if body.collective
             else f"Внесено обращение ({_applicants(body.applicants)})")
-    _event(db, body.author, _then(f"{head} от {_fmt(body.date)}: {body.subject} — {body.source}. Ожидает проверки",
-                                  body.comment), c.id)
+    what = f"{head} от {fmt_date(body.date)}: {body.subject} — {body.source}. Ожидает проверки"
+    data_event(db, body.author, with_comment(what, body.comment), c.id)
     db.commit()
     db.refresh(a)
     return a
@@ -266,7 +272,7 @@ def _decide_appeal(aid: str, status: str, body: schemas.AppealDecisionIn, db: Se
     what = ("Обращение проверено: подтверждено" if status == "verified" else "Обращение отклонено после проверки")
     if old in ("verified", "rejected") and old != status:
         what += " (решение изменено)"
-    _event(db, body.author, _then(f"{what} — {a.subject}", body.comment), a.complex_id)
+    data_event(db, body.author, with_comment(f"{what} — {a.subject}", body.comment), a.complex_id)
     db.commit()
     db.refresh(a)
     return a
@@ -291,18 +297,18 @@ def reject_appeal(aid: str, body: schemas.AppealDecisionIn, db: Session = Depend
 def appeals_check(cid: str, body: schemas.AppealsCheckIn, db: Session = Depends(get_db)):
     """"Обращений нет - сверено": где проверено(ДЭР, ГАСК, eOtinish) и когда. У карточки реестра и рекламы R4 без неё -
     "нужна проверка", с ней - "коллективных обращений нет"(если внесённых непроверенных или проверенных нет)."""
-    c = _complex(db, cid, lock=True)
+    c = complex_or_404(db, cid, lock=True)
     when = (body.checked_at or schemas.today_local()).isoformat()
     check = {"source": body.source, "checkedAt": when, "checkedBy": body.author}
     if body.comment:
         check["comment"] = body.comment
     old = c.appeals_check or {}
     if not body.comment and {k: old.get(k) for k in check} == check:
-        return _row(db, c)
+        return complex_row(db, c)
     c.appeals_check = check
-    _event(db, body.author, _then(f"Обращений по объекту нет — сверено: источник: {body.source}, сверено {_fmt(when)}",
-                                  body.comment), c.id)
-    return _commit_row(db, c.id)
+    what = f"Обращений по объекту нет — сверено: источник: {body.source}, сверено {fmt_date(when)}"
+    data_event(db, body.author, with_comment(what, body.comment), c.id)
+    return commit_complex_row(db, c.id)
 
 
 # ---------- снимки площадки ----------
@@ -322,7 +328,8 @@ def idle_days(photos: list[Obj]) -> int:
     return (date.fromisoformat(run[0][:10]) - date.fromisoformat(run[-1][:10])).days
 
 
-def _form_errors(e: ValidationError) -> RequestValidationError:
+def form_errors(e: ValidationError) -> RequestValidationError:
+    """Ошибки схемы полей multipart-формы → 422 в формате FastAPI(loc начинается с "body")."""
     return RequestValidationError([{**err, "loc": ("body", *err["loc"])} for err in e.errors(include_url=False)])
 
 
@@ -341,33 +348,26 @@ def add_photo(cid: str, file: UploadFile = File(...), author: str | None = Form(
     try:  # поля формы проверяет схема - все ошибки сразу и по-русски, как у JSON-маршрутов; пустое поле - "не указано"
         body = schemas.SitePhotoIn.model_validate({k: v for k, v in fields.items() if v is not None})
     except ValidationError as e:
-        raise _form_errors(e) from None
-    _complex(db, cid)
-    data = file.file.read(media.UPLOAD_MAX + 1)
-    if len(data) > media.UPLOAD_MAX:
-        raise HTTPException(413, f"Файл больше {media.UPLOAD_MAX // media.MB} МБ")
+        raise form_errors(e) from None
+    complex_or_404(db, cid)
     now = models.utcnow()
-    try:
-        media.check_upload_budget(db, now, len(data))
-        st = media.store_bytes(data, allowed=media.IMAGE_TYPES)
-    except media.MediaRejected as e:
-        raise HTTPException(e.status, e.detail) from None
+    st = media.accept_image_upload(db, file.file, now)
     asset = models.MediaAsset(id=uuid.uuid4().hex, ad_id=None, item_id=None, kind="image", role=SITE, origin_ref=SITE,
                               status="downloaded", attempts=1, mime=st.mime, size=st.size, sha256=st.sha256,
                               storage_key=st.storage_key, meta={"complexId": cid}, created_at=now, downloaded_at=now)
     db.add(asset)
-    c = _complex(db, cid, lock=True)
+    c = complex_or_404(db, cid, lock=True)
     photo = {"date": body.date.isoformat(), "src": asset.url, "source": body.source, "activity": ACTIVITY[body.activity],
              "mediaId": asset.id, "by": body.author, "at": models.iso(now)}
     if body.note:
         photo["note"] = body.note
     photos = sorted([*(c.photos or []), photo], key=lambda p: p.get("date") or "")
     c.photos = photos
-    what = f"Снимок площадки от {_fmt(body.date)} ({body.source}): активность — {photo['activity']}"
+    what = f"Снимок площадки от {fmt_date(body.date)} ({body.source}): активность — {photo['activity']}"
     if c.origin != "demo":
         idle = idle_days(photos)
         if idle != (c.idle_days or 0):
             what += f"; простой по снимкам — {idle} дн." if idle else "; простоя по снимкам нет"
         c.idle_days = idle
-    _event(db, body.author, f"{what}. {body.note}" if body.note else what, c.id)
-    return _commit_row(db, c.id)
+    data_event(db, body.author, f"{what}. {body.note}" if body.note else what, c.id)
+    return commit_complex_row(db, c.id)

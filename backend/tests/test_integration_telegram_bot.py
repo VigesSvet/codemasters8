@@ -429,6 +429,28 @@ def test_db_error_does_not_leak_applicant(client, bot, monkeypatch, caplog):
     assert not any(v in client.get("/api/sources/connectors").text for v in PII)
 
 
+def test_url_dropped_by_ingest_rejected_with_reason(client, bot):
+    """Регрессия: ссылку с учётными данными, неверным портом, \\ или кавычками бот принимал(^https?://\\S+$), а приём
+    молча сохранял публикацию без ссылки. Теперь - 422 с пояснением жителю, ничего не сохраняется."""
+    before = snapshot()
+    for url in ("https://krisha.kz@evil.example/a", "https://user:pass@instagram.com/p/1", "https://instagram.com:0/p",
+                "https://instagram.com:99999/p", "https://instagram.com\\@evil.example/", 'https://instagram.com/p"x',
+                "https://instagram.com/<p>", "https://instagram.com/`p`"):
+        r = post(client, body(url=url))
+        assert r.status_code == 422, (url, r.text)
+        err = r.json()["detail"][0]
+        assert err["loc"][:2] == ["body", "url"] and err["msg"].endswith(bot.UNSAFE_LINK), url
+    for url in ("https://", "ftp://instagram.com/p", "https://insta gram.com/p", "javascript:alert(1)"):
+        r = post(client, body(url=url))
+        assert r.status_code == 422 and r.json()["detail"][0]["msg"].endswith(bot.NOT_A_LINK), (url, r.text)
+    assert snapshot() == before
+    # годная ссылка(и в верхнем регистре схемы) - сохраняется как есть; пробелы по краям и управляющие символы -
+    # убираются
+    r = post(client, body(url="  HTTPS://www.instagram.com/p/\x01DAbc123/?igsh=1  "))
+    assert r.status_code == 201, r.text
+    assert client.get(f"/api/ads/{r.json()['adId']}").json()["url"] == "HTTPS://www.instagram.com/p/DAbc123/?igsh=1"
+
+
 # ---------- 9. сбой сервера виден; файлы без записи в БД не остаются ----------
 
 def test_server_failure_visible_and_files_removed(client, bot, monkeypatch):
@@ -473,6 +495,30 @@ def test_server_failure_visible_and_files_removed(client, bot, monkeypatch):
     ad = client.get(f"/api/ads/{r.json()['adId']}").json()
     assert [client.get(m["url"]).content for m in ad["media"]] == [f[1] for f in files]
     assert connector(client)["status"] == "working"
+
+
+def test_file_written_by_parallel_request_not_removed(client, bot, monkeypatch):
+    """Регрессия гонки exists()/запись: параллельный запрос с теми же байтами записал файл между проверкой и записью
+    этого - неудача этого запроса его файл не удаляет(на него сошлётся запись параллельного)."""
+    import hashlib
+    import os
+    from pathlib import Path
+
+    from app import media
+
+    data, real_link = png_bytes((134, 0, 0)), os.link
+
+    def parallel(src, dst, **kw):
+        Path(dst).write_bytes(data)
+        return real_link(src, dst, **kw)
+
+    def boom(db, pub, **kw):
+        raise RuntimeError("сбой приёма")
+
+    monkeypatch.setattr(media.os, "link", parallel)
+    monkeypatch.setattr(bot.ingest, "ingest_publication", boom)
+    assert post_files(client, body(), [("a.png", data, "image/png")]).status_code == 500
+    assert media.path_of(media.storage_key(hashlib.sha256(data).hexdigest(), "image/png")).read_bytes() == data
 
 
 def test_file_removed_by_parallel_failure_is_restored(client, bot, monkeypatch):

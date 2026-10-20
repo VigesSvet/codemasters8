@@ -5,7 +5,7 @@
 import { useRef, useState } from 'react'
 import type { Complex } from '../data/types'
 import { errorText } from '../lib/api'
-import { galleryOf, photoCaption, photoSrc, photoTag } from '../lib/gallery'
+import { galleryOf, photoCaption, photoPage, photoSrc, photoTag } from '../lib/gallery'
 import { useStore } from '../lib/store'
 import { IcCameraAdd, IcCheck, IcClose, IcDownload, IcPicture } from '../ui/icons'
 import { SafeImg } from './ui'
@@ -67,6 +67,7 @@ export function ObjectGallery({ c, tags }: { c: Complex; tags?: React.ReactNode 
   const up = useUpload(c)
   const i = Math.min(cur, Math.max(0, photos.length - 1))
   const p = photos[i]
+  const page = p && photoPage(p)
   const run = (what: string, done: string, f: () => Promise<unknown>) => {
     setBusy(what)
     f().then(() => notify(done), (e: unknown) => notify(errorText(e))).finally(() => setBusy(null))
@@ -86,7 +87,7 @@ export function ObjectGallery({ c, tags }: { c: Complex; tags?: React.ReactNode 
         <div className="tl">{tags}</div>
         {p && <span className="gl-src">{photoTag(p)}{p.cover && ' · обложка'}</span>}
       </div>
-      {p && <p className="gl-cap t-sm c2">{photoCaption(p)}{p.note && <> · {p.note}</>}{p.url && <> · <a className="link" href={p.url} target="_blank" rel="noopener noreferrer">страница источника</a></>}</p>}
+      {p && <p className="gl-cap t-sm c2">{photoCaption(p)}{p.note && <> · {p.note}</>}{page && <> · <a className="link" href={page} target="_blank" rel="noopener noreferrer">страница источника</a></>}</p>}
       {photos.length > 1 && (
         <div className="thumbs gl-thumbs">
           {photos.map((x, n) => (

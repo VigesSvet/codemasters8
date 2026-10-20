@@ -88,7 +88,10 @@ def run(cat: Catalog | None = None) -> Obj:
     cat = cat or case_catalog()
     rows = [run_case(c, cat) for c in load_cases()]
     counts = [r.pop("_counts") for r in rows]
-    s = lambda key: sum(int(c[key]) for c in counts)
+
+    def s(key: str) -> int:
+        return sum(int(c[key]) for c in counts)
+
     link_cases = s("linkCase")
     return {
         "engine": ENGINE,

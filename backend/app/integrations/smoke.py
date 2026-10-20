@@ -34,7 +34,6 @@ def check_one(code: str) -> str:
             return f"{code}: не настроен — нет {', '.join(env)}"
         # переменные заданы, не хватает условия(сессия Telegram) - пояснение самого подключения
         return f"{code}: не настроен — {conn.missing_detail(s, None) or ', '.join(missing)}"
-    computed = None
     if not (conn.capabilities or {}).get("test"):
         computed = conn.computed_status(None, None, None) if conn.kind == "analyzer" else None
         if computed is not None:

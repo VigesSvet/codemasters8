@@ -2,12 +2,14 @@
 import errno
 import hashlib
 import importlib.util
+import io
 import os
 import re
 import shutil
 import subprocess
 import time
-from datetime import timedelta
+import zlib
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpcore
@@ -80,30 +82,34 @@ def test_store_rejects_type_size_and_low_disk(env, monkeypatch):
     assert media.store_bytes(mp4_bytes(1024 * 1024 + 10)).mime == "video/mp4"  # видео - свой предел
     assert media.limit_for("video") == 2 * media.MB and media.limit_for("image/png") == media.MB
     # мало места: свободно меньше MEDIA_MIN_FREE_MB(по умолчанию 1024 МБ) - 507, файл не сохранён
+    # цвет - только этого теста: файл, сохранённый другим тестом раньше, переиспользуется без записи и проверки места
+    kept = media.store_bytes(png_bytes((9, 9, 10)))
     monkeypatch.setattr(media.shutil, "disk_usage", lambda p: shutil._ntuple_diskusage(10, 10, 100 * media.MB))
-    data = png_bytes((9, 9, 9))
+    data = png_bytes((9, 9, 11))
     with pytest.raises(media.MediaRejected) as e:
         media.store_bytes(data)
     assert (e.value.status, e.value.detail) == (507, "Мало места для файлов на сервере — файл не сохранён")
-    assert not media.path_of(media._key(hashlib.sha256(data).hexdigest(), "image/png")).exists()
+    assert not media.path_of(media.storage_key(hashlib.sha256(data).hexdigest(), "image/png")).exists()
+    # такой файл уже есть - писать нечего, места не нужно
+    assert media.store_bytes(png_bytes((9, 9, 10))) == kept
 
 
 def test_store_file_moves_and_falls_back_on_exdev(monkeypatch):
-    data = png_bytes((4, 5, 6))
+    data = png_bytes((4, 5, 7))  # цвет - только этого теста: уже сохранённый файл не переносится
     tmp = media.tmp_dir() / "incoming.bin"
     tmp.write_bytes(data)
-    real = os.replace
+    real = os.link
     calls = []
 
-    def flaky(src, dst):
+    def flaky(src, dst, **kw):
         calls.append((str(src), str(dst)))
         if len(calls) == 1:
             raise OSError(errno.EXDEV, "Invalid cross-device link")
-        return real(src, dst)
+        return real(src, dst, **kw)
 
-    monkeypatch.setattr(media.os, "replace", flaky)
+    monkeypatch.setattr(media.os, "link", flaky)
     s = media.store_file(tmp)
-    assert len(calls) == 2 and media.path_of(s.storage_key).read_bytes() == data
+    assert len(calls) == 2 and media.path_of(s.storage_key).read_bytes() == data and s.created
     assert not tmp.exists() and s.sha256 == hashlib.sha256(data).hexdigest()
     assert not [p for p in media.tmp_dir().iterdir() if p.name.startswith("mv-")]
     # такой файл уже есть - временный просто удаляется; неподходящий тип - тоже удаляется(файл забран)
@@ -113,6 +119,125 @@ def test_store_file_moves_and_falls_back_on_exdev(monkeypatch):
     with pytest.raises(media.MediaRejected):
         media.store_file(tmp)
     assert not tmp.exists()
+
+
+def test_store_file_rejects_symlink_and_special_files(tmp_path):
+    """Регрессия: ссылка во временном каталоге переносилась в хранилище как есть - файл хранилища указывал на чужой
+    файл. Ссылка и не обычный файл(FIFO) - 415, ссылка удалена, файл, на который она указывала, не тронут."""
+    target = tmp_path / "secret.png"
+    target.write_bytes(png_bytes((41, 42, 43)))
+    link = media.tmp_dir() / "dl-link"
+    link.symlink_to(target)
+    with pytest.raises(media.MediaRejected) as e:
+        media.store_file(link)
+    assert e.value.status == 415 and not link.is_symlink() and target.exists()
+    assert not media.path_of(media.storage_key(hashlib.sha256(target.read_bytes()).hexdigest(), "image/png")).exists()
+    fifo = media.tmp_dir() / "dl-fifo"
+    os.mkfifo(fifo)
+    with pytest.raises(media.MediaRejected) as e:
+        media.store_file(fifo)  # не ждёт писателя
+    assert e.value.status == 415 and not fifo.exists()
+
+
+def test_damaged_stored_file_is_rewritten():
+    """Файл хранилища другого размера(обрезан сбоем диска) не используется повторно - перезаписывается целым."""
+    data = png_bytes((44, 45, 46))
+    path = media.path_of(media.store_bytes(data).storage_key)
+    path.write_bytes(data[:10])
+    assert media.store_bytes(data).size == len(data) and path.read_bytes() == data
+    path.write_bytes(b"")
+    tmp = media.tmp_dir() / "again.png"
+    tmp.write_bytes(data)
+    media.store_file(tmp)
+    assert path.read_bytes() == data and not tmp.exists()
+
+
+def test_store_reports_created_only_for_own_write(monkeypatch):
+    """created - файл создан именно этим вызовом. Регрессия гонки бота заявок(exists() и запись - два шага): файл,
+    который между проверкой и записью успел записать параллельный запрос, считался своим и удалялся при неудаче."""
+    data = png_bytes((51, 52, 53))
+    first = media.store_bytes(data)
+    assert first.created and first.storage_key == media.storage_key(first.sha256, "image/png")
+    again = media.store_bytes(data)
+    assert not again.created and again == first  # created в сравнении не участвует
+    path = media.path_of(first.storage_key)
+
+    real = os.link
+
+    def parallel(file: bytes):  # параллельный запрос записывает тот же ключ между проверкой и записью этого
+        def link(src, dst, **kw):
+            Path(dst).write_bytes(file)
+            return real(src, dst, **kw)
+        return link
+
+    path.unlink()
+    monkeypatch.setattr(media.os, "link", parallel(data))
+    st = media.store_bytes(data)
+    assert not st.created and path.read_bytes() == data
+    # параллельный оставил обрезанный файл - он заменяется целым, но своим не считается(на него уже ссылаются)
+    path.unlink()
+    monkeypatch.setattr(media.os, "link", parallel(data[:10]))
+    st = media.store_bytes(data)
+    assert not st.created and path.read_bytes() == data
+    tmp = media.tmp_dir() / "parallel.png"
+    tmp.write_bytes(data)
+    path.unlink()
+    assert not media.store_file(tmp).created and path.read_bytes() == data and not tmp.exists()
+    assert not [p for p in media.tmp_dir().iterdir() if p.name.startswith("put-")]
+
+
+def test_store_without_hard_links_replaces(monkeypatch):
+    """Файловая система без жёстких ссылок - файл ставится заменой; created = False(лишний уберёт purge_orphans)."""
+    def no_link(src, dst, **kw):
+        raise OSError(errno.EPERM, "Operation not permitted")
+
+    monkeypatch.setattr(media.os, "link", no_link)
+    data = png_bytes((54, 55, 56))
+    st = media.store_bytes(data)
+    assert not st.created and media.path_of(st.storage_key).read_bytes() == data
+    def broken(src, dst, **kw):
+        raise OSError(errno.EIO, "Input/output error")
+
+    monkeypatch.setattr(media.os, "link", broken)
+    with pytest.raises(OSError):
+        media.store_bytes(png_bytes((54, 55, 57)))  # другие ошибки - как есть, временный файл не остаётся
+    assert not [p for p in media.tmp_dir().iterdir() if p.name.startswith("put-")]
+
+
+def _png_claiming(width: int, height: int) -> bytes:
+    """PNG 8×8, в заголовке(IHDR) которого указан другой размер: Pillow узнаёт размер до декодирования."""
+    data = bytearray(png_bytes((60, 61, 62)))
+    data[16:24] = width.to_bytes(4, "big") + height.to_bytes(4, "big")
+    data[29:33] = zlib.crc32(bytes(data[12:29])).to_bytes(4, "big")
+    return bytes(data)
+
+
+def test_open_image_limits_pixels_and_formats(tmp_path):
+    from PIL import Image, UnidentifiedImageError
+
+    with media.open_image(png_bytes((1, 2, 3))) as im:
+        assert im.size == (8, 8) and im.format == "PNG"
+    # размер по заголовку больше предела - 413 до декодирования; огромный(общий предел Pillow) - тоже 413
+    for w, h in ((9000, 8000), (20000, 20000)):
+        with pytest.raises(media.MediaRejected) as e:
+            media.open_image(_png_claiming(w, h))
+        assert e.value.status == 413 and "64 Мп" in e.value.detail, (w, h)
+    with pytest.raises(media.MediaRejected):
+        media.open_image(png_bytes(), max_pixels=63)
+    # формат не из хранилища(BMP) не декодируется, даже если Pillow его умеет
+    bmp = tmp_path / "x.bmp"
+    Image.new("RGB", (8, 8)).save(bmp)
+    with pytest.raises(UnidentifiedImageError):
+        media.open_image(bmp)
+    with media.open_image(bmp, formats=["BMP"]) as im:
+        assert im.format == "BMP"
+    # JPEG уменьшается при декодировании(draft) до проверки предела
+    jpg = tmp_path / "big.jpg"
+    Image.new("RGB", (640, 480), (90, 20, 20)).save(jpg)
+    with media.open_image(jpg, max_pixels=160 * 120, draft=("L", (64, 64))) as im:  # масштаб 1/4: не меньше 64×64
+        assert im.size == (160, 120) and im.mode == "L"
+    with pytest.raises(media.MediaRejected):
+        media.open_image(jpg, max_pixels=160 * 120)
 
 
 def test_path_of_stays_inside_root():
@@ -140,13 +265,19 @@ def test_purge_unattached_uploads(client):
         shared_old = _asset(db, created_at=now - timedelta(hours=25), data=png_bytes((0, 10, 0)))
         shared_kept = _asset(db, ad_id="a1", created_at=now - timedelta(hours=25), data=png_bytes((0, 10, 0)))
         fresh = _asset(db, created_at=now - timedelta(hours=2), data=png_bytes((0, 0, 10)))
-        paths = {a.id: media.path_of(a.storage_key) for a in (old, shared_old, shared_kept, fresh)}
-        assert media.purge_unattached(db, now) == 2
-        left = {a.id for a in db.query(models.MediaAsset)}
+        reused = _asset(db, created_at=now - timedelta(hours=25), data=png_bytes((10, 10, 0)))
+        paths = {a.id: media.path_of(a.storage_key) for a in (old, shared_old, shared_kept, fresh, reused)}
+        for a in (old, shared_old):
+            _age(paths[a.id])  # файл суточной загрузки - суточный, reused - записан повторно только что
+        assert media.purge_unattached(db, now) == 3
+        left = set(db.scalars(select(models.MediaAsset.id)))
         assert left == {shared_kept.id, fresh.id}
     assert not paths[old.id].exists()  # файл удалён вместе с записью
     assert paths[shared_old.id].exists()  # тот же файл нужен привязанной записи - остаётся
     assert paths[fresh.id].exists()
+    # запись удалена, а файл недавно использован повторно(идущий приём ещё не сохранил свою запись) - файл остаётся
+    # до уборки файлов без записей
+    assert paths[reused.id].exists()
 
 
 def _age(path: Path, hours: float = 25) -> None:
@@ -211,32 +342,130 @@ def test_housekeeping_purges_orphans(client):
     assert not orphan.exists()
 
 
-def test_upload_budget(client):
-    now = models.utcnow()
+def _quota(name: str) -> int:
+    from app.integrations import service
+
     with SessionLocal() as db:
-        for _ in range(media.UPLOAD_HOURLY_FILES - 1):
-            db.add(models.MediaAsset(id=os.urandom(16).hex(), kind="image", status="downloaded", origin_ref="upload",
-                                     size=1000, created_at=now - timedelta(minutes=5)))
-        db.add(models.MediaAsset(id=os.urandom(16).hex(), kind="image", status="downloaded", origin_ref="intake",
-                                 size=1000, created_at=now))  # файл приёма публикаций - не ручная загрузка, не считается
-        db.commit()
-        media.check_upload_budget(db, now, size=1000)  # 50-я - можно
-        db.add(models.MediaAsset(id=os.urandom(16).hex(), kind="image", status="downloaded", origin_ref="upload",
-                                 size=1000, ad_id="a1", created_at=now))  # привязанная к публикации - считается
-        db.commit()
-        with pytest.raises(media.MediaRejected):
-            media.check_upload_budget(db, now, size=1000)
-        db.execute(models.MediaAsset.__table__.delete().where(models.MediaAsset.ad_id == "a1"))
-        db.commit()
-        db.add(models.MediaAsset(id=os.urandom(16).hex(), kind="image", status="downloaded", origin_ref="upload",
-                                 size=1000, created_at=now))
-        db.commit()
-        with pytest.raises(media.MediaRejected) as e:
-            media.check_upload_budget(db, now, size=1000)
-        assert (e.value.status, e.value.detail) == (429, "Слишком много загрузок — попробуйте позже")
-        media.check_upload_budget(db, now + timedelta(hours=2), size=1000)  # час прошёл
-        with pytest.raises(media.MediaRejected):
-            media.check_upload_budget(db, now + timedelta(hours=2), size=media.UPLOAD_HOURLY_BYTES + 1)
+        return service.quota_used(db, name)
+
+
+def _small_budget(monkeypatch, files=3, nbytes=10_000, day_files=5, day_bytes=100_000) -> None:
+    monkeypatch.setattr(media, "UPLOAD_HOURLY_FILES", files)
+    monkeypatch.setattr(media, "UPLOAD_HOURLY_BYTES", nbytes)
+    monkeypatch.setattr(media, "UPLOAD_DAILY_FILES", day_files)
+    monkeypatch.setattr(media, "UPLOAD_DAILY_BYTES", day_bytes)
+
+
+def test_upload_budget_hourly_and_daily(client, monkeypatch):
+    """Лимит ручных загрузок - счётчики quota_counters: файлы и байты за час и за сутки UTC; отказ одного счётчика
+    возвращает уже учтённые."""
+    _small_budget(monkeypatch)
+    now = datetime(2026, 10, 20, 10, 15, tzinfo=UTC)
+    for _ in range(3):
+        media.reserve_upload(now, 1000)
+    with pytest.raises(media.MediaRejected) as e:
+        media.reserve_upload(now, 1000)  # 4-й файл часа
+    assert (e.value.status, e.value.detail) == (429, "Слишком много загрузок — попробуйте позже")
+    assert (_quota("upload-files:2026102010"), _quota("upload-bytes:2026102010")) == (3, 3000)
+    later = now + timedelta(hours=1)
+    media.reserve_upload(later, 1000)  # новый час
+    with pytest.raises(media.MediaRejected):
+        media.reserve_upload(later, 9500)  # байтов часа не хватает - учтённый файл возвращается
+    assert (_quota("upload-files:2026102011"), _quota("upload-bytes:2026102011")) == (1, 1000)
+    media.reserve_upload(later, 1000)
+    with pytest.raises(media.MediaRejected):
+        media.reserve_upload(now + timedelta(hours=2), 1000)  # 6-й файл суток: час свободен, сутки - нет
+    assert _quota("upload-files:2026102012") == 0 and _quota("upload-files-day:20261020") == 5
+    media.reserve_upload(now + timedelta(days=1), 1000)  # новые сутки
+
+
+def test_upload_budget_daily_bytes(client, monkeypatch):
+    _small_budget(monkeypatch, files=50, nbytes=10_000, day_bytes=25_000)
+    now = datetime(2026, 10, 20, 0, 5, tzinfo=UTC)
+    for h in range(2):
+        media.reserve_upload(now + timedelta(hours=h), 10_000)
+    with pytest.raises(media.MediaRejected):
+        media.reserve_upload(now + timedelta(hours=2), 6000)
+    assert _quota("upload-bytes-day:20261020") == 20_000
+    assert _quota("upload-files:2026102002") == 0 and _quota("upload-bytes:2026102002") == 0
+
+
+def test_upload_budget_not_returned_by_gallery_delete(client, monkeypatch):
+    """Регрессия: лимит считался по живым записям - загрузка фото объекта с удалением освобождала его, и без входа
+    можно было заполнить диск. Удаление записи расход не возвращает."""
+    _small_budget(monkeypatch, files=3)
+    now = models.utcnow()
+    monkeypatch.setattr(models, "utcnow", lambda: now)  # загрузки - в один час, и на границе часа тоже
+    cid, author = client.get("/api/complexes").json()[0]["id"], "Омарова Ж."
+    for i in range(3):
+        r = client.post(f"/api/complexes/{cid}/gallery", data={"author": author},
+                        files={"file": ("dom.png", png_bytes((i, 201, 7)), "image/png")})
+        assert r.status_code == 201, r.text
+        mid = next(x["mediaId"] for x in r.json()["gallery"] if x.get("mediaId"))
+        r = client.request("DELETE", f"/api/complexes/{cid}/gallery/{mid}", json={"author": author})
+        assert r.status_code == 200
+    r = client.post(f"/api/complexes/{cid}/gallery", data={"author": author},
+                    files={"file": ("dom.png", png_bytes((9, 201, 7)), "image/png")})
+    assert (r.status_code, r.json()["detail"]) == (429, "Слишком много загрузок — попробуйте позже")
+
+
+def test_parallel_uploads_do_not_exceed_budget(client, monkeypatch):
+    """Регрессия: лимит проверялся по записям до их фиксации - параллельные загрузки проходили все разом."""
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from fastapi import HTTPException
+
+    _small_budget(monkeypatch, files=5, nbytes=media.MB, day_files=100, day_bytes=10 * media.MB)
+    now = models.utcnow()
+    media.accept_image_upload(None, io.BytesIO(png_bytes((1, 202, 7))), now)  # счётчики созданы
+    start = Barrier(16)
+
+    def one(i: int) -> int:
+        start.wait()
+        try:
+            media.accept_image_upload(None, io.BytesIO(png_bytes((i, 203, 7))), now)
+        except HTTPException as e:
+            return e.status_code
+        return 201
+
+    with ThreadPoolExecutor(16) as pool:
+        codes = list(pool.map(one, range(16)))
+    assert sorted(codes) == [201] * 4 + [429] * 12
+    hour = f"{models.as_utc(now):%Y%m%d%H}"
+    assert _quota(f"upload-files:{hour}") == 5
+
+
+def test_rejected_upload_does_not_spend_budget(client, monkeypatch):
+    """Не изображение(415) и пустой файл(422) не тратят лимит; отказ хранилища(507) возвращает учтённое."""
+    from fastapi import HTTPException
+
+    _small_budget(monkeypatch)
+    now = datetime(2026, 10, 20, 10, 15, tzinfo=UTC)
+    for bad, status in ((b"%PDF-1.7 " + b"x" * 100, 415), (b"", 422)):
+        with pytest.raises(HTTPException) as e:
+            media.accept_image_upload(None, io.BytesIO(bad), now)
+        assert e.value.status_code == status
+    monkeypatch.setattr(media.shutil, "disk_usage", lambda p: shutil._ntuple_diskusage(10, 10, 0))
+    with pytest.raises(HTTPException) as e:
+        media.accept_image_upload(None, io.BytesIO(png_bytes((2, 204, 7))), now)
+    assert (e.value.status_code, e.value.detail) == (507, "Мало места для файлов на сервере — файл не сохранён")
+    assert all(_quota(n) == 0 for n in ("upload-files:2026102010", "upload-bytes:2026102010",
+                                        "upload-files-day:20261020", "upload-bytes-day:20261020"))
+
+
+def test_manual_upload_leaves_space_for_collectors(client, env, monkeypatch):
+    """Ручной загрузке нужно на MANUAL_RESERVE_MB больше свободного места: заполнить диск вручную до предела, после
+    которого сбор и приём публикаций получают 507, нельзя."""
+    env(MEDIA_MIN_FREE_MB="100")
+    free = (100 + media.MANUAL_RESERVE_MB // 2) * media.MB
+    monkeypatch.setattr(media.shutil, "disk_usage", lambda p: shutil._ntuple_diskusage(10, 10, free))
+    r = client.post("/api/media", files={"file": ("s.png", png_bytes((3, 205, 7)), "image/png")})
+    assert (r.status_code, r.json()["detail"]) == (507, "Мало места для файлов на сервере — файл не сохранён")
+    assert media.store_bytes(png_bytes((4, 205, 7))).created  # собранный файл - по MEDIA_MIN_FREE_MB
+    tmp = media.tmp_dir() / "collected.png"
+    tmp.write_bytes(png_bytes((5, 205, 7)))
+    assert media.store_file(tmp).created
 
 
 def test_purge_temp():
@@ -567,6 +796,8 @@ def test_video_command_and_limits(monkeypatch, tmp_path):
     assert tail[tail.index("-vf") + 1] == "fps=1/2.0,scale='min(1280,iw)':-2"
     assert tail[-3:] == ["-frames:v", "8", f"{tmp_path}/f_%03d.png"]
     assert video.command(Path("/m/v.webm"), "video/webm", tmp_path)[5:][7] == "matroska"
+    # "%" в пути каталога кадров - буквально, а не шаблон номера кадра image2
+    assert video.command(Path("/m/v.mp4"), "video/mp4", Path("/data/100%x"))[-1] == "/data/100%%x/f_%03d.png"
     monkeypatch.setattr(video.shutil, "which", lambda name: None)
     assert video.command(Path("/m/v.mp4"), "video/mp4", tmp_path)[0] == "ffmpeg"
     assert not video.ffmpeg_available()
@@ -587,6 +818,22 @@ def test_video_failures_return_nothing(monkeypatch, tmp_path):
     assert video._reason(b"[dec:h264] Error submitting packet\n    Last message repeated 1 times\n") == \
         "[dec:h264] Error submitting packet"  # в журнал - содержательная строка, не "Last message repeated"
     assert set(media.tmp_dir().iterdir()) == before  # каталог кадров удалён
+
+
+def test_video_oversized_frame_not_read(monkeypatch, env, tmp_path):
+    """Кадр больше предела изображений не читается в память; время остальных кадров - по их номеру."""
+    env(MEDIA_MAX_IMAGE_MB="1")
+
+    def fake(cmd, **kw):
+        out = Path(cmd[-1]).parent
+        (out / "f_001.png").write_bytes(png_bytes((1, 1, 1)))
+        (out / "f_002.png").write_bytes(b"\x00" * (media.MB + 1))
+        (out / "f_003.png").write_bytes(png_bytes((3, 3, 3)))
+        return subprocess.CompletedProcess(cmd, 0, None, b"")
+
+    monkeypatch.setattr(video.subprocess, "run", fake)
+    frames = video.extract_frames(tmp_path / "v.mp4", "video/mp4", every_s=2.0)
+    assert frames == [(0, png_bytes((1, 1, 1))), (4000, png_bytes((3, 3, 3)))]
 
 
 @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg не установлен")
@@ -631,6 +878,9 @@ def test_media_routes_serve_only_downloaded(client):
     r = client.get(f"/api/media/{ok.id}")
     assert r.status_code == 200 and r.content == data
     assert r.headers["content-type"] == "image/png" and r.headers["x-content-type-options"] == "nosniff"
+    # файл, открытый напрямую, не выполняет скриптов от имени приложения, даже если браузер покажет его документом
+    assert r.headers["content-security-policy"] == "sandbox; default-src 'none'"
+    assert r.headers["content-disposition"] == "inline"
     for aid in (pending.id, failed.id, "0" * 32):
         assert client.get(f"/api/media/{aid}").status_code == 404, aid
     assert client.get("/api/media/not-an-id").status_code == 422

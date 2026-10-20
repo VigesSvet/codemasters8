@@ -7,7 +7,8 @@
 У факторов R1-R3 - "Основание: ст. N Закона РК …"(app.law, shared/law.json), после таблицы факторов - нормативная база:
 ссылки справочные, оценка - не юридическое заключение, "нет разрешения МИО" само по себе не "незаконно".
 """
-import math
+import functools
+import threading
 from datetime import datetime, UTC
 from io import BytesIO
 from pathlib import Path
@@ -24,6 +25,7 @@ from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import HRFlowable, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from . import law
+from .risk import confidence_pct
 from .risk_model import ALMATY, fmt_date
 
 Obj = dict[str, Any]
@@ -52,29 +54,28 @@ SIGNAL_STATUS = {"new": "Новый — ожидает решения анали
 AD_STATUS = {"new": "новая", "needs_check": "нужна проверка", "in_review": "на проверке", "confirmed": "подтверждена",
              "dismissed": "отклонена"}
 APPEAL_STATUS = {"verified": "проверено", "pending": "на проверке", "rejected": "отклонено"}
-DOC_STATE = {"yes": "есть", "no": "нет", "unknown": "нет данных"}
+DOC_STATE = {"yes": "есть", "no": "нет", "unknown": "нет данных"}  # значение документа-основания; нет значения - unknown
 PLATFORMS = {"instagram": "Instagram", "tiktok": "TikTok", "krisha": "Krisha.kz", "olx": "OLX", "telegram": "Telegram",
              "facebook": "Facebook", "2gis": "2ГИС", "other": "Другая площадка"}
-_SUBST = {"→": "->", "←": "<-", "✓": "+", "✔": "+", "●": "•", "★": "*", "\u00a0": " "}
+_SUBST = {"→": "->", "←": "<-", "✓": "+", "✔": "+", "●": "•", "★": "*"}  # замены символов, которых нет в шрифте
 
 
 # ---------- шрифт и текст ----------
 
-def _fonts() -> set:
-    if FONT not in pdfmetrics.getRegisteredFontNames():
-        pdfmetrics.registerFont(TTFont(FONT, str(FONTS / "NotoSans-Regular.ttf")))
-        pdfmetrics.registerFont(TTFont(BOLD, str(FONTS / "NotoSans-Bold.ttf")))
-        pdfmetrics.registerFontFamily(FONT, normal=FONT, bold=BOLD, italic=FONT, boldItalic=BOLD)
-    return set(pdfmetrics.getFont(FONT).face.charToGlyph)
+_FONT_LOCK = threading.Lock()
 
 
-_GLYPHS: set = set()
-
-
-def _glyphs() -> set:
-    if not _GLYPHS:
-        _GLYPHS.update(_fonts())
-    return _GLYPHS
+@functools.cache
+def _glyphs() -> frozenset[int]:
+    """Регистрирует шрифты(один раз) и возвращает коды символов, которые в них есть. Под блокировкой: эндпоинты PDF
+    синхронные и идут в пуле потоков - без неё второй запрос мог увидеть обычный шрифт уже зарегистрированным,
+    а жирный ещё нет, и сборка падала на <b>."""
+    with _FONT_LOCK:
+        if FONT not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(FONT, str(FONTS / "NotoSans-Regular.ttf")))
+            pdfmetrics.registerFont(TTFont(BOLD, str(FONTS / "NotoSans-Bold.ttf")))
+            pdfmetrics.registerFontFamily(FONT, normal=FONT, bold=BOLD, italic=FONT, boldItalic=BOLD)
+        return frozenset(pdfmetrics.getFont(FONT).face.charToGlyph)
 
 
 def clean(x: Any) -> str:
@@ -97,11 +98,16 @@ def esc(x: Any) -> str:
     return escape(clean(x)).replace("\n", "<br/>")
 
 
-def line(x: Any, limit: int) -> str:
-    """Одна строка без переводов и лишних пробелов, не длиннее limit(по словам, с "…") - для ячеек таблиц:
-    строка таблицы не переносится на следующую страницу, длинный текст в ячейке ронял сборку(LayoutError)."""
-    t = " ".join(clean(x).split())
+def shorten(text: str, limit: int) -> str:
+    """Одна строка без переводов и лишних пробелов, не длиннее limit: длиннее - обрезается по словам с "…"."""
+    t = " ".join(text.split())
     return t if len(t) <= limit else (t[:limit - 1].rsplit(" ", 1)[0] or t[:limit - 1]) + "…"
+
+
+def line(x: Any, limit: int) -> str:
+    """shorten для PDF(только символы шрифта) - для ячеек таблиц: строка таблицы не переносится на следующую
+    страницу, длинный текст в ячейке ронял сборку(LayoutError)."""
+    return shorten(clean(x), limit)
 
 
 def when(value: Any) -> str:
@@ -116,7 +122,7 @@ def when(value: Any) -> str:
     if len(s) <= 10:
         return fmt_date(s)
     try:
-        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        d = datetime.fromisoformat(s)  # с Python 3.11 понимает и "Z"
     except ValueError:
         return s
     return (d.astimezone(ALMATY) if d.tzinfo else d).strftime("%d.%m.%Y %H:%M")
@@ -163,7 +169,9 @@ def _grid(rows: list[list], widths: list[float], header: bool = False) -> Table:
 
 
 def _kv(rows: list[tuple]) -> Table:
-    return _grid([[P(esc(k), "bold"), v if isinstance(v, Paragraph) else P(v)] for k, v in rows], [46 * mm, WIDTH - 46 * mm])
+    """Таблица "название - значение"; значение - готовый Paragraph или текст(экранируется)."""
+    return _grid([[P(esc(k), "bold"), v if isinstance(v, Paragraph) else P(esc(v))] for k, v in rows],
+                 [46 * mm, WIDTH - 46 * mm])
 
 
 def _box(text: str, fg, bg) -> Table:
@@ -197,12 +205,12 @@ def link(url: Any) -> str:
 def _document(d: Obj) -> str:
     """Документ-основание с провенансом по документу(T-29): реквизит, источник, дата сверки, ссылка на источник.
     Документ без источника и даты не проверялся - так и пишется, "нет" без источника не выдаётся за факт."""
-    state = DOC_STATE.get(str(d.get("value")), d.get("value"))
-    head = f"<b>{esc(d.get('label'))}</b>: {esc(state)}"
+    value = str(d.get("value") or "unknown")
+    head = f"<b>{esc(d.get('label'))}</b>: {esc(DOC_STATE.get(value, value))}"
     checked = d.get("source") or d.get("date")
     tail = _join(d.get("quote") and f"реквизит: {d['quote']}", d.get("source") and f"источник: {d['source']}",
                  d.get("date") and f"сверено {when(d['date'])}",
-                 None if checked else ("не проверялся" if str(d.get("value")) in ("unknown", "None") else "источник не указан"))
+                 None if checked else ("не проверялся" if value == "unknown" else "источник не указан"))
     url = link(d.get("url"))
     tail = " · ".join(x for x in (tail, url) if x)
     return head + (f" — {tail}" if tail else "")
@@ -284,7 +292,7 @@ def _object(sig: Obj) -> list:
         _kv([
             ("Название", P(_join(f"ЖК «{c.get('name')}»", DEMO_COMPLEX if _demo(c) else None))),
             ("Адрес", P(_join(c.get("address"), c.get("district") and f"р-н {c['district']}"))),
-            ("Застройщик", P(_join(dev.get("name"), f"БИН {dev.get('bin')}", DEMO_DEV if _demo(dev) else None)
+            ("Застройщик", P(_join(dev.get("name"), dev.get("bin") and f"БИН {dev['bin']}", DEMO_DEV if _demo(dev) else None)
                              if dev else "нет данных")),
             ("Стадия и готовность", P("<br/>".join(ready))),
             ("Срок сдачи", P(_join(f"заявлен {when(c.get('plannedEnd'))}", c.get("start") and f"начало {when(c['start'])}"))),
@@ -349,7 +357,7 @@ def _law(sig: Obj) -> list:
     act = law.ACT
     lines = [Paragraph(f"<b>Ст. {esc(a['num'])}.</b> {esc(a['title'])} — {link(a['url'])}", S["ev"], bulletText="–")
              for a in arts]
-    note = (f"{act['title']} от 7 апреля 2016 года № {act['number']} ({act['redaction']}). Ссылки на нормы — "
+    note = (f"{act['title']} от {law.act_date_text()} № {act['number']} ({act['redaction']}). Ссылки на нормы — "
             f"справочные: оценка риска — не юридическое заключение. {law.NUANCE}")
     return [KeepTogether([P("Нормативная база", "h3"), P(esc(note), "small"), *lines[:1]]), *lines[1:]]
 
@@ -400,8 +408,7 @@ def link_text(a: Obj) -> str:
         return f"привязка — факт (подтвердил {line(a['linkConfirmedBy'], 64)}{', ' + when(at) if at else ''})"
     if a.get("status") == "confirmed":
         return "привязка — факт (нарушение подтверждено аналитиком)"
-    conf = math.floor((a.get("matchConfidence") or 0) * 100 + 0.5)
-    return f"привязка — гипотеза ИИ {conf}%, в балл не входит"
+    return f"привязка — гипотеза ИИ {confidence_pct(a.get('matchConfidence'))}%, в балл не входит"
 
 
 def _status(sig: Obj) -> list:

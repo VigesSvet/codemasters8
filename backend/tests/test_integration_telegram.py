@@ -375,6 +375,38 @@ def test_session_lock_busy(tg, client, run_worker, capsys):
     assert tg.calls == []  # без блокировки клиент не создаётся
 
 
+def test_session_file_system_error_not_network(tg, client, run_worker):
+    """Сбой файловой системы с файлом сессии(здесь - каталог на месте файла блокировки) - ошибка настроек с причиной,
+    а не "Нет связи с Telegram" с повторами задания."""
+    login(tg)
+    tg.channel("nord_hills", 1001, Msg(10, "Пост"))
+    configure(["nord_hills"])
+    Path(f"{tg.path}.lock").mkdir()
+    run = collect(run_worker)
+    assert (run.status, run.error_code, job_of(run.id).status) == ("not_configured", "not_configured", "failed")
+    assert (row().status, row().status_detail) == ("not_configured",
+                                                   "Каталог сессии Telegram недоступен (IsADirectoryError)")
+    assert not any("Нет связи" in n for n in run_notes(run.id)) and tg.calls == []
+
+
+def test_corrupted_session_expired(tg, client, run_worker, monkeypatch):
+    """Испорченный текст сессии(не StringSession) - "сессия недействительна, повторите вход", а не внутренняя ошибка
+    сборщика; клиент не создаётся."""
+    from app.integrations import telegram
+    from app.integrations.base import AuthExpired
+
+    for bad in ("garbage", "1garbage", "1" + "A" * 352):
+        with pytest.raises(AuthExpired, match="Сессия Telegram недействительна"):
+            telegram.make_client(bad, API_ID, "0123456789abcdef0123456789abcdef")
+    monkeypatch.setattr(telegram, "CLIENT_FACTORY", None)  # настоящий make_client: до сети дело не доходит
+    telegram.write_session(tg.path, "1garbage-not-a-session")
+    tg.channel("nord_hills", 1001, Msg(10, "Пост"))
+    configure(["nord_hills"])
+    run = collect(run_worker)
+    assert (run.status, run.error_code) == ("failed", "auth_expired")
+    assert (row().status, row().status_detail) == ("expired", "Сессия Telegram недействительна — повторите вход")
+
+
 # ---------- проверка подключения ----------
 
 def test_check_unauthorized_ok_and_no_channels(tg, client, run_worker):
@@ -702,6 +734,32 @@ def test_video_limits_timeout_and_explicit_path(tg, client, run_worker, env, ocr
     assert list(media.tmp_dir().iterdir()) == []
 
 
+def test_download_saved_elsewhere(tg, client, run_worker, ocr_stub, tmp_path):
+    """Telethon сохранил файл не по указанному пути: в том же временном каталоге - принимается, вне его - отклоняется;
+    и файл Telethon, и частичный файл по указанному пути удаляются."""
+    from app import media
+
+    login(tg)
+    tg.channel("nord_hills", 1001, Msg(10, "Видео", video=mp4_bytes(512)), Msg(11, "Ещё видео", video=mp4_bytes(600)))
+    outside = tmp_path / "elsewhere.mp4"
+    plain = tg.download_media
+
+    async def download_media(msg, file=None):
+        await plain(msg, file)  # частичный файл по указанному пути остаётся
+        target = Path(file).with_suffix(".mp4") if msg.id == 10 else outside
+        target.write_bytes(msg.data)
+        return str(target)
+
+    tg.download_media = download_media
+    configure(["nord_hills"])
+    collect(run_worker)
+    ok, = assets("1001:10")
+    assert (ok.status, ok.mime) == ("downloaded", "video/mp4")
+    bad, = assets("1001:11")
+    assert (bad.status, bad.error) == ("failed", "Файл сохранён не во временный каталог — отклонён")
+    assert not outside.exists() and list(media.tmp_dir().iterdir()) == []
+
+
 def test_file_reference_expired_refetched_and_album_edit(tg, client, run_worker, ocr_stub):
     from telethon import errors
 
@@ -896,6 +954,35 @@ def test_login_status_logout_and_interactive(tg, client, capsys, monkeypatch, en
     assert tl.main(["--logout"]) == 0 and "log_out" in tg.names() and not tg.path.exists()
 
 
+def test_login_corrupted_session_and_pending(tg, client, capsys, monkeypatch):
+    """Испорченная сессия в файле: --status - "Сессия недействительна", новый вход без --force, --logout удаляет файл;
+    файл ожидания кода без сессии или phone_code_hash - "сначала запросите код", а не трассировка."""
+    from app.integrations import telegram, telegram_login as tl
+
+    bad = "1garbage-not-a-session"
+
+    def factory(session, api_id, api_hash):  # испорченную сессию разбирает настоящий make_client
+        return telegram.make_client(session, api_id, api_hash) if session == bad else tg.factory(session, api_id,
+                                                                                                 api_hash)
+
+    monkeypatch.setattr(telegram, "CLIENT_FACTORY", factory)
+    telegram.write_session(tg.path, bad)
+    assert tl.main(["--status"]) == 1 and capsys.readouterr().out.strip() == "Сессия недействительна"
+    assert tl.main(["--logout"]) == 0 and not tg.path.exists() and "log_out" not in tg.names()
+    telegram.write_session(tg.path, bad)
+    assert tl.main(["--send-code"]) == 0 and pending(tg).exists()
+    # ожидание кода с испорченной сессией - понятная ошибка
+    data = json.loads(pending(tg).read_text())
+    telegram.write_private(pending(tg), json.dumps({**data, "session": bad}))
+    capsys.readouterr()
+    assert tl.main(["--code", "12345"]) == 1
+    assert "Сессия Telegram недействительна — повторите вход" in capsys.readouterr().err
+    # без phone_code_hash - файл ожидания удаляется
+    telegram.write_private(pending(tg), json.dumps({k: v for k, v in data.items() if k != "phoneCodeHash"}))
+    assert tl.main(["--code", "12345"]) == 1
+    assert "Сначала запросите код: --send-code" in capsys.readouterr().err and not pending(tg).exists()
+
+
 # ---------- приёмка по §14 плана(integration-spec §16.5) ----------
 
 def test_acceptance_repeat_no_duplicate(tg, client, run_worker, accept, ocr_stub):
@@ -1017,3 +1104,16 @@ def test_acceptance_limit_no_endless_loop(tg, client, run_worker):
     assert tg.calls == []
     run_worker(now=now + timedelta(minutes=11))  # пауза кончилась - сбор по расписанию
     assert "iter_messages" in tg.names() and [i.external_id for i in items()] == ["1001:10"]
+
+
+def test_flood_wait_seconds_bounded():
+    """FloodWait - пауза 1 с…сутки(как http.retry_after): огромное значение Telegram не откладывает сбор на годы."""
+    from telethon import errors
+
+    from app.integrations import telegram
+    from app.integrations.base import RateLimited
+
+    got = {secs: telegram.map_error(errors.FloodWaitError(request=None, capture=secs)) for secs in (0, 1, 600, 10**9)}
+    assert all(isinstance(e, RateLimited) for e in got.values())
+    assert {secs: e.retry_after for secs, e in got.items()} == {0: 3600, 1: 1, 600: 600, 10**9: 86400}
+    assert "подождать 86400 с" in got[10**9].detail

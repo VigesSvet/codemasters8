@@ -41,6 +41,7 @@ from .schemas import AD_TEXT_MAX
 from .db import SessionLocal
 from .integrations import http
 from .logs import redact
+from .risk import confidence_pct
 from .risk_model import T
 from .settings import get_settings
 
@@ -62,6 +63,28 @@ NO_SOURCE = "Ссылка на файл не сохранена"
 _UNAVAILABLE = ("http_403", "http_404", "http_410")
 _OCR_FAILED = ("Tesseract завершился", "не уложилось")
 MONOTONIC: Callable[[], float] = time.monotonic  # время выполнения анализа(тесты подменяют)
+FAILURE_MAX = 300  # длина причины сбоя анализа в публикации
+
+
+class AnalysisFailed(Exception):
+    """Сбой анализа с причиной для аналитика: message - по-русски, без путей, адресов и внутренних подробностей, в
+    публикации показывается как есть(jobs._analyze). Текст остальных исключений анализа - только в журнале воркера."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
+def failure_text(e: Exception) -> str | None:
+    """Причина сбоя анализа, которую можно показать аналитику: AnalysisFailed, а также отказ
+    хранилища(media.MediaRejected) и загрузки(http.DownloadError) - их тексты написаны для публикации. Иначе None."""
+    if isinstance(e, AnalysisFailed):
+        text_ = e.message
+    elif isinstance(e, (media.MediaRejected, http.DownloadError)):
+        text_ = e.detail
+    else:
+        return None
+    return redact(text_, limit=FAILURE_MAX) or None
 
 
 def _plural(n: int, one: str, few: str, many: str) -> str:
@@ -84,8 +107,9 @@ def _retry_at(a: models.MediaAsset) -> datetime | None:
 
 
 def _due(a: models.MediaAsset, now: datetime) -> bool:
-    """Ожидающий загрузки файл приёма, срок попытки которого наступил."""
-    if a.status != "pending" or a.parent_id is not None:
+    """Ожидающий загрузки файл приёма текущей версии, срок попытки которого наступил. Файл, которого в новой версии
+    публикации нет, не загружается(трафик и объём публикации) - он дождётся, если вернётся в публикацию."""
+    if a.status != "pending" or a.parent_id is not None or not a.current:
         return False
     at = _retry_at(a)
     return at is None or at <= now
@@ -131,13 +155,6 @@ def _stage(job_id: int | None, item_id: int, stage: str) -> None:
         db.commit()
 
 
-def _cover(assets) -> str | None:
-    imgs = [a for a in assets if a.status == "downloaded" and a.kind == "image" and a.current and a.parent_id is None]
-    imgs.sort(key=lambda a: a.position)
-    pick = next((a for a in imgs if a.role != "cover"), None) or (imgs[0] if imgs else None)
-    return f"/api/media/{pick.id}" if pick else None
-
-
 # ---------- этапы ----------
 
 def _download(asset_id: str, kind: str, src: str | None, attempts: int, remaining: int,
@@ -167,7 +184,7 @@ def _download(asset_id: str, kind: str, src: str | None, attempts: int, remainin
         return {"status": status, "error": e.detail, "attempts": attempts + 1, **drop}, 0
     except media.MediaRejected as e:
         return {"status": "failed", "error": e.detail, "attempts": attempts + 1, **drop}, 0
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - сбой одного файла(диск, хранилище) задание не роняет
         log.warning("Файл %s не загружен: %s", asset_id, type(e).__name__)
         return {"status": "failed", "error": f"Файл не загружен ({type(e).__name__})", "attempts": attempts + 1,
                 **drop}, 0
@@ -210,7 +227,7 @@ def _media_stage(item_id: int, now: datetime, changed: set, clock: Callable[[], 
         item = db.get(models.IngestItem, item_id)
         ad = db.get(models.Ad, item.ad_id) if item is not None else None
         if ad is not None and ad.image is None:
-            cover = _cover(_assets(db, item_id))
+            cover = ads_service.cover_url(_assets(db, item_id))
             if cover:
                 db.execute(update(models.Ad).where(models.Ad.id == ad.id, models.Ad.image.is_(None))
                            .values(image=cover).execution_options(synchronize_session=False))
@@ -318,14 +335,15 @@ def _ocr_stage(item_id: int) -> None:
             if sha:
                 same = db.scalar(select(A).where(A.sha256 == sha, A.id != aid, A.ocr_status.in_(("done", "empty")))
                                  .limit(1))
+            a = db.get(A, aid)
+            if a is None:  # файл удалён во время анализа
+                continue
             if same is not None:
-                a = db.get(A, aid)
                 a.ocr_status, a.ocr_text, a.ocr_engine, a.ocr_detail = (same.ocr_status, same.ocr_text,
                                                                         same.ocr_engine, same.ocr_detail)
                 db.commit()
                 continue
-            a = db.get(A, aid)
-            if a is None or not a.storage_key:
+            if not a.storage_key:
                 continue
             key, mime = a.storage_key, a.mime
         try:
@@ -333,7 +351,7 @@ def _ocr_stage(item_id: int) -> None:
             status, text, engine, detail = _ocr_result(ocr_engine.recognize(data, mime))
         except ocr_engine.OcrError as e:
             status, text, engine, detail = "failed", "", None, e.detail
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - сбой распознавания одного файла задание не роняет
             log.warning("OCR файла %s не выполнен: %s", aid, type(e).__name__)
             status, text, engine, detail = "failed", "", None, f"Ошибка распознавания ({type(e).__name__})"
         with SessionLocal() as db:
@@ -415,9 +433,9 @@ def _ocr_event(cur: list[models.MediaAsset]) -> str | None:
     imgs = [a for a in cur if a.kind in ("image", "frame") and a.status == "downloaded"]
     if not imgs:
         return None
-    off = next((a.ocr_detail for a in imgs if a.ocr_status == "unavailable"), None)
-    if any(a.ocr_status == "unavailable" for a in imgs):
-        return f"OCR не выполнен: {off or ocr_engine.NOT_INSTALLED}"
+    off = next((a for a in imgs if a.ocr_status == "unavailable"), None)
+    if off is not None:
+        return f"OCR не выполнен: {off.ocr_detail or ocr_engine.NOT_INSTALLED}"
     failed = [a for a in imgs if a.ocr_status == "failed"]
     n_img = sum(a.ocr_status == "done" and a.kind == "image" for a in imgs)
     n_fr = sum(a.ocr_status == "done" and a.kind == "frame" for a in imgs)
@@ -485,7 +503,7 @@ def _hypothesis_event(res: dict, linked: bool, source: str) -> tuple[str, str | 
     hyps = res.get("hypotheses") or []
     best = hyps[0] if hyps else None
     if best is not None and best["confidence"] >= low:
-        what = (f"Гипотеза ИИ: ЖК «{best['complexName']}», уверенность {ads_service._pct(best['confidence'])}% "
+        what = (f"Гипотеза ИИ: ЖК «{best['complexName']}», уверенность {confidence_pct(best['confidence'])}% "
                 f"({ads_service._why(best)}) — нужна проверка аналитиком")
         if not linked:
             what += ". Привязка не назначена автоматически: публикация собрана из внешнего источника"
@@ -493,8 +511,8 @@ def _hypothesis_event(res: dict, linked: bool, source: str) -> tuple[str, str | 
     else:
         what = "ИИ: ЖК не определён — нужна ручная привязка"
         if best is not None:
-            what += (f" (лучшая гипотеза — «{best['complexName']}», {ads_service._pct(best['confidence'])}%, ниже "
-                     f"порога {ads_service._pct(low)}%)")
+            what += (f" (лучшая гипотеза — «{best['complexName']}», {confidence_pct(best['confidence'])}%, ниже "
+                     f"порога {confidence_pct(low)}%)")
         cid = None
     if source == "bot":
         what += ". Аккаунт и ссылка указаны жителем — в гипотезе не учитывались, сверьте вручную"
@@ -532,7 +550,8 @@ def _rules_only(job_id: int | None, ad_id: str, item_id: int, v: int, reason: st
             what, ev_cid = _hypothesis_event(res, linked, source)
             ads_service._event(db, "ai", SYSTEM, f"{what} (пересчёт правил: {reason})", at=clock(), ad_id=ad_id,
                                complex_id=ev_cid)
-        db.execute(update(I).where(I.id == item_id, I.analysis_status.in_(("queued", "running")))
+        # новая версия, пришедшая во время пересчёта, остаётся "в очереди" - её проанализирует своё задание
+        db.execute(update(I).where(I.id == item_id, I.version == v, I.analysis_status.in_(("queued", "running")))
                    .values(analysis_status="done", analysis_stage=None, analysis_error=None)
                    .execution_options(synchronize_session=False))
         db.commit()
@@ -571,7 +590,7 @@ def run_analysis(job_id: int | None, ad_id: str, *, now: datetime, force: bool =
             db.commit()
             return _rules_only(job_id, ad_id, item_id, v, reason or "справочник ЖК изменился", clock)
         if not force and prev == v and not _has_work(_assets(db, item_id), now) and not llm.due(db, ad_id, now):
-            db.execute(update(I).where(I.id == item_id, I.analysis_status.in_(("queued", "running")))
+            db.execute(update(I).where(I.id == item_id, I.version == v, I.analysis_status.in_(("queued", "running")))
                        .values(analysis_status="done", analysis_stage=None, analysis_error=None)
                        .execution_options(synchronize_session=False))
             db.commit()
@@ -612,9 +631,8 @@ def run_analysis(job_id: int | None, ad_id: str, *, now: datetime, force: bool =
             if what:
                 events.append(("system", what, None))
         if first or changed:
-            for what in (_image_event(cur, None if first else changed), _video_event(cur, None if first else changed)):
-                if what:
-                    events.append(("system", what, None))
+            only = None if first else changed
+            events.extend(("system", what, None) for what in (_image_event(cur, only), _video_event(cur, only)) if what)
         if first or linked:  # привязка-гипотеза, назначенная при повторном запуске, тоже видна в журнале
             what, cid = _hypothesis_event(res, linked, source)
             events.append(("ai", what + suffix, cid))

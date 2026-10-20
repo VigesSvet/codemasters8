@@ -2,17 +2,20 @@
 
 Каждая запись сохраняет провенанс: код и подпись источника, раздел источника, ссылку, ID записи в источнике, время сбора
 (UTC) и дату загрузки у поставщика. Значения не оцениваются и не дополняются: пусто в файле - null, "0" в координатах -
-нет координат. Записи группируются в объекты по нормализованному названию(без "ЖК/МЖК", кавычек, регистра, "блок А",
-"пятно N", "очередь N", "здание N", "(ГС: …)"); ключ объекта - устойчивый латинский slug этого названия.
+нет координат, ссылка не http(s) - не сохраняется. Записи группируются в объекты по нормализованному названию(без
+"ЖК/МЖК", кавычек, регистра, "блок А", "пятно N", "очередь N", "здание N", "(ГС: …)"); ключ объекта - устойчивый
+латинский slug этого названия.
 
 Это сведения открытых источников, а не выводы системы: риск, зоны и сигналы для них не рассчитываются(ТЗ §7, T-31).
 
 CLI: python -m app.importer <xlsx|csv> [--out shared/registry_ust_kamenogorsk.json] [--dry-run]
 """
 import argparse
+import contextlib
 import csv
 import hashlib
 import io
+import itertools
 import json
 import math
 import re
@@ -22,10 +25,12 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, UTC
 from pathlib import Path
 from typing import Any
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from xml.parsers import expat
 
 from .ai.nlp import _CYR, _LAT, norm, skeleton_text  # таблицы транслитерации ИИ-модуля - для slug и поиска
 from .risk_model import SHARED
+from .schemas import is_http_url
 
 Obj = dict[str, Any]
 
@@ -34,7 +39,17 @@ REGISTRY = SHARED / "registry_ust_kamenogorsk.json"
 MAX_BYTES = 5 * 1024 * 1024
 MAX_UNZIPPED = 64 * 1024 * 1024  # xlsx - zip: предел после распаковки, чтобы "zip-бомба" не съела память
 MAX_ROWS = 20000
+ROWS_CAP = MAX_ROWS + 50  # строк листа при чтении: запас на строки над заголовком и пустые строки
+MAX_COLS = 100  # колонок листа xlsx: строка с ячейкой в XFD не раздувается до 16384 значений
+# Структура XML книги до openpyxl(_prescan): пределы с запасом над настоящими файлами Excel
+MAX_ROW_CELLS = 16384  # ячеек в строке листа - предел Excel(XFD)
+MAX_CHILDREN = 65536  # детей у одного элемента(кроме строк листа и общих строк): стилей в Excel не больше 64000
+MAX_DEPTH = 64  # вложенность элементов: у OOXML она в пределах пары десятков
+MAX_ELEMENTS = 4_000_000  # элементов во всех частях книги: у листа на MAX_ROWS строк по 26 колонок - около 2 млн
+_SHEET_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 TOO_BIG = "Файл больше 5 МБ — разделите его на части или сохраните без лишних листов и форматирования"
+TOO_MANY_ROWS = f"Слишком много строк (больше {MAX_ROWS}) — разделите файл на части"
+XLSX_UNREADABLE = "Книгу Excel не удалось прочитать: файл повреждён или это не .xlsx"
 WRONG_TYPE = "Поддерживаются файлы .xlsx (Excel) и .csv (UTF-8, разделитель «,» или «;»)"
 
 # Источники, правила которых известны(ссылки и условия - CREDITS.md). Запись другого источника не импортируется.
@@ -82,8 +97,8 @@ COLUMNS: list[tuple[str, str, str]] = [
     ("Широта", "lat", "coord"),
     ("Долгота", "lng", "coord"),
     ("Кадастровый номер", "cadastral", "text"),
-    ("Сайт ЖК", "site", "text"),
-    ("Ссылка на источник", "sourceUrl", "text"),
+    ("Сайт ЖК", "site", "url"),
+    ("Ссылка на источник", "sourceUrl", "url"),
     ("Когда собраны данные", "collectedAt", "utc"),
     ("Дата загрузки у поставщика", "providerLoadedAt", "local"),
     ("ID в источнике", "sourceRecordId", "text"),
@@ -138,7 +153,7 @@ def _bin(v: Any) -> tuple[str | None, str | None]:
     """БИН - строка из 12 цифр. Числовая ячейка Excel теряет ведущий ноль - дополняется до 12 знаков."""
     if v is None or (isinstance(v, str) and not v.strip()):
         return None, None
-    if isinstance(v, (int, float)) and not isinstance(v, bool) and float(v).is_integer() and 0 < v < 10 ** 12:
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 < v < 10 ** 12 and float(v).is_integer():
         return str(int(v)).zfill(12), None
     t = re.sub(r"[\s -]", "", str(v))
     if re.fullmatch(r"\d{12}", t):
@@ -184,18 +199,22 @@ def _utc(v: Any) -> tuple[str | None, str | None]:
             d, mo, y, h, mi, s, _, off = m.groups()
             try:
                 dt = datetime(int(y), int(mo), int(d), int(h), int(mi), int(s or 0))
+                if off:  # смещение вне ±24 ч - ValueError
+                    dt = datetime.fromisoformat(f"{dt.isoformat()}{off[:3]}:{off[-2:]}")
             except ValueError:
                 dt = None
-            if dt and off:
-                dt = datetime.fromisoformat(f"{dt.isoformat()}{off[:3]}:{off[-2:]}")
         else:
             try:
                 dt = datetime.fromisoformat(re.sub(r"\s*(UTC|Z)$", "+00:00", t, flags=re.I))
             except ValueError:
                 dt = None
+    if dt is not None:
+        try:  # "0001-01-01T00:00+05:00" в UTC - раньше 1-го года
+            dt = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
+        except OverflowError:
+            dt = None
     if dt is None:
         return None, (f"время сбора «{t}» не распознано — не сохранено" if t else None)
-    dt = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
     return dt.isoformat(timespec="seconds"), None
 
 
@@ -209,7 +228,9 @@ def _local(v: Any) -> tuple[str | None, str | None]:
     if not t:
         return None, None
     try:
-        return datetime.fromisoformat(t).isoformat(timespec="seconds"), None
+        out = datetime.fromisoformat(t).isoformat(timespec="seconds")
+        if len(out) <= 32:  # столбец provider_loaded_at - String(32): смещение с секундами в него не помещается
+            return out, None
     except ValueError:
         pass
     d, _ = _date(t)
@@ -224,12 +245,11 @@ def _local(v: Any) -> tuple[str | None, str | None]:
 def _number(v: Any) -> float | None:
     if v is None or isinstance(v, bool):
         return None
-    if isinstance(v, (int, float)):
-        return float(v) if math.isfinite(v) else None
-    t = (_text(v) or "").replace(" ", "").replace(" ", "").replace(",", ".").rstrip("%")
+    # _text схлопывает пробелы(и неразрывные) в " " - разделитель тысяч "1 234,5" убирается одной заменой
+    t = v if isinstance(v, (int, float)) else (_text(v) or "").replace(" ", "").replace(",", ".").rstrip("%")
     try:
         x = float(t)
-    except ValueError:
+    except (ValueError, OverflowError):  # OverflowError - целое из xlsx больше предела float
         return None
     return x if math.isfinite(x) else None
 
@@ -241,6 +261,15 @@ def _percent(v: Any) -> tuple[float | None, str | None]:
     if x is None or not 0 <= x <= 100:
         return None, f"готовность «{_text(v)}» — не процент 0–100, не сохранена"
     return round(x, 2), None
+
+
+def _url(v: Any) -> tuple[str | None, str | None]:
+    """Ссылка - только http(s) с хостом(schemas.is_http_url): "javascript:", "data:" и адрес без схемы не сохраняются -
+    ссылку показывают жителям на странице проверки ЖК."""
+    t = _text(v)
+    if t is None or is_http_url(t):
+        return t, None
+    return None, f"ссылка «{t}» не http(s), не сохранена"
 
 
 def _period(v: Any) -> tuple[str | None, str | None]:
@@ -320,7 +349,7 @@ def slug(text: str) -> str:
     """Устойчивый латинский ключ: "жаным" → zhanym, "золотой квадрат" → zolotoi-kvadrat."""
     t = "".join(_CYR.get(ch, _LAT.get(ch, ch)) for ch in text.lower())
     t = re.sub(r"[^a-z0-9]+", "-", t).strip("-")[:80].strip("-")
-    return t or "obj-" + hashlib.sha1(text.encode()).hexdigest()[:8]
+    return t or "obj-" + hashlib.sha1(text.encode(), usedforsecurity=False).hexdigest()[:8]
 
 
 def object_key(name: str | None) -> str:
@@ -358,27 +387,87 @@ def kind_of(name: str, content_type: str | None = None) -> str:
     raise ImportFailed(415, WRONG_TYPE)
 
 
-def _xlsx_sheets(raw: bytes) -> Iterable[tuple[str, list[tuple]]]:
+def _prescan(z: zipfile.ZipFile) -> None:
+    """Части книги до openpyxl - потоковым expat, без дерева в памяти; нарушение - 422. DTD(и сущностей) в OOXML не
+    бывает - отказ, как у defusedxml. Пределы MAX_* - против книги в десятки КБ, которую openpyxl разворачивает в
+    гигабайты: строку листа он собирает целиком(~0.5 КБ на ячейку - 1 млн ячеек из 30 КБ файла это ~0.5 ГБ), прочие
+    элементы листа держит в дереве до конца разбора, стили превращает в объекты. Часть не XML(картинки, VML)
+    пропускается - её разбирает или отвергает сам openpyxl."""
+    # теги - "<uri> <имя>"(namespace_separator=" "), как у openpyxl; у строки листа детьми считаются все элементы.
+    # Без предела детей(но в MAX_ELEMENTS): строки листа(их режет ROWS_CAP при чтении), общие строки(openpyxl держит
+    # только список строк), цепочка вычислений и записи сводной таблицы(openpyxl в read_only их не читает)
+    row_tag = f"{_SHEET_NS} row"
+    unlimited = {(f"{_SHEET_NS} {parent}", f"{_SHEET_NS} {child}")
+                 for parent, child in (("sheetData", "row"), ("sst", "si"), ("calcChain", "c"),
+                                       ("pivotCacheRecords", "r"))}
+    total = 0
+    stack: list[list] = []  # открытые элементы: [тег, детей]
+
+    def fail(*_args: Any) -> None:
+        raise ImportFailed(422, XLSX_UNREADABLE)
+
+    def start(tag: str, _attrs: Any) -> None:
+        nonlocal total
+        total += 1
+        if total > MAX_ELEMENTS or len(stack) >= MAX_DEPTH:
+            fail()
+        if stack:
+            parent = stack[-1]
+            parent[1] += 1
+            limit = MAX_ROW_CELLS if parent[0] == row_tag else MAX_CHILDREN
+            if parent[1] > limit and (parent[0], tag) not in unlimited:
+                fail()
+        stack.append([tag, 0])
+
+    def end(_tag: str) -> None:
+        stack.pop()
+
+    for info in z.infolist():
+        stack.clear()
+        p = expat.ParserCreate(namespace_separator=" ")
+        p.StartElementHandler, p.EndElementHandler, p.StartDoctypeDeclHandler = start, end, fail
+        try:
+            with z.open(info) as f:
+                while chunk := f.read(1 << 16):
+                    p.Parse(chunk, False)
+                p.Parse(b"", True)
+        except expat.ExpatError:
+            pass
+
+
+def _xlsx_sheets(raw: bytes) -> Iterator[tuple[str, list[tuple]]]:
+    """Листы книги по очереди - пары(название, строки шириной MAX_COLS). Размер листа(dimension) из файла не
+    учитывается - неверный не обрезает строки ниже него и не раздувает их вширь. openpyxl в read_only разбирает лист
+    лениво, поэтому битая ячейка видна только при чтении строк - тоже 422."""
     try:
-        z = zipfile.ZipFile(io.BytesIO(raw))
-        total = sum(i.file_size for i in z.infolist())
-    except (zipfile.BadZipFile, OSError, ValueError):
+        with zipfile.ZipFile(io.BytesIO(raw)) as z:
+            if sum(i.file_size for i in z.infolist()) > MAX_UNZIPPED:
+                raise ImportFailed(422, "Книга Excel слишком большая после распаковки — оставьте в ней только лист с "
+                                        "данными")
+            _prescan(z)
+    except ImportFailed:
+        raise
+    except Exception:  # zipfile и zlib: битый архив, неверная CRC, неподдерживаемое сжатие или шифрование
         raise ImportFailed(422, "Файл .xlsx повреждён или это не книга Excel — откройте и сохраните его заново") from None
-    if total > MAX_UNZIPPED:
-        raise ImportFailed(422, "Книга Excel слишком большая после распаковки — оставьте в ней только лист с данными")
     import openpyxl  # тяжёлый импорт - только когда нужен
 
     try:
         wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
     except Exception:  # openpyxl бросает разные исключения на битые книги
-        raise ImportFailed(422, "Книгу Excel не удалось прочитать: файл повреждён или это не .xlsx") from None
+        raise ImportFailed(422, XLSX_UNREADABLE) from None
     try:
         for ws in wb.worksheets:
+            ws.reset_dimensions()
             rows = []
-            for row in ws.iter_rows(values_only=True):
-                rows.append(row)
-                if len(rows) > MAX_ROWS + 50:
-                    raise ImportFailed(422, f"Слишком много строк (больше {MAX_ROWS}) — разделите файл на части")
+            try:
+                for row in ws.iter_rows(max_col=MAX_COLS, values_only=True):
+                    rows.append(row)
+                    if len(rows) > ROWS_CAP:
+                        raise ImportFailed(422, TOO_MANY_ROWS)
+            except ImportFailed:
+                raise
+            except Exception:  # разбор XML листа: неверное число в ячейке, битая разметка и т. п.
+                raise ImportFailed(422, XLSX_UNREADABLE) from None
             yield ws.title, rows
     finally:
         wb.close()
@@ -395,15 +484,25 @@ def _csv_rows(raw: bytes) -> list[tuple]:
     best_score = -1
     for delim in (";", ","):  # разделитель - тот, при котором узнаётся больше колонок заголовка
         try:
-            rows = [tuple(r) for r in csv.reader(io.StringIO(text, newline=""), delimiter=delim)]
+            reader = csv.reader(io.StringIO(text, newline=""), delimiter=delim)
+            # больше ROWS_CAP строк не нужно - будет 422; колонки - не дальше MAX_COLS, как у xlsx(строка из 5 млн ";"
+            # иначе - секунды разбора заголовка)
+            rows = [tuple(r[:MAX_COLS]) for r in itertools.islice(reader, ROWS_CAP + 1)]
         except csv.Error:
             continue
         score = max((sum(_head(v) in HEADS for v in r) for r in rows[:30]), default=0)
         if score > best_score:
             best, best_score = rows, score
-    if len(best) > MAX_ROWS + 50:
-        raise ImportFailed(422, f"Слишком много строк (больше {MAX_ROWS}) — разделите файл на части")
+    if len(best) > ROWS_CAP:
+        raise ImportFailed(422, TOO_MANY_ROWS)
     return best
+
+
+def _sheets(raw: bytes, fmt: str) -> Iterator[tuple[str | None, list[tuple]]]:
+    if fmt == "xlsx":
+        yield from _xlsx_sheets(raw)
+    else:
+        yield None, _csv_rows(raw)
 
 
 def _header(rows: list[tuple]) -> tuple[int, dict[int, str]] | None:
@@ -433,6 +532,8 @@ def _normalize(cells: dict[str, Any], n: int, p: Parsed) -> Obj | None:
             rec[f], note = _percent(v)
         elif kind == "period":
             rec[f], note = _period(v)
+        elif kind == "url":
+            rec[f], note = _url(v)
         else:  # coord
             rec[f], note = _number(v), None
             if _text(v) is not None and rec[f] is None:
@@ -476,13 +577,13 @@ def parse(raw: bytes, name: str, content_type: str | None = None) -> Parsed:
     fmt = kind_of(name, content_type)
     if not raw.strip():
         raise ImportFailed(422, "Файл пустой")
-    sheets = _xlsx_sheets(raw) if fmt == "xlsx" else [(None, _csv_rows(raw))]
     found = None
-    for title, rows in sheets:
-        h = _header(rows)
-        if h:
-            found = title, rows, h
-            break
+    with contextlib.closing(_sheets(raw, fmt)) as sheets:  # книга закрывается сразу, а не при сборке мусора
+        for title, rows in sheets:
+            h = _header(rows)
+            if h:
+                found = title, rows, h
+                break
     if not found:
         raise ImportFailed(422, "Не найдена строка заголовка: нужны колонки «Источник», «ЖК / объект» и «ID в источнике» "
                                 "(формат — как в docs/Усть-Каменогорск_объекты.xlsx)")
@@ -513,7 +614,7 @@ def parse(raw: bytes, name: str, content_type: str | None = None) -> Parsed:
         seen[k] = i
         p.records.append(rec)
     if p.read > MAX_ROWS:
-        raise ImportFailed(422, f"Слишком много строк (больше {MAX_ROWS}) — разделите файл на части")
+        raise ImportFailed(422, TOO_MANY_ROWS)
     return p
 
 
@@ -542,8 +643,8 @@ def group(records: Iterable[Obj]) -> list[Obj]:
     for r in records:
         by.setdefault(r["key"], []).append(r)
     out = []
-    for key, rs in by.items():
-        rs = sorted(rs, key=_rank)
+    for key, group_rs in by.items():
+        rs = sorted(group_rs, key=_rank)
         main = rs[0]
         geo = next((r for r in rs if r.get("lat") is not None and r.get("lng") is not None), None)
         flags: Obj = {}
@@ -593,7 +694,7 @@ def matches(q: str, hay: tuple[str, str]) -> bool:
     if not nq:
         return True
     sq = skeleton_text(nq)
-    return nq in hay[0] or bool(sq) and sq in hay[1]
+    return nq in hay[0] or (bool(sq) and sq in hay[1])
 
 
 # ---------- JSON реестра(shared/registry_ust_kamenogorsk.json) ----------

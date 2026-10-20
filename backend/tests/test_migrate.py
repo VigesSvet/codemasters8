@@ -1,16 +1,18 @@
 """Схема БД: обновление на месте(migrate), защита собранных данных, новые таблицы, JSON со слежением, помощники
 моделей(as_utc, insert_ignore) и новые поля схем API(AdOut, HumanName, приём публикаций)."""
 import re
+import sqlite3 as sqlite3_module
 import uuid
 from datetime import datetime, timedelta, timezone, UTC
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import Column, Integer, func, inspect, select, text
+from sqlalchemy import Column, Integer, String, func, inspect, select, text
+from sqlalchemy.exc import IntegrityError
 
 from app import migrate, models, schemas
-from app.db import Base, SessionLocal, engine, make_engine
+from app.db import Base, SessionLocal, engine, foreign_keys_off, make_engine
 from app.seed import init_db
 
 AD = {"platform": "instagram", "account": "@test_dev", "text": "Старт продаж, бронь 100 000 ₸", "author": "Тест"}
@@ -69,7 +71,7 @@ def _backups() -> set:
 
 
 def test_fresh_db(tmp_path):
-    assert models.SCHEMA_VERSION == migrate.STEPS[-1][0] == "2026.10-alerts-1"
+    assert models.SCHEMA_VERSION == migrate.STEPS[-1][0] == "2026.10-audit-2"
     eng = make_engine(f"sqlite:///{tmp_path}/fresh.db")
     try:
         init_db(eng)
@@ -81,7 +83,33 @@ def test_fresh_db(tmp_path):
             assert conn.execute(text("SELECT count(*) FROM ads")).scalar() == 12
             assert conn.execute(text("PRAGMA journal_mode")).scalar() == "wal"
             assert conn.execute(text("PRAGMA busy_timeout")).scalar() == 30000
+            assert conn.execute(text("PRAGMA foreign_keys")).scalar() == 1
         assert not list(tmp_path.glob("fresh.db.bak-*"))  # новой базе резервная копия не нужна
+    finally:
+        eng.dispose()
+
+
+def test_sqlite_foreign_keys_enforced_and_off_only_inside_helper(tmp_path):
+    """SQLite проверяет внешние ключи, как PostgreSQL; foreign_keys_off выключает проверку только внутри блока - и после
+    ошибки соединение уходит в пул с проверкой."""
+    eng = make_engine(f"sqlite:///{tmp_path}/fk.db", pool_size=1, max_overflow=0)
+    try:
+        with eng.begin() as conn:
+            conn.exec_driver_sql("CREATE TABLE p (id INTEGER PRIMARY KEY)")
+            conn.exec_driver_sql("CREATE TABLE ch (id INTEGER PRIMARY KEY, p_id INTEGER REFERENCES p (id))")
+            conn.exec_driver_sql("INSERT INTO p VALUES (1)")
+            conn.exec_driver_sql("INSERT INTO ch VALUES (1, 1)")
+        with pytest.raises(IntegrityError), eng.begin() as conn:
+            conn.exec_driver_sql("INSERT INTO ch VALUES (2, 99)")
+        with pytest.raises(IntegrityError), eng.begin() as conn:
+            conn.exec_driver_sql("DELETE FROM p")
+        with pytest.raises(RuntimeError), foreign_keys_off(eng) as conn, conn.begin():
+            assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 0
+            conn.exec_driver_sql("DELETE FROM p")
+            raise RuntimeError("шаг упал")
+        with eng.connect() as conn:  # то же соединение пула(pool_size=1): проверка снова включена, удаление откатилось
+            assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+            assert conn.exec_driver_sql("SELECT count(*) FROM p").scalar() == 1
     finally:
         eng.dispose()
 
@@ -130,14 +158,14 @@ def test_intake_upgrade_adds_llm_table_and_keeps_data(client):
         models.LlmAnalysis.__table__.drop(conn)
     _set_meta("2026.10-intake-1")
     assert "llm_analyses" not in inspect(engine).get_table_names()
-    assert migrate.chain_from("2026.10-intake-1") == migrate.STEPS[-5:]
+    assert migrate.chain_from("2026.10-intake-1") == migrate.STEPS[-6:]
     before = _backups()
 
     init_db(engine)
 
     assert "llm_analyses" in inspect(engine).get_table_names()
     with engine.connect() as conn:
-        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-alerts-1"
+        assert _meta(conn) == models.SCHEMA_VERSION
     got = _ad(client, aid)
     assert got["origin"] == "collected" and got["processing"]["status"] == "queued" and "llm" not in got
     assert _ad(client, "a1")["status"] == "in_review"
@@ -162,7 +190,7 @@ def test_intake_upgrade_adds_llm_table_and_keeps_data(client):
 
 def _coords_not_null() -> None:
     """complexes.lat/lng - NOT NULL, как до 2026.10-discovery-1(SQLite - пересборкой таблицы по прежнему DDL)."""
-    with engine.begin() as conn:
+    with foreign_keys_off(engine) as conn, conn.begin():  # DROP TABLE complexes - на него ссылаются другие таблицы
         if conn.dialect.name == "postgresql":
             conn.execute(text("ALTER TABLE complexes ALTER COLUMN lat SET NOT NULL"))
             conn.execute(text("ALTER TABLE complexes ALTER COLUMN lng SET NOT NULL"))
@@ -197,7 +225,7 @@ def test_discovery_upgrade_keeps_data_and_allows_missing_coords(client):
     _coords_not_null()
     assert _nullable("complexes")["lat"] is False and _nullable("complexes")["lng"] is False
     _set_meta("2026.10-llm-1")
-    assert migrate.chain_from("2026.10-llm-1") == migrate.STEPS[-4:]
+    assert migrate.chain_from("2026.10-llm-1") == migrate.STEPS[-5:]
     before = _backups()
 
     init_db(engine)
@@ -205,8 +233,12 @@ def test_discovery_upgrade_keeps_data_and_allows_missing_coords(client):
     assert set(migrate.DISCOVERY_TABLES) <= set(inspect(engine).get_table_names())
     assert _nullable("complexes")["lat"] is True and _nullable("complexes")["lng"] is True
     assert "ix_complexes_name" in {i["name"] for i in inspect(engine).get_indexes("complexes")}
+    if engine.dialect.name == "sqlite":  # проверка внешних ключей снова включена, ссылки на ЖК целы
+        with engine.connect() as conn:
+            assert conn.execute(text("PRAGMA foreign_keys")).scalar() == 1
+            assert conn.execute(text("PRAGMA foreign_key_check")).all() == []
     with engine.connect() as conn:
-        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-alerts-1"
+        assert _meta(conn) == models.SCHEMA_VERSION
     after_cx = {c["id"]: (c["name"], c["lat"], c["lng"], c["developerId"]) for c in client.get("/api/complexes").json()}
     assert after_cx == before_cx
     a1 = _ad(client, "a1")
@@ -239,14 +271,14 @@ def test_verification_upgrade_adds_columns_and_keeps_data(client):
     _drop_verification_columns()
     assert not _has_verification_columns()
     _set_meta("2026.10-discovery-1")
-    assert migrate.chain_from("2026.10-discovery-1") == migrate.STEPS[-3:]
+    assert migrate.chain_from("2026.10-discovery-1") == migrate.STEPS[-4:]
     before = _backups()
 
     init_db(engine)
 
     assert _has_verification_columns()
     with engine.connect() as conn:
-        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-alerts-1"
+        assert _meta(conn) == models.SCHEMA_VERSION
     cxs = client.get("/api/complexes").json()
     assert {c["id"]: (c["basis"], c["inPublishedList"]) for c in cxs} == before_cx
     assert all(c["publishedListCheck"] is None and c["appealsCheck"] is None for c in cxs)
@@ -275,7 +307,7 @@ def test_decisions_upgrade_adds_table_and_keeps_data(client):
         models.ScreeningDecision.__table__.drop(conn)
     _set_meta("2026.10-verification-1")
     assert "screening_decisions" not in inspect(engine).get_table_names()
-    assert migrate.chain_from("2026.10-verification-1") == migrate.STEPS[-2:]
+    assert migrate.chain_from("2026.10-verification-1") == migrate.STEPS[-3:]
     assert migrate.tables_after("2026.10-verification-1") == {"screening_decisions", *migrate.ALERT_TABLES}
     assert "screening_decisions" in migrate.tables_after("2026.10-discovery-1")
     assert migrate.tables_after(models.SCHEMA_VERSION) == set() == migrate.tables_after("old")
@@ -287,7 +319,7 @@ def test_decisions_upgrade_adds_table_and_keeps_data(client):
     idx = {i["name"]: i for i in inspect(engine).get_indexes("screening_decisions")}
     assert idx["uq_screening_decisions_active_complex"]["unique"]
     with engine.connect() as conn:
-        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-alerts-1"
+        assert _meta(conn) == models.SCHEMA_VERSION
     cxs = client.get("/api/complexes").json()
     assert {c["id"]: (c["stage"], c["screening"]["status"]) for c in cxs} == before
     assert all(c["decision"] is None and c["screening"]["variant"] is None for c in cxs)
@@ -313,7 +345,7 @@ def test_alerts_upgrade_adds_tables_and_keeps_data(client):
                 t.drop(conn)
     _set_meta("2026.10-decisions-1")
     assert not set(migrate.ALERT_TABLES) & set(inspect(engine).get_table_names())
-    assert migrate.chain_from("2026.10-decisions-1") == migrate.STEPS[-1:]
+    assert migrate.chain_from("2026.10-decisions-1") == migrate.STEPS[-2:]
     assert migrate.tables_after("2026.10-decisions-1") == set(migrate.ALERT_TABLES)
     backups = _backups()
 
@@ -323,7 +355,7 @@ def test_alerts_upgrade_adds_tables_and_keeps_data(client):
     idx = {i["name"]: i for i in inspect(engine).get_indexes("resident_alerts")}
     assert idx["uq_resident_alerts_pending_complex"]["unique"]
     with engine.connect() as conn:
-        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-alerts-1"
+        assert _meta(conn) == models.SCHEMA_VERSION
     assert len(client.get("/api/complexes/c1/audit").json()) == events
     r = client.post("/api/alerts", json={"complexId": "c1", "template": "basis", "title": "Проверьте основание",
                                          "text": "Сверьте номер гарантии ЕО в ГАСК.", "author": "Тест"})
@@ -334,6 +366,79 @@ def test_alerts_upgrade_adds_tables_and_keeps_data(client):
     if _sqlite_file():
         new = _backups() - backups
         assert len(new) == 1 and next(iter(new)).name.startswith(f"{_sqlite_file().name}.bak-2026.10-decisions-1-")
+        for f in new:
+            f.unlink()
+
+
+# События журнала вида data из набора shared/snapshot(2026.10-discovery-1, id 14-20, 189, 1; аккаунт оператора
+# заменён) и пограничные: автор, текст, событие ли подключения
+LEGACY_EVENTS = (
+    ("Администратор", "Настройки источника «Instagram» изменены: аккаунты: +@an.groups, +@tumar.oskemen", True),
+    ("Администратор", "Настройки источника «TikTok» изменены: профили: +zolotoi_kvadrat.kz, +elitstroy.uka; загрузка "
+                      "видео: да; сбор включён", True),
+    ("Администратор", "Настройки источника «Krisha.kz» изменены: URL поиска: +https://krisha.kz/prodazha/kvartiry/"
+                      "ust-kamenogorsk/?das[novostroiki]=1; сбор включён", True),
+    ("Система", "Источник «Instagram»: готов к сбору. Подключено: @operator.test. Токен действует до 15.12.2026", True),
+    ("Система", "Источник «TikTok»: готов к сбору. Токен Apify действует (аккаунт operator.test); Actor "
+                "clockworks~tiktok-scraper доступен. Лимит на запуск $0.5 (минимум Actor $0.5), дневной лимит $1. "
+                "Платный запуск при проверке не выполнялся", True),
+    ("Система", "Источник «Krisha.kz»: готов к сбору. Выдача и карточки объявлений доступны (объявлений в выдаче: 39, "
+                "разобрано на странице: 20)", True),
+    ("Система", "Источник «Анализатор ИИ (Anthropic)»: готов. Ключ принят, модель claude-sonnet-5-5 доступна; уровень "
+                "размышления medium, бюджет $5.00 в день", True),
+    ("Система", "Источник «Krisha.kz»: ошибка", True),  # статус без пояснения
+    ("Система", "Сбор «Instagram»: новых 168, изменено 0, без изменений 0 (запуск №5)", False),  # счётчики - открыты
+    ("Система", "Загружены сведения открытых источников: 103 записи (Homeportal — карточки ЖК: 16) из "
+                "docs/Усть-Каменогорск_объекты.xlsx, собраны 15.10", False),
+    ("Омарова Ж.", "Источник «Instagram»: готов", False),  # такой текст пишет только "Система"
+    ("Омарова Ж.", "Настройки источника «Krisha.kz»", False),  # без ": " после "изменены"
+)
+
+
+def test_audit_upgrade_moves_connector_events(client):
+    """2026.10-alerts-1 → 2026.10-audit-2: события подключений вида data(статус с пояснением проверки, настройки,
+    аккаунт OLX) получают вид connector, остальные события и виды не меняются; условие SQL и legacy_connector_event -
+    одно и то же."""
+    from app.integrations import olx
+
+    label = "Иван Петров (id 42)"
+    rows = [*((who, what, hit) for who, what, hit in LEGACY_EVENTS),
+            ("Администратор", olx.CONNECTED_AUDIT.format(label=label), True),
+            ("Омарова Ж.", olx.DISCONNECTED_AUDIT.format(label=label), True)]
+    with SessionLocal() as db:
+        ids = []
+        for who, what, _ in rows:
+            e = models.AuditEvent(kind="data", who=who, what=what)
+            db.add(e)
+            db.flush()
+            ids.append(e.id)
+        other = models.AuditEvent(kind="comment", who="Тест", what="Настройки источника «Instagram» изменены: период: 60 "
+                                                                    "мин")
+        db.add(other)
+        db.commit()
+        other_id = other.id
+    for who, what, hit in rows:
+        assert migrate.legacy_connector_event("data", who, what) is hit, what
+        assert not migrate.legacy_connector_event("comment", who, what)
+    _set_meta("2026.10-alerts-1")
+    assert migrate.chain_from("2026.10-alerts-1") == migrate.STEPS[-1:]
+    assert migrate.data_after("2026.10-alerts-1") == [migrate.connector_events] == migrate.data_after(migrate.BASELINE)
+    assert migrate.data_after(models.SCHEMA_VERSION) == [] == migrate.data_after("old")
+    backups = _backups()
+
+    init_db(engine)
+
+    with SessionLocal() as db:
+        kinds = [db.get(models.AuditEvent, i).kind for i in ids]
+        assert db.get(models.AuditEvent, other_id).kind == "comment"
+    assert kinds == ["connector" if hit else "data" for *_, hit in rows]
+    with engine.connect() as conn:
+        assert _meta(conn) == models.SCHEMA_VERSION
+    with engine.begin() as conn:
+        assert migrate.connector_events(conn) == 0  # идемпотентно
+    if _sqlite_file():
+        new = _backups() - backups
+        assert len(new) == 1 and next(iter(new)).name.startswith(f"{_sqlite_file().name}.bak-2026.10-alerts-1-")
         for f in new:
             f.unlink()
 
@@ -360,6 +465,19 @@ def test_unknown_version_without_durable_rows_reseeds(client):
     _set_meta("old")
     init_db(engine)
     assert _ad(client, "a1")["status"] == "new"
+
+
+@pytest.mark.parametrize("version", migrate.RETIRED)
+def test_retired_version_is_unknown(client, version):
+    """Версия схемы до migrate(блок C - "2026.10-audit-1", блок D) - неизвестная: таблицы пересоздаются, а не
+    считаются текущими из-за совпадения имени с новым шагом."""
+    assert version != models.SCHEMA_VERSION and migrate.chain_from(version) is None
+    client.patch("/api/ads/a1/status", json={"status": "in_review", "author": "Тест"})
+    _set_meta(version)
+    init_db(engine)
+    assert _ad(client, "a1")["status"] == "new"
+    with engine.connect() as conn:
+        assert _meta(conn) == models.SCHEMA_VERSION
 
 
 def test_durable_rows(client):
@@ -522,7 +640,7 @@ def test_human_name_and_connector_schemas():
     body = schemas.ConnectorPatchIn.model_validate({"author": "Тест", "config": {"searchUrls": ["https://krisha.kz/x"],
                                                                                    "resultsPerPage": 5}})
     assert body.config.search_urls == ["https://krisha.kz/x"] and body.config.results_per_page == 5
-    assert "Другая площадка" == __import__("app.pdf", fromlist=["PLATFORMS"]).PLATFORMS["other"]
+    assert __import__("app.pdf", fromlist=["PLATFORMS"]).PLATFORMS["other"] == "Другая площадка"
 
 
 def _intake(**kw):
@@ -560,3 +678,58 @@ def test_intake_publication_schema():
                                   analysis_queued=True).model_dump(by_alias=True)
     assert out == {"status": "created", "adId": "a" * 32, "itemId": 1, "version": 1, "mediaQueued": 2,
                    "analysisQueued": True}
+
+
+def test_add_column_default_literal(client):
+    """DEFAULT добавляемого столбца - литерал диалекта: кавычка в строке экранируется, а не обрывает DDL."""
+    with SessionLocal() as db:
+        db.add(models.QuotaCounter(name="q:literal"))
+        db.commit()
+    with engine.begin() as conn:
+        col = Column("extra_note", String(32), server_default="it's; DROP TABLE ads --", nullable=False)
+        assert migrate.add_column(conn, "quota_counters", col) is True
+        got = conn.execute(text("SELECT extra_note FROM quota_counters WHERE name = 'q:literal'")).scalar()
+    assert got == "it's; DROP TABLE ads --"
+    assert "ads" in inspect(engine).get_table_names()
+
+
+def test_upgrade_logs_version_read_under_lock(client, caplog):
+    """Версию, от которой идут шаги, upgrade перечитывает под блокировкой: в журнал - она, а не устаревшая из вызова."""
+    with engine.begin() as conn:
+        for t in reversed(Base.metadata.sorted_tables):
+            if t.name in migrate.ALERT_TABLES:
+                t.drop(conn)
+    _set_meta("2026.10-decisions-1")
+    before = _backups()
+    with caplog.at_level("WARNING", logger="saq"):
+        migrate.upgrade(engine, migrate.BASELINE)
+    assert set(migrate.ALERT_TABLES) <= set(inspect(engine).get_table_names())
+    assert f"Схема БД обновлена: 2026.10-decisions-1 → {models.SCHEMA_VERSION}" in caplog.text
+    for f in _backups() - before:
+        f.unlink()
+
+
+def test_backup_sqlite_owner_only_and_unique(tmp_path, monkeypatch):
+    eng = make_engine(f"sqlite:///{tmp_path}/b.db")
+    try:
+        with eng.begin() as conn:
+            conn.execute(text("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)"))
+            conn.execute(text("INSERT INTO t (v) VALUES ('секрет')"))
+        first = migrate.backup_sqlite(eng, "v/1")
+        second = migrate.backup_sqlite(eng, "v/1")  # та же секунда - другое имя, первая копия не перезаписана
+        assert first != second and first.name.startswith("b.db.bak-v_1-")
+        for f in (first, second):
+            assert f.stat().st_mode & 0o777 == 0o600  # в копии вся БД, в том числе токены подключений
+            with make_engine(f"sqlite:///{f}").connect() as conn:
+                assert conn.execute(text("SELECT v FROM t")).scalar() == "секрет"
+
+        class Boom(sqlite3_module.Connection):
+            def backup(self, *a, **kw):
+                raise sqlite3_module.OperationalError("диск полон")
+
+        monkeypatch.setattr(migrate.sqlite3, "connect", Boom)
+        with pytest.raises(sqlite3_module.OperationalError):
+            migrate.backup_sqlite(eng, "v2")
+        assert not list(tmp_path.glob("b.db.bak-v2-*"))  # недописанная копия удалена
+    finally:
+        eng.dispose()

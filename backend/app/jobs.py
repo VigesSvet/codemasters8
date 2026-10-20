@@ -17,22 +17,26 @@ execute: сессия S1(задание и запуск - "выполняетс�
 итога(повтор, отсрочка, пауза частоты, следующий сбор) - момент итога, а не захвата: долгий запуск не делает паузу
 прошедшей ещё до записи. Брошенное задание(попытки исчерпаны в recover_stale / requeue_own) получает тот же итог
 ошибки, что и обычный сбой: подключение - "ошибка", платный сбор остановлен, анализ - событие "не выполнен".
+Исключение, вышедшее из обработчика мимо его итогов, - повтор с паузой или тот же итог брошенного задания(_crashed).
 """
 import hashlib
 import logging
 import random
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
-from collections.abc import Callable
 
-from sqlalchemy import and_, exists, not_, select, text, update
+from sqlalchemy import and_, exists, not_, or_, select, text, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, aliased
 
 from . import models
 from .db import SessionLocal
+# модуль-лист подключений(без реестра и сервиса): общий потолок паузы от источника
+from .integrations.base import pause_seconds
 from .logs import redact
 
 log = logging.getLogger("saq.jobs")
@@ -41,12 +45,16 @@ PRIORITY = {"test": 10, "alert": 8, "collect": 5, "analyze": 0}
 SOFT_DEADLINE_S = 1200  # RunContext.time_left(): мягкий срок одного выполнения задания
 ACTIVE = ("queued", "running")
 MAX_DEFERRALS = 240  # отсрочек одного задания(Deferred), дальше - ошибка
+MAX_CONTINUATIONS = 10_000  # плановых продолжений одного задания(defer planned=True), дальше - ошибка
 BACKOFF_BASE_S = 60
 BACKOFF_MAX_S = 3600
 CLAIM_TRIES = 3
 SYSTEM = "Система"
 INTERNAL = "Внутренняя ошибка сборщика — подробности в журнале воркера"
 PAID_STOP = "Платный сбор остановлен после ошибки — запустите проверку вручную"
+CRASHED = "Задание прервано внутренней ошибкой воркера — подробности в журнале воркера"
+ANALYSIS_DB = "Ошибка базы данных при анализе — подробности в журнале воркера"
+ANALYSIS_FAILED = "Внутренняя ошибка анализа — подробности в журнале воркера"
 SCHEDULABLE = frozenset({"ready", "working", "partial", "error", "rate_limited"})
 DETAIL_MAX = 500
 MONOTONIC: Callable[[], float] = time.monotonic  # время выполнения задания(тесты подменяют)
@@ -54,14 +62,10 @@ MONOTONIC: Callable[[], float] = time.monotonic  # время выполнени
 
 # ---------- постановка ----------
 
-def _active(db: Session, dedupe_key: str) -> models.Job | None:
-    J = models.Job
-    return db.scalar(select(J).where(J.dedupe_key == dedupe_key, J.status.in_(ACTIVE)).order_by(J.id.desc()).limit(1))
-
-
 def active(db: Session, dedupe_key: str) -> models.Job | None:
     """Активное(в очереди или выполняется) задание с этим ключом."""
-    return _active(db, dedupe_key)
+    J = models.Job
+    return db.scalar(select(J).where(J.dedupe_key == dedupe_key, J.status.in_(ACTIVE)).order_by(J.id.desc()).limit(1))
 
 
 def enqueue(db: Session, kind: str, *, dedupe_key: str | None = None, collector: str | None = None,
@@ -83,7 +87,7 @@ def enqueue(db: Session, kind: str, *, dedupe_key: str | None = None, collector:
         return job, True
     for _ in range(3):  # активное задание могло завершиться между INSERT и SELECT - вставка пройдёт со второго раза
         created = models.insert_ignore(db, models.Job, values, ("dedupe_key",), where=text(models.ACTIVE_JOB))
-        job = _active(db, dedupe_key)
+        job = active(db, dedupe_key)
         if job is None:
             continue
         newer = content_version is not None and (job.content_version or 0) < content_version
@@ -150,7 +154,7 @@ def claim(db: Session, worker_id: str, now: datetime) -> models.Job | None:
 
 def backoff(attempts: int) -> float:
     """Пауза перед повтором: 60 · 2^(попытка−1) с, не больше часа, ±20 %."""
-    return min(BACKOFF_BASE_S * 2 ** max(attempts - 1, 0), BACKOFF_MAX_S) * random.uniform(0.8, 1.2)
+    return min(BACKOFF_BASE_S * 2 ** max(attempts - 1, 0), BACKOFF_MAX_S) * random.uniform(0.8, 1.2)  # noqa: S311
 
 
 def complete(db: Session, job: models.Job, result: dict | None = None) -> None:
@@ -164,8 +168,17 @@ def fail(db: Session, job: models.Job, error: str | None) -> None:
     job.last_error = redact(error)
 
 
-def cancel(db: Session, job: models.Job) -> None:
-    job.status, job.finished_at, job.locked_by = "cancelled", models.utcnow(), None
+def cancel(db: Session, job: models.Job, *, now: datetime | None = None) -> bool:
+    """Отменить задание, которое ещё ждёт в очереди(в сессии db, без commit): условный UPDATE "ещё в очереди" -
+    задание, которое воркер успел захватить, не становится "отменённым" посреди выполнения. False - задание уже
+    выполняется или завершено, ничего не изменено."""
+    J = models.Job
+    finished = models.as_utc(now) or models.utcnow()
+    res = db.execute(update(J).where(J.id == job.id, J.status == "queued")
+                     .values(status="cancelled", finished_at=finished, locked_by=None)
+                     .execution_options(synchronize_session=False))
+    db.expire(job)  # строка изменена мимо ORM(или её изменил другой процесс) - следующее чтение свежее
+    return res.rowcount == 1
 
 
 def retry(db: Session, job: models.Job, error: str | None, *, now: datetime) -> bool:
@@ -178,17 +191,22 @@ def retry(db: Session, job: models.Job, error: str | None, *, now: datetime) -> 
     return True
 
 
-def defer(db: Session, job: models.Job, seconds: float, payload_update: dict | None, *, now: datetime) -> bool:
+def defer(db: Session, job: models.Job, seconds: float, payload_update: dict | None, *, now: datetime,
+          planned: bool = False) -> bool:
     """Отсрочка без расхода попытки(ожидание внешнего запуска): в очередь через seconds с, payload дополняется.
-    False - отсрочек больше MAX_DEFERRALS: задание дальше не откладывается(вызывающий завершает ошибкой)."""
+    planned - плановое продолжение после сделанной части работы(очередная партия): считается не в MAX_DEFERRALS, а в
+    MAX_CONTINUATIONS. Вызывающий передаёт planned=True, только если это выполнение продвинуло работу - тогда
+    продолжений не больше, чем частей работы, а потолок - защита от ошибки вызывающего.
+    False - отсрочек или продолжений больше предела: задание дальше не откладывается(вызывающий завершает ошибкой)."""
     payload = {**(job.payload or {}), **(payload_update or {})}
-    payload["deferrals"] = int(payload.get("deferrals") or 0) + 1
+    counter, limit = ("continuations", MAX_CONTINUATIONS) if planned else ("deferrals", MAX_DEFERRALS)
+    payload[counter] = int(payload.get(counter) or 0) + 1
     job.payload = payload
-    if payload["deferrals"] > MAX_DEFERRALS:
+    if payload[counter] > limit:
         return False
     job.status, job.locked_by = "queued", None
     job.attempts = max((job.attempts or 0) - 1, 0)
-    job.run_after = models.as_utc(now) + timedelta(seconds=max(float(seconds), 0.0))
+    job.run_after = models.as_utc(now) + timedelta(seconds=pause_seconds(seconds, 0.0))
     return True
 
 
@@ -211,11 +229,17 @@ def fence(db: Session, job_id: int, worker_id: str | None, attempts: int | None,
     return db.get(J, job_id, populate_existing=True)
 
 
-def _requeue(db: Session, job: models.Job, now: datetime, reason: str) -> str | None:
-    """Задание, которое перестал выполнять воркер: снова в очередь(попытка уже израсходована) или итог ошибки, если
-    попыток больше нет. Возвращает новый статус; None - задание тем временем завершилось или его уже забрали
-    (условный UPDATE по прочитанному захвату не совпал)."""
-    if fence(db, job.id, job.locked_by, job.attempts, what="повторно не возвращается") is None:
+def _requeue(db: Session, job_id: int, locked_by: str | None, attempts: int | None, now: datetime, reason: str, *,
+             stale_before: datetime | None = None) -> str | None:
+    """Задание, которое перестал выполнять воркер(захват locked_by + attempts, прочитанный до вызова): снова в
+    очередь(попытка уже израсходована) или итог ошибки, если попыток больше нет. Возвращает новый статус; None -
+    задание тем временем завершилось или его уже забрали(условный UPDATE по прочитанному захвату не совпал).
+    stale_before - задание брошено, только если блокировка так и не продлена до этого момента: пульс воркера мог
+    продлить её между чтением и "замком" fence."""
+    job = fence(db, job_id, locked_by, attempts, what="повторно не возвращается")
+    if job is None:
+        return None
+    if stale_before is not None and job.locked_at is not None and models.as_utc(job.locked_at) >= stale_before:
         return None
     if (job.attempts or 0) >= (job.max_attempts or 1):
         _abandoned(db, job, now, reason)
@@ -239,52 +263,68 @@ def _abandoned(db: Session, job: models.Job, now: datetime, reason: str) -> None
             conn = None
         _failure_outcome(db, job, conn, _Failure("internal", "failed", "error", reason), now, retry_ok=False)
         return
-    fail(db, job, reason)
+    if job.kind == "analyze":
+        _analysis_failed(db, job, reason, now)
+    else:
+        fail(db, job, reason)
     if job.kind == "alert":
         from . import alerts
 
         alerts.abandoned(db, job, reason, now)
-        return
-    if job.run_id is not None:
+    elif job.run_id is not None:
         from .integrations import service
 
         service.finish_run(db, job.run_id, "failed", error_code="internal", error=reason, now=now)
-    if job.kind == "analyze" and job.ad_id:
-        from .ads_service import _event
 
-        I = models.IngestItem
-        stage = (job.payload or {}).get("stage") or "media"
-        job.result = {"failedStage": stage}
-        db.execute(update(I).where(I.ad_id == job.ad_id).values(analysis_status="failed", analysis_stage=stage,
-                                                                   analysis_error=reason)
-                   .execution_options(synchronize_session=False))
-        if db.get(models.Ad, job.ad_id) is not None:
-            _event(db, "system", SYSTEM, f"Анализ публикации не выполнен: {reason} — проверьте вручную", at=now,
-                   ad_id=job.ad_id)
+
+def _requeue_each(db: Session, rows: list[models.Job], now: datetime, reason: str, *,
+                  stale_before: datetime | None = None) -> list[tuple[int, str]]:
+    """_requeue по каждому заданию своей транзакцией(commit): сбой итога одного задания(не БД) - откат, запись в
+    журнал и следующее задание, иначе одно задание навсегда держало бы возврат остальных. Ошибка БД - выше.
+    Возвращает(id, вид) возвращённых в очередь или завершённых ошибкой заданий."""
+    # захват - снимок до первого commit/rollback: откат истекает объекты сессии, и перечитанный захват другого
+    # воркера(задание тем временем вернули и захватили снова) прошёл бы fence
+    claims = [(job.id, job.kind, job.locked_by, job.attempts) for job in rows]
+    out = []
+    for job_id, kind, locked_by, attempts in claims:
+        try:
+            done = _requeue(db, job_id, locked_by, attempts, now, reason, stale_before=stale_before) is not None
+            db.commit()
+        except SQLAlchemyError:
+            db.rollback()
+            raise
+        except Exception:
+            db.rollback()
+            log.exception("Задание №%s: итог брошенного задания не записан", job_id)
+            continue
+        if done:
+            out.append((job_id, kind))
+    return out
 
 
 def recover_stale(db: Session, now: datetime, lease_s: int) -> int:
     """Выполняемые задания без продления блокировки дольше lease_s(воркер упал или завис) → снова в очередь(или
-    итог ошибки, если попытки исчерпаны). Без commit."""
+    итог ошибки, если попытки исчерпаны). Фиксирует транзакцию после каждого задания."""
     J = models.Job
     cutoff = models.as_utc(now) - timedelta(seconds=lease_s)
-    rows = db.scalars(select(J).where(J.status == "running", J.locked_at < cutoff)).all()
-    n = 0
-    for job in rows:
-        if _requeue(db, job, now, "Задание прервано: воркер перестал отвечать") is not None:
-            log.warning("Задание №%s (%s) не продлевалось дольше %s с — возвращено в очередь или завершено ошибкой",
-                        job.id, job.kind, lease_s)
-            n += 1
-    return n
+    q = select(J).where(J.status == "running", or_(J.locked_at.is_(None), J.locked_at < cutoff))
+    rows = db.scalars(q.execution_options(populate_existing=True)).all()
+    done = _requeue_each(db, list(rows), now, "Задание прервано: воркер перестал отвечать", stale_before=cutoff)
+    for job_id, kind in done:
+        log.warning("Задание №%s (%s) не продлевалось дольше %s с — возвращено в очередь или завершено ошибкой",
+                    job_id, kind, lease_s)
+    return len(done)
 
 
 def requeue_own(db: Session, worker_id: str) -> int:
     """Старт воркера: его же задания в статусе "выполняется"(прошлый процесс с этим SAQ_WORKER_ID упал) → в очередь
-    (или итог ошибки, если попытки исчерпаны). Без commit."""
+    (или итог ошибки, если попытки исчерпаны). Только когда аренда worker:{id} уже у этого
+    процесса(worker.wait_for_worker_id): иначе это задания живого процесса с тем же ID. Фиксирует транзакцию после
+    каждого задания."""
     J = models.Job
-    now = models.utcnow()
-    rows = db.scalars(select(J).where(J.status == "running", J.locked_by == worker_id)).all()
-    return sum(_requeue(db, job, now, "Задание прервано перезапуском воркера") is not None for job in rows)
+    q = select(J).where(J.status == "running", J.locked_by == worker_id).execution_options(populate_existing=True)
+    rows = db.scalars(q).all()
+    return len(_requeue_each(db, list(rows), models.utcnow(), "Задание прервано перезапуском воркера"))
 
 
 # ---------- выполнение ----------
@@ -304,7 +344,7 @@ class JobInfo:
     trigger: str = "manual"
     worker_id: str | None = None
     base: datetime | None = None
-    started: float = field(default_factory=lambda: MONOTONIC())
+    started: float = field(default_factory=lambda: MONOTONIC())  # lambda: тесты подменяют jobs.MONOTONIC
 
     def now(self) -> datetime:
         """Текущее время задания(UTC): время, переданное воркером(захват), плюс прошедшее с начала выполнения."""
@@ -315,8 +355,8 @@ class JobInfo:
 def execute(job_id: int, *, worker_id: str, now: datetime | None = None,
             stop: threading.Event | None = None) -> None:
     """Выполнить захваченное задание. S1(задание и запуск - "выполняется") фиксируется до обработчика; итог -
-    в новой сессии и только пока задание у этого захвата. Исключения обработчика сюда не выходят(кроме ошибок БД
-    при записи итога)."""
+    в новой сессии и только пока задание у этого захвата. Обработчик упал мимо своих итогов - повтор или итог
+    брошенного задания(_crashed); наружу выходят только ошибки БД при записи итога."""
     started = MONOTONIC()
     now = models.as_utc(now) or models.utcnow()
     with SessionLocal() as db:
@@ -341,7 +381,27 @@ def execute(job_id: int, *, worker_id: str, now: datetime | None = None,
                 fail(db, job, f"Неизвестный вид задания: {info.kind}")
                 db.commit()
         return
-    handler(info, now=now, stop=stop)
+    try:
+        handler(info, now=now, stop=stop)
+    except Exception:
+        log.exception("Задание №%s (%s): необработанная ошибка обработчика", info.id, info.kind)
+        _crashed(info)
+
+
+def _crashed(info: JobInfo) -> None:
+    """Исключение вышло из обработчика(ошибка в записи итога, сбой БД): повтор с паузой или итог брошенного задания
+    (_abandoned) - иначе задание оставалось бы "выполняется" до recover_stale и вернулось бы без паузы."""
+    with SessionLocal() as db:
+        job = fence(db, info.id, info.worker_id, info.attempts)
+        if job is None:
+            return
+        now = info.now()
+        if retry(db, job, CRASHED, now=now):
+            if job.kind == "analyze":
+                _analysis_requeued(db, job.ad_id)
+        else:
+            _abandoned(db, job, now, CRASHED)
+        db.commit()
 
 
 # ---------- сбор и проверка подключения ----------
@@ -457,7 +517,7 @@ def _deferred(info: JobInfo, conn, d) -> None:
         if job is None:
             return
         now = info.now()
-        before = (job.payload or {}).get("phase")
+        before = info.payload.get("phase")  # фаза на начало запуска: смену через ctx.save_payload тоже видно
         if defer(db, job, d.seconds, d.payload, now=now):
             phase = (job.payload or {}).get("phase")
             if job.payload.get("deferrals") == 1 or phase != before:  # заметка - на первую отсрочку и смену этапа
@@ -510,7 +570,7 @@ def _failure_outcome(db: Session, job: models.Job, conn, f: _Failure, now: datet
         if job.kind == "test":
             row.checked_at = models.as_utc(now)
         if f.run_status == "rate_limited":
-            retry_s = float(getattr(f.exc, "retry_after", None) or 3600)
+            retry_s = pause_seconds(getattr(f.exc, "retry_after", None) or 3600, 3600)
             row.next_run_at = models.as_utc(now) + timedelta(seconds=retry_s)
             detail = f"Ограничение частоты: повтор после {local_time(row.next_run_at)}"
         elif f.status == "error":
@@ -527,7 +587,7 @@ def _failure_outcome(db: Session, job: models.Job, conn, f: _Failure, now: datet
 
 
 def _key_fps(conn, s) -> dict:
-    return {name: s.key_fp(name) for name in conn.required_env if s.key_fp(name)}
+    return {name: fp for name in conn.required_env if (fp := s.key_fp(name))}
 
 
 def _test_ok(info: JobInfo, conn, check) -> None:
@@ -587,9 +647,10 @@ def _collect_ok(info: JobInfo, conn, ctx) -> None:
         failed = run.items_failed if run else ctx.counts["failed"]
         media_failed = run.media_failed if run else ctx.counts["media_failed"]
         if seen > 0 and failed == seen:
-            db.rollback()
             first = ctx.first_failure or "причина не указана"
-            _finish(info, conn, _Failure("source_error", "failed", "error", f"Все {seen} записей с ошибкой: {first}"))
+            _failure_outcome(db, job, conn, _Failure("source_error", "failed", "error",
+                                                     f"Все {seen} записей с ошибкой: {first}"), now)
+            db.commit()
             return
         row = service.row(db, conn.code, create=True)
         partial = bool(failed or media_failed or ctx.partial_reasons)
@@ -600,7 +661,9 @@ def _collect_ok(info: JobInfo, conn, ctx) -> None:
         row.facts = facts
         row.last_success_at, row.failures = models.as_utc(now), 0
         # postpone() только откладывает: пауза короче интервала не делает следующий запуск раньше расписания
-        row.next_run_at = models.as_utc(now) + timedelta(seconds=max(ctx.postponed or 0.0, _interval_s(conn, row)))
+        # пауза от подключения - в пределах base.MAX_PAUSE_S: NaN или бесконечность уронили бы запись итога(timedelta)
+        row.next_run_at = models.as_utc(now) + timedelta(seconds=max(pause_seconds(ctx.postponed, 0.0),
+                                                                     _interval_s(conn, row)))
         if partial:
             parts = list(dict.fromkeys(ctx.partial_reasons))
             if failed:
@@ -633,9 +696,36 @@ def _test(info: JobInfo, *, now: datetime, stop: threading.Event | None = None) 
 
 # ---------- анализ публикации ----------
 
+def _analysis_failed(db: Session, job: models.Job, error: str, now: datetime) -> None:
+    """Анализ публикации окончательно не выполнен(в сессии db, без commit): задание - ошибка с этапом сбоя, приём -
+    "не выполнен", событие в журнале публикации(§8 п. 11)."""
+    from .ads_service import _event
+
+    stage = (job.payload or {}).get("stage") or "media"
+    fail(db, job, error)
+    job.result = {"failedStage": stage}
+    if not job.ad_id:  # без ad_id условие ad_id = NULL задело бы чужие записи приёма
+        return
+    I = models.IngestItem
+    db.execute(update(I).where(I.ad_id == job.ad_id).values(analysis_status="failed", analysis_stage=stage,
+                                                               analysis_error=error)
+               .execution_options(synchronize_session=False))
+    if db.get(models.Ad, job.ad_id) is not None:
+        _event(db, "system", SYSTEM, f"Анализ публикации не выполнен: {error} — проверьте вручную", at=now,
+               ad_id=job.ad_id)
+
+
+def _analysis_requeued(db: Session, ad_id: str | None) -> None:
+    """Анализ публикации снова в очереди(повтор, без commit): приём "выполняется" → "в очереди"."""
+    if not ad_id:
+        return
+    I = models.IngestItem
+    db.execute(update(I).where(I.ad_id == ad_id, I.analysis_status == "running").values(analysis_status="queued")
+               .execution_options(synchronize_session=False))
+
+
 def _analyze(info: JobInfo, *, now: datetime, stop: threading.Event | None = None) -> None:
     from . import analysis
-    from .ads_service import _event
 
     try:
         # force - "Проанализировать ещё раз"(POST /api/ads/{id}/reanalyze): Claude запрашивается снова; rulesOnly -
@@ -645,27 +735,18 @@ def _analyze(info: JobInfo, *, now: datetime, stop: threading.Event | None = Non
                                        rules_only=bool(p.get("rulesOnly")), reason=p.get("reason"))
     except Exception as e:
         log.exception("Анализ публикации %s (задание №%s) не выполнен", info.ad_id, info.id)
-        error = redact(str(e) or type(e).__name__, limit=300)
-        I = models.IngestItem
+        # аналитик видит только причину, написанную для него(analysis.failure_text); текст прочих исключений(запрос SQL
+        # с параметрами, пути к файлам) - только в журнале воркера
+        error = analysis.failure_text(e) or (ANALYSIS_DB if isinstance(e, SQLAlchemyError) else ANALYSIS_FAILED)
         with SessionLocal() as db:
             job = fence(db, info.id, info.worker_id, info.attempts)
             if job is None:
                 return
             now = info.now()
             if retry(db, job, error, now=now):
-                db.execute(update(I).where(I.ad_id == info.ad_id, I.analysis_status == "running")
-                           .values(analysis_status="queued").execution_options(synchronize_session=False))
-                db.commit()
-                return
-            stage = (job.payload or {}).get("stage") or "media"
-            fail(db, job, error)
-            job.result = {"failedStage": stage}
-            db.execute(update(I).where(I.ad_id == info.ad_id).values(analysis_status="failed", analysis_stage=stage,
-                                                                      analysis_error=error)
-                       .execution_options(synchronize_session=False))
-            if info.ad_id and db.get(models.Ad, info.ad_id) is not None:
-                _event(db, "system", SYSTEM, f"Анализ публикации не выполнен: {error} — проверьте вручную", at=now,
-                       ad_id=info.ad_id)
+                _analysis_requeued(db, job.ad_id)
+            else:
+                _analysis_failed(db, job, error, now)
             db.commit()
         return
     with SessionLocal() as db:

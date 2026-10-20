@@ -26,6 +26,9 @@ PROMPT_VERSION).
 доступа", дальше этап пропускается до смены ключа или успешной проверки; 400 - "не выполнен" без повтора. Дневной
 бюджет: перед запросом атомарно резервируется наихудшая стоимость(вход по оценке + ANTHROPIC_MAX_TOKENS на выходе),
 после ответа - поправка до оценки по response.usage; не хватает - этап пропускается с пояснением(без повторов).
+Ошибка возвращает резерв, только если запрос заведомо не оплачен(CallError.unbilled: API отклонил его - 4xx, 429, 5xx с
+ответом API об ошибке - или соединение не установлено); тайм-аут и обрыв после отправки резерв оставляют - модель могла
+ответить и запрос оплачен, а повтор резервирует заново.
 Сеть - без открытой транзакции записи; каждая запись - в своей короткой сессии.
 
 Дозапрос старых публикаций(backfill, такт лидера воркера): собранные публикации с текстом или OCR, у которых нет ответа
@@ -53,7 +56,7 @@ import math
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, UTC
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, ValidationError
 from sqlalchemy import and_, exists, func, or_, select, update
@@ -63,6 +66,7 @@ from . import models
 from .db import SessionLocal
 from . import law
 from .integrations import analyzer_anthropic as claude
+from .integrations.base import when_text
 from .logs import redact
 from .risk_model import ALMATY
 from .settings import Settings, get_settings
@@ -90,14 +94,18 @@ BACKFILL_PRIORITY = -1  # задания дозапроса - после нов�
 REANALYZE_PRIORITY = 1  # "Проанализировать ещё раз" - раньше очереди анализа
 BACKFILL_SCAN = 4  # кандидатов из БД на одно место в партии(остальных отсеивает проверка backlog)
 
-SIGNAL_TYPES = ("sale", "presale", "booking", "installment", "down_payment", "ddu", "price", "discount",
-                "keys_handover", "other")
+# значения перечислений - одно определение и для схемы ответа(SCHEMA), и для его проверки(Output)
+SignalType = Literal["sale", "presale", "booking", "installment", "down_payment", "ddu", "price", "discount",
+                     "keys_handover", "other"]
+Confidence = Literal["low", "medium", "high"]
+Stage = Literal["under_construction", "completed", "unknown"]
+SIGNAL_TYPES: tuple[str, ...] = get_args(SignalType)
 SIGNAL_LABELS = {"sale": "продажа", "presale": "старт продаж", "booking": "бронь", "installment": "рассрочка",
                  "down_payment": "первоначальный взнос", "ddu": "ДДУ", "price": "цена", "discount": "скидка",
                  "keys_handover": "сдача ключей", "other": "другое"}
 CONF_LABELS = {"low": "низкая", "medium": "средняя", "high": "высокая"}
-CONF_RANK = {"low": 0, "medium": 1, "high": 2}
-STAGES = ("under_construction", "completed", "unknown")
+CONF_RANK = {c: i for i, c in enumerate(get_args(Confidence))}  # low < medium < high
+STAGES: tuple[str, ...] = get_args(Stage)
 STAGE_LABELS = {"under_construction": "строится", "completed": "сдан", "unknown": "не указана"}
 ADDRESS_MAX = 300
 LAW_ARTICLES = tuple(law.ARTICLES)  # статьи правового контекста: ("7", "8", "18", "23")
@@ -126,7 +134,7 @@ SCHEMA: dict = _obj({
                                "quote": _QUOTE})},
     "complexCandidates": {"type": "array", "description": "ЖК только из <complex_catalog>; не больше 20",
                           "items": _obj({"complexId": {"type": "string"},
-                                         "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
+                                         "confidence": {"type": "string", "enum": list(CONF_RANK)},
                                          "quote": _QUOTE})},
     "mentionedComplexes": {"type": "array",
                            "description": "Все ЖК, проекты и очереди, которые материал продаёт или называет, — и из "
@@ -164,8 +172,7 @@ class _Strict(BaseModel):
 
 
 class _Signal(_Strict):
-    type: Literal["sale", "presale", "booking", "installment", "down_payment", "ddu", "price", "discount",
-                  "keys_handover", "other"]
+    type: SignalType
     quote: str
 
 
@@ -178,7 +185,7 @@ class _Amount(_Strict):
 
 class _Candidate(_Strict):
     complexId: str
-    confidence: Literal["low", "medium", "high"]
+    confidence: Confidence
     quote: str
 
 
@@ -189,7 +196,7 @@ class _Mention(_Strict):
 
 
 class _Stage(_Strict):
-    value: Literal["under_construction", "completed", "unknown"]
+    value: Stage
     quote: str
 
 
@@ -217,14 +224,21 @@ class Output(_Strict):
 # ---------- материал и промпт ----------
 
 _TAGS = ("publication_metadata", "publication_text", "ocr_text", "complex_catalog")  # блоки user-сообщения
-# обезвреживаются и теги правового контекста системного промпта: материал не может "дописать" нормы
-_TAG_RE = re.compile(r"<(\s*/?\s*)(%s)" % "|".join(_TAGS + ("legal_context",)), re.I)
+# обезвреживаются и теги правового контекста системного промпта: материал не может "дописать" нормы. Между "<", "/" и
+# именем допускаются пробелы и невидимые символы форматирования(мягкий перенос, нулевая ширина, направление текста):
+# "<\u200b/ocr_text>" для модели тот же тег. Квантификатор притяжательный(*+): длинная серия пробелов после "<" не
+# даёт квадратичного перебора(текст публикации из внешнего источника - до AD_TEXT_MAX символов)
+_GAP = r"[\s\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]*+"
+_TAG_RE = re.compile(r"<(%s/?%s)(%s)" % (_GAP, _GAP, "|".join((*_TAGS, "legal_context"))), re.I)
+# убираются из материала: NUL и невидимые символы-теги Unicode(U+E0000-E007F) - ими прячут текст инструкций от
+# аналитика, а модель его читает
+_HIDDEN_RE = re.compile("[\x00\U000e0000-\U000e007f]")
 
 
 def neutralize(text: str | None) -> str:
-    """Материал внутри размеченных блоков: теги-разделители в нём обезврежены("<ocr_text>" → "‹ocr_text>"), NUL
-    убран. Цитаты сверяются именно с этим(отправленным) текстом."""
-    return _TAG_RE.sub(r"‹\1\2", (text or "").replace("\x00", ""))
+    """Материал внутри размеченных блоков: теги-разделители в нём обезврежены("<ocr_text>" → "‹ocr_text>"), NUL и
+    невидимые символы-теги убраны. Цитаты сверяются именно с этим(отправленным) текстом."""
+    return _TAG_RE.sub(r"‹\1\2", _HIDDEN_RE.sub("", text or ""))
 
 
 def _line(v: Any, limit: int = FIELD_LEN) -> str:
@@ -511,7 +525,7 @@ def spent_today(db: Session, now: datetime) -> float:
 
 
 def _micro(usd: float) -> int:
-    return int(math.ceil(max(float(usd), 0.0) * MICRO))
+    return math.ceil(max(float(usd), 0.0) * MICRO)
 
 
 def worst_cost(s: Settings, chars: int) -> float:
@@ -555,6 +569,8 @@ def day_start(now: datetime) -> datetime:
 _UPDATABLE = frozenset({"item_id", "content_version", "served_model", "status", "result", "dropped", "attempts",
                         "retry_at", "input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens",
                         "cost_usd", "error", "request_id", "meta", "updated_at"})
+# строковые значения из ответа API и их пределы - по столбцам llm_analyses(String(n))
+_API_STRINGS = {k: models.LlmAnalysis.__table__.c[k].type.length for k in ("served_model", "request_id")}
 
 
 def _find(db: Session, ad_id: str, key: str, model: str) -> models.LlmAnalysis | None:
@@ -578,6 +594,9 @@ def _save(ad_id: str, key: str, model: str, values: dict, now: datetime, archive
     values["updated_at"] = models.as_utc(now)
     if values.get("error"):
         values["error"] = redact(values["error"], limit=claude.ERROR_MAX)
+    for k, n in _API_STRINGS.items():  # длиннее столбца - PostgreSQL отверг бы запись оплаченного ответа
+        if isinstance(values.get(k), str):
+            values[k] = values[k][:n]
     with SessionLocal() as db:
         old = db.get(L, archive) if archive is not None else None
         if old is not None and old.content_hash == key:
@@ -882,19 +901,18 @@ def _run(s: Settings, ad_id: str, item_id: int | None, version: int | None, hypo
         row = _find(db, ad_id, key, model)
         prev = None
         if row is not None:
-            prev = {"id": row.id, "status": row.status, "retry_at": models.as_utc(row.retry_at),
-                    "attempts": row.attempts or 0, "result": row.result, "dropped": dict(row.dropped or {}),
-                    "error": row.error, "meta": dict(row.meta or {}), "cost": float(row.cost_usd or 0)}
+            prev = {"id": row.id, "status": row.status, "replied": answered(row),
+                    "retry_at": models.as_utc(row.retry_at), "attempts": row.attempts or 0, "result": row.result,
+                    "dropped": dict(row.dropped or {}), "error": row.error, "meta": dict(row.meta or {})}
         blocked = _key_blocked(db)
     base = {"item_id": item_id, "content_version": version}
 
     attempts = 0
     archive = None  # повторный анализ: строка прежнего ответа уходит в историю при записи нового итога
     if prev is not None:
-        st = prev["status"]
+        st, replied = prev["status"], prev["replied"]
         # модель ответила(результат, отказ, неполный или негодный ответ) - тот же материал повторно не отправляется;
         # ответа не было(ключ, сеть, 4xx/5xx - errorKind) или запрос пропущен - новая попытка при следующем анализе
-        replied = st in ("done", "refused") or (st == "failed" and not prev["meta"].get("errorKind"))
         if replied and force:
             archive = prev["id"]
         elif replied:
@@ -941,7 +959,11 @@ def _run(s: Settings, ad_id: str, item_id: int | None, version: int | None, hypo
     try:
         reply = claude.send(s, request)
     except claude.CallError as e:
-        service.adjust_quota(bkey, -reserve, now)  # ответа нет - запрос не оплачивается
+        if e.unbilled:  # API отклонил запрос или он не ушёл - не оплачивается
+            service.adjust_quota(bkey, -reserve, now)
+        else:  # usage нет: в расходе остаётся наихудшая стоимость, request-id - для сверки с консолью Anthropic
+            log.warning("Анализ ИИ публикации %s: запрос мог быть оплачен (%s), в расходе дня оставлено $%.4f, "
+                        "request-id %s", ad_id, e.kind, reserve / MICRO, e.request_id or "нет")
         return _failed(e, s, ad_id, key, model, base, attempts + 1, mat, now, archive)
     service.adjust_quota(bkey, _micro(reply.cost_usd) - reserve, now)
     return _answered(reply, s, ad_id, key, model, base, attempts + 1, mat, now, archive)
@@ -1024,14 +1046,17 @@ def _answered(reply: "claude.Reply", s: Settings, ad_id: str, key: str, model: s
         error = f"неожиданное завершение ответа модели ({reply.stop_reason or 'нет stop_reason'})"
     else:
         try:
-            out = Output.model_validate(json.loads(reply.text))
-        except json.JSONDecodeError:
+            data = json.loads(reply.text)
+        except (ValueError, RecursionError):  # JSONDecodeError или вложенность глубже предела интерпретатора
             error = "ответ модели — не JSON"
-        except ValidationError as e:
-            error = f"ответ модели не соответствует схеме ({e.error_count()} ошибок)"
         else:
-            result, dropped = verify(out, mat)
-            status = "done"
+            try:
+                out = Output.model_validate(data)
+            except ValidationError as e:
+                error = f"ответ модели не соответствует схеме ({e.error_count()} ошибок)"
+            else:
+                result, dropped = verify(out, mat)
+                status = "done"
     rid = _save(ad_id, key, model, {**vals, "status": status, "error": error, "result": result, "dropped": dropped},
                 now, archive)
     if status == "done":
@@ -1041,10 +1066,8 @@ def _answered(reply: "claude.Reply", s: Settings, ad_id: str, key: str, model: s
         with SessionLocal() as db:
             spent_note = (f"; сегодня ${spent_today(db, now):.2f} из "
                           f"${float(s.anthropic_daily_budget_usd):.2f}")
-    except Exception:
-        pass
-    from .integrations.base import when_text
-
+    except Exception:  # пояснение статуса без расхода - не повод терять записанный результат
+        log.warning("Расход анализа ИИ за день не прочитан", exc_info=True)
     # ответ получен - ключ рабочий: его отпечаток запоминается(смена ключа не висит "не проверен")
     _connector("working", f"Последний анализ: {when_text(now)}, модель {reply.served_model or model}{spent_note}",
                now, audit=False, key_fp=True)

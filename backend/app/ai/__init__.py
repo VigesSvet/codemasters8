@@ -10,9 +10,9 @@
 тоже аналитик(termsReview). Юридического вердикта модуль не выносит. Одинаковый вход → одинаковый результат.
 """
 import json
-from functools import lru_cache
-from typing import Any, Dict, Optional
 from collections.abc import Iterable
+from functools import lru_cache
+from typing import Any
 
 from ..risk import ad_signals
 from ..risk_model import SHARED, T

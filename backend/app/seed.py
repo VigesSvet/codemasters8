@@ -16,7 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from . import migrate, models
-from .db import Base, SessionLocal, engine as default_engine
+from .db import Base, SessionLocal, engine as default_engine, foreign_keys_off
 from .settings import get_settings
 
 log = logging.getLogger("saq")
@@ -79,7 +79,7 @@ def _drop_app_tables(eng: Engine) -> None:
     может ссылаться на уже удалённые таблицы, а reflect всей БД задел бы чужие таблицы)."""
     present = _app_tables(eng)
     order = sorted(LEGACY_TABLES - set(Base.metadata.tables)) + [t.name for t in reversed(Base.metadata.sorted_tables)]
-    with eng.begin() as conn:
+    with foreign_keys_off(eng) as conn, conn.begin():  # связи старой схемы могут не совпадать с порядком удаления
         for name in order:
             if name in present:
                 Table(name, MetaData()).drop(conn)
@@ -95,11 +95,9 @@ def init_db(eng: Engine = default_engine, start: Callable[[Session], None] | Non
 
     tables = _app_tables(eng)
     flag = None  # флаг "демо удалены" переживает пересоздание таблиц
-    if tables:
-        ver = _version(eng, tables)
-        if ver == models.SCHEMA_VERSION:
-            pass
-        elif migrate.chain_from(ver) is not None:
+    ver = _version(eng, tables) if tables else None
+    if tables and ver != models.SCHEMA_VERSION:
+        if migrate.chain_from(ver) is not None:
             migrate.upgrade(eng, ver)
         else:
             found = migrate.durable_rows(eng, tables)

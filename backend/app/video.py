@@ -45,10 +45,10 @@ def container(mime: str) -> str:
 def command(path: Path, mime: str, out_dir: Path, *, every_s: float = 2.0, max_frames: int = 8,
             timeout: int = 90) -> list[str]:
     """Команда извлечения кадров(список аргументов)."""
-    fmt = container(mime)
-    return [*_limits(timeout), "ffmpeg", "-nostdin", "-v", "error", "-protocol_whitelist", "file", "-f", fmt,
+    pattern = str(out_dir).replace("%", "%%")  # имя вывода - шаблон image2: "%" в пути MEDIA_ROOT - буквально
+    return [*_limits(timeout), "ffmpeg", "-nostdin", "-v", "error", "-protocol_whitelist", "file", "-f", container(mime),
             "-threads", "1", "-i", f"file:{path}", "-filter_threads", "1", "-threads", "1",
-            "-vf", f"fps=1/{every_s},scale='min(1280,iw)':-2", "-frames:v", str(max_frames), f"{out_dir}/f_%03d.png"]
+            "-vf", f"fps=1/{every_s},scale='min(1280,iw)':-2", "-frames:v", str(max_frames), f"{pattern}/f_%03d.png"]
 
 
 def _reason(stderr: bytes) -> str:
@@ -60,12 +60,14 @@ def _reason(stderr: bytes) -> str:
 
 def extract_frames(path: Path, mime: str, *, every_s: float = 2.0, max_frames: int = 8,
                    timeout: int = 90) -> list[tuple[int, bytes]]:
-    """[(время кадра в мс, PNG)] - кадр раз в every_s секунд, не больше max_frames; сбой/тайм-аут - []."""
+    """[(время кадра в мс, PNG)] - кадр раз в every_s секунд, не больше max_frames; сбой/тайм-аут - []. Кадр больше
+    предела изображений(MEDIA_MAX_IMAGE_MB) не читается в память - хранилище его всё равно не примет."""
     tmp = Path(tempfile.mkdtemp(dir=media.tmp_dir(), prefix="frames-"))
     try:
         cmd = command(Path(path), mime, tmp, every_s=every_s, max_frames=max_frames, timeout=timeout)
         try:
-            res = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout, check=False)
+            res = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                 timeout=timeout, check=False)
         except subprocess.TimeoutExpired:
             log.warning("ffmpeg: кадры не извлечены за %s с", timeout)
             return []
@@ -76,7 +78,13 @@ def extract_frames(path: Path, mime: str, *, every_s: float = 2.0, max_frames: i
             reason = _reason(res.stderr)
             log.warning("ffmpeg завершился с кодом %s%s", res.returncode, f": {reason}" if reason else "")
             return []
-        frames = sorted(tmp.glob("f_*.png"))[:max_frames]
-        return [(int(i * every_s * 1000), p.read_bytes()) for i, p in enumerate(frames)]
+        limit = media.limit_for("image")
+        out = []
+        for i, p in enumerate(sorted(tmp.glob("f_*.png"))[:max_frames]):
+            if p.stat().st_size > limit:
+                log.warning("ffmpeg: кадр %s больше %s МБ — пропущен", i, limit // media.MB)
+                continue
+            out.append((int(i * every_s * 1000), p.read_bytes()))
+        return out
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

@@ -3,6 +3,7 @@
 import type { Complex, GalleryPhoto } from '../data/types'
 import { fmtDate } from '../components/ui'
 import { mediaSrc } from './api'
+import { externalUrl } from './platform'
 
 /** Фото объекта, обложка первой; сервер старой версии — только cover */
 export function galleryOf(c: Complex): GalleryPhoto[] {
@@ -11,6 +12,9 @@ export function galleryOf(c: Complex): GalleryPhoto[] {
 }
 
 export const photoSrc = (p: GalleryPhoto) => mediaSrc(p.src) ?? p.src
+
+/** Ссылка "страница источника": только http(s)(externalUrl) - другой адрес не исполняется как javascript:, ссылки нет */
+export const photoPage = (p: GalleryPhoto) => externalUrl(p.url)
 
 /** Адрес обложки ЖК для миниатюр (первое фото объекта); фото нет — undefined */
 export const coverSrc = (c: Complex | null | undefined): string | undefined => { const p = c ? galleryOf(c)[0] : undefined; return p ? photoSrc(p) : undefined }

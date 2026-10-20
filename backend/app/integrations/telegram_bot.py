@@ -16,12 +16,16 @@ POST /api/intake/telegram - заявка жителя:
   каждый до 20 МБ; изображения JPEG, PNG, WEBP, GIF не больше MEDIA_MAX_IMAGE_MB, видео MP4 или MOV). Тип файла
   определяется по содержимому; один неподходящий файл - отказ всей заявки(413/415/422), ничего не сохраняется.
 
-  {"externalId": "123456789:42",            // повторяемый ID заявки от бота(например, "{chat_id}:{message_id}"),
-                                             //   1-128 символов: буквы, цифры, . : @ / + = -
+  {"externalId": "3f2b6c1e-9d4a-4c7b-8e21-5a0f6d9c7b10",  // ID заявки от бота, 1-128 символов: буквы, цифры,
+                                             //   . : @ / + = -. Повторная отправка - тот же ID. Лучше непрозрачный
+                                             //   ID(UUID, который бот хранит для заявки), а не "{chat_id}:{message_id}":
+                                             //   Telegram ID жителя попал бы в запись публикации, адреса статуса и
+                                             //   журналы, а не только в заявку(applicant)
    "submittedAt": "2026-10-17T09:30:00Z",   // когда житель отправил заявку(с часовым поясом), необязательно
    "platform": "instagram",                 // instagram|telegram|tiktok|krisha|olx|facebook|other, по умолчанию other
    "account": "@developer",                 // аккаунт рекламодателя со слов жителя(до 255), необязательно
-   "url": "https://…",                      // ссылка на публикацию(http/https, до 512), необязательно
+   "url": "https://…",                      // ссылка на публикацию(http/https, до 512, без логина и пароля,
+                                             //   \\ < > " `), необязательно; иначе - 422 с пояснением
    "text": "…",                             // текст объявления(до 100 000 символов, хранится до 20 000)
    "comment": "…",                          // слова жителя(до 4000) - только в заявке, не в публикации
    "applicant": {"telegramUserId": "…", "chatId": "…", "username": "…", "name": "…", "phone": "…"},
@@ -75,7 +79,7 @@ from starlette.requests import ClientDisconnect
 from .. import auth, ingest, media, models
 from ..ads_service import BOT
 from ..db import SessionLocal, get_db
-from ..schemas import AD_TEXT_MAX, DECISION_KEYS, Camel
+from ..schemas import AD_TEXT_MAX, DECISION_KEYS, Camel, is_http_url, is_safe_link, strip_ctrl
 from .base import Connector, MediaIn, Publication
 from .intake_api import intake_status
 
@@ -106,8 +110,9 @@ SUBMISSION_LABELS = {"received": "Заявка получена и ждёт пр
 _BY_AD_STATUS = {"new": "received", "needs_check": "received", "in_review": "in_review", "confirmed": "confirmed",
                  "dismissed": "dismissed"}
 BotPlatform = Literal["instagram", "telegram", "tiktok", "krisha", "olx", "facebook", "other"]
-_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
-_HTTP_URL = re.compile(r"^https?://\S+$", re.I)
+NOT_A_LINK = "url: нужна ссылка http(s):// или пустая строка"
+UNSAFE_LINK = ("url: ссылка не принимается — уберите из неё логин и пароль, кавычки и символы \\ < > ` и проверьте "
+               "номер порта")
 
 
 # ---------- схемы ----------
@@ -116,7 +121,7 @@ def _as_text(v: Any) -> Any:
     """ID Telegram приходят числами(Bot API) - принимаются и как строки; управляющие символы удаляются."""
     if isinstance(v, int) and not isinstance(v, bool):
         return str(v)
-    return _CTRL.sub("", v) if isinstance(v, str) else v
+    return strip_ctrl(v)
 
 
 def _short(n: int) -> Any:
@@ -176,9 +181,15 @@ class TelegramIntakeIn(Camel):
     @field_validator("url")
     @classmethod
     def _url(cls, v: str | None) -> str | None:
-        if v and not _HTTP_URL.match(v):
-            raise PydanticCustomError("value_error", "url: нужна ссылка http(s):// или пустая строка")
-        return v or None
+        """Ссылка, которую приём сохранит как есть: то, что ads_service.safe_url отбросил бы(не schemas.is_safe_link:
+        учётные данные, неверный порт, \\ < > " `), - 422 с пояснением жителю, а не молча пустая ссылка у публикации."""
+        if not v:
+            return None
+        if not is_http_url(v):
+            raise PydanticCustomError("value_error", NOT_A_LINK)
+        if not is_safe_link(v):
+            raise PydanticCustomError("value_error", UNSAFE_LINK)
+        return v
 
     @field_validator("text")
     @classmethod
@@ -275,8 +286,7 @@ async def _validate(data: Any, loc: tuple) -> TelegramIntakeIn:
         return TelegramIntakeIn.model_validate_json(data)
     except ValidationError as e:
         # без "input": в ответ не возвращаются присланные значения(телефон, имя, комментарий жителя)
-        errors = [{**{k: v for k, v in err.items() if k != "input"}, "loc": (*loc, *err["loc"])}
-                  for err in e.errors(include_url=False, include_input=False)]
+        errors = [{**err, "loc": (*loc, *err["loc"])} for err in e.errors(include_url=False, include_input=False)]
         await run_in_threadpool(_record, 422, _first_error(errors))
         raise RequestValidationError(errors) from None
 
@@ -371,56 +381,41 @@ async def _read_multipart(request: Request) -> tuple[TelegramIntakeIn, list[byte
 
 # ---------- сохранение ----------
 
-def _content_key(sha: str) -> str:
-    return f"{NAMESPACE}:sha256:{sha}"
-
-
 def content_key(data: bytes) -> str:
     """Ключ файла без описания в media - по содержимому: другой файл под тем же externalId(житель заменил фото в
     сообщении) - новая версия заявки, тот же файл - повторная доставка без изменений."""
-    return _content_key(hashlib.sha256(data).hexdigest())
+    return f"{NAMESPACE}:sha256:{hashlib.sha256(data).hexdigest()}"
 
 
-Planned = tuple[str, bytes | None, str | None]  # ключ, байты(None - не передан), sha256
+Planned = tuple[str, bytes | None]  # ключ, байты(None - не передан)
 
 
 def _plan(body: TelegramIntakeIn, blobs: list[bytes]) -> list[Planned]:
-    """Файлы заявки по порядку: (ключ, байты; None - описан в media, но не передан; sha256). Ключ - media[i].key,
-    иначе content_key. Одинаковые файлы без описания - один файл. Проверка до записи файлов: при отказе не сохранится
+    """Файлы заявки по порядку: (ключ, байты; None - описан в media, но не передан). Ключ - media[i].key, иначе
+    content_key. Одинаковые файлы без описания - один файл. Проверка до записи файлов: при отказе не сохранится
     ничего."""
     described = {m.key for m in body.media}
     out: list[Planned] = []
     seen: set[str] = set()
     for i in range(max(len(body.media), len(blobs))):
         blob = blobs[i] if i < len(blobs) else None
-        sha = hashlib.sha256(blob).hexdigest() if blob is not None else None
         if i < len(body.media):
-            out.append((body.media[i].key, blob, sha))
+            out.append((body.media[i].key, blob))
             continue
-        key = _content_key(sha)
+        key = content_key(blob)  # файл без описания всегда передан: i < len(blobs)
         if key in described:
             raise media.MediaRejected(422, f"media: ключ {key} совпадает с ключом файла без описания")
         if key not in seen:
             seen.add(key)
-            out.append((key, blob, sha))
+            out.append((key, blob))
     return out
-
-
-def _store(blob: bytes, sha: str) -> tuple[media.Stored, bool]:
-    """Файл → хранилище; True - файл записан этим запросом(такого в хранилище не было). Удалить при неудаче можно
-    только такой: прежний файл мог только что записать другой запрос, ещё не успевший сохранить свою запись."""
-    ext = media.ALLOWED.get(media.sniff(blob[:media.HEAD]) or "")
-    key = f"{sha[:2]}/{sha[2:4]}/{sha}{ext}" if ext else None  # раскладка хранилища - integration-spec §6.1
-    existed = key is None or media.path_of(key).exists()
-    st = media.store_bytes(blob, allowed=BOT_TYPES)
-    return st, not existed and st.storage_key == key
 
 
 def _media(plan: list[Planned], stored: list[media.Stored | None]) -> list[MediaIn]:
     """Файлы заявки; описанный в media, но не переданный файл - "недоступен"(виден у публикации, а не потерян
     молча)."""
     out: list[MediaIn] = []
-    for (key, _, _), st in zip(plan, stored):
+    for (key, _), st in zip(plan, stored, strict=True):
         if st is not None:
             out.append(MediaIn(key=key, kind="video" if st.mime in media.VIDEO_TYPES else "image", role="attachment",
                                stored=st, status="downloaded", origin_ref="bot"))
@@ -432,7 +427,7 @@ def _media(plan: list[Planned], stored: list[media.Stored | None]) -> list[Media
 def _known_media(db: Session, external_id: str) -> list[MediaIn]:
     """Повторная доставка без files и без media: файлы прежней версии заявки остаются у публикации. Бот не передал их
     снова - это не удаление, и такая доставка не должна делать новую версию без фото."""
-    k = ingest.known(db, NAMESPACE, external_id)
+    k = ingest.known(db, *ingest.ident(NAMESPACE, external_id))
     if k is None or k.collector != CODE:
         return []
     return [MediaIn(key=key, role="attachment", origin_ref="bot") for key in k.media_keys]
@@ -517,15 +512,17 @@ def _submit_sync(body: TelegramIntakeIn, blobs: list[bytes]) -> tuple[ingest.Ing
     транзакции(без долгой записи на диск внутри неё); записанные этим запросом и оставшиеся без записи в БД
     (отказ, сбой, файл не понадобился) удаляются - _settle_files."""
     plan = _plan(body, blobs)
-    media.ensure_space(sum(len(b) for _, b, _ in plan if b is not None))
+    media.ensure_space(sum(len(b) for _, b in plan if b is not None))
     files: dict[str, tuple[str, bytes, bool]] = {}
     try:
         stored: list[media.Stored | None] = []
-        for _, blob, sha in plan:
+        for _, blob in plan:
             st = None
             if blob is not None:
-                st, created = _store(blob, sha)
-                files.setdefault(st.sha256, (st.storage_key, blob, created))  # повтор байтов: признак первой записи
+                # created - файл создан этим запросом(media.store_bytes): удалить при неудаче можно только такой -
+                # прежний файл мог только что записать другой запрос, ещё не успевший сохранить свою запись
+                st = media.store_bytes(blob, allowed=BOT_TYPES)
+                files.setdefault(st.sha256, (st.storage_key, blob, st.created))  # повтор байтов: признак первой записи
             stored.append(st)
         now = models.utcnow()
         with SessionLocal() as db:
@@ -541,12 +538,10 @@ def _submit_sync(body: TelegramIntakeIn, blobs: list[bytes]) -> tuple[ingest.Ing
                 db.commit()
                 return res, view
             except SQLAlchemyError as e:
-                # без цепочки исключений: текст ошибки БД содержит параметры запроса, а в них - данные заявителя
+                # без цепочки исключений: текст ошибки БД содержит параметры запроса, а в них - данные заявителя;
+                # прочие сбои откатывает закрытие сессии
                 db.rollback()
                 raise NotSaved(type(e).__name__) from None
-            except BaseException:
-                db.rollback()
-                raise
     finally:
         _settle_files(files)
 
@@ -633,7 +628,7 @@ async def intake(request: Request) -> JSONResponse:
 def submission(external_id: str, db: Session = Depends(get_db)):
     """Статус заявки для бота(житель узнаёт, что заявка на проверке или проверка завершена). Персональных данных
     в ответе нет."""
-    _token_ok(db)
+    note_token_ok(db)
     sub = db.scalar(select(models.BotSubmission).where(models.BotSubmission.external_id == external_id.strip()))
     if sub is None:
         raise HTTPException(404, NOT_FOUND)
@@ -660,7 +655,7 @@ def updates(since: str = Query(..., max_length=64, description="ISO 8601 с ча
             limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_db)):
     """Заявки, статус которых аналитик менял(или которые получены) после since - по времени изменения."""
     at = _since(since)
-    _token_ok(db)
+    note_token_ok(db)
     B, E, A = models.BotSubmission, models.AuditEvent, models.Ad
     ev = (select(E.ad_id.label("ad_id"), func.max(E.at).label("last"))
           .where(E.kind == "status", E.ad_id.in_(select(B.ad_id).where(B.ad_id.is_not(None))))
@@ -684,7 +679,7 @@ def _token_ok_at(r: models.Collector | None) -> datetime | None:
         return None
 
 
-def _token_ok(db: Session) -> None:
+def note_token_ok(db: Session) -> None:
     """Запрос бота с верным токеном(опрос статусов): записанный раньше отказ 401/403 больше не показывается как "нет
     доступа", даже если новых заявок нет. Пишется только когда отказ по токену новее прежней отметки - регулярные
     опросы БД не нагружают. Никогда не бросает: учёт не меняет ответ боту."""
@@ -705,6 +700,7 @@ def _token_ok(db: Session) -> None:
     except Exception as e:
         db.rollback()
         log.warning("Успешное обращение бота не записано в состояние подключения: %s", type(e).__name__)
+
 
 class TelegramBotConnector(Connector):
     code = CODE
@@ -734,7 +730,7 @@ class TelegramBotConnector(Connector):
             ok = _token_ok_at(row)
             if ok is not None and ok >= rej["at"]:
                 row = None  # intake_status берёт из строки только последний отказ - он устарел
-        return intake_status(db, row, now, collector=self.code, last_at=last,
+        return intake_status(row, now, last_at=last,
                              denied="Бот обращается с неверным сервисным токеном (последняя попытка {when})",
                              rejected="Последняя заявка отклонена: {detail}", working="Последняя заявка: {when}",
                              never="Заявок через бота ещё не было")

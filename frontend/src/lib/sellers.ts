@@ -6,7 +6,7 @@ import { apiGet, orNull } from './api'
 export type SellerLinkKind = 'phone' | 'bin' | 'handle' | 'mention' | 'image'
 export interface Evidence { adId: string; account?: string; source: 'text' | 'ocr' | 'speech' | 'image'; quote: string; raw?: string; whatsapp?: boolean; otherAdId?: string; distance?: number; mediaId?: number | null; otherMediaId?: number | null }
 export interface SellerAccount { key: string; platform: string; account: string; ads: number; firstSeen: string | null; lastSeen: string | null }
-export interface SellerPhone { phone: string; digits: string; whatsapp: boolean; accounts: string[]; ads: number; evidence: Evidence[] }
+export interface SellerPhone { phone: string; digits: string; whatsapp: boolean; accounts: string[]; ads: number; adIds: string[]; evidence: Evidence[] }
 export interface SellerBin { bin: string; developerId: string | null; developerName: string | null; accounts: string[]; evidence: Evidence[] }
 export interface SellerComplex { id: string; name: string; ads: number; confirmed: number; accounts: string[] }
 export interface SellerLink { kind: SellerLinkKind; label: string; value: string; shown: string; accounts: string[]; evidence: Evidence[] }

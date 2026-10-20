@@ -8,11 +8,9 @@
 Заявленные жителем аккаунт и ссылка(source = bot) - не доказательство: сопоставление с ЖК их не учитывает(match_obj)
 и в историю аккаунтов они не попадают(ai.matching.build_catalog).
 """
-import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
 from sqlalchemy import update
 from sqlalchemy.orm import Session
@@ -20,7 +18,9 @@ from sqlalchemy.orm import Session
 from . import ai, models, world
 from .ai import ocr as ocr_engine
 from .pdf import PLATFORMS
-from .risk_model import ALMATY, T
+from .risk import confidence_pct
+from .risk_model import T
+from .schemas import MEDIA_REF, is_safe_link, local_minutes, strip_ctrl
 
 SYSTEM = "Система"
 # Первое событие журнала публикации - откуда она взялась(seed.journal для демо-набора - те же тексты)
@@ -32,14 +32,6 @@ DECISION_FIELDS = ("complex_id", "match_confidence", "link_confirmed", "link_con
                    "decision_rev", "origin", "source", "id")
 REASON_NAMES = {"name": "название", "translit": "название в другом написании", "address": "адрес", "account": "аккаунт",
                 "phone": "телефон застройщика", "history": "история аккаунта", "district": "район"}
-MEDIA_REF = re.compile(r"^/api/media/([0-9a-f]{32})$")
-_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")  # NUL и управляющие, кроме \n и \t
-_URL = re.compile(r"^https?://", re.I)
-URL_MAX = 512
-
-
-def _pct(x: float) -> int:
-    return int((x or 0) * 100 + 0.5)
 
 
 def _why(h: dict) -> str:
@@ -84,28 +76,27 @@ def created_text(source: str, platform: str) -> str:
     return AD_SOURCES.get(source, AD_SOURCES["manual"]).format(platform=PLATFORMS.get(platform, platform))
 
 
-def local_minutes(dt: datetime) -> str:
-    """Время → местное время Усть-Каменогорска без смещения "YYYY-MM-DDTHH:MM"(как Ad.date в источниках)."""
-    return models.as_utc(dt).astimezone(ALMATY).replace(tzinfo=None).isoformat(timespec="minutes")
-
-
 def safe_url(u: str | None) -> str:
-    """Ссылка на публикацию: только http(s)://, без пробелов и управляющих символов, до 512 символов; иначе ""
-    (javascript:, data:, обрезанная ссылка - хуже, чем никакой)."""
-    v = (u or "").strip() if isinstance(u, str) else ""
-    if not v or not _URL.match(v) or len(v) > URL_MAX or re.search(r"[\s\x00-\x1f\x7f]", v):
-        return ""
-    return v
+    """Ссылка на собранную публикацию: только schemas.is_safe_link(http(s):// с хостом, без учётных данных, пробелов,
+    управляющих символов и \\ < > " `, до 512 символов); иначе ""(javascript:, data:, обрезанная ссылка - хуже, чем
+    никакой). Ручной ввод(schemas.AdIn) по тем же правилам отвечает 422."""
+    v = u.strip() if isinstance(u, str) else ""
+    return v if v and is_safe_link(v) else ""
 
 
-def _clean(v: Any) -> Any:
-    return _CTRL.sub("", v) if isinstance(v, str) else v
+def cover_url(assets) -> str | None:
+    """Изображение публикации: первое(по позиции) загруженное текущее изображение не-обложка, затем обложка. Кадры
+    видео не берутся."""
+    imgs = sorted((a for a in assets if a.status == "downloaded" and a.kind == "image" and a.current
+                   and a.parent_id is None), key=lambda a: a.position)
+    pick = next((a for a in imgs if a.role != "cover"), None) or (imgs[0] if imgs else None)
+    return f"/api/media/{pick.id}" if pick else None
 
 
 def sanitize_collected(fields: dict) -> dict:
     """Поля собранной публикации: без NUL и управляющих символов, текст и OCR - до предела публикации, длины - как у
     столбцов БД, ссылка - только http(s); решения аналитика и происхождение(DECISION_FIELDS) отбрасываются."""
-    out = {k: _clean(v) for k, v in fields.items() if k not in DECISION_FIELDS}
+    out = {k: strip_ctrl(v) for k, v in fields.items() if k not in DECISION_FIELDS}
     for k in ("text", "ocr"):
         if isinstance(out.get(k), str):
             out[k] = ocr_engine.clip(out[k])
@@ -165,7 +156,7 @@ def _create_manual(db: Session, data: dict, actor: Actor, catalog, ad_id: str | 
     if db.get(models.Ad, data["id"]):
         raise AdExists(data["id"])
     # дата публикации - местное время без смещения, как в источниках(Усть-Каменогорск, UTC+5)
-    data["date"] = data.get("date") or datetime.now(ALMATY).replace(tzinfo=None).isoformat(timespec="minutes")
+    data["date"] = data.get("date") or local_minutes(models.utcnow())
     linked = None
     if data.get("complex_id"):
         linked = db.get(models.Complex, data["complex_id"])
@@ -192,13 +183,13 @@ def _create_manual(db: Session, data: dict, actor: Actor, catalog, ad_id: str | 
                complex_id=linked.id)
     elif linked:
         why = _why(hyp) if hyp else "выбран в форме ручного ввода"
-        _event(db, "ai", SYSTEM, f"Гипотеза ИИ: ЖК «{linked.name}», уверенность {_pct(ad.match_confidence)}% ({why}) — "
-               "нужна проверка аналитиком", ad_id=ad.id, complex_id=linked.id)
+        _event(db, "ai", SYSTEM, f"Гипотеза ИИ: ЖК «{linked.name}», уверенность {confidence_pct(ad.match_confidence)}% "
+                                 f"({why}) — нужна проверка аналитиком", ad_id=ad.id, complex_id=linked.id)
     else:
         what = "ИИ: ЖК не определён — нужна ручная привязка"
         if best:
-            what += (f" (лучшая гипотеза — «{best['complexName']}», {_pct(best['confidence'])}%, ниже порога "
-                     f"{_pct(T['lowConfidence'])}%)")
+            what += (f" (лучшая гипотеза — «{best['complexName']}», {confidence_pct(best['confidence'])}%, ниже порога "
+                     f"{confidence_pct(T['lowConfidence'])}%)")
         _event(db, "ai", SYSTEM, what, ad_id=ad.id)
     db.flush()
     _attach_upload(db, ad)
@@ -215,8 +206,7 @@ def _create_collected(db: Session, fields: dict, actor: Actor, at: datetime | No
     data["id"] = ad_id or uuid.uuid4().hex
     if db.get(models.Ad, data["id"]):
         raise AdExists(data["id"])
-    data.setdefault("platform", "other")
-    data["platform"] = data["platform"] or "other"
+    data["platform"] = data.get("platform") or "other"
     data["account"] = data.get("account") or ""
     data["text"] = data.get("text") or ""
     data["url"] = data.get("url") or ""

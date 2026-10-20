@@ -4,7 +4,8 @@
 записи сразу при создании - это видят и обработчики, добавленные позже(pytest caplog); форматтер-обёртка
 RedactingFormatter маскирует уже отформатированную строку у обработчиков root и uvicorn - на случай, когда секрет
 собирается только при форматировании. Секреты - значения из Settings.secrets() и зарегистрированные во время работы
-(register_secret: токены OLX, StringSession, phone_code_hash, OAuth code/state, appsecret_proof).
+(register_secret: токены OLX, StringSession, phone_code_hash, OAuth code/state, appsecret_proof). Журнал доступа
+uvicorn, кроме того, не выводит chat_id жителей из путей подписок и заявок бота(AccessPathFilter).
 """
 import logging
 import numbers
@@ -49,9 +50,17 @@ _USERINFO = re.compile(r"(?<=[a-z0-9+.-]://)[^/\s@?#]++@", re.I)
 # %-заполнители формата logging: при наличии args маскируется только текст между ними("key=%s" остаётся форматом)
 _PLACEHOLDER = re.compile(r"(%(?:\([^)]{0,128}\))?[#0 +-]*(?:\*|\d+)?(?:\.(?:\*|\d+))?[hlL]?[diouxXeEfFgGcrsa%])")
 
+# Пути API бота заявок с chat_id жителя: /subscriptions/{chatId}, /submissions/{chatId}:{messageId}. Журнал доступа
+# хранился бы дольше самой подписки(отписка удаляет строку) - вместо идентификатора "***", запрос(?…) остаётся
+_RESIDENT_PATH = re.compile(r"(/api/intake/telegram/(?:subscriptions|submissions)/)[^?#\s]+", re.I)
+
 _REGISTERED: set[str] = set()
+_REG_VERSION = [0]  # растёт при каждом новом зарегистрированном значении(под _LOCK)
 _LOCK = threading.Lock()
-_CACHE: list = [(None, None)]  # [(набор секретов, regex)] - одна ячейка: замена атомарна
+# [(настройки, версия _REGISTERED, regex)] - одна ячейка: замена атомарна. Regex пересобирается, только когда сменился
+# объект настроек(reload_settings) или добавлен секрет: маскирование идёт для каждой записи журнала, в том числе
+# журнала доступа в цикле событий API, и сборка набора секретов на каждый вызов стоила две трети времени redact
+_CACHE: list = [(None, -1, None)]
 _installed = False
 
 
@@ -65,26 +74,36 @@ def register_secret(value: str | None) -> None:
     quote_plus(value)."""
     if not value or not isinstance(value, str) or len(value) < REGISTER_MIN:
         return
+    variants = _variants(value)
     with _LOCK:
-        _REGISTERED.update(_variants(value))
+        if not variants <= _REGISTERED:
+            _REGISTERED.update(variants)
+            _REG_VERSION[0] += 1
 
 
 def _secret_re() -> re.Pattern | None:
     try:
-        configured = _settings.get_settings().secrets()
+        s = _settings.get_settings()
     except Exception:  # маскирование не должно ломать запись в лог
+        s = None
+    with _LOCK:
+        version = _REG_VERSION[0]
+    cached_s, cached_version, rx = _CACHE[0]
+    if cached_s is s and cached_version == version:
+        return rx
+    try:
+        configured = s.secrets() if s is not None else []
+    except Exception:
         configured = []
     with _LOCK:
         values = set(_REGISTERED)
+        version = _REG_VERSION[0]
     for v in configured:
         if len(v) >= SETTINGS_MIN:
             values |= _variants(v)
-    key = frozenset(values)
-    cached_key, rx = _CACHE[0]
-    if cached_key != key:
-        pattern = "|".join(re.escape(v) for v in sorted(values, key=len, reverse=True)) if values else None
-        rx = re.compile(pattern) if pattern else None
-        _CACHE[0] = (key, rx)
+    pattern = "|".join(re.escape(v) for v in sorted(values, key=len, reverse=True)) if values else None
+    rx = re.compile(pattern) if pattern else None
+    _CACHE[0] = (s, version, rx)
     return rx
 
 
@@ -116,10 +135,13 @@ def redact(text: str | None, limit: int | None = 500) -> str | None:
 
 def _clipped(text: str) -> str:
     """redact без обрезки для обычных строк; длиннее LOG_ARG_MAX - маскируется только начало(с запасом CLIP_WINDOW)
-    и обрезается до LOG_ARG_MAX с "…"."""
+    и обрезается до LOG_ARG_MAX с "…". Последние CLIP_WINDOW символов замаскированного окна не выводятся никогда:
+    секрет, разрезанный границей окна, не маскируется, а маскирование до него укорачивает текст(длинный секрет → "***")
+    и сдвигает его ближе к началу."""
     if len(text) <= LOG_ARG_MAX:
         return redact(text, limit=None)
-    return redact(text[:LOG_ARG_MAX + CLIP_WINDOW], limit=None)[:LOG_ARG_MAX] + "…"
+    red = redact(text[:LOG_ARG_MAX + CLIP_WINDOW], limit=None)
+    return red[:max(min(LOG_ARG_MAX, len(red) - CLIP_WINDOW), 0)] + "…"
 
 
 def _redact_msg(msg: str, has_args: bool) -> str:
@@ -184,6 +206,19 @@ class RedactingFormatter(logging.Formatter):
         return redact(self.inner.formatException(ei), limit=None)
 
 
+class AccessPathFilter(logging.Filter):
+    """Фильтр логгера "uvicorn.access": в пути запроса(args[2] записи uvicorn - путь с query) chat_id жителя из путей
+    бота заявок → "***". Запись не отбрасывается."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) >= 3 and isinstance(args[2], str):
+            path = _RESIDENT_PATH.sub(r"\1" + MASK, args[2])
+            if path != args[2]:
+                record.args = (*args[:2], path, *args[3:])
+        return True
+
+
 def _wrap(handler: logging.Handler) -> None:
     if not isinstance(handler.formatter, RedactingFormatter):
         handler.setFormatter(RedactingFormatter(handler.formatter))
@@ -199,7 +234,8 @@ def install(level=logging.INFO, *, stream=None, handler: bool = True, force: boo
        "%(asctime)s %(levelname)s %(name)s: %(message)s", root.setLevel(level);
     3) у каждого обработчика root, "uvicorn", "uvicorn.access", "uvicorn.error" форматтер оборачивается в
        RedactingFormatter(повторно не оборачивать);
-    4) httpx, httpcore, httpx2, httpcore2, anthropic, telethon → WARNING. Логгер "saq" не трогается(без своих обработчиков, propagate=True)."""
+    4) httpx, httpcore, httpx2, httpcore2, anthropic, telethon → WARNING. Логгер "saq" не трогается(без своих обработчиков, propagate=True);
+    5) логгер "uvicorn.access" получает AccessPathFilter(один раз): chat_id жителя в пути → "***"."""
     global _installed
     if _installed and not force:
         return
@@ -215,6 +251,9 @@ def install(level=logging.INFO, *, stream=None, handler: bool = True, force: boo
     for name in WRAPPED:
         for h in logging.getLogger(name or None).handlers:
             _wrap(h)
+    access = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, AccessPathFilter) for f in access.filters):
+        access.addFilter(AccessPathFilter())
     for name in NOISY:
         lg = logging.getLogger(name)
         if lg.level < logging.WARNING:

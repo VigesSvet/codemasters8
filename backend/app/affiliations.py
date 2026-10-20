@@ -12,14 +12,14 @@
 скачивает: аналитик открывает их сам.
 """
 import re
+from collections import Counter
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models
-from .ai.nlp import phone_digits
-from .sellers import NOTE, bin_valid, contacts, fmt_phone
+from .sellers import NOTE, bin_valid, contacts, fmt_phone, norm_phone
 
 Obj = dict[str, Any]
 
@@ -53,19 +53,23 @@ def compute(db: Session, dev_id: str, groups: list[Obj] | None = None) -> Obj | 
     if dev is None:
         return None
     devs = list(db.scalars(select(D)))
+    dev_by_id = {d.id: d for d in devs}
     cx = list(db.scalars(select(C)))
     dev_of = {c.id: c.developer_id for c in cx}
     ads = list(db.execute(select(A.id, A.platform, A.account, A.date, A.text, A.ocr, A.complex_id,
                                  A.link_confirmed_by)).all())
 
-    # телефоны каждого застройщика: из публикаций его ЖК и из карточки
+    # телефоны каждого застройщика: из публикаций его ЖК и из карточки(как в публикациях - 10 цифр номера РК; пустой
+    # или не номер РК не учитывается, иначе два застройщика с пустым телефоном совпали бы по "")
     phones: dict[str, dict[str, list[str]]] = {d.id: {} for d in devs}
     for d in devs:
         for p in d.phones or []:
-            phones[d.id].setdefault(phone_digits(p), [])
+            digits = norm_phone(p) if isinstance(p, str) else None
+            if digits:
+                phones[d.id].setdefault(digits, [])
     for a in ads:
         did = dev_of.get(a.complex_id)
-        if did:
+        if did in phones:  # ЖК без застройщика или со ссылкой на удалённого(SQLite не проверяет внешний ключ)
             for p in _ad_phones(a.text, a.ocr):
                 phones[did].setdefault(p, []).append(a.id)
 
@@ -80,7 +84,7 @@ def compute(db: Session, dev_id: str, groups: list[Obj] | None = None) -> Obj | 
                                       "records": 0, "sources": set()})
             x["records"] += 1
             x["sources"].add(r.source_name)
-    dates = [x for x in [*(a.date[:10] for a in own_ads if a.date)] if x]
+    dates = [a.date[:10] for a in own_ads if a.date]
     rec_dates = [r.collected_at.date().isoformat() for r in recs if r.collected_at]
 
     # совпадения с другими застройщиками
@@ -91,11 +95,14 @@ def compute(db: Session, dev_id: str, groups: list[Obj] | None = None) -> Obj | 
 
     director = _norm(dev.director)
     my_phones = set(phones[dev.id])
-    agent_keys = {k for k in agents} | {_norm(x["name"]) for x in agents.values()}
+    agent_keys = set(agents) | {_norm(x["name"]) for x in agents.values()}
     other_agents: dict[str, set] = {}
-    for r in db.scalars(select(R).where(R.developer_bin.is_not(None), R.developer_bin != (dev.bin or "-"))):
-        if r.agent:
-            other_agents.setdefault(r.developer_bin, set()).update({r.agent_bin or _norm(r.agent), _norm(r.agent)})
+    if agents:  # своих уполномоченных нет - сравнивать не с чем
+        q = select(R.developer_bin, R.agent, R.agent_bin).where(R.developer_bin.is_not(None), R.agent.is_not(None),
+                                                                 R.developer_bin != (dev.bin or "-"))
+        for d_bin, agent, agent_bin in db.execute(q):
+            if agent:
+                other_agents.setdefault(d_bin, set()).update({agent_bin or _norm(agent), _norm(agent)})
     for d in devs:
         if d.id == dev.id:
             continue
@@ -106,7 +113,7 @@ def compute(db: Session, dev_id: str, groups: list[Obj] | None = None) -> Obj | 
             other(d)["reasons"].append({"kind": "phone", "label": "тот же телефон",
                                         "value": ", ".join(fmt_phone(p) for p in shared),
                                         "adIds": sorted({i for p in shared for i in phones[d.id].get(p, []) + phones[dev.id].get(p, [])})})
-        common = agent_keys & other_agents.get(d.bin or "-", set()) - {""}
+        common = (agent_keys & other_agents.get(d.bin or "-", set())) - {""}
         if common:
             other(d)["reasons"].append({"kind": "agent", "label": "та же уполномоченная компания",
                                         "value": next((x["name"] for k, x in agents.items() if k in common or _norm(x["name"]) in common), "")})
@@ -121,21 +128,18 @@ def compute(db: Session, dev_id: str, groups: list[Obj] | None = None) -> Obj | 
         seller_groups.append({"key": g["key"], "title": g["title"], "accounts": len(g["accounts"]), "ads": g["adsCount"],
                               "otherDevelopers": sorted(g_devs)})
         for did in g_devs:
-            d = next((x for x in devs if x.id == did), None)
+            d = dev_by_id.get(did)
             if d is not None:
                 other(d)["reasons"].append({"kind": "seller", "label": "общий продавец в рекламе", "value": g["title"],
                                             "groupKey": g["key"]})
 
-    accounts: dict[str, int] = {}
-    for a in own_ads:
-        accounts[f"{a.platform}:{a.account}"] = accounts.get(f"{a.platform}:{a.account}", 0) + 1
+    accounts = Counter((a.platform, a.account) for a in own_ads)
     return {
         "developer": {"id": dev.id, "name": dev.name, "bin": dev.bin or None, "binValid": bin_valid(dev.bin or ""),
                       "director": dev.director or None, "registered": dev.registered or None, "origin": dev.origin},
         "complexes": [{"id": c.id, "name": c.name, "ads": sum(a.complex_id == c.id for a in own_ads)} for c in own_cx],
         "adsCount": len(own_ads), "confirmedAds": sum(bool(a.link_confirmed_by) for a in own_ads),
-        "accounts": [{"account": k.split(":", 1)[1], "platform": k.split(":", 1)[0], "ads": n}
-                     for k, n in sorted(accounts.items(), key=lambda x: -x[1])],
+        "accounts": [{"account": acc, "platform": pl, "ads": n} for (pl, acc), n in accounts.most_common()],
         "phones": [{"phone": fmt_phone(p), "digits": p, "ads": len(set(ids))} for p, ids in sorted(phones[dev.id].items())],
         "firstSeen": min(dates + rec_dates, default=None), "firstAd": min(dates, default=None),
         "agents": [{**x, "sources": sorted(x["sources"])} for x in agents.values()],

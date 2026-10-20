@@ -4,7 +4,7 @@ import { ADMIN_HEADER, NEED_ADMIN, clearAdminToken, setAdminToken } from './admi
 import { ApiError, NO_ROUTE, UNREACHABLE } from './api'
 import {
   DISCOVERED_TABS, countDiscovered, createBody, createForm, createFromDiscovered, createProblem, decisionText, dismissDiscovered, geoPicks,
-  linkDiscovered, listDiscovered, mergeChecks, parseDiscoveredTab, pickComplexes, runDiscoveredGeo, saleLine, signalTypesLine, sourcesLine,
+  linkDiscovered, listDiscovered, mergeChecks, parseDiscoveredTab, pickComplexes, runDiscoveredGeo, saleLine, signalTypesLine, sourceLinks, sourcesLine,
   stageLine,
 } from './discovered'
 
@@ -111,6 +111,15 @@ describe('вкладки и подписи', () => {
     expect(saleLine({ ads: 0, concerning: 0, recentConcerning: 0, types: {} })).toBe('Публикаций с упоминанием нет')
     expect(signalTypesLine({ installment: 1, booking: 2, price: 0 })).toBe('бронь — 2 · рассрочка — 1')
     expect(sourcesLine(obj().sources)).toBe('сборщик — 2 · заявки жителей — 1')
+  })
+
+  it('ссылки на публикации: только http(s), без повторов, не больше трёх', () => {
+    const urls = ['javascript:alert(1)', 'https://www.instagram.com/p/Cx1/', ' JaVaScRiPt:alert(1)', 'data:text/html,<script>1</script>',
+      'HTTPS://OLX.KZ/d/1', 'https://olx.kz/d/1', 'krisha.kz/a/show/1', '//evil.example/x', 'http://krisha.kz/a/show/2', 'https://t.me/x']
+    expect(sourceLinks(urls)).toEqual(['https://www.instagram.com/p/Cx1/', 'https://olx.kz/d/1', 'http://krisha.kz/a/show/2'])
+    expect(sourceLinks(urls, 10)).toHaveLength(4)
+    expect(sourceLinks(['javascript:alert(1)', 'vbscript:x', ''])).toEqual([])
+    expect([sourceLinks(obj().sourceUrls), sourceLinks(null)]).toEqual([[], []])
   })
 
   it('решение: привязан или отклонён — с автором; новый — null', () => {

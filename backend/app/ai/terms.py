@@ -10,6 +10,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 from decimal import Decimal
+from itertools import pairwise
 from typing import Any
 
 from ..risk_model import T
@@ -73,7 +74,11 @@ FREE = re.compile(r"бесплатн\w*|без\s+оплат\w*|без\s+пред
 
 # ---------- числа ----------
 
-_NUM = r"(?P<num>\d{1,3}(?:[ \u00a0\u202f\u2009]\d{3})+(?!\d)|\d{1,3}(?:\.\d{3}){2,}(?!\d)|\d+(?:[.,]\d+)?)"
+# Разрядных групп - не больше пяти(до триллионов): без предела "000 000 000 …" на 20 000 символов перебиралось
+# квадратично(секунды) - каждое начало группы заново проглатывало весь хвост. Шесть групп и больше не обрезаются
+# до первых пяти(иначе "1 000 000 000 000 000 000" стал бы триллионом): такое число - не сумма
+_NUM = (r"(?P<num>\d{1,3}(?:[ \u00a0\u202f\u2009]\d{3}){1,4}(?!\d|[ \u00a0\u202f\u2009]\d{3}(?!\d))"
+        r"|\d{1,3}(?:\.\d{3}){2,4}(?!\d)|\d+(?:[.,]\d+)?)")
 _MULT = r"(?P<mult>тыс(?:яч\w*|\.)?|(?P<mln>млн\.?|миллион\w*)|млрд\.?|миллиард\w*)"
 _CUR = r"(?P<cur>₸|тг\.?|тенге|kzt|₽|руб(?:\.|л\w*)?|rub|\$|usd|долл(?:\.|ар\w*)?|у\.\s?е\.?)"
 _M2 = r"(?P<m2>\s?/\s?(?:м²|м2|кв\.?\s?м\.?|m²|m2)|\s+за\s+(?:1\s?)?(?:м²|м2|кв\.?\s?м\.?|квадрат\w*|метр\w*))"
@@ -96,6 +101,7 @@ QUANTITIES = [
     ("half", re.compile(L + r"полгода", re.I)),
     ("area", re.compile(r"(?<![\d.,])" + _NUM + r"\s?(?:м²|м2|кв\.?\s?м\.?|m²|m2|sq\.?\s?m)" + _B, re.I)),
 ]
+MAX_NUMBER = Decimal(10) ** 15
 _WORDNUM = {"один": 1, "одного": 1, "два": 2, "двух": 2, "три": 3, "трех": 3, "трёх": 3, "полтора": 1.5}
 _MULTS = {"тыс": 1000, "млн": 10 ** 6, "миллион": 10 ** 6, "млрд": 10 ** 9, "миллиард": 10 ** 9}
 
@@ -114,7 +120,9 @@ def _number(raw: str, mult: str | None) -> Decimal | None:
     if mult:
         m = mult.lower()
         v *= next((x for key, x in _MULTS.items() if m.startswith(key)), 1)
-    return v
+    # от 10¹⁵ - не сумма, а склеенные цифры: int на тысячи знаков не сериализуется в JSON(предел 4300 цифр),
+    # дробь - в inf, и ответ анализа падал с 500
+    return v if v < MAX_NUMBER else None
 
 
 def _currency(cur: str | None) -> str | None:
@@ -191,6 +199,8 @@ def _qty(kind: str, m: re.Match) -> Qty | None:
     # сумма: нужна валюта, множитель или разряды "500 000"; иначе это не деньги("18 этажей", "2028")
     if g.get("k"):
         v *= 1000
+        if v >= MAX_NUMBER:  # "999 999 999 999 999к" - как и склеенные цифры, не сумма
+            return None
     grouped = bool(re.search(r"\d[ \u00a0\u202f\u2009.]\d{3}", g["num"]))
     if not (g.get("cur") or g.get("mult") or g.get("k") or grouped):
         return None
@@ -226,7 +236,7 @@ def _bounds(text: str, rx: re.Pattern, keep: Spans) -> list[tuple[int, int]]:
             continue
         cuts.append(i + 1)
     cuts.append(len(text))
-    return [(a, b) for a, b in zip(cuts, cuts[1:], strict=False) if text[a:b].strip()]
+    return [(a, b) for a, b in pairwise(cuts) if text[a:b].strip()]
 
 
 def _strip(text: str, a: int, b: int) -> tuple[int, int]:
@@ -348,7 +358,8 @@ def occurrences(source_text: str | None, source: str) -> list[Occ]:
     occs: list[Occ] = []
     for start, end, kind, base, needs, weak in anchors:
         ci = clause_of(start)
-        free = bool(NEGATION_BEFORE.search(text[max(0, start - 16):start])) or (
+        # поиск по самому тексту, а не по срезу: \b видит символ до окна("кабинет бронь" - не "нет брони")
+        free = bool(NEGATION_BEFORE.search(text, max(0, start - 16), start)) or (
             kind in NEGATABLE and bool(NEGATION_AFTER.match(text, end, clauses[ci][1])))
         if free and kind != "booking":
             continue  # "без предоплаты", "без первоначального взноса", "взнос не нужен" - условия нет

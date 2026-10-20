@@ -17,6 +17,7 @@ SHA-256, срок 10 минут, привязка к отпечатку токе
 чужих объявлений, поэтому статус "подключено · ограничено", а не "работает"; сбора публикаций у подключения нет.
 Каждое значение кода, state и токенов регистрируется для маскирования(logs.register_secret) и в журналы не попадает.
 """
+import functools
 import hashlib
 import hmac
 import json
@@ -37,10 +38,11 @@ from sqlalchemy.orm import Session
 from .. import auth, models, schemas
 from ..db import SessionLocal, get_db
 from ..logs import redact, register_secret
-from ..settings import Settings, get_settings
+from ..risk_model import SHARED
+from ..settings import OLX_CALLBACK_PATH, Settings, get_settings
 from . import http
 from .base import (AccessDenied, AuthExpired, CheckResult, Connector, ConnectorError, NotConfigured, RateLimited,
-                   SourceError, local_time)
+                   SourceError, local_time, pause_seconds)
 
 if TYPE_CHECKING:
     from .context import RunContext
@@ -89,9 +91,16 @@ REPLACED_PAGE = ("Подключение OLX заменено или отклю�
 RATE_PAUSE = "Ограничение частоты: повтор после {time}"  # тот же текст, что у jobs._finish
 ACCOUNT_FACTS = ("account", "isBusiness")
 PAGE_TITLE = "SAQ Qurylys — подключение OLX"
+# frame-ancestors не наследуется от default-src: без него страницу можно было бы встроить в чужой сайт
 PAGE_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
-                "Content-Security-Policy": "default-src 'none'", "X-Content-Type-Options": "nosniff"}
+                "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+                "X-Content-Type-Options": "nosniff"}
 _CTRL = re.compile(r"[\x00-\x1f\x7f]+")
+# Имя переменной окружения в тексте страницы возврата и скобки, в которых только такие имена(как в
+# frontend/src/lib/plain.ts)
+_ENV = r"\b(?:OLX|SAQ)_[A-Z0-9_]*[A-Z0-9]\b"
+_ENV_NAME = re.compile(_ENV)
+_ENV_PAREN = re.compile(rf"\s*\(\s*{_ENV}(?:(?:\s*[,/]\s*|\s+){_ENV})*\s*\)")
 
 
 # ---------- ошибки и разбор ответов ----------
@@ -110,7 +119,7 @@ def parse_json(resp: httpx.Response) -> dict:
     """Тело ответа OLX как JSON-объект. OLX отдаёт JSON с Content-Type text/html - заголовок не учитывается."""
     try:
         data = json.loads(resp.content.decode("utf-8-sig")) if resp.content else None
-    except (ValueError, UnicodeDecodeError):
+    except (ValueError, RecursionError):  # UnicodeDecodeError - тоже ValueError
         data = None
     if not isinstance(data, dict):
         raise SourceError(f"OLX вернул ответ не в формате JSON (HTTP {resp.status_code})",
@@ -169,7 +178,7 @@ def _token_request(client: httpx.Client, body: dict, *, what: str, invalid_grant
     приложения → AccessDenied. Возвращает ответ с access_token; значения токенов регистрируются для маскирования."""
     try:
         resp = client.post(TOKEN, json=body, headers={"Accept": "application/json"})
-    except (httpx.TimeoutException, httpx.TransportError) as e:
+    except httpx.HTTPError as e:  # и DecodingError(битое сжатие ответа) - не TransportError
         raise _transport_error(e, what) from None
     if 200 <= resp.status_code < 300:
         data = parse_json(resp)
@@ -329,7 +338,7 @@ def users_me(client: httpx.Client, token: str) -> dict:
     try:
         resp = client.get(API + "users/me", headers={"Authorization": f"Bearer {token}", "Version": API_VERSION,
                                                      "Accept": "application/json"})
-    except (httpx.TimeoutException, httpx.TransportError) as e:
+    except httpx.HTTPError as e:
         raise _transport_error(e, "проверка аккаунта") from None
     if resp.status_code == 401:
         code, desc = _error(resp)
@@ -512,12 +521,32 @@ class OlxStartOut(schemas.Camel):
 router = APIRouter(tags=["integrations"])
 
 
+@functools.cache
+def _env_labels() -> dict[str, str]:
+    """Понятные названия переменных окружения(shared/env_labels.json); файла нет или он испорчен - пусто."""
+    try:
+        labels = json.loads((SHARED / "env_labels.json").read_text(encoding="utf-8"))["labels"]
+    except (OSError, ValueError, KeyError, TypeError):
+        log.warning("OLX: названия настроек сервера не загружены — на странице возврата общие слова")
+        return {}
+    return labels if isinstance(labels, dict) else {}
+
+
+def _plain(text: str) -> str:
+    """Текст страницы возврата без имён переменных окружения - как в интерфейсе(frontend/src/lib/plain.ts): скобки
+    только с именами убираются, остальные имена заменяются названиями."""
+    labels = _env_labels()
+    text = _ENV_PAREN.sub("", text)
+    return _ENV_NAME.sub(lambda m: str(labels.get(m.group(0)) or "настройка сервера"), text)
+
+
 def _page(text: str, status: int) -> HTMLResponse:
-    """Страница возврата OAuth: только текст(экранирован), без скриптов и стилей, без токенов; не кэшируется."""
+    """Страница возврата OAuth: только текст(экранирован, без имён переменных окружения), без скриптов и стилей, без
+    токенов; не кэшируется и не встраивается в чужие страницы."""
     body = ("<!doctype html><html lang=\"ru\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
             f"<title>{escape(PAGE_TITLE)}</title></head><body><h1>{escape(PAGE_TITLE)}</h1>"
-            f"<p>{escape(text)}</p></body></html>")
+            f"<p>{escape(_plain(text))}</p></body></html>")
     return HTMLResponse(body, status_code=status, headers=dict(PAGE_HEADERS))
 
 
@@ -547,7 +576,7 @@ def _account_failed(e: ConnectorError, now: datetime) -> None:
         detail = e.detail
         if isinstance(e, RateLimited):
             r.checked_at = now
-            r.next_run_at = models.utcnow() + timedelta(seconds=float(e.retry_after or 3600))
+            r.next_run_at = models.utcnow() + timedelta(seconds=pause_seconds(e.retry_after or 3600, 3600.0))
             detail = RATE_PAUSE.format(time=local_time(r.next_run_at))
         service.transition(db, CONNECTOR.code, _fail_status(e), detail, at=now)
         db.commit()
@@ -569,7 +598,7 @@ def _connected(label: str, me: dict, author: str, now: datetime, s: Settings) ->
         r.facts = {**facts, "account": label, "isBusiness": bool(me.get("is_business")), "keyFp": _key_fps(s)}
         r.checked_at, r.failures = now, 0
         service.transition(db, CONNECTOR.code, "ready", READY.format(label=label), at=now, audit=False)
-        _event(db, "data", author, CONNECTED_AUDIT.format(label=label), at=now)
+        _event(db, service.AUDIT_KIND, author, CONNECTED_AUDIT.format(label=label), at=now)
         db.commit()
     return True
 
@@ -588,7 +617,7 @@ def olx_start(body: schemas.AdminActionIn, admin: auth.Admin = Depends(auth.requ
     return {"authorize_url": url, "expires_at": expires}
 
 
-@router.get("/api/integrations/olx/callback", response_class=HTMLResponse,
+@router.get(OLX_CALLBACK_PATH, response_class=HTMLResponse,
             responses={400: {"description": "state недействителен или OLX отказал"},
                        502: {"description": "OLX не выдал токен или не подтвердил аккаунт"}})
 def olx_callback(code: str | None = None, state: str | None = None, error: str | None = None,
@@ -667,6 +696,6 @@ def olx_disconnect(body: schemas.AdminActionIn, admin: auth.Admin = Depends(auth
         r.facts = _without_account(r.facts)
     if tok is not None:
         service.transition(db, CONNECTOR.code, "unchecked", None, at=now, audit=False)
-        _event(db, "data", body.author, DISCONNECTED_AUDIT.format(label=label), at=now)
+        _event(db, service.AUDIT_KIND, body.author, DISCONNECTED_AUDIT.format(label=label), at=now)
     db.commit()
     return service.view(db, [CONNECTOR.code])[0]

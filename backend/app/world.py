@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from . import models, schemas
 from .ai.matching import Catalog, build_catalog
 from .models import iso
-from .risk import score_ad, score_complex
+from .risk import factor_r1, score_ad, score_complex
 
 Obj = dict[str, Any]
 
@@ -20,6 +20,13 @@ Obj = dict[str, Any]
 def by_id(rows):
     """Естественный порядок id: c1, c2, …, c10(как в сиде), а не c1, c10, c11."""
     return sorted(rows, key=lambda r: (len(r.id), r.id))
+
+
+def basis_documents(c: Obj, risk: Obj) -> list[Obj]:
+    """Документы-основания ЖК(гарантия ЕО, разрешение МИО, банк) - пункты фактора R1. У введённого объекта R1 не
+    применяется, и пунктов нет - тогда документы берутся тем же движком, как у строящегося."""
+    docs = next((f["items"] for f in risk["factors"] if f["code"] == "R1"), None)
+    return docs or factor_r1({**c, "stage": None})["items"]
 
 
 def _out(schema, row) -> Obj:

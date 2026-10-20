@@ -29,7 +29,8 @@ ME = {"data": {"id": 123456, "name": "ТОО Тест", "email": "owner@example.
 LABEL = "ТОО Тест (id 123456)"
 HTML = {"content-type": "text/html; charset=UTF-8"}  # OLX отдаёт JSON с таким заголовком
 SECURITY_HEADERS = {"cache-control": "no-store", "referrer-policy": "no-referrer",
-                    "content-security-policy": "default-src 'none'", "x-content-type-options": "nosniff"}
+                    "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+                    "x-content-type-options": "nosniff"}
 
 
 def olx():
@@ -117,7 +118,7 @@ def set_row(**fields):
         db.commit()
 
 
-def audit_texts(who=None) -> list[str]:
+def audit_texts(who=None, kind=None) -> list[str]:
     from app import models
     from app.db import SessionLocal
 
@@ -126,6 +127,8 @@ def audit_texts(who=None) -> list[str]:
         q = select(A.what)
         if who is not None:
             q = q.where(A.who == who)
+        if kind is not None:
+            q = q.where(A.kind == kind)
         return list(db.scalars(q))
 
 
@@ -272,9 +275,9 @@ def test_callback_success(client, olx_env, http_mock):
     assert "чужие объявления так не собираются" in c["statusDetail"]
     assert c["checkedAt"] is not None
     assert "owner@example.com" not in json.dumps(c, ensure_ascii=False)
-    # журнал - от автора старта
+    # журнал - от автора старта, видом connector: имя владельца аккаунта - сведения администратора
     assert (f"OLX: подключён аккаунт {LABEL} (OAuth). Доступны только ресурсы этого аккаунта — чужие объявления так "
-            f"не собираются") in audit_texts(AUTHOR)
+            f"не собираются") in audit_texts(AUTHOR, kind="connector")
     # state погашен
     assert state_row(cap["state"]).used_at is not None
 
@@ -356,6 +359,7 @@ def test_callback_exchange_failures(client, olx_env, http_mock):
     http_mock.on("POST", TOKEN_URL, json={"error": "invalid_client"}, status=401)
     r = callback(client, code=CODE, state=start(client))
     assert r.status_code == 400 and "OLX не принял ключи приложения" in r.text and token_row() is None
+    assert "OLX_CLIENT" not in r.text  # имена переменных окружения на странице не показываются
     http_mock.on("POST", TOKEN_URL, content=b"<html>502</html>", status=502, headers=HTML)
     r = callback(client, code=CODE, state=start(client))
     assert r.status_code == 502 and "OLX не выдал токен" in r.text and token_row() is None
@@ -478,6 +482,41 @@ def test_parse_json_ignores_content_type():
         m.parse_json(httpx.Response(200, content=b"<html></html>", headers=HTML))
     with pytest.raises(m.SourceError):
         m.parse_json(httpx.Response(200, content=b"[1, 2]"))
+    with pytest.raises(m.SourceError):  # вложенность глубже предела интерпретатора - не RecursionError
+        m.parse_json(httpx.Response(200, content=b"[" * 100_000))
+    with pytest.raises(m.SourceError):
+        m.parse_json(httpx.Response(200, content=b"\xff\xfe{}"))
+
+
+def test_page_without_env_names():
+    """Страница возврата - без имён переменных окружения(как интерфейс, frontend/src/lib/plain.ts)."""
+    m = olx()
+    page = m._page(m.NOT_CONFIGURED, 409).body.decode()
+    assert "OLX_CLIENT" not in page and "ID приложения OLX/секрет приложения OLX" in page
+    assert m._plain(f"{m.BAD_CLIENT}: x") == "OLX не принял ключи приложения: x"
+    assert m._plain("проверьте права приложения (OLX_SCOPES)") == "проверьте права приложения"
+    assert m._plain("OLX_NO_SUCH_NAME не задан") == "настройка сервера не задан"
+
+
+def test_broken_response_encoding_is_source_error(client, olx_env, http_mock):
+    """Ответ OLX с испорченным сжатием(httpx.DecodingError - не TransportError) - ошибка источника с повтором,
+    а не необработанное исключение: токен после обмена кода сохранён, статус подключения - "ошибка"."""
+    from app.integrations import http
+    from app.settings import get_settings
+
+    m = olx()
+    broken = {"content-encoding": "gzip", "content-type": "application/json"}
+    http_mock.on("GET", ME_URL, content=b"not gzip at all", headers=broken)
+    with http.client(base_url=m.ORIGIN) as cl, pytest.raises(m.SourceError) as e:
+        m.users_me(cl, ACCESS)
+    assert e.value.retryable and "DecodingError" in e.value.detail and ACCESS not in e.value.detail
+    http_mock.on("POST", TOKEN_URL, content=b"not gzip at all", headers=broken)
+    with http.client(base_url=m.ORIGIN) as cl, pytest.raises(m.SourceError):
+        m.exchange_code(cl, CODE, get_settings())
+    http_mock.on("POST", TOKEN_URL, handler=lambda r: jresp(200, token_body()))
+    r = callback(client, code=CODE, state=start(client))
+    assert r.status_code == 502 and "аккаунт не подтверждён" in r.text
+    assert token_row().access_token == ACCESS and connector(client)["status"] == "error"
 
 
 # ---------- 6. проверка воркером ----------
@@ -550,7 +589,7 @@ def test_disconnect(client, olx_env, http_mock):
     body = r.json()
     assert (body["code"], body["status"], body["statusLabel"]) == ("olx", "unchecked", "не подключён")
     assert "account" not in body["facts"] and token_row() is None
-    assert f"OLX: аккаунт {LABEL} отключён — токены удалены с сервера" in audit_texts(AUTHOR)
+    assert f"OLX: аккаунт {LABEL} отключён — токены удалены с сервера" in audit_texts(AUTHOR, kind="connector")
     r = client.post("/api/integrations/olx/disconnect", json={"author": AUTHOR}, headers=admin())
     assert r.status_code == 200  # повтор безопасен
 
@@ -753,7 +792,8 @@ def test_callback_insufficient_scope(client, olx_env, http_mock):
     http_mock.on("POST", TOKEN_URL, handler=lambda r: jresp(200, token_body()))
     http_mock.on("GET", ME_URL, json=INSUFFICIENT_SCOPE, status=401)
     r = callback(client, code=CODE, state=start(client))
-    assert r.status_code == 502 and "недостаточно прав" in r.text and "OLX_SCOPES" in r.text
+    assert r.status_code == 502 and "недостаточно прав" in r.text and "проверьте права доступа OLX" in r.text
+    assert "OLX_SCOPES" not in r.text
     assert "Доступ OLX истёк" not in r.text
     assert [str(c.url) for c in http_mock.calls] == [TOKEN_URL, ME_URL]
     assert connector(client)["status"] == "denied"
@@ -827,7 +867,7 @@ def test_no_tokens_in_api_or_logs(client, olx_env, http_mock, run_worker, caplog
     logging.getLogger("saq.test").warning("state=%s code=%s token %s", state, CODE, ACCESS2)
     assert f"OLX: подключён аккаунт {LABEL}" in caplog.text  # журнал действительно перехвачен
     assert "state=*** code=*** token ***" in caplog.text
-    secrets =(ACCESS, REFRESH, ACCESS2, REFRESH2, CODE, state, CLIENT_SECRET)
+    secrets = (ACCESS, REFRESH, ACCESS2, REFRESH2, CODE, state, CLIENT_SECRET)
     for text in (client.get("/api/sources/connectors").text, client.get("/api/sources/connectors/olx").text,
                  client.get("/api/collection-runs?source=olx").text, caplog.text, json.dumps(audit_texts())):
         for s in secrets:
@@ -895,6 +935,33 @@ def test_rate_limited_health_check_retried_after_pause(client, olx_env, http_moc
     http_mock.on("GET", ME_URL, handler=lambda r: jresp(200, ME))
     assert run_worker(now=now + timedelta(minutes=16)) == 1
     assert connector(client)["status"] == "ready"
+
+
+@pytest.mark.parametrize(("raw", "want_s"), [(float("nan"), 3600), (1e300, 30 * 86400)])
+def test_callback_429_pause_is_bounded(client, olx_env, http_mock, monkeypatch, raw, want_s):
+    """Пауза после 429 на users/me ограничена base.pause_seconds, даже если retry_after ошибки не прошёл через
+    RateLimited: NaN - час, огромное значение - потолок MAX_PAUSE_S(30 суток), а не OverflowError и статус без итога."""
+    from app import models
+    from app.integrations import olx
+
+    made = olx._status_error
+
+    def status_error(resp, what):
+        e = made(resp, what)
+        e.retry_after = raw
+        return e
+
+    monkeypatch.setattr(olx, "_status_error", status_error)
+    http_mock.on("POST", TOKEN_URL, handler=lambda r: jresp(200, token_body()))
+    http_mock.on("GET", ME_URL, status=429, content=b"slow", headers={"Retry-After": "60"})
+    before = models.utcnow()
+    assert callback(client, code=CODE, state=start(client)).status_code == 502
+    from app.db import SessionLocal
+    from app.integrations import service
+
+    with SessionLocal() as db:
+        pause = models.as_utc(service.row(db, "olx").next_run_at) - before
+    assert timedelta(seconds=want_s - 60) < pause <= timedelta(seconds=want_s + 60)
 
 
 def test_callback_429_respects_retry_after(client, olx_env, http_mock):

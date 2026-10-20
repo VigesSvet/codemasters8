@@ -58,6 +58,17 @@ def test_basis_text():
     assert [law.ref_text(r) for r in law.refs("guarantee")] == ["ст. 8 п. 5, 6"]
 
 
+def test_refs_are_copies():
+    """Правка результата refs() не меняет модель риска и law.json."""
+    for code in ("R1", "guarantee"):
+        before = law.refs(code)
+        got = law.refs(code)
+        got[0]["parts"].append("99")
+        got.append({"article": "1", "parts": []})
+        assert law.refs(code) == before
+    assert law.basis_text("R1").startswith("Основание: ст. 7 п. 1, 2;")
+
+
 def test_risk_model_api_has_law(client):
     m = client.get("/api/risk/model").json()
     assert {f["code"]: f["law"] for f in m["factors"]} == {c: f["law"] for c, f in FACTORS.items()}
@@ -84,6 +95,21 @@ def test_pdf_has_basis_and_law_block(client):
     text = _text(pdf.story(sig, datetime.now(UTC)))
     assert law.basis_text("R1") in text and law.basis_text("R3") in text
     assert "Нормативная база" in text and "не юридическое заключение" in text and law.NUANCE in text
+    assert f"{law.ACT['title']} от 7 апреля 2016 года № 486-V ({law.ACT['redaction']}). Ссылки на нормы — " in text
     for num in ("7", "8", "18", "23"):
         assert f"Ст. {num}. {law.ARTICLES[num]['title']}" in text and law.ARTICLES[num]["url"] in text
     assert pdf.render_signal(sig).startswith(b"%PDF")
+
+
+def test_act_date_text_from_law_json(monkeypatch):
+    """Дата закона в текстах - из law.json(act.date), в родительном падеже, без ведущего нуля."""
+    assert law.act_date_text() == "7 апреля 2016 года"
+    monkeypatch.setitem(law.ACT, "date", "2016-12-01")
+    assert law.act_date_text() == "1 декабря 2016 года"
+
+
+def test_prompt_context_head_is_exact():
+    """Первая строка правового контекста промпта ИИ - побайтно прежняя: от текста зависят версия и кэш анализа."""
+    head = law.prompt_context().split("\n", 1)[0]
+    assert head == ("Закон Республики Казахстан «О долевом участии в жилищном строительстве» от 7 апреля 2016 года "
+                    "№ 486-V. «Текст» — дословно из закона, «Кратко» — пересказ.")

@@ -134,12 +134,16 @@ def _num(v: Any) -> float | None:
 
 
 def _text(v: Any) -> str | None:
-    return str(v).strip()[:500] or None if v is not None else None
+    """Строка или число из ответа 2ГИС → текст до 500 символов; пусто, объект, список или bool - None(не repr)."""
+    if isinstance(v, bool) or not isinstance(v, str | int | float):
+        return None
+    return str(v).strip()[:500] or None
 
 
 def _candidate(item: Any) -> Candidate | None:
     """Элемент items[] → кандидат; без ID или координат - пропускается."""
-    if not isinstance(item, dict) or not item.get("id"):
+    cid = _text(item.get("id")) if isinstance(item, dict) else None
+    if cid is None:
         return None
     point = item.get("point") if isinstance(item.get("point"), dict) else {}
     lat, lon = _num(point.get("lat")), _num(point.get("lon"))
@@ -151,7 +155,7 @@ def _candidate(item: Any) -> Candidate | None:
     city = next((d.get("name") for d in adm if isinstance(d, dict) and d.get("type") == "city"), None)
     address = item.get("address") if isinstance(item.get("address"), dict) else {}
     addr = _text(item.get("full_address_name")) or _text(item.get("address_name"))
-    return Candidate(id=str(item["id"])[:64], name=_text(item.get("name")) or _text(item.get("building_name")) or addr
+    return Candidate(id=cid[:64], name=_text(item.get("name")) or _text(item.get("building_name")) or addr
                      or "", full_name=_text(item.get("full_name")), address_name=addr,
                      purpose=_text(item.get("purpose_name")), type=_text(item.get("type")),
                      precision=_text(details.get("precision")), lat=lat, lon=lon, city=_text(city),
@@ -191,8 +195,8 @@ def geocode(query: str, *, client: httpx.Client, key: str) -> list[Candidate]:
     meta_code = _code(meta.get("code"))
     code = meta_code or r.status_code
     err = meta.get("error") if isinstance(meta.get("error"), dict) else {}
-    message = str(err.get("message") or "").strip()[:200]
-    err_type = str(err.get("type") or "").strip()[:64]
+    message = (_text(err.get("message")) or "")[:200]
+    err_type = (_text(err.get("type")) or "")[:64]
     if code == 200:
         result = body.get("result") if isinstance(body, dict) else None
         items = result.get("items") if isinstance(result, dict) else None
@@ -248,7 +252,6 @@ def distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 class Quota(RateLimited):
     """Локальная квота 2ГИС исчерпана(до запроса к 2ГИС): маршрут - 429 с этим текстом, воркер - "пауза"."""
-    status = 429
 
     def __init__(self, detail: str, *, retry_after: float):
         super().__init__(detail, retry_after=retry_after)
@@ -344,7 +347,7 @@ def _provider_limited(db: Session, s: Settings, now: datetime, e: RateLimited) -
 
     until = models.as_utc(now) + timedelta(seconds=_pause_s(e))
     try:
-        r = service.row(db, CONNECTOR.code, create=True)
+        r = service.row(db, CONNECTOR.code, create=True, lock=True)  # state - чтение-изменение-запись
         old = _pause_of(r) or {}
         prev, prev_detail = ((old.get("prev"), old.get("prevDetail")) if r.status == "rate_limited"
                              else (r.status, r.status_detail))
@@ -363,7 +366,9 @@ def _provider_back(db: Session, now: datetime) -> None:
     """Сверка прошла после паузы: отметка снимается, статус "пауза" возвращается к прежнему(в транзакции сверки)."""
     from . import service
 
-    r = service.row(db, CONNECTOR.code)
+    if _pause_of(service.row(db, CONNECTOR.code)) is None:
+        return  # обычный случай - без блокировки строки подключения
+    r = service.row(db, CONNECTOR.code, lock=True)  # state - чтение-изменение-запись, отметку перечитать
     p = _pause_of(r)
     if p is None:
         return
@@ -429,8 +434,8 @@ class DgisConnector(Connector):
         key = s.dgis_api_key.get()
         if not key:
             raise NotConfigured("Нет на сервере: DGIS_API_KEY")
-        ephemeral = bool(getattr(ctx, "_ephemeral", False))
-        reserve(ctx.reserve_quota, s, ctx.now(), used_fn=ctx.quota_used, release_fn=None if ephemeral else release)
+        # проверка из командной строки: ctx.reserve_quota не учитывает запрос и всегда успешна - release не вызывается
+        reserve(ctx.reserve_quota, s, ctx.now(), used_fn=ctx.quota_used, release_fn=release)
         try:
             with ctx.client(timeout=TIMEOUT_S, base_url=BASE) as c:
                 cands = geocode(CONTROL_QUERY, client=c, key=key)
@@ -465,11 +470,9 @@ TargetKind = Literal["complex", "registry", "discovered"]
 CheckStatus = Literal["candidates", "not_found", "accepted", "rejected"]
 
 
-def _blank_to_none(v: Any) -> Any:
-    return None if isinstance(v, str) and not v.strip() else v
-
-
-GeoQuery = Annotated[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=QUERY_MAX), AfterValidator(schemas.no_nul)] | None, BeforeValidator(_blank_to_none)]
+GeoQuery = Annotated[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=QUERY_MAX),
+                               AfterValidator(schemas.no_nul)] | None,
+                     BeforeValidator(schemas.blank_to_none)]
 TargetId = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=96),
                      AfterValidator(schemas.no_nul)]
 CandidateId = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64),
@@ -579,7 +582,8 @@ def _target(db: Session, kind: str, tid: str) -> _Target:
             raise HTTPException(404, COMPLEX_NOT_FOUND)
         return _Target(kind, c.id, c.name, c.address, _point(c.lat, c.lng), (c.lat, c.lng))
     if kind == "discovered":
-        o = db.get(models.DiscoveredObject, int(tid)) if tid.isdigit() and len(tid) < 10 else None
+        # только ASCII-цифры: "²".isdigit() - True, а int("²") - ValueError(было 500)
+        o = db.get(models.DiscoveredObject, int(tid)) if tid.isascii() and tid.isdigit() and len(tid) < 10 else None
         if o is None:
             raise HTTPException(404, "Объект из рекламы не найден")
         return _Target(kind, str(o.id), o.name, o.address_hint, None)
@@ -632,6 +636,18 @@ def _decided(g: models.GeoCheck) -> HTTPException:
         return HTTPException(409, NOTHING_TO_REJECT)
     who = f" ({g.decided_by})" if g.decided_by else ""
     return HTTPException(409, f"Сверку уже решили: {STATUS_TEXT.get(g.status, g.status)}{who}")
+
+
+def _lost_race(db: Session, check_id: int) -> HTTPException:
+    """Условный UPDATE решения не прошёл: сверку одновременно решили, очистили по сроку или удалили. Транзакция
+    откатывается, ответ - по свежему состоянию строки."""
+    db.rollback()
+    g = db.get(models.GeoCheck, check_id, populate_existing=True)
+    if g is None:
+        return HTTPException(404, CHECK_NOT_FOUND)
+    if g.status == "candidates" and g.purged_at is not None:
+        return HTTPException(409, STALE)
+    return _decided(g)
 
 
 def _key_rejected(db: Session, now: datetime) -> None:
@@ -723,15 +739,14 @@ def _cached(db: Session, t: _Target, qnorm: str, s: Settings, now: datetime) -> 
     объект сверяли меньше 10 минут назад(другим запросом) - 429. У объекта из рекламы два запроса(название и адрес):
     интервал считается по каждому запросу."""
     G = models.GeoCheck
-    same_target = (G.target_kind == t.kind, G.target_id == t.id)
-    if t.kind == "discovered":
-        same_target += (G.query_norm == qnorm,)
-    hit = db.scalar(select(G).where(*same_target, G.query_norm == qnorm, G.purged_at.is_(None),
+    same_query = (G.target_kind == t.kind, G.target_id == t.id, G.query_norm == qnorm)
+    hit = db.scalar(select(G).where(*same_query, G.purged_at.is_(None),
                                     G.fetched_at >= models.as_utc(now - timedelta(days=s.dgis_cache_ttl_days)))
                     .order_by(G.fetched_at.desc(), G.id.desc()).limit(1))
     if hit is not None:
         return hit
-    last = db.scalar(select(G.fetched_at).where(*same_target).order_by(G.fetched_at.desc()).limit(1))
+    repeat = same_query if t.kind == "discovered" else same_query[:2]
+    last = db.scalar(select(G.fetched_at).where(*repeat).order_by(G.fetched_at.desc()).limit(1))
     wait = (models.as_utc(last) + timedelta(seconds=REPEAT_S) - models.as_utc(now)).total_seconds() \
         if last is not None else 0
     if wait > 0:
@@ -801,28 +816,28 @@ def geo_accept(body: GeoAcceptIn, check_id: int = Path(..., ge=1), db: Session =
     g = db.get(G, check_id)
     if g is None:
         raise HTTPException(404, CHECK_NOT_FOUND)
+    if g.status in ("accepted", "rejected"):  # решение важнее срока кэша: не "выполните сверку заново"
+        raise _decided(g)
     if g.purged_at is not None:
         raise HTTPException(409, STALE)
+    # у "адрес не найден" кандидатов нет - 422 ниже
     cand = next((dict(c) for c in g.candidates or [] if str(c.get("id")) == body.candidate_id), None)
     if cand is None:
         raise HTTPException(422, NO_CANDIDATE)
     if body.apply and g.target_kind != "complex":
         raise HTTPException(422, DISCOVERED_READONLY if g.target_kind == "discovered" else REGISTRY_READONLY)
-    if g.status != "candidates":
-        raise _decided(g)
     t = _target(db, g.target_kind, g.target_id)
     cur = t.point
     lat2, lon2 = _num(cand.get("lat")), _num(cand.get("lon"))
     if body.apply and (t.raw is None or lat2 is None or lon2 is None or _moved(g.prev_point, cur)):
         raise HTTPException(409, POINT_CHANGED)
-    res = db.execute(update(G).where(G.id == g.id, G.status == "candidates")
+    res = db.execute(update(G).where(G.id == g.id, G.status == "candidates", G.purged_at.is_(None))
                      .values(status="accepted", chosen_id=str(cand["id"]), chosen=cand, applied=body.apply,
                              prev_point=cur, decided_by=body.author, decided_at=models.as_utc(now),
                              comment=body.comment)
                      .execution_options(synchronize_session=False))
     if res.rowcount != 1:
-        db.rollback()
-        raise _decided(db.get(G, check_id, populate_existing=True))
+        raise _lost_race(db, check_id)
     full = cand.get("fullName") or cand.get("name") or cand.get("addressName") or cand["id"]
     if body.apply:
         C = models.Complex
@@ -861,8 +876,7 @@ def geo_reject(body: GeoRejectIn, check_id: int = Path(..., ge=1), db: Session =
                              comment=body.comment)
                      .execution_options(synchronize_session=False))
     if res.rowcount != 1:
-        db.rollback()
-        raise _decided(db.get(G, check_id, populate_existing=True))
+        raise _lost_race(db, check_id)
     complex_id = g.target_id if g.target_kind == "complex" and db.get(models.Complex, g.target_id) else None
     what = f"Кандидаты 2ГИС отклонены: «{g.query}» — координаты в карточке не изменены"
     if body.comment:

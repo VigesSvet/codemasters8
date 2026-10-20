@@ -19,7 +19,7 @@ from xml.sax.saxutils import escape
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import Field, model_validator
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
@@ -28,9 +28,10 @@ from sqlalchemy.orm import Session
 
 from . import law, models, registry, schemas, screening
 from .db import get_db
-from .risk import factor_r1
-from .pdf import MARGIN, PLATFORMS, P, _box, _canvas, _glyphs, _style, clean, esc, when
-from .world import load_complex
+from .pdf import BOLD, DOC_STATE, MARGIN, PLATFORMS, P, _box, _canvas, _glyphs, _style, clean, esc, shorten, when
+from .risk import by_date_desc, confidence_pct, link_confirmed
+from .risk_model import ALMATY
+from .world import basis_documents, load_complex
 
 router = APIRouter(prefix="/api/complexes", tags=["complexes"])
 
@@ -65,9 +66,11 @@ TOPIC_ASKS = {
                "рассмотрения",
     "list": "о включении объекта в перечень строящихся объектов, опубликованный ГАСК ВКО, и дате включения (исключения)",
 }
+TOPIC_ORDER = ("basis", "readiness", "appeals", "list", "other")  # порядок тем в письме, журнале и окне запроса
+TOPIC_NAMES = {"basis": "основание привлечения средств", "readiness": "подтверждённая готовность",
+               "appeals": "обращения граждан", "list": "перечень ГАСК", "other": "другое"}
 SENDER = "Департамент экономических расследований по Восточно-Казахстанской области (ДЭР ВКО)"
 DRAFT_NOTE = "Черновик для внутреннего маршрута — автоматической отправки нет"
-DOC_STATE = {"yes": "есть", "no": "нет", "unknown": "нет данных"}
 AD_LIMIT = 10  # публикаций в письме; остальные - в приложении "по запросу"
 QUOTE_MAX = 260
 EXCERPT_MAX = 700
@@ -89,8 +92,7 @@ class LetterIn(schemas.Camel):
 # ---------- содержание ----------
 
 def _cut(t: Any, limit: int) -> str:
-    s = " ".join(str(t or "").split())
-    return s if len(s) <= limit else (s[:limit - 1].rsplit(" ", 1)[0] or s[:limit - 1]) + "…"
+    return shorten(str(t or ""), limit)
 
 
 def _signer(db: Session, author: str) -> str:
@@ -101,7 +103,8 @@ def _signer(db: Session, author: str) -> str:
 
 
 def _doc_line(d: Obj) -> str:
-    state = DOC_STATE.get(str(d.get("value")), str(d.get("value")))
+    value = str(d.get("value") or "unknown")
+    state = DOC_STATE.get(value, value)
     checked = d.get("source") or d.get("date")
     tail = [f"реквизит: {d['quote']}" if d.get("quote") else "",
             f"источник: {d['source']}" if d.get("source") else "",
@@ -120,8 +123,9 @@ def _ad_quote(ad: Obj, risk: Obj) -> str:
 
 
 def _ad_line(ad: Obj, risk: Obj) -> str:
-    link = "привязка к ЖК подтверждена аналитиком" if ad.get("linkConfirmedBy") else \
-        f"привязка к ЖК — гипотеза ИИ ({round((ad.get('matchConfidence') or 0) * 100)}%), аналитиком не подтверждена"
+    # привязка - факт так же, как в движке риска: подтверждена привязка или сама публикация(статус confirmed)
+    link = "привязка к ЖК подтверждена аналитиком" if link_confirmed(ad) else \
+        f"привязка к ЖК — гипотеза ИИ ({confidence_pct(ad.get('matchConfidence'))}%), аналитиком не подтверждена"
     head = ", ".join(x for x in (PLATFORMS.get(ad.get("platform"), ad.get("platform")), ad.get("account"),
                                  f"опубликовано {when(ad.get('date'))}" if ad.get("date") else "",
                                  f"зафиксировано системой {when(ad.get('collectedAt'))}" if ad.get("collectedAt") else "")
@@ -130,15 +134,20 @@ def _ad_line(ad: Obj, risk: Obj) -> str:
     return f"{head}: «{q}»" + (f" — {ad['url']}" if ad.get("url") else "") + f" ({link})"
 
 
+def _part_key(part: str) -> list[tuple[int, int, str]]:
+    """Ключ сортировки пунктов: "1" < "1-1" < "2" < "10"; числа и слова("ч. 1") не сравниваются друг с другом
+    напрямую(иначе TypeError на смеси вида "ч. 1" и "2")."""
+    return [(0, int(x), "") if x.isdecimal() else (1, 0, x) for x in re.split(r"[-.\s]", part) if x]
+
+
 def _law_refs(addressee: str) -> list[Obj]:
     """Нормы письма: ссылки факторов R1-R3 и документа основания адресата, по статьям 7, 8, 18, 23 по порядку."""
     parts: dict[str, set] = {}
     for code in ("R1", "R2", "R3", ADDRESSEES[addressee]["doc"]):
         for r in law.refs(code):
             parts.setdefault(r["article"], set()).update(r.get("parts") or [])
-    order = [a["num"] for a in law.LAW["articles"]]
-    return [{"article": a, "parts": sorted(parts[a], key=lambda p: [int(x) if x.isdigit() else x for x in re.split(r"[-.\s]", p) if x])}
-            for a in order if a in parts]
+    return [{"article": a["num"], "parts": sorted(parts[a["num"]], key=_part_key)}
+            for a in law.LAW["articles"] if a["num"] in parts]
 
 
 def _law_lines(refs: list[Obj]) -> list[str]:
@@ -160,26 +169,23 @@ def law_intro() -> str:
     title = act["title"].replace("Закон Республики Казахстан ", "")
     m = re.search(r"\d\d\.\d\d\.\d{4}", act.get("redaction") or "")
     red = f"; редакция ИПС «Әділет» на {m.group(0)}" if m else ""
-    return (f"Сведения запрашиваются для проверки соблюдения требований Закона Республики Казахстан от 7 апреля 2016 года "
-            f"№ {act['number']} {title} ({act['url']}{red}):")
+    return (f"Сведения запрашиваются для проверки соблюдения требований Закона Республики Казахстан от "
+            f"{law.act_date_text()} № {act['number']} {title} ({act['url']}{red}):")
 
 
 def build(db: Session, cid: str, body: LetterIn, now: datetime | None = None) -> Obj:
     """Письмо как структура: blocks [{type, text|lines}] - для PDF, DOCX и предпросмотра; text - плоский текст."""
-    c_row = db.get(models.Complex, cid)
-    if c_row is None:
+    w = load_complex(db, cid)
+    if w is None:
         raise registry.not_found(db, cid)
     now = now or datetime.now(UTC)
-    w = load_complex(db, cid)
     c = w.complexes[0]
     dev = w.developers.get(c["developerId"])
     risk = w.risk(c)
-    docs = next((f["items"] for f in risk["factors"] if f["code"] == "R1"), []) or []
-    if not docs:  # введённый объект: R1 не применяется - документы-основания тем же движком
-        docs = factor_r1({**c, "stage": None})["items"]
-    sc = screening.compute(db)
+    docs = basis_documents(c, risk)
+    sc = screening.compute_complex(db, db.get(models.Complex, cid))  # строка уже в сессии(load_complex)
     permit, scr = sc.permits.get(cid), sc.complexes.get(cid)
-    ads = sorted([a for a in w.ads if a["status"] != "dismissed"], key=lambda a: a.get("date") or "", reverse=True)
+    ads = by_date_desc([a for a in w.ads if a["status"] != "dismissed"])
     sig = db.scalar(select(models.Signal).where(models.Signal.complex_id == cid).order_by(models.Signal.id.desc()).limit(1))
     a = ADDRESSEES[body.addressee]
     date_s = when(now)[:10]
@@ -187,8 +193,10 @@ def build(db: Session, cid: str, body: LetterIn, now: datetime | None = None) ->
     addr = c["address"] or "адрес не указан"
     subject = f"О предоставлении сведений по {name} ({addr if 'Усть-Каменогорск' in addr else addr + ', г. Усть-Каменогорск'})"
 
+    topics = _ordered_topics(body.topics)
+    signer = _signer(db, body.author)
     asks = []
-    for t in schemas_topics(body.topics):
+    for t in topics:
         if t == "basis":
             asks.append(a["basis"])
         elif t == "other":
@@ -220,8 +228,8 @@ def build(db: Session, cid: str, body: LetterIn, now: datetime | None = None) ->
     basis = [_doc_line(d) for d in docs]
     if permit and permit.get("text"):
         basis.append(f"Открытые данные: {permit['text'][:1].lower()}{permit['text'][1:]}" + (f" — {permit['url']}" if permit.get("url") else ""))
-    if c.get("basis", {}).get("mioRef"):
-        basis.append(c["basis"]["mioRef"])
+    if mio_ref := (c.get("basis") or {}).get("mioRef"):
+        basis.append(mio_ref)
     pubs = [_ad_line(x, risk) for x in ads[:AD_LIMIT]]
     refs = _law_refs(body.addressee)
     attachments = []
@@ -261,22 +269,20 @@ def build(db: Session, cid: str, body: LetterIn, now: datetime | None = None) ->
         {"type": "p", "text": "Ответ просим направить в ДЭР ВКО в установленный законодательством срок."},
         {"type": "h", "text": "Приложения"},
         *[{"type": "li", "n": i + 1, "text": t} for i, t in enumerate(attachments)],
-        {"type": "sign", "lines": [_signer(db, body.author), "____________________ (подпись)          М. П.",
-                                   f"Дата: {date_s}"]},
-        {"type": "small", "text": "Исполнитель: " + _signer(db, body.author).replace("Должность: ", "") + ", тел. ____________"},
+        {"type": "sign", "lines": [signer, "____________________ (подпись)          М. П.", f"Дата: {date_s}"]},
+        {"type": "small", "text": "Исполнитель: " + signer.replace("Должность: ", "") + ", тел. ____________"},
     ]
     text = "\n".join(_plain(b) for b in blocks)
     return {"complexId": c["id"], "complexName": c["name"], "addressee": body.addressee, "addresseeName": a["short"], "addresseeTo": a["to"],
-            "subject": subject, "date": date_s, "number": "Исх. № ____________", "topics": schemas_topics(body.topics),
-            "lawRefs": [law.ref_text(r) for r in refs], "attachments": attachments, "signature": _signer(db, body.author),
+            "subject": subject, "date": date_s, "number": "Исх. № ____________", "topics": topics,
+            "lawRefs": [law.ref_text(r) for r in refs], "attachments": attachments, "signature": signer,
             "signalCode": sig.code if sig else None, "ads": len(ads), "note": DRAFT_NOTE, "blocks": blocks, "text": text,
             "fileBase": _file_base(c["id"], body.addressee, now)}
 
 
-def schemas_topics(topics: list[str]) -> list[str]:
-    """Темы в порядке списка(как в журнале и окне запроса), без повторов."""
-    order = ["basis", "readiness", "appeals", "list", "other"]
-    return [t for t in order if t in topics]
+def _ordered_topics(topics: list[str]) -> list[str]:
+    """Темы в порядке TOPIC_ORDER, без повторов."""
+    return [t for t in TOPIC_ORDER if t in topics]
 
 
 def _plain(b: Obj) -> str:
@@ -295,8 +301,10 @@ def _plain(b: Obj) -> str:
 
 
 def _file_base(cid: str, addressee: str, now: datetime) -> str:
+    """Имя файла без расширения: только [A-Za-z0-9_-](безопасно в Content-Disposition), дата - как в письме, по
+    Алматы(с 00:00 до 05:00 по Алматы дата UTC ещё вчерашняя)."""
     safe = re.sub(r"[^A-Za-z0-9_-]+", "-", cid).strip("-") or "complex"
-    return f"request-{safe}-{addressee}-{now.astimezone(UTC):%Y%m%d}"
+    return f"request-{safe}-{addressee}-{now.astimezone(ALMATY):%Y%m%d}"
 
 
 # ---------- PDF ----------
@@ -320,12 +328,11 @@ def _linkify(text: str) -> str:
 LS = {
     "addr": _style("l-addr", fontSize=10, leading=13, alignment=TA_RIGHT),
     "meta": _style("l-meta", fontSize=9.5, leading=13),
-    "subject": _style("l-subj", fontName="NotoSans-Bold", fontSize=10.5, leading=14, spaceBefore=10, spaceAfter=6),
+    "subject": _style("l-subj", fontName=BOLD, fontSize=10.5, leading=14, spaceBefore=10, spaceAfter=6),
     "p": _style("l-p", fontSize=9.5, leading=13.5, spaceBefore=3, spaceAfter=3, firstLineIndent=10 * mm),
     "li": _style("l-li", fontSize=9.5, leading=13.5, leftIndent=8 * mm, bulletIndent=2 * mm, spaceAfter=1),
     "bullet": _style("l-b", fontSize=8.8, leading=12, leftIndent=6 * mm, bulletIndent=1 * mm, spaceAfter=1.5),
     "sign": _style("l-sign", fontSize=10, leading=15),
-    "title": _style("l-title", fontName="NotoSans-Bold", fontSize=12, leading=16, alignment=TA_CENTER),
 }
 
 
@@ -401,9 +408,13 @@ _STYLES = (f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xm
            '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>')
 
 
+# символы вне XML 1.0(управляющие, кроме \t \n \r; U+FFFE, U+FFFF; одиночные суррогаты): с ними Word не откроет
+# файл, а суррогат ещё и не кодируется в UTF-8 при записи в zip
+_XML_BAD = re.compile("[^\t\n\r\u0020-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]")
+
+
 def _xml(s: Any) -> str:
-    # управляющие символы(кроме \t \n) в XML 1.0 недопустимы - Word не откроет файл
-    return escape("".join(ch for ch in str(s) if ch in "\t\n" or ord(ch) >= 0x20))
+    return escape(_XML_BAD.sub("", str(s)))
 
 
 def _run(text: str, bold: bool = False, size: int | None = None, color: str | None = None) -> str:
@@ -508,7 +519,3 @@ def letter_file(cid: str, body: LetterIn, fmt: Fmt = Query("pdf", alias="format"
     name = f"{letter['fileBase']}.{fmt}"
     return Response(data, media_type="application/pdf" if fmt == "pdf" else DOCX_MIME,
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
-
-
-TOPIC_NAMES = {"basis": "основание привлечения средств", "readiness": "подтверждённая готовность",
-               "appeals": "обращения граждан", "list": "перечень ГАСК", "other": "другое"}

@@ -925,8 +925,9 @@ export interface AdScore {
 }
 
 /** Вид события журнала: данные и источники, статус, привязка, комментарий, запрос сведений, сигнал, выгрузка, системное,
- *  ИИ (гипотеза и решения аналитика по ней) */
-export type AuditKind = 'system' | 'data' | 'status' | 'link' | 'comment' | 'request' | 'signal' | 'export' | 'ai' | 'alert'
+ *  ИИ(гипотеза и решения аналитика по ней), предупреждение жителям, подключение источника(статус проверки, настройки,
+ *  аккаунт - только администратору) */
+export type AuditKind = 'system' | 'data' | 'status' | 'link' | 'comment' | 'request' | 'signal' | 'export' | 'ai' | 'alert' | 'connector'
 
 /** Событие журнала (audit_events): кто, что, когда; к чему относится — публикация, ЖК, сигнал */
 export interface AuditEvent {

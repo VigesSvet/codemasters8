@@ -24,7 +24,6 @@ MAN = snapshot.manifest(SNAP)
 NOW = datetime(2026, 10, 19, 3, 0, tzinfo=UTC)
 AUTHOR = "Омарова Ж."
 SECRET = "sk-ant-api03-TESTSECRETVALUE0123456789abcdef"
-ADMIN_TOKEN = "t-admin-0123456789abcdef0123"
 
 
 def _count(model, *where) -> int:
@@ -76,6 +75,62 @@ def test_compress_downscales_strips_and_keeps_small_jpeg():
     assert (w, h) == (64, 64) and mime in ("image/png", "image/jpeg") and media.sniff(data[:64]) == mime
 
 
+def test_compress_drops_jpeg_metadata_and_trailer():
+    """Исходный JPEG с XMP, комментарием или данными после конца изображения как есть не остаётся(в них бывают место
+    съёмки и устройство); комментарий GIF в JPEG набора не переносится."""
+    from PIL import Image
+
+    im = Image.effect_noise((320, 240), 40).convert("RGB")  # шум: метаданные - малая доля файла
+    xmp = b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><exif:GPSLatitude>49,57.3N</exif:GPSLatitude></x:xmpmeta>'
+    clean = io.BytesIO()
+    im.save(clean, format="JPEG", quality=75, optimize=True)
+    sources = [clean.getvalue() + b"GPS 49.95 82.61"]
+    for kw in ({"comment": b"GPS 49.95 82.61"}, {"xmp": xmp}):
+        buf = io.BytesIO()
+        im.save(buf, format="JPEG", quality=75, optimize=True, **kw)
+        sources.append(buf.getvalue())
+    gif = io.BytesIO()
+    im.convert("P").save(gif, format="GIF", comment=b"GPS 49.95 82.61")
+    sources.append(gif.getvalue())
+    for data in sources:
+        out, mime, w, h = snapshot.compress(data, 1024, 75)
+        assert b"GPS" not in out and (w, h) == (320, 240), mime
+        if mime == "image/jpeg":
+            with Image.open(io.BytesIO(out)) as got:
+                assert [m for m, _ in got.applist] == ["APP0"] and "comment" not in got.info
+    # без метаданных - как есть(повторная выгрузка не меняет файлы)
+    once = snapshot.compress(clean.getvalue(), 1024, 75)[0]
+    assert snapshot.compress(once, 1024, 75)[0] == once
+
+
+def _huge_png() -> bytes:
+    """PNG 8×8, в заголовке(IHDR) которого - 9000×8000(72 Мп): размер известен до декодирования."""
+    import zlib
+
+    from PIL import Image
+
+    png = io.BytesIO()
+    Image.new("RGB", (8, 8)).save(png, format="PNG")
+    huge = bytearray(png.getvalue())
+    huge[16:24] = (9000).to_bytes(4, "big") + (8000).to_bytes(4, "big")
+    huge[29:33] = zlib.crc32(bytes(huge[12:29])).to_bytes(4, "big")
+    return bytes(huge)
+
+
+def test_compress_limits_pixels_and_formats():
+    """Изображение декодируется только с пределом пикселей(по заголовку, до декодирования) и только в форматах
+    хранилища(media.open_image) - а не до общего предела Pillow в 179 Мп."""
+    from PIL import Image, UnidentifiedImageError
+
+    with pytest.raises(media.MediaRejected) as e:
+        snapshot.compress(_huge_png())
+    assert e.value.status == 413
+    bmp = io.BytesIO()
+    Image.new("RGB", (8, 8)).save(bmp, format="BMP")
+    with pytest.raises(UnidentifiedImageError):
+        snapshot.compress(bmp.getvalue())
+
+
 def test_leaks_detects_tokens_and_settings_secrets():
     assert snapshot.leaks("обычный текст рекламы, бронь 100 000 ₸, https://instagram.com/p/abc/") == []
     assert snapshot.leaks(f"ключ {SECRET}") == ["ключ Anthropic"]
@@ -113,7 +168,7 @@ def test_committed_snapshot_layout():
         if r["storage_key"]:
             data = files[Path(r["storage_key"]).name].read_bytes()
             assert hashlib.sha256(data).hexdigest() == r["sha256"] and len(data) == r["size"], r["id"]
-            assert media.sniff(data[:64]) == r["mime"] and r["storage_key"] == media._key(r["sha256"], r["mime"])
+            assert media.sniff(data[:64]) == r["mime"] and r["storage_key"] == media.storage_key(r["sha256"], r["mime"])
     total = sum(p.stat().st_size for p in SNAP.rglob("*") if p.is_file())
     assert total <= 40 * 1024 * 1024, total
     # подключения - без состояния проверки, фактов(ключи, аккаунты) и курсоров
@@ -161,6 +216,9 @@ def test_fresh_db_loads_snapshot(client, monkeypatch, caplog):
         assert _count(model) == info["rows"], name
     assert _count(models.SourceRecord) == MAN["registry"]["inFile"]
     with SessionLocal() as db:
+        # события подключений набора прежней версии - видом connector(migrate.data_after), а не открытым data
+        assert not [e.id for e in db.scalars(select(models.AuditEvent).where(models.AuditEvent.kind == "data"))
+                    if migrate.legacy_connector_event(e.kind, e.who, e.what)]
         assert db.get(models.Meta, demo.FLAG).value == demo.PURGED
         assert db.get(models.Meta, "schema_version").value == models.SCHEMA_VERSION
         assert not demo.import_registry(db, dry_run=True).created  # реестр и карточки ЖК согласованы
@@ -207,9 +265,8 @@ def test_snapshot_not_loaded_into_non_empty_db(client, monkeypatch, capsys):
     """Непустая БД: ни старт, ни команда import набор не загружают и ничего не меняют."""
     ads = _count(models.Ad)
     assert ads == 12  # демо-набор тестов
-    with SessionLocal() as db:
-        with pytest.raises(snapshot.SnapshotError, match="БД не пустая"):
-            snapshot.load(db, SNAP)
+    with SessionLocal() as db, pytest.raises(snapshot.SnapshotError, match="БД не пустая"):
+        snapshot.load(db, SNAP)
     assert snapshot.main(["import", "--dir", str(SNAP)]) == 2
     assert "БД не пустая" in capsys.readouterr().err
     _start_snapshot(monkeypatch)
@@ -414,6 +471,120 @@ def test_export_aborts_on_leak_and_keeps_previous(client, tmp_path):
     assert not [p for p in tmp_path.iterdir() if p.name != "snap"]  # временный каталог убран
 
 
+# ---------- сведения администратора и жителей ----------
+
+CHAT_ID = "123456789"
+SETTINGS_EVENT = "Настройки источника «Instagram» изменены: аккаунты: +@tumar.oskemen"
+STATUS_EVENT = "Источник «Instagram»: готов к сбору. Подключено: @operator.test. Токен действует до 15.12.2026"
+
+
+def _private_rows() -> dict:
+    """События подключений(вид connector и прежние data того же текста), обычное событие данных и заявки жителей от
+    бота: ID "{chat_id}:{message_id}" и уже псевдоним(набор, загруженный из прежней выгрузки)."""
+    E, I = models.AuditEvent, models.IngestItem
+    kept = "tgbot#" + "ab" * 12
+    with SessionLocal() as db:
+        events = [E(kind="connector", who=AUTHOR, what="OLX: аккаунт Иван Петров (id 42) отключён — токены удалены с "
+                                                       "сервера"),
+                  E(kind="data", who="Администратор", what=SETTINGS_EVENT),
+                  E(kind="data", who="Система", what=STATUS_EVENT),
+                  E(kind="data", who="Система", what="Сбор «Instagram»: новых 2, изменено 0, без изменений 0 "
+                                                     "(запуск №5)")]
+        db.add_all(events)
+        db.add_all([I(platform="tgbot", external_id=f"{CHAT_ID}:{n}", collector="telegram_bot", ad_id="a1",
+                      content_hash="b" * 64, raw={"submittedAt": None, "files": 0}) for n in (42, 43)])
+        db.add(I(platform="tgbot", external_id=kept, collector="telegram_bot", ad_id="a2", content_hash="b" * 64))
+        db.add(I(platform="tiktok", external_id="7001", collector="tiktok", ad_id="a3", content_hash="c" * 64,
+                 external_run_id="apifyRun0123"))
+        db.add(models.CollectionRun(collector="tiktok", trigger="manual", status="succeeded", requested_by="Администратор",
+                                    external_run_id="apifyRun0123", cost_usd=0.42))
+        db.commit()
+        return {"public": events[-1].id, "private": [e.id for e in events[:-1]], "kept": kept}
+
+
+def test_export_drops_connector_events_and_pseudonymises_bot_ids(client, monkeypatch, tmp_path):
+    """События подключений(аккаунты, списки источников, имя владельца аккаунта OLX), автор, ID и стоимость запуска
+    сбора в набор не входят; ID заявок жителей - псевдонимы HMAC с ключом одной выгрузки: chat_id нет ни в одном
+    файле, ID остаются уникальными, псевдоним из прежней выгрузки не меняется, загрузка и повторная выгрузка - те же
+    строки."""
+    ids = _private_rows()
+    out = tmp_path / "snap"
+    man = snapshot.export(engine, out, now=NOW, views=False)
+    events = json.loads((out / "audit_events.json").read_text(encoding="utf-8"))
+    got = {e["id"] for e in events}
+    assert ids["public"] in got and not got & set(ids["private"])
+    assert not [e for e in events if e["kind"] == "connector" or
+                migrate.legacy_connector_event(e["kind"], e["who"], e["what"])]
+    assert man["prepared"]["audit_events: события подключений — не выгружены"] == 3
+    assert man["tables"]["audit_events"]["rows"] == _count(models.AuditEvent) - 3
+    assert {"connectorEvents", "runsAdmin", "botExternalIds"} <= set(man["alsoExcluded"])
+    runs = json.loads((out / "collection_runs.json").read_text(encoding="utf-8"))
+    assert runs and all((r["requested_by"], r["external_run_id"], r["cost_usd"]) == (None, None, None) for r in runs)
+    bot = [r["external_id"] for r in json.loads((out / "ingest_items.json").read_text(encoding="utf-8"))
+           if r["platform"] == "tgbot"]
+    assert len(bot) == len(set(bot)) == 3 and ids["kept"] in bot
+    assert all(snapshot.BOT_PSEUDONYM.fullmatch(x) for x in bot)
+    assert man["prepared"]["ingest_items: ID заявок жителей — псевдонимы"] == 2
+    texts = "\n".join(p.read_text(encoding="utf-8") for p in out.rglob("*.json"))
+    for private in (CHAT_ID, "@tumar.oskemen", "@operator.test", "Иван Петров", "apifyRun0123"):
+        assert private not in texts, private
+    assert snapshot.scan(out) == {}
+    # ключ - на одну выгрузку: псевдоним по набору не воспроизвести и не подобрать перебором chat_id
+    again = snapshot.export(engine, tmp_path / "again", now=NOW, views=False)
+    bot2 = {r["external_id"] for r in json.loads((tmp_path / "again" / "ingest_items.json").read_text(encoding="utf-8"))
+            if r["platform"] == "tgbot"}
+    assert bot2 & set(bot) == {ids["kept"]} and again["tables"] == man["tables"]
+
+    _start_snapshot(monkeypatch, src=out, files=False)
+    seed.reset()
+    with SessionLocal() as db:
+        assert sorted(db.scalars(select(models.IngestItem.external_id).where(models.IngestItem.platform == "tgbot"))) \
+            == sorted(bot)
+    snapshot.export(engine, tmp_path / "re", now=NOW, views=False)
+    assert (tmp_path / "re" / "ingest_items.json").read_text(encoding="utf-8") == \
+        (out / "ingest_items.json").read_text(encoding="utf-8")
+
+
+def test_scan_finds_bot_ids_without_pseudonym(tmp_path):
+    """Проверка набора перед заменой каталога: ID заявки бота без псевдонима в ingest_items.json(chat_id жителя) -
+    находка, ID других площадок и псевдонимы - нет."""
+    rows = [{"platform": "tgbot", "external_id": "tgbot#" + "0" * 24}, {"platform": "instagram", "external_id": "1:2"}]
+    (tmp_path / "ingest_items.json").write_text(snapshot.dump(rows), encoding="utf-8")
+    assert snapshot.scan(tmp_path) == {}
+    for eid in (f"{CHAT_ID}:42", "-100123:7", "tgbot#" + "0" * 23, "tgbot#" + "0" * 24 + "1", "", None):
+        (tmp_path / "ingest_items.json").write_text(snapshot.dump([*rows, {"platform": "tgbot", "external_id": eid}]),
+                                                    encoding="utf-8")
+        assert snapshot.scan(tmp_path) == {"ingest_items.json": ["ID заявок жителей без псевдонима: 1"]}, eid
+    # другие файлы набора разбираются только как текст
+    (tmp_path / "ingest_items.json").unlink()
+    (tmp_path / "other.json").write_text(snapshot.dump([{"platform": "tgbot", "external_id": "1:2"}]), encoding="utf-8")
+    assert snapshot.scan(tmp_path) == {}
+
+
+def test_older_snapshot_connector_events_get_own_kind(client, monkeypatch, tmp_path):
+    """Набор прежней версии схемы(до 2026.10-audit-2) с событиями подключений вида data: загрузка переводит их в вид
+    connector, как migrate у БД той же версии; набор текущей версии загружается как есть."""
+    out = _old_snapshot(tmp_path)
+    rows = json.loads((out / "audit_events.json").read_text(encoding="utf-8"))
+    top = max(r["id"] for r in rows)
+    legacy = [{**rows[-1], "id": top + 1, "kind": "data", "who": "Администратор", "what": SETTINGS_EVENT},
+              {**rows[-1], "id": top + 2, "kind": "data", "who": "Система", "what": STATUS_EVENT}]
+    (out / "audit_events.json").write_text(snapshot.dump(rows + legacy), encoding="utf-8")
+    man = json.loads((out / snapshot.MANIFEST).read_text(encoding="utf-8"))
+    man["tables"]["audit_events"]["rows"] += len(legacy)
+    (out / snapshot.MANIFEST).write_text(snapshot.dump(man), encoding="utf-8")
+    _start_snapshot(monkeypatch, src=out, files=False)
+    seed.reset()
+    with SessionLocal() as db:
+        assert [db.get(models.AuditEvent, r["id"]).kind for r in legacy] == ["connector", "connector"]
+        assert db.get(models.AuditEvent, rows[-1]["id"]).kind == rows[-1]["kind"]
+    man["schemaVersion"] = models.SCHEMA_VERSION
+    (out / snapshot.MANIFEST).write_text(snapshot.dump(man), encoding="utf-8")
+    seed.reset()
+    with SessionLocal() as db:
+        assert [db.get(models.AuditEvent, r["id"]).kind for r in legacy] == ["data", "data"]
+
+
 # ---------- набор прежней и неизвестной версии схемы ----------
 
 def _old_snapshot(tmp_path: Path) -> Path:
@@ -475,3 +646,154 @@ def test_registry_check_reports_drift(client):
         rep = snapshot.registry_check(conn)
     assert not rep["consistent"] and len(rep["differ"]) == 1 and rep["inFile"] == rep["inDb"] == 103
     assert importer.REGISTRY.name == rep["file"]
+
+
+# ---------- защита каталогов, целостность набора, файлы ----------
+
+def _empty_db() -> None:
+    seed._drop_app_tables(engine)
+    Base.metadata.create_all(engine)
+
+
+def test_export_refuses_foreign_dir(client, tmp_path):
+    """Выгрузка заменяет каталог целиком - чужой непустой каталог(опечатка в --out) не трогается."""
+    out = tmp_path / "project"
+    out.mkdir()
+    (out / "keep.txt").write_text("важное", encoding="utf-8")
+    with pytest.raises(snapshot.SnapshotError, match="не похож на стартовый набор"):
+        snapshot.export(engine, out, now=NOW, views=False)
+    assert [p.name for p in out.iterdir()] == ["keep.txt"] and [p.name for p in tmp_path.iterdir()] == ["project"]
+    # каталог с manifest.json другого формата - тоже чужой
+    (out / snapshot.MANIFEST).write_text('{"format": "other"}', encoding="utf-8")
+    with pytest.raises(snapshot.SnapshotError, match="не похож на стартовый набор"):
+        snapshot.export(engine, out, now=NOW, views=False)
+    # пустой каталог и прежний набор заменяются, рядом ничего не остаётся
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    snapshot.export(engine, empty, now=NOW, views=False)
+    snapshot.export(engine, empty, now=NOW, views=False)
+    assert (empty / snapshot.MANIFEST).is_file()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["empty", "project"]
+
+
+def test_export_reports_broken_image_and_keeps_files_apart(client, tmp_path):
+    """Строки без sha256 получают каждая свой файл(кэш сжатых изображений - по ключу хранилища); повреждённое
+    изображение в MEDIA_ROOT - SnapshotError с id записи, а не исключение PIL."""
+    imgs = [media.store_bytes(_jpeg(color=c)) for c in ((200, 30, 30), (30, 200, 30))]
+    ids = [uuid.uuid4().hex for _ in imgs]
+    with SessionLocal() as db:
+        for i, (aid, img) in enumerate(zip(ids, imgs, strict=True)):
+            db.add(models.MediaAsset(id=aid, ad_id="a1", kind="image", status="downloaded", storage_key=img.storage_key,
+                                     sha256=None, size=img.size, mime=img.mime, position=i))
+        db.commit()
+    out = tmp_path / "snap"
+    snapshot.export(engine, out, now=NOW, views=False)
+    rows = {r["id"]: r for r in json.loads((out / "media_assets.json").read_text(encoding="utf-8"))}
+    assert rows[ids[0]]["sha256"] != rows[ids[1]]["sha256"]
+    assert len(list((out / "media").iterdir())) == 2
+    before = (out / "media_assets.json").read_text(encoding="utf-8")
+
+    bad = media.store_bytes(b"\xff\xd8\xff" + b"\x00" * 200)  # сигнатура JPEG, внутри мусор
+    broken = uuid.uuid4().hex
+    with SessionLocal() as db:
+        db.add(models.MediaAsset(id=broken, ad_id="a1", kind="image", status="downloaded", storage_key=bad.storage_key,
+                                 sha256=bad.sha256, size=bad.size, mime=bad.mime, position=5))
+        db.commit()
+    with pytest.raises(snapshot.SnapshotError, match=f"Файл {broken} .*не обработан как изображение"):
+        snapshot.export(engine, out, now=NOW, views=False)
+    assert (out / "media_assets.json").read_text(encoding="utf-8") == before
+    assert [p.name for p in tmp_path.iterdir()] == ["snap"]
+    # изображение больше предела пикселей - причина по-русски(media.MediaRejected.detail), а не имя исключения
+    huge = media.store_bytes(_huge_png())
+    with SessionLocal() as db:
+        db.get(models.MediaAsset, broken).storage_key = huge.storage_key
+        db.commit()
+    with pytest.raises(snapshot.SnapshotError, match=f"Файл {broken} .*не обработан как изображение: "
+                                                     "Изображение больше 64 Мп \\(9000×8000 пикселей\\)"):
+        snapshot.export(engine, out, now=NOW, views=False)
+
+
+def test_load_checks_manifest_files_and_rows(client, tmp_path):
+    """Файл таблицы - только <таблица>.json в каталоге набора, число строк - как в manifest.json, повреждённый JSON -
+    SnapshotError(а не исключение разбора); БД при отказе остаётся пустой."""
+    out = tmp_path / "snap"
+    snapshot.export(engine, out, now=NOW, views=False)
+    (tmp_path / "evil.json").write_text("[]", encoding="utf-8")
+    man_text = (out / snapshot.MANIFEST).read_text(encoding="utf-8")
+    ads_text = (out / "ads.json").read_text(encoding="utf-8")
+    _empty_db()
+
+    def refused(match: str) -> None:
+        with SessionLocal() as db, pytest.raises(snapshot.SnapshotError, match=match):
+            snapshot.load(db, out)
+
+    man = json.loads(man_text)
+    for bad in ("../evil.json", str(tmp_path / "evil.json"), "appeals.json", None):
+        man["tables"]["ads"]["file"] = bad
+        (out / snapshot.MANIFEST).write_text(snapshot.dump(man), encoding="utf-8")
+        refused("должен быть файл ads.json")
+    (out / snapshot.MANIFEST).write_text(man_text, encoding="utf-8")
+    rows = json.loads(ads_text)
+    (out / "ads.json").write_text(snapshot.dump(rows[:-1]), encoding="utf-8")
+    refused("строк")
+    (out / "ads.json").write_text(ads_text[: len(ads_text) // 2], encoding="utf-8")
+    refused("ads.json не прочитан")
+    (out / "ads.json").write_text(snapshot.dump({"rows": rows}), encoding="utf-8")
+    refused("нужен список строк-объектов")
+    (out / "ads.json").write_text(ads_text, encoding="utf-8")
+    (out / snapshot.MANIFEST).write_text("{не json", encoding="utf-8")
+    refused("manifest.json не прочитан")
+    (out / snapshot.MANIFEST).write_text(man_text, encoding="utf-8")
+    events = json.loads((out / "audit_events.json").read_text(encoding="utf-8"))
+    events[0]["at"] = "вчера"
+    (out / "audit_events.json").write_text(snapshot.dump(events), encoding="utf-8")
+    refused("не время ISO 8601")
+    with SessionLocal() as db:
+        assert snapshot.is_empty(db)
+    seed.reset()
+
+
+def _media_row(img, **kw) -> dict:
+    return {"id": uuid.uuid4().hex, "status": "downloaded", "storage_key": img.storage_key, "sha256": img.sha256, **kw}
+
+
+def test_restore_files_rejects_links_foreign_and_mismatched_files(client, tmp_path):
+    src = tmp_path / "snap"
+    (src / "media").mkdir(parents=True)
+    data = _jpeg((40, 30))
+    sha = hashlib.sha256(data).hexdigest()
+    img = media.Stored(media.storage_key(sha, "image/jpeg"), sha, len(data), "image/jpeg")
+    name = Path(img.storage_key).name
+    # ссылка на файл вне набора - отказ, даже если байты подошли бы
+    outside = tmp_path / "outside.jpg"
+    outside.write_bytes(data)
+    (src / "media" / name).symlink_to(outside)
+    with pytest.raises(snapshot.SnapshotError, match="не обычный файл"):
+        snapshot._restore_files(src, [_media_row(img)])
+    (src / "media" / name).unlink()
+    # не изображение под именем изображения - отказ хранилища как SnapshotError
+    (src / "media" / name).write_bytes(b"%PDF-1.4 not an image")
+    with pytest.raises(snapshot.SnapshotError, match="не принят хранилищем"):
+        snapshot._restore_files(src, [_media_row(img)])
+    # тот же файл у двух записей, у второй - другой SHA-256
+    (src / "media" / name).write_bytes(data)
+    with pytest.raises(snapshot.SnapshotError, match="не совпадает с записью"):
+        snapshot._restore_files(src, [_media_row(img), _media_row(img, sha256="0" * 64)])
+    assert snapshot._restore_files(src, [_media_row(img), _media_row(img)]) == 1
+    assert media.path_of(img.storage_key).read_bytes() == data
+
+
+def test_build_views_refuses_app_db(client, tmp_path):
+    """Скрытая команда views строит ответы только в пустой временной БД: в рабочей БД они были бы не по набору."""
+    out = tmp_path / "snap"
+    snapshot.export(engine, out, now=NOW, views=False)
+    with pytest.raises(snapshot.SnapshotError, match="только в пустой временной БД"):
+        snapshot.build_views(out, NOW.date())
+    assert not (out / "api").exists()
+
+
+@pytest.mark.parametrize("args", [["--quality", "0"], ["--quality", "101"], ["--max-px", "0"], ["--max-px", "x"]])
+def test_export_cli_validates_numbers(args, capsys):
+    with pytest.raises(SystemExit) as e:
+        snapshot.main(["export", *args])
+    assert e.value.code == 2 and "нужно целое число" in capsys.readouterr().err

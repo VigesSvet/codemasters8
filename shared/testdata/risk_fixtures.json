@@ -6671,6 +6671,150 @@
       "ads": [],
       "appeals": [],
       "asOf": "2026-10-15"
+    },
+    {
+      "name": "r6_planned_end_not_a_date_clear",
+      "note": "Срок сдачи 2025-02-30 - такой даты нет: срок не разобран, не просрочка(а не 2 марта 2025)",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2025-02-30",
+        "basis": {
+          "guarantee": "yes",
+          "guaranteeRef": "Гарантия ЕО № ДЕМО-0001 от 01.03.2025",
+          "mio": "yes",
+          "mioRef": "Разрешение МИО № ДЕМО-01 от 10.03.2025",
+          "bvu": "yes",
+          "bank": "АО «Тест Банк» (демо)",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-01"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [],
+      "appeals": []
+    },
+    {
+      "name": "r6_planned_end_compact_clear",
+      "note": "Срок сдачи 20250101 - не YYYY-MM-DD: срок не разобран, не просрочка",
+      "asOf": "2026-10-15",
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "20250101",
+        "basis": {
+          "guarantee": "yes",
+          "guaranteeRef": "Гарантия ЕО № ДЕМО-0001 от 01.03.2025",
+          "mio": "yes",
+          "mioRef": "Разрешение МИО № ДЕМО-01 от 10.03.2025",
+          "bvu": "yes",
+          "bank": "АО «Тест Банк» (демо)",
+          "source": "Картотека ГАСК (демо)",
+          "checkedAt": "2026-10-01"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      },
+      "developer": {
+        "id": "fxd",
+        "name": "ТОО «Тест Строй» (демо)",
+        "bin": "000000000001",
+        "director": "Тестов Т. Т. (демо)",
+        "registered": "2015-01-01",
+        "objects": 5,
+        "unfinished": 0
+      },
+      "ads": [],
+      "appeals": []
     }
   ],
   "ad": [
@@ -7564,6 +7708,75 @@
         "source": "demo",
         "status": "new",
         "ocr": "ПЕРВЫЙ ВЗНОС 20% · ДДУ · ФИКСИРУЕМ ЦЕНУ",
+        "linkConfirmedBy": "Тестова А. (демо)",
+        "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
+      },
+      "complex": {
+        "id": "fx",
+        "name": "ЖК Тестовый (демо)",
+        "developerId": "fxd",
+        "address": "ул. Тестовая, 1 (демо)",
+        "district": "Ульбинский",
+        "lng": 82.61,
+        "lat": 49.95,
+        "stage": "каркас",
+        "progress": 50,
+        "floors": 9,
+        "flats": 120,
+        "start": "2025-04-01",
+        "plannedEnd": "2027-12-31",
+        "basis": {
+          "guarantee": "unknown",
+          "mio": "unknown",
+          "bvu": "unknown"
+        },
+        "readiness": {
+          "declared": {
+            "value": 55,
+            "source": "Сайт застройщика (демо)",
+            "date": "2026-10-01"
+          },
+          "confirmed": {
+            "value": 50,
+            "source": "Фото-мониторинг, облёт (демо)",
+            "date": "2026-09-20"
+          }
+        },
+        "inPublishedList": "yes",
+        "cover": "/img/demo-cover.jpg",
+        "photos": [
+          {
+            "date": "2026-06-10",
+            "src": "/img/demo-2026-06-10.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          },
+          {
+            "date": "2026-09-20",
+            "src": "/img/demo-2026-09-20.jpg",
+            "source": "дрон",
+            "activity": "есть",
+            "note": "Работы ведутся"
+          }
+        ],
+        "idleDays": 0
+      }
+    },
+    {
+      "name": "ad_quote_mid_word_marker",
+      "note": "Маркеры с середины слова(онлайн-бронирование, предпродажа) в длинном предложении - окно цитаты от слова с маркером, без сдвига на слово вперёд",
+      "ad": {
+        "id": "fxa46",
+        "platform": "instagram",
+        "account": "@test.demo",
+        "url": "https://example.com/demo/46",
+        "date": "2026-10-10T12:00",
+        "text": "Друзья, в нашем новом жилом комплексе на берегу Иртыша стартовала предпродажа просторных светлых квартир с отделкой, видом на реку и большой зелёный парк, а онлайн-бронирование без визита в офис работает до конца месяца",
+        "complexId": "fx",
+        "matchConfidence": 0.95,
+        "source": "demo",
+        "status": "new",
         "linkConfirmedBy": "Тестова А. (демо)",
         "linkConfirmedAt": "2026-10-11T10:00:00+05:00"
       },

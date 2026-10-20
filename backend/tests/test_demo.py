@@ -181,7 +181,7 @@ def test_purge_sqlite_backup(client, capsys):
     if f is None:
         pytest.skip("резервная копия делается только для файловой SQLite")
     before = set(f.parent.glob(f"{f.name}.bak-*"))
-    code, out = _purge(capsys, "--yes")
+    code, _ = _purge(capsys, "--yes")
     assert code == 0
     new = set(f.parent.glob(f"{f.name}.bak-*")) - before
     assert len(new) == 1 and next(iter(new)).name.startswith(f"{f.name}.bak-demo-purge-")
@@ -398,7 +398,7 @@ def test_collected_ad_matches_registry_complex(client, env, text_, cid, develope
         mat = llm.build_material(db, ad, hyps)
     assert len(mat.catalog) == 15 and mat.catalog[0]["id"] == cid and mat.catalog[0]["developer"] == developer
     assert {c["id"] for c in mat.catalog} == {f"r-{o['key']}" for o in REG_ALL}
-    system, user = llm.prompt(mat)
+    _, user = llm.prompt(mat)
     assert f"{cid} | " in user
 
 

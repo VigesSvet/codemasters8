@@ -130,6 +130,44 @@ describe('контрольные кейсы и правила §5', () => {
     expect(quote(text, 'бронь')).toMatch(/^… пять .* бронь .* …$/)
     expect(quote('Звоните! Бронь от 500 000 ₸.', 'бронь')).toBe('Бронь от 500 000 ₸.')
   })
+  // окно отсчитывается от слова, где начинается маркер: с начала слова или с середины - одно окно(как test_quote_window_from_word_with_marker)
+  it.each([['предоплат', 'предоплата'], ['оплат', 'предоплата'], ['ата', 'предоплата'], ['бронирование', 'онлайн-бронирование'], ['взнос', 'ВЗНОС,']])(
+    'цитата: маркер "%s" в слове "%s" - окно от этого слова', (marker, word) => {
+      const ws = Array.from({ length: 30 }, (_, n) => `w${n + 1}`)
+      const s = [...ws.slice(0, 14), word, ...ws.slice(15)].join(' ')
+      expect(quote(s, marker)).toBe(`… ${ws.slice(6, 14).join(' ')} ${word} ${ws.slice(15, 26).join(' ')} …`)
+      // маркер с середины первого слова предложения - окно с начала
+      expect(quote([word, ...ws.slice(1)].join(' '), marker)).toBe(`${word} ${ws.slice(1, 12).join(' ')} …`)
+    })
+})
+
+describe('крайние случаи данных карточки - то же правило, что в risk.py', () => {
+  const clean = (fx.complex ?? []).find((f) => f.name === 'zone_clean_0_green')!
+  const r6Of = (plannedEnd: string) =>
+    scoreComplex({ ...clean.complex, plannedEnd }, clean.developer, [], [], golden.asOf).factors.find((f) => f.code === 'R6')!
+  // как test_r6_unparsable_planned_end_is_not_overdue: Date.UTC перенёс бы "2025-02-30" на 2 марта, а "20250101" разрезал не так
+  it.each(['2025/01/01', '01.01.2025', '2025-02-30', '2025', '20250101', 'нет', '2023-02-29', '2025-13-01', '2025-00-10', '2025-01-00',
+    '0000-01-01'])('срок сдачи "%s" - не дата: не просрочка', (planned) => {
+    expect([r6Of(planned).state, r6Of(planned).reason]).toEqual(['clear', 'active'])
+  })
+  // дни - как date в Python на 15.10.2026: високосный день, время после даты, годы до 100 - не 1900-е
+  it.each([['2024-02-29', 959], ['2026-04-18T10:00', 180], ['0099-12-31', 703745], ['0001-01-01', 739903]] as const)(
+    'срок сдачи "%s" - дата: просрочка %i дн.', (planned, days) => {
+      const r6 = r6Of(planned)
+      expect([r6.state, r6.reason]).toEqual(['hit', 'overdue'])
+      expect(r6.evidence).toContain(`прошёл ${days} дн.`)
+    })
+  // как test_r5_readiness_value_must_be_finite_number: true/false, NaN и бесконечность - не проценты
+  it.each([true, false, NaN, Infinity, -Infinity])('готовность %s - не число: R5 "нужна проверка", карточка реестра не оценена', (value) => {
+    const confirmed = { ...clean.complex.readiness.confirmed!, value: value as unknown as number }
+    const c = { ...clean.complex, readiness: { ...clean.complex.readiness, confirmed } }
+    const r5 = scoreComplex(c, clean.developer, [], [], golden.asOf).factors.find((f) => f.code === 'R5')!
+    expect([r5.state, r5.reason]).toEqual(['unknown', 'incomplete'])
+    const reg = (fx.complex ?? []).find((f) => f.name === 'registry_not_assessed')!.complex
+    const regC = { ...reg, readiness: { declared: null, confirmed: { value: value as unknown as number, source: 'Акт осмотра', date: '2026-10-01' } } }
+    expect(assessed(regC, [], [])).toBe(false)
+    expect(assessed({ ...regC, readiness: { declared: null, confirmed: { ...regC.readiness.confirmed, value: 50 } } }, [], [])).toBe(true)
+  })
 })
 
 describe('дата расчёта по умолчанию — сегодня по UTC+5, как в risk.py', () => {

@@ -66,7 +66,8 @@ def due_at(start: datetime, days: int) -> datetime:
 
 
 def _dt(x: Any) -> datetime:
-    return models.as_utc(x) if isinstance(x, datetime) else datetime.fromisoformat(str(x))
+    """Время события(datetime из БД или ISO-строка журнала) → UTC-aware; наивное - UTC, как в models.iso."""
+    return models.as_utc(x if isinstance(x, datetime) else datetime.fromisoformat(str(x)))
 
 
 # ---------- этапы из журнала ----------
@@ -96,10 +97,9 @@ def build(s: models.Signal, events: list[Obj], now: datetime | None = None) -> O
         cur.update(endedAt=at, endedBy=who, outcome=outcome, outcomeComment=comment)
 
     for e in events:
-        what = e.get("what") or ""
         if e.get("kind") != "signal":
             continue
-        at = _dt(e["at"])
+        what, at = e.get("what") or "", _dt(e["at"])
         if what.startswith(SUBMIT_WHAT) and hist[-1]["stage"] == "analysis":
             close(at, e["who"], "submitted", _comment(what))
             hist.append(_stage("approval", at, e["who"], _comment(what)))
@@ -117,7 +117,7 @@ def build(s: models.Signal, events: list[Obj], now: datetime | None = None) -> O
             h["overdue"] = (h["endedAt"] or now) > h["dueAt"]
     cur = hist[-1]
     open_ = s.status == "new"
-    out = {
+    return {
         "signalId": s.id, "code": s.code, "status": s.status, "stage": cur["stage"], "stageLabel": cur["label"],
         "since": iso(cur["startedAt"]), "dueAt": iso(cur["dueAt"]) if open_ else None,
         "slaDays": cur["slaDays"] if open_ else None, "overdue": bool(open_ and cur["overdue"]),
@@ -127,7 +127,6 @@ def build(s: models.Signal, events: list[Obj], now: datetime | None = None) -> O
         "stages": [{**h, "startedAt": iso(h["startedAt"]), "endedAt": iso(h["endedAt"]), "dueAt": iso(h["dueAt"])}
                    for h in hist],
     }
-    return out
 
 
 def summary(full: Obj) -> Obj:
@@ -173,7 +172,7 @@ def list_routes(db: Session = Depends(get_db)):
 
 @router.get("/{sid}/route")
 def get_route(sid: SignalId, db: Session = Depends(get_db)):
-    return route_of(db, signals._get(db, sid))
+    return route_of(db, signals.get_or_404(db, sid))
 
 
 @router.post("/{sid}/route", responses={403: {"description": "Согласует только руководитель"},
@@ -184,7 +183,7 @@ def route_action(sid: SignalId, body: RouteActionIn, db: Session = Depends(get_d
     # блокировка строки сигнала до чтения журнала: два одновременных перехода не пройдут оба
     locked = db.execute(update(models.Signal).where(models.Signal.id == sid, models.Signal.status == "new")
                         .values(status="new").execution_options(synchronize_session=False)).rowcount == 1
-    s = signals._get(db, sid)
+    s = signals.get_or_404(db, sid)
     if body.action in ("approve", "return") and not is_approver(db, body.author):
         db.rollback()
         raise HTTPException(403, f"Согласует или возвращает аналитику только {APPROVER_TEXT}")
@@ -199,8 +198,8 @@ def route_action(sid: SignalId, body: RouteActionIn, db: Session = Depends(get_d
         verb = {"submit": "передать на согласование", "approve": "согласовать", "return": "вернуть аналитику"}[body.action]
         raise HTTPException(409, f"Сигнал {s.code} сейчас на этапе «{cur['stageLabel']}» — {verb} нельзя")
     if body.action == "approve":
-        signals._decide(db, sid, schemas.SignalDecisionIn(author=body.author, comment=body.comment or APPROVE_DEFAULT),
-                        "confirmed", APPROVE_WHAT)
+        signals.decide(db, sid, schemas.SignalDecisionIn(author=body.author, comment=body.comment or APPROVE_DEFAULT),
+                       "confirmed", APPROVE_WHAT)
     else:
         what = _what(SUBMIT_WHAT if body.action == "submit" else BACK_WHAT, body.comment)
         db.add(models.AuditEvent(signal_id=s.id, complex_id=s.complex_id, kind="signal", who=body.author, what=what,

@@ -29,6 +29,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import re
 from datetime import datetime, timedelta, UTC
 from typing import TYPE_CHECKING, Any, Optional
@@ -38,6 +39,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from .. import models
+from ..ads_service import safe_url
 from ..logs import redact, register_secret
 from ..settings import Settings
 from . import http
@@ -69,7 +71,7 @@ MEDIA_FIELDS = ("id", "caption", "media_type", "media_product_type", "media_url"
                 "timestamp")
 CHILD_FIELDS = ("id", "media_type", "media_url", "thumbnail_url")
 AUTH_CODES = {190, 102}
-RATE_CODES = {4, 17, 32, 613, 80002}
+RATE_CODES = {4, 17, 32, 341, 613, 80002}  # 341 - "Application limit reached"(троттлинг приложения)
 TRANSIENT_CODES = {1, 2}
 ACCOUNT_MISSING_SUBCODE = 2207013
 
@@ -107,15 +109,17 @@ class GraphError(Exception):
 def _int(v: Any) -> int | None:
     try:
         return int(v)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # OverflowError - Infinity в JSON(json.loads его принимает)
         return None
 
 
 def _num(v: Any) -> float:
+    """Число из заголовка использования лимита; не число, NaN и бесконечность - 0."""
     try:
-        return float(v)
+        f = float(v)
     except (TypeError, ValueError):
         return 0.0
+    return f if math.isfinite(f) else 0.0
 
 
 def graph_error(body: Any, status: int = 200) -> GraphError | None:
@@ -153,7 +157,7 @@ def graph_get(client: httpx.Client, path: str, params: dict, s: Settings, *,
         resp = client.get(path.lstrip("/"), params=query, headers=headers)
     except httpx.TimeoutException:
         raise SourceError("Graph API не ответил вовремя", retryable=True) from None
-    except httpx.TransportError as e:
+    except httpx.RequestError as e:  # сеть, а также тело, которое не распаковалось(DecodingError)
         raise SourceError(f"Сетевая ошибка при обращении к Graph API ({type(e).__name__})", retryable=True) from None
     try:
         body = resp.json()
@@ -311,19 +315,23 @@ def _https(v: Any) -> str | None:
 
 
 def _permalink(v: Any, username: str) -> str:
-    url = _https(v)
-    if url:
-        try:
-            if (urlsplit(url).hostname or "").lower() in IG_HOSTS:
-                return url
-        except ValueError:
-            pass
+    """Ссылка на публикацию на instagram.com; не https, другой хост или ссылка, которую приём отбросил бы(safe_url), -
+    ссылка на профиль."""
+    url = safe_url(_https(v))  # разбор адреса safe_url уже проверил - urlsplit ниже не бросает
+    if url and (urlsplit(url).hostname or "").lower() in IG_HOSTS:
+        return url
     return f"https://www.instagram.com/{username}/"
 
 
 def _ts(v: Any) -> datetime | None:
+    """Unix-время из ответа Graph API → UTC; 0, не число и вне диапазона datetime - None."""
     n = _int(v)
-    return datetime.fromtimestamp(n, UTC) if n else None
+    if not n:
+        return None
+    try:
+        return datetime.fromtimestamp(n, UTC)
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 def _from_iso(v: Any) -> datetime | None:
@@ -418,7 +426,7 @@ def _token(s: Settings) -> str:
     token = s.meta_user_access_token.get()
     if not token:
         raise NotConfigured("Нет на сервере: META_USER_ACCESS_TOKEN")
-    if not token.isascii() or any(ch.isspace() or ord(ch) < 32 for ch in token):
+    if not token.isascii() or not token.isprintable() or any(ch.isspace() for ch in token):
         raise BadConfig("META_USER_ACCESS_TOKEN содержит недопустимые символы — скопируйте токен заново")
     return token
 
@@ -472,6 +480,13 @@ def discover_ig_user(get: Callable[[str, dict], dict], ctx: "RunContext", s: Set
     return ig_id
 
 
+def _ig_source(s: Settings) -> str:
+    """По чему найден Instagram(отпечаток токена, META_PAGE_ID, META_BUSINESS_ID): сменилось - найденный прежде
+    igUserId(collectors.state) не используется, иначе сбор шёл бы от чужого аккаунта до следующей проверки."""
+    return "|".join((s.key_fp("META_USER_ACCESS_TOKEN") or "", (s.meta_page_id or "").strip(),
+                     (s.meta_business_id or "").strip()))
+
+
 class _Run:
     """Один запуск сбора: клиент, ID нашего Instagram, совместимость полей, лимит Graph API, остановка по времени."""
 
@@ -510,10 +525,10 @@ class _Run:
         if self.s.meta_ig_user_id:
             return _digits(self.s.meta_ig_user_id, "META_IG_USER_ID")
         cached = str(self.ctx.state.get("igUserId") or "")
-        if _ID.fullmatch(cached):
+        if _ID.fullmatch(cached) and self.ctx.state.get("igUserFor") == _ig_source(self.s):
             return cached
         found = discover_ig_user(self.get, self.ctx, self.s)
-        self.ctx.save_state(igUserId=found)
+        self.ctx.save_state(igUserId=found, igUserFor=_ig_source(self.s))
         return found
 
     def discovery(self, username: str, limit: int, after: str | None) -> dict:
@@ -586,7 +601,8 @@ class _Run:
                     all_new = False
                 total += 1
             paging = media.get("paging") if isinstance(media.get("paging"), dict) else {}
-            cursor = (paging.get("cursors") or {}).get("after") if isinstance(paging.get("cursors"), dict) else None
+            page_cursors = paging.get("cursors")
+            cursor = page_cursors.get("after") if isinstance(page_cursors, dict) else None
             cursor = str(cursor) if cursor else None
             # Business Discovery не присылает paging.next(поле media раскрывается в fields): конец списка - пустая
             # страница, нет курсора after или курсор повторился. Ссылка paging.next, если вдруг придёт, не
@@ -666,7 +682,7 @@ class InstagramConnector(Connector):
                 ig_id = _digits(s.meta_ig_user_id, "META_IG_USER_ID")
             else:
                 ig_id = discover_ig_user(get, ctx, s)
-                ctx.save_state(igUserId=ig_id)
+                ctx.save_state(igUserId=ig_id, igUserFor=_ig_source(s))
             user = get(ig_id, {"fields": "id,username"})
             username = str(user.get("username") or "").strip().lower()
             if not username:

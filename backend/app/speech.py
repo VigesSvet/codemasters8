@@ -26,9 +26,9 @@ import re
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable
 
 from . import video
 from .ai.ocr import clip
@@ -84,10 +84,10 @@ def extract_audio(path: Path, mime: str, max_s: int, timeout: int = EXTRACT_TIME
     except OSError as e:
         log.warning("ffmpeg не запускается: %s", type(e).__name__)
         return None, AUDIO_FAILED
-    reason = video._reason(res.stderr)
     if res.returncode != 0:
         if b"matches no streams" in (res.stderr or b""):  # -map 0:a:0 без звуковой дорожки(не последняя строка)
             return None, NO_AUDIO
+        reason = video._reason(res.stderr)
         log.warning("ffmpeg (звук) завершился с кодом %s%s", res.returncode, f": {reason}" if reason else "")
         return None, AUDIO_FAILED
     if not res.stdout:
@@ -225,7 +225,7 @@ def main(argv: list | None = None) -> int:
     path = Path(args.target)
     try:
         with path.open("rb") as f:
-            mime = media.sniff(f.read(64))
+            mime = media.sniff(f.read(media.HEAD))
     except OSError as e:
         print(f"Файл {path} не прочитан: {type(e).__name__}")
         return 1

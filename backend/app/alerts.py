@@ -27,16 +27,20 @@
 TG_ALERTS_CHANNEL и подписчикам района ЖК(и "всех районов"). Воркер берёт их по одной условным UPDATE "ожидает →
 отправляется", вызывает sendMessage(BOT_TOKEN, HTML) и записывает итог; не больше SEND_RATE сообщений в секунду, за
 одно выполнение - BATCH доставок(дальше - продолжение тем же заданием). 429 - отсрочка на retry_after без расхода
-попытки; сеть, тайм-аут, 5xx - повтор задания с паузой; Telegram не принял BOT_TOKEN - задание завершается ошибкой,
-доставки остаются "ожидает"("Повторить отправку" после исправления). Доставка, оставшаяся "отправляется" после сбоя
-воркера, повторно не отправляется("результат неизвестен"): одно и то же предупреждение не придёт жителю дважды.
+попытки; соединение не установлено, 5xx - повтор задания с паузой; Telegram не принял BOT_TOKEN - задание
+завершается ошибкой, доставки остаются "ожидает"("Повторить отправку" после исправления). Доставка, на которую ответ
+не получен(тайм-аут чтения, обрыв, внутренняя ошибка), и доставка, оставшаяся "отправляется" после сбоя воркера,
+повторно не отправляются("результат неизвестен"): одно и то же предупреждение не придёт жителю дважды.
 Этот сервис бот API только отправляет: getUpdates и webhook не вызываются, long polling бота заявок с тем же токеном
 не прерывается.
 """
 import html
 import logging
+import math
 import re
 import threading
+import unicodedata
+from collections import Counter
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
@@ -55,7 +59,7 @@ from .integrations import http
 from .integrations.base import local_time
 from .logs import redact
 from .schemas import Camel, HumanName, IsoTime, OptNote, no_nul
-from .settings import Settings, get_settings
+from .settings import BOT_TOKEN_FORMAT, Settings, get_settings
 
 log = logging.getLogger("saq.alerts")
 
@@ -87,13 +91,18 @@ NOBODY = "Некому отправить: канал ГАСК не задан, 
 SAME_PERSON = "Согласует другой сотрудник: автор предупреждения не может согласовать его сам"
 NO_SUBSCRIPTION = "Подписки нет"
 TOKEN_REJECTED = "Telegram не принял токен бота (HTTP {code}) — проверьте его в настройках сервера"
+TOKEN_MALFORMED = "Токен бота на сервере задан в неверном формате — проверьте его в настройках сервера"
 BAD_CHANNEL = "Канал ГАСК указан неверно: нужен @имя публичного канала или его ID вида -100…"
-UNKNOWN = ("Результат неизвестен: отправка прервана сбоем воркера — сообщение могло дойти, повторно не отправляется, "
-           "чтобы житель не получил его дважды")
+_UNKNOWN = ("Результат неизвестен: {why} — сообщение могло дойти, повторно не отправляется, чтобы житель не получил "
+            "его дважды")
+UNKNOWN = _UNKNOWN.format(why="отправка прервана сбоем воркера")
+UNKNOWN_NETWORK = _UNKNOWN.format(why="Telegram не ответил")
+UNKNOWN_INTERNAL = _UNKNOWN.format(why="внутренняя ошибка отправки")
 UNSUBSCRIBED = "Житель отписался до отправки"
 
 AlertId = Annotated[int, Path(ge=1, le=2_147_483_647, description="id предупреждения")]
-ChatId = Annotated[str, Path(pattern=r"^-?\d{1,20}$", description="chat_id Telegram")]
+# без ведущих нулей и без 0: "42" и "042" были бы двумя подписками одного чата(два сообщения жителю)
+ChatId = Annotated[str, Path(pattern=r"^-?[1-9]\d{0,19}$", description="chat_id Telegram")]
 
 
 # ---------- схемы ----------
@@ -242,32 +251,44 @@ def hashtag(district: str) -> str:
     return f"#{tag}" if tag else ""
 
 
+def _esc(v: str | None) -> str:
+    """Экранирование для parse_mode HTML: Telegram требует заменить только <, > и &."""
+    return html.escape(v or "", quote=False)
+
+
 def render(a: models.ResidentAlert) -> str:
     """Текст сообщения Telegram(parse_mode HTML): заголовок жирным, текст, хэштег района и подпись."""
     foot = " · ".join(x for x in (hashtag(a.district), SIGNATURE) if x)
-    esc = lambda v: html.escape(v or "", quote=False)
-    return f"<b>{esc(a.title)}</b>\n{esc(a.text)}\n\n{esc(foot)}"
+    return f"<b>{_esc(a.title)}</b>\n{_esc(a.text)}\n\n{_esc(foot)}"
 
 
 # ---------- Bot API ----------
 
 class _Limited(Exception):
     def __init__(self, seconds: float):
-        self.retry_after = max(float(seconds), 1.0)
+        # retry_after из ответа - 1 с…сутки(как http.retry_after): NaN или 1e400 сломали бы отсрочку задания(timedelta)
+        try:
+            seconds = float(seconds)
+        except OverflowError:
+            seconds = math.inf
+        self.retry_after = min(max(seconds, 1.0), 86400.0) if not math.isnan(seconds) else 30.0
         super().__init__(f"Telegram ограничил частоту отправки — продолжение через {self.retry_after:.0f} с")
         self.detail = str(self)
 
 
 class _Transient(Exception):
-    def __init__(self, detail: str):
+    """Сбой сети или серверов Telegram. maybe_sent - запрос мог дойти до Telegram(ответ не получен): такую доставку
+    повторно не отправляют."""
+
+    def __init__(self, detail: str, *, maybe_sent: bool = False):
         super().__init__(detail)
-        self.detail = detail
+        self.detail, self.maybe_sent = detail, maybe_sent
 
 
 class _TokenRejected(Exception):
-    def __init__(self, code: int):
-        self.detail = TOKEN_REJECTED.format(code=code)
-        super().__init__(self.detail)
+    def __init__(self, detail: str):
+        super().__init__(detail)
+        self.detail = detail
 
 
 class _ChatRejected(Exception):
@@ -278,23 +299,38 @@ class _ChatRejected(Exception):
         super().__init__(f"HTTP {code}: {description}")
 
 
+# запрос не дошёл до Telegram целиком(соединение не установлено, запрос не записан или отклонён ещё до отправки) -
+# повтор не создаст второе сообщение
+_NOT_SENT = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout, httpx.ProxyError, httpx.UnsupportedProtocol,
+             httpx.WriteError, httpx.WriteTimeout, httpx.LocalProtocolError)
+
+
+def _network(e: httpx.HTTPError) -> _Transient:
+    detail = ("Telegram не ответил вовремя" if isinstance(e, httpx.TimeoutException)
+              else f"Сетевая ошибка при обращении к Telegram ({type(e).__name__})")
+    return _Transient(detail, maybe_sent=not isinstance(e, _NOT_SENT))
+
+
 def call(cli: httpx.Client, token: str, method: str, payload: dict) -> Any:
-    """Метод Bot API → result. 429 - _Limited(retry_after из ответа или заголовка); 401/404 - _TokenRejected(токен
-    не принят: неверный или отозван); сеть, тайм-аут, 5xx, ответ не Bot API - _Transient; прочие 4xx - _ChatRejected.
+    """Метод Bot API → result. 429 - _Limited(retry_after из ответа или заголовка); 401/404 или токен не по формату -
+    _TokenRejected(неверный или отозван); сеть, тайм-аут, 5xx, ответ не Bot API - _Transient(maybe_sent - ответа нет
+    после отправки запроса); прочие 4xx - _ChatRejected.
     Токен - только в пути запроса; в тексты ошибок он не попадает(журналы маскируют "/bot<токен>")."""
+    # токен подставляется в путь запроса: "/", "?", "#" в нём изменили бы адрес метода; проверка целиком - перевод
+    # строки в конце токена тоже не по формату
+    if not BOT_TOKEN_FORMAT.fullmatch(token):
+        raise _TokenRejected(TOKEN_MALFORMED)
     try:
         r = cli.post(f"/bot{token}/{method}", json=payload)
-    except httpx.TimeoutException:
-        raise _Transient("Telegram не ответил вовремя") from None
-    except httpx.TransportError as e:
-        raise _Transient(f"Сетевая ошибка при обращении к Telegram ({type(e).__name__})") from None
+    except httpx.HTTPError as e:
+        raise _network(e) from None
     try:
         body = r.json()
     except ValueError:
         body = None
     if not isinstance(body, dict):
         if r.status_code in (401, 404):
-            raise _TokenRejected(r.status_code)
+            raise _TokenRejected(TOKEN_REJECTED.format(code=r.status_code))
         if r.status_code == 429:
             raise _Limited(http.retry_after(r.headers, 30))
         raise _Transient(f"Telegram ответил не в формате Bot API (HTTP {r.status_code})")
@@ -304,9 +340,9 @@ def call(cli: httpx.Client, token: str, method: str, payload: dict) -> Any:
     params = body.get("parameters") if isinstance(body.get("parameters"), dict) else {}
     if code == 429:
         retry = params.get("retry_after")
-        raise _Limited(float(retry) if isinstance(retry, (int, float)) else http.retry_after(r.headers, 30))
+        raise _Limited(retry if isinstance(retry, (int, float)) else http.retry_after(r.headers, 30))
     if code in (401, 404):
-        raise _TokenRejected(code)
+        raise _TokenRejected(TOKEN_REJECTED.format(code=code))
     if code >= 500 or code < 400:
         raise _Transient(f"Сбой серверов Telegram (HTTP {code})")
     raise _ChatRejected(code, redact(str(body.get("description") or f"HTTP {code}"), limit=300) or "")
@@ -350,10 +386,14 @@ def _client() -> httpx.Client:
 # ---------- получатели и счётчики ----------
 
 def _districts(db: Session) -> list[tuple[str, int]]:
-    """Районы ЖК(непустые) и сколько ЖК в каждом - по убыванию."""
+    """Районы ЖК(непустые, без пробелов по краям - тем же str.strip, что район предупреждения в create) и сколько ЖК
+    в каждом - по убыванию."""
     C = models.Complex
-    rows = db.execute(select(C.district, func.count()).where(C.district != "").group_by(C.district)).all()
-    return sorted(((d, int(n)) for d, n in rows), key=lambda x: (-x[1], x[0]))
+    counts: Counter[str] = Counter()
+    for raw, n in db.execute(select(C.district, func.count()).group_by(C.district)):
+        if d := (raw or "").strip():
+            counts[d] += int(n)
+    return sorted(counts.items(), key=lambda x: (-x[1], x[0]))
 
 
 def _keys(district: str) -> list[str]:
@@ -464,9 +504,28 @@ def _whom(ch: str | None, subs: int, district: str) -> str:
     return " и ".join(parts)
 
 
-def _ready(s: Settings) -> None:
+def _person(name: str | None) -> str:
+    """Имя для сравнения "автор и согласующий - один человек": без невидимых символов(Cf), NFKC, без регистра,
+    ё = е, пробелы схлопнуты - имя с пробелом нулевой ширины или двойным пробелом не выдаёт себя за другого
+    сотрудника."""
+    s = "".join(ch for ch in unicodedata.normalize("NFKC", name or "") if unicodedata.category(ch) != "Cf")
+    return " ".join(s.casefold().replace("ё", "е").split())
+
+
+def _token_problem(s: Settings) -> str | None:
+    """Почему отправка не готова по BOT_TOKEN: не задан или не по формату(сразу, а не после первой неудачной отправки
+    воркера). None - токен задан и по формату; принимает ли его Telegram, показывает "Проверить бота и канал"."""
     if not s.bot_token:
-        raise HTTPException(503, NOT_CONFIGURED)
+        return NOT_CONFIGURED
+    if not BOT_TOKEN_FORMAT.fullmatch(s.bot_token.get()):
+        return TOKEN_MALFORMED
+    return None
+
+
+def _ready(s: Settings) -> None:
+    problem = _token_problem(s)
+    if problem:
+        raise HTTPException(503, problem)
 
 
 # ---------- маршруты: сотрудники ----------
@@ -496,7 +555,7 @@ def audience(district: str = Query("", max_length=64), db: Session = Depends(get
     per = dict(db.execute(select(S.district, func.count(func.distinct(S.chat_id))).group_by(S.district)).all())
     district = district.strip()
     return {"configured": bool(s.bot_token), "admin_configured": bool(s.admin_token),
-            "worker_alive": bool(service.worker_info(db)["alive"]), "problem": None if s.bot_token else NOT_CONFIGURED,
+            "worker_alive": bool(service.worker_info(db)["alive"]), "problem": _token_problem(s),
             "channel": ch, "channel_problem": problem, "district": district,
             "subscribers": _audience_count(db, district), "everywhere": int(per.get(ALL, 0)),
             "districts": [{"district": d, "subscribers": int(per.get(d, 0))} for d, _ in _districts(db)]}
@@ -537,7 +596,8 @@ def check():
     """Проверить бота и канал(токен администратора): getMe - токен принят; getChat и getChatMember - канал есть и бот
     в нём администратор с правом публикации. Сообщений не отправляет."""
     s = get_settings()
-    _ready(s)
+    if not s.bot_token:  # токен не по формату - ответ проверки(ok = false, detail), как и отказ Telegram
+        raise HTTPException(503, NOT_CONFIGURED)
     token = s.bot_token.get()
     ch, problem = channel(s)
     out: dict = {"ok": False, "detail": "", "bot": None, "channel": ch, "channel_title": None}
@@ -586,14 +646,14 @@ def check():
 @router.post("/api/alerts/{aid}/approve", response_model=AlertOut, response_model_by_alias=True,
              dependencies=[Depends(auth.require_admin)],
              responses={409: {"description": "Не на согласовании, согласует автор или некому отправить"},
-                        503: {"description": NOT_CONFIGURED}})
+                        503: {"description": "Токен бота не задан или не по формату"}})
 def approve(aid: AlertId, body: AlertDecisionIn, db: Session = Depends(get_db)):
     """Согласовать и отправить(токен администратора; согласующий - не автор): получатели фиксируются(канал ГАСК и
     подписчики района на этот момент), отправку выполняет воркер."""
     a = _get(db, aid)
     if a.status != "pending":
         raise _already(a)
-    if body.author.strip().casefold() == (a.created_by or "").strip().casefold():
+    if _person(body.author) == _person(a.created_by):
         raise HTTPException(409, SAME_PERSON)
     s = get_settings()
     _ready(s)
@@ -631,7 +691,8 @@ def reject(aid: AlertId, body: AlertDecisionIn, db: Session = Depends(get_db)):
 
 @router.post("/api/alerts/{aid}/retry", response_model=AlertOut, response_model_by_alias=True,
              dependencies=[Depends(auth.require_admin)],
-             responses={409: {"description": "Нечего повторять"}, 503: {"description": NOT_CONFIGURED}})
+             responses={409: {"description": "Нечего повторять"},
+                        503: {"description": "Токен бота не задан или не по формату"}})
 def retry(aid: AlertId, body: AlertDecisionIn, db: Session = Depends(get_db)):
     """Повторить отправку(токен администратора): только доставки "ожидает" - оставшиеся после неверного BOT_TOKEN или
     исчерпанных повторов. Доставленные, отклонённые Telegram и с неизвестным результатом повторно не отправляются."""
@@ -658,7 +719,7 @@ def _bot_ok(db: Session) -> None:
     """Обращение бота с верным токеном снимает прежнее "нет доступа" у подключения "Telegram-бот заявок"."""
     from .integrations import telegram_bot
 
-    telegram_bot._token_ok(db)
+    telegram_bot.note_token_ok(db)
 
 
 def _subscription(db: Session, chat_id: str) -> list[str]:
@@ -756,21 +817,24 @@ def _settle_interrupted(db: Session, alert_id: int, now: datetime) -> int:
 
 def _claim(alert_id: int, now: datetime) -> tuple[int, str, str] | None:
     """Следующая доставка "ожидает" → "отправляется"(условный UPDATE, своя транзакция): (id, вид, получатель) или
-    None."""
-    D = models.AlertDelivery
+    None - доставок "ожидает" нет либо предупреждение уже не "отправляется"(итог записан при брошенном задании:
+    зависший воркер, очнувшись, не продолжает рассылку). Доставку, взятую другим исполнителем, пропускает - цикл
+    конечен: каждый проход либо берёт доставку, либо видит, что её взяли."""
+    D, A = models.AlertDelivery, models.ResidentAlert
+    sending = select(A.id).where(A.id == alert_id, A.status == "sending").exists()
     with SessionLocal() as db:
-        for _ in range(3):
-            row = db.execute(select(D.id, D.kind, D.target).where(D.alert_id == alert_id, D.status == "pending")
+        while True:
+            row = db.execute(select(D.id, D.kind, D.target).where(D.alert_id == alert_id, D.status == "pending",
+                                                                  sending)
                              .order_by(D.id).limit(1)).first()
             if row is None:
                 return None
-            res = db.execute(update(D).where(D.id == row.id, D.status == "pending")
+            res = db.execute(update(D).where(D.id == row.id, D.status == "pending", sending)
                              .values(status="sending", attempts=D.attempts + 1, updated_at=now)
                              .execution_options(synchronize_session=False))
             db.commit()
             if res.rowcount == 1:
                 return row.id, row.kind, row.target or ""
-    return None
 
 
 def _settle(did: int, now: datetime, **values) -> None:
@@ -782,15 +846,20 @@ def _settle(did: int, now: datetime, **values) -> None:
         db.commit()
 
 
+def _final(did: int, kind: str, now: datetime, **values) -> None:
+    """Итог доставки(sent или failed): у подписчика chat_id стирается - остаётся только счётчик."""
+    if kind == "subscriber":
+        values["target"] = None
+    _settle(did, now, **values)
+
+
 def _sent(did: int, kind: str, message_id: int | None, now: datetime) -> None:
-    extra = {"target": None} if kind == "subscriber" else {}
-    _settle(did, now, status="sent", sent_at=now, message_id=message_id, error=None, **extra)
+    _final(did, kind, now, status="sent", sent_at=now, message_id=message_id, error=None)
 
 
 def _rejected(did: int, kind: str, target: str, e: _ChatRejected, now: datetime) -> None:
     reason, unsubscribe = chat_reason(kind, target, e.description)
-    extra = {"target": None} if kind == "subscriber" else {}
-    _settle(did, now, status="failed", error=reason, **extra)
+    _final(did, kind, now, status="failed", error=reason)
     if unsubscribe and kind == "subscriber" and target:
         S = models.AlertSubscription
         with SessionLocal() as db:
@@ -799,7 +868,8 @@ def _rejected(did: int, kind: str, target: str, e: _ChatRejected, now: datetime)
 
 
 def _release(did: int, now: datetime) -> None:
-    """Доставка не выполнена не по вине получателя(лимит, сеть, токен) - снова "ожидает"."""
+    """Доставка не выполнена не по вине получателя(лимит, сеть, токен), и запрос в Telegram не ушёл или отклонён -
+    снова "ожидает"."""
     _settle(did, now, status="pending")
 
 
@@ -840,9 +910,11 @@ def finalize(db: Session, a: models.ResidentAlert, now: datetime, error: str | N
         first = (ch.error if ch is not None and ch.status == "failed" else None) or next(
             (e["text"] for e in t["errors"]), None)
         error = first
-    a.status, a.sent_at, a.last_error = status, now if sent else None, redact(error) if error else None
+    # всем доставлено - причины нет, даже если задание брошено(abandoned) уже после последней доставки
+    a.status, a.sent_at = status, now if sent else None
+    a.last_error = redact(error) if error and status != "sent" else None
     what = f"Предупреждение жителям {a.code}: {STATUS_LABELS[status].lower()} — {_summary(t)}"
-    if a.last_error and status != "sent":
+    if a.last_error:
         what += f". Причина: {a.last_error}"
     _event(db, "alert", SYSTEM, what, at=now, complex_id=a.complex_id)
 
@@ -883,11 +955,12 @@ def _give_up(info, detail: str) -> None:
     _outcome(info, apply)
 
 
-def _later(info, seconds: float, detail: str | None = None) -> None:
+def _later(info, seconds: float, detail: str | None = None, *, planned: bool = False) -> None:
     """Продолжить тем же заданием через seconds с(без расхода попытки): лимит Telegram, очередная партия, остановка
-    воркера."""
+    воркера. planned - продолжение после доставок этого выполнения(jobs.defer planned): в предел отсрочек не
+    считается, иначе одно предупреждение не дошло бы больше чем до BATCH · MAX_DEFERRALS получателей."""
     def apply(db, job, a, now):
-        if not jobs.defer(db, job, seconds, None, now=now):
+        if not jobs.defer(db, job, seconds, None, now=now, planned=planned):
             jobs.fail(db, job, "Отправка откладывалась слишком много раз — остановлена")
             if a is not None and a.status == "sending":
                 finalize(db, a, now, "Отправка откладывалась слишком много раз — остановлена")
@@ -945,7 +1018,8 @@ def run_job(info, *, now: datetime, stop: threading.Event | None = None) -> None
     with _client() as cli:
         while True:
             if (stop is not None and stop.is_set()) or done >= BATCH:
-                _later(info, 0.0)
+                # без доставок в этом выполнении(остановка воркера в самом начале) - обычная отсрочка, в пределе
+                _later(info, 0.0, planned=done > 0)
                 return
             got = _claim(alert_id, info.now())
             if got is None:
@@ -958,7 +1032,10 @@ def run_job(info, *, now: datetime, stop: threading.Event | None = None) -> None
                 _later(info, e.retry_after, e.detail)
                 return
             except _Transient as e:
-                _release(did, info.now())
+                if e.maybe_sent:  # сообщение могло дойти - "результат неизвестен", как после сбоя воркера
+                    _final(did, kind, info.now(), status="failed", error=UNKNOWN_NETWORK)
+                else:
+                    _release(did, info.now())
                 log.warning("Предупреждение №%s: %s", alert_id, e.detail)
                 _retry(info, e.detail)
                 return
@@ -970,7 +1047,8 @@ def run_job(info, *, now: datetime, stop: threading.Event | None = None) -> None
             except _ChatRejected as e:
                 _rejected(did, kind, target, e, info.now())
             except Exception:
-                _release(did, info.now())
+                # где именно сбой - неизвестно: запрос мог уйти, поэтому доставка не повторяется
+                _final(did, kind, info.now(), status="failed", error=UNKNOWN_INTERNAL)
                 log.exception("Предупреждение №%s: доставка не выполнена", alert_id)
                 _retry(info, "Внутренняя ошибка отправки — подробности в журнале воркера")
                 return

@@ -1,13 +1,15 @@
 import re
 from datetime import date as Date, datetime, timedelta, UTC
-from typing import Annotated, Any, Literal, Optional
+from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import (AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints, ValidationInfo,
                       field_validator, model_serializer, model_validator)
 from pydantic.alias_generators import to_camel
 from pydantic_core import PydanticCustomError
 
-from .models import iso
+from .models import as_utc, iso
+from .risk_model import ALMATY
 
 Tri = Literal["yes", "no", "unknown"]
 Zone = Literal["green", "yellow", "red"]
@@ -16,7 +18,8 @@ AppealStatus = Literal["verified", "pending", "rejected"]
 SignalStatus = Literal["new", "confirmed", "returned"]
 FactorState = Literal["hit", "clear", "unknown"]
 EvidenceKind = Literal["ad", "document", "photo", "appeal", "readiness", "deadline"]
-AuditKind = Literal["system", "data", "status", "link", "comment", "request", "signal", "export", "ai", "alert"]
+AuditKind = Literal["system", "data", "status", "link", "comment", "request", "signal", "export", "ai", "alert",
+                    "connector"]
 # Происхождение сведений(ТЗ §7 "Достоверность"): demo - вымышленный демо-набор, analyst - добавил аналитик,
 # source - запись открытого источника, collected - собрано сборщиком или прислано жителем через бота,
 # registry - карточка ЖК или застройщик, созданные по открытому реестру(app.demo): сведения источника, не проверены;
@@ -58,32 +61,139 @@ def _not_system(v: str) -> str:
     return v
 
 
-# Автор действия на новых маршрутах(подключения, геопроверки, OLX): "Система" - только у автоматических записей
+# Автор действия сотрудника(во всех формах): "Система" - только у автоматических записей, иначе решение человека
+# выглядело бы в журнале автоматическим(фронтенд отделяет действия людей по who != "Система")
 HumanName = Annotated[Name, AfterValidator(_not_system)]
 Comment = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000), AfterValidator(no_nul)]
 Note = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000), AfterValidator(no_nul)]
 
 
-def _blank_to_none(v: Any) -> Any:
+def blank_to_none(v: Any) -> Any:
     return None if isinstance(v, str) and not v.strip() else v
 
 
 # Необязательные строки: пустая или из пробелов - то же, что не указана; длина - как у обязательных
-OptName = Annotated[Name | None, BeforeValidator(_blank_to_none)]
-OptComment = Annotated[Comment | None, BeforeValidator(_blank_to_none)]
-OptNote = Annotated[Note | None, BeforeValidator(_blank_to_none)]
+OptName = Annotated[Name | None, BeforeValidator(blank_to_none)]
+OptHumanName = Annotated[HumanName | None, BeforeValidator(blank_to_none)]
+OptComment = Annotated[Comment | None, BeforeValidator(blank_to_none)]
+OptNote = Annotated[Note | None, BeforeValidator(blank_to_none)]
 # Уверенность ИИ в привязке публикации к ЖК: 0…1, информативно - фактом привязку делает только подтверждение аналитика
 Confidence = Annotated[float, Field(ge=0, le=1)]
 # Текст объявления и распознанный скриншот: с запасом для любого поста, но с пределом - их анализирует ИИ(время анализа)
 AD_TEXT_MAX = 20000
 # Время из БД(datetime, в SQLite - наивное UTC) → ISO 8601 с UTC-смещением
 IsoTime = Annotated[str | None, BeforeValidator(lambda v: iso(v) if isinstance(v, datetime) else v)]
+# Верхняя граница счётчиков, которые хранятся в столбцах Integer: больше - ошибка БД на PostgreSQL(500), а не 422
+INT32_MAX = 2**31 - 1
+# Ссылка без пробелов и управляющих символов: они ломают и запрос по ссылке, и разметку ссылки во фронтенде
+_URL_CHARS = re.compile(r"[^\s\x00-\x1f\x7f]+")
+
+
+def is_http_url(v: str, *, https_only: bool = False) -> bool:
+    """Абсолютная ссылка http(s) с хостом: "javascript:", "https://" без хоста и строки с управляющими символами - нет."""
+    if not _URL_CHARS.fullmatch(v):
+        return False
+    try:
+        parts = urlsplit(v)
+    except ValueError:  # например, незакрытая скобка IPv6-адреса
+        return False
+    return parts.scheme.lower() in (("https",) if https_only else ("http", "https")) and bool(parts.hostname)
+
+
+# символы, которые в ссылке должны быть закодированы(RFC 3986): "\" браузер читает как "/", и хост для него и для
+# urlsplit был бы разным
+_LINK_BAD = re.compile(r'[\\<>"`]')
+LINK_MAX = 512
+
+
+def is_safe_link(v: str) -> bool:
+    """Ссылка на публикацию, которую показывают и открывают: is_http_url, до 512 символов, без \\ < > " `, без учётных
+    данных("https://krisha.kz@evil.kz/" - в тексте виден один хост, а ведёт ссылка на другой) и с портом 1-65535."""
+    if len(v) > LINK_MAX or _LINK_BAD.search(v) or not is_http_url(v):
+        return False
+    try:
+        parts = urlsplit(v)
+        return "@" not in parts.netloc and parts.port != 0
+    except ValueError:  # порт вне 0-65535 или не число
+        return False
+
+
+# Скриншот, загруженный формой ручного ввода(POST /api/media)
+MEDIA_REF = re.compile(r"^/api/media/([0-9a-f]{32})$")
+
+
+def local_minutes(dt: datetime) -> str:
+    """Время(наивное - UTC) → местное время Усть-Каменогорска без смещения "YYYY-MM-DDTHH:MM"(как Ad.date в источниках)."""
+    return as_utc(dt).astimezone(ALMATY).replace(tzinfo=None).isoformat(timespec="minutes")
+
+
+# Дата публикации ручного ввода: день или момент(секунды, доли секунды и часовой пояс - по желанию), цифры - только
+# ASCII. Шаблон строже fromisoformat: тот принял бы и неполные формы("2026-10-20T10"), и недели("2026-W42")
+_AD_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}"
+                      r"(?:[T ][0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]{1,6})?)?(?:Z|[+-][0-9]{2}:?[0-9]{2})?)?")
+AD_DATE_MIN = Date(2000, 1, 1)
+AD_DATE_AHEAD = timedelta(days=1)  # запас на часовой пояс и часы устройства
+AD_DATE_MSG = "дата в формате ГГГГ-ММ-ДД или ГГГГ-ММ-ДДTЧЧ:ММ"
+
+
+def _ad_date(v: Any) -> Any:
+    """Дата публикации ручного ввода - в том же виде, что у собранных: день "ГГГГ-ММ-ДД" остаётся днём, момент → местное
+    время "ГГГГ-ММ-ДДTЧЧ:ММ"(без пояса - уже местное). Пустая - не указана(время добавления). С 2000 года и не позже
+    суток от текущего момента: дата из будущего считалась бы свежей рекламой бесконечно и держала бы решение аналитика по
+    ЖК снятым(app.screening)."""
+    if not isinstance(v, str):
+        return v
+    s = v.strip()
+    if not s:
+        return None
+    if not _AD_DATE.fullmatch(s):
+        raise PydanticCustomError("value_error", AD_DATE_MSG)
+    try:
+        when = Date.fromisoformat(s) if len(s) == 10 else datetime.fromisoformat(s)
+    except ValueError:  # 2026-02-30, 25:00, пояс +24:00
+        raise PydanticCustomError("value_error", AD_DATE_MSG) from None
+    if isinstance(when, datetime):
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=ALMATY)
+        # сравнение моментов с разными поясами не переполняется, перевод в местное время - уже в пределах диапазона
+        early = when < datetime.combine(AD_DATE_MIN, datetime.min.time(), ALMATY)
+        late = when > datetime.now(UTC) + AD_DATE_AHEAD
+    else:
+        early, late = when < AD_DATE_MIN, when > (datetime.now(ALMATY) + AD_DATE_AHEAD).date()
+    if early:
+        raise PydanticCustomError("value_error", "дата публикации раньше 2000 года")
+    if late:
+        raise PydanticCustomError("value_error", "дата публикации в будущем — проверьте дату")
+    return local_minutes(when) if isinstance(when, datetime) else when.isoformat()
+
+
+def _ad_link(v: str) -> str:
+    if v and not is_safe_link(v):
+        raise PydanticCustomError("value_error", "нужна ссылка http(s):// без имени и пароля в адресе или пустое поле")
+    return v
+
+
+def _ad_image(v: str | None) -> str | None:
+    v = v.strip() if v is not None else None
+    if not v:
+        return None
+    if MEDIA_REF.fullmatch(v) or is_safe_link(v):
+        return v
+    raise PydanticCustomError("value_error", "нужен загруженный скриншот (/api/media/…) или ссылка http(s)://")
 
 
 class Camel(BaseModel):
     """JSON в camelCase - совпадает с типами фронтенда(src/data/types.ts)."""
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, from_attributes=True)
+
+
+class CompactOut(Camel):
+    """Ответ без пустых полей: поля со значением None не выводятся(в types.ts они необязательные)."""
+
+    @model_serializer(mode="wrap")
+    def _drop_none(self, handler) -> dict[str, Any]:
+        return {k: v for k, v in handler(self).items() if v is not None}
 
 
 class DeveloperOut(Camel):
@@ -149,23 +259,29 @@ class AdIn(Camel):
     """Ручное добавление публикации. author - кто добавил(в журнал); без него - "Система".
     Длины строк - как у столбцов БД: на PostgreSQL более длинное значение было бы ошибкой БД(500), а не понятным 422."""
 
-    id: Annotated[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)] | None,
-                  BeforeValidator(_blank_to_none)] = None
+    # id - сегмент адреса /api/ads/{id}: "/", "?", "%" или пробел сделали бы публикацию недоступной по адресу
+    id: Annotated[Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[A-Za-z0-9_-]{1,32}$")] | None,
+                  BeforeValidator(blank_to_none)] = None
     platform: str = Field(max_length=16)
     account: str = Field(max_length=255)
-    url: str = Field("", max_length=512)
-    date: str | None = Field(None, max_length=32)
+    # ссылка и изображение показываются и открываются во фронтенде и PDF: javascript:, data: и подмена хоста через
+    # учётные данные - 422(как safe_url у собранных публикаций, только явной ошибкой, а не молчаливым "")
+    url: Annotated[str, StringConstraints(strip_whitespace=True, max_length=LINK_MAX), AfterValidator(_ad_link)] = ""
+    date: Annotated[str | None, BeforeValidator(_ad_date)] = None
     text: str = Field(max_length=AD_TEXT_MAX)
     ocr: str | None = Field(None, max_length=AD_TEXT_MAX)
-    image: str | None = Field(None, max_length=512)
+    image: Annotated[str | None, Field(max_length=LINK_MAX), AfterValidator(_ad_image)] = None
     complex_id: str | None = Field(None, max_length=32)
     match_confidence: Confidence = 0
     price: str | None = Field(None, max_length=64)
-    source: str = Field("manual", max_length=16)
-    # Только статусы до решения: "На проверке", "Нарушение подтверждено", "Отклонено" - через PATCH /api/ads/{id}/status
-    # (автор, основание, событие в журнале). Иначе подтверждённая при создании публикация давала бы R2/R3 без следа решения.
+    # Только ручной ввод: "bot"(заявка жителя) или код сборщика меняли бы смысл публикации - у заявки жителя аккаунт и
+    # ссылка не учитываются при сопоставлении, а происхождение сведений выдавалось бы за собранное
+    source: Literal["manual"] = "manual"
+    # Только статусы до решения: "На проверке", "Нарушение подтверждено", "Отклонено" - через
+    # PATCH /api/ads/{id}/status(автор, основание, событие в журнале). Иначе подтверждённая при создании публикация
+    # давала бы R2/R3 без следа решения.
     status: Literal["new", "needs_check"] = "new"
-    author: OptName = None
+    author: OptHumanName = None
     # true - аналитик сам выбрал ЖК в форме: привязка сразу факт(linkConfirmedBy = author); иначе - гипотеза ИИ
     link_confirmed: bool = False
 
@@ -199,7 +315,7 @@ class SpeechOut(Camel):
 
 
 class MediaRefOut(Camel):
-    """Файл публикации в хранилище: адрес /api/media/{id} (только загруженные изображения и видео текущей версии).
+    """Файл публикации в хранилище: адрес /api/media/{id}(только загруженные изображения и видео текущей версии).
     speech - только у видео, речь которого распознавалась(иначе поля нет: JSON прочих файлов не меняется)."""
 
     id: str
@@ -364,14 +480,14 @@ class AdComplexIn(Camel):
     """Привязка публикации к ЖК аналитиком: complexId - ЖК(привязка - факт, подтвердил author) или null - снять привязку."""
 
     complex_id: Name | None
-    author: Name
+    author: HumanName
 
 
 class StatusIn(Camel):
     """Смена статуса публикации: автор обязателен; для "Нарушение подтверждено" - и основание решения(comment)."""
 
     status: AdStatus
-    author: Name
+    author: HumanName
     assignee: OptName = None
     comment: OptComment = Field(None, validate_default=True)
 
@@ -384,14 +500,14 @@ class StatusIn(Camel):
 
 
 class CommentIn(Camel):
-    author: Name
+    author: HumanName
     text: Note
 
 
 class InfoRequestIn(Camel):
     """Внутренний запрос сведений по ЖК: только запись в журнале объекта, во внешние органы не отправляется."""
 
-    author: Name
+    author: HumanName
     topics: list[InfoTopic] = Field(min_length=1, max_length=5)
     comment: OptNote = None
 
@@ -406,7 +522,9 @@ class AnalystOut(Camel):
 
 # ---------- риск ----------
 
-class EvidenceItemOut(Camel):
+class EvidenceItemOut(CompactOut):
+    """Как в движке: отсутствующие поля не выводятся(EvidenceItem в types.ts - все поля необязательные)."""
+
     kind: EvidenceKind
     ref: str | None = None
     label: str | None = None
@@ -417,11 +535,6 @@ class EvidenceItemOut(Camel):
     date: str | None = None
     url: str | None = None
     value: int | float | str | None = None
-
-    @model_serializer(mode="wrap")
-    def _drop_empty(self, handler) -> dict[str, Any]:
-        # как в движке: отсутствующие поля не выводятся(EvidenceItem в types.ts - все поля необязательные)
-        return {k: v for k, v in handler(self).items() if v is not None}
 
 
 class RiskFactorOut(Camel):
@@ -543,19 +656,15 @@ class SignalOut(SignalSummaryOut):
 
 class SignalCreateIn(Camel):
     complex_id: Name
-    author: Name
+    author: HumanName
 
 
 class SignalDecisionIn(Camel):
-    author: Name
+    author: HumanName
     comment: Comment
 
 
 # ---------- ИИ-анализ публикаций(ТЗ §6) ----------
-
-def _drop_none(handler, self) -> dict[str, Any]:
-    return {k: v for k, v in handler(self).items() if v is not None}
-
 
 class AnalyzeIn(Camel):
     """Что анализировать: текст объявления, распознанный скриншот, аккаунт, площадка, ссылка. В БД ничего не пишется."""
@@ -572,7 +681,7 @@ class AnalyzeIn(Camel):
         return no_nul(v)
 
 
-class TermOut(Camel):
+class TermOut(CompactOut):
     """Условие оплаты - гипотеза ИИ: вид, значения, дословная цитата, источник(текст или скриншот), уверенность."""
 
     kind: TermKind
@@ -588,10 +697,6 @@ class TermOut(Camel):
     low: bool
     money: bool
 
-    @model_serializer(mode="wrap")
-    def _out(self, handler) -> dict[str, Any]:
-        return _drop_none(handler, self)
-
 
 class ReasonOut(Camel):
     feature: ReasonFeature
@@ -599,17 +704,13 @@ class ReasonOut(Camel):
     weight: float
 
 
-class LinkHypothesisOut(Camel):
+class LinkHypothesisOut(CompactOut):
     complex_id: str
     complex_name: str
     confidence: float
     low: bool
     reasons: list[ReasonOut]
     quote: str | None = None
-
-    @model_serializer(mode="wrap")
-    def _out(self, handler) -> dict[str, Any]:
-        return _drop_none(handler, self)
 
 
 class AnalysisOut(Camel):
@@ -634,7 +735,7 @@ class AdAnalysisOut(AnalysisOut):
 
 
 class HypothesisIn(Camel):
-    author: Name
+    author: HumanName
     complex_id: Name
 
 
@@ -645,12 +746,12 @@ class HypothesisRejectIn(HypothesisIn):
 class TermsReviewIn(Camel):
     """Решение аналитика по условиям оплаты, найденным ИИ: rejected - "это не предложение внести деньги"(R2 не учитывается)."""
 
-    author: Name
+    author: HumanName
     decision: TermsReview
     comment: OptNote = None
 
 
-class OcrOut(Camel):
+class OcrOut(CompactOut):
     text: str
     engine: Literal["tesseract", "none"]
     confidence: float | None = None
@@ -660,21 +761,13 @@ class OcrOut(Camel):
     preprocess: list[str] = []
     detail: str | None = None
 
-    @model_serializer(mode="wrap")
-    def _out(self, handler) -> dict[str, Any]:
-        return _drop_none(handler, self)
 
-
-class OcrStatusOut(Camel):
+class OcrStatusOut(CompactOut):
     available: bool
     engine: Literal["tesseract", "none"]
     version: str | None = None
     languages: list[str] = []
     detail: str | None = None
-
-    @model_serializer(mode="wrap")
-    def _out(self, handler) -> dict[str, Any]:
-        return _drop_none(handler, self)
 
 
 class AiMetricsOut(Camel):
@@ -734,13 +827,9 @@ class SourceRecordOut(Camel):
     note: str | None = None
 
 
-class RegistryFlagsOut(Camel):
+class RegistryFlagsOut(CompactOut):
     source_section: str | None = None  # раздел источника - как у источника, без оценки
     coords_far_km: int | None = None  # координаты источника далеко от Усть-Каменогорска(км от центра)
-
-    @model_serializer(mode="wrap")
-    def _out(self, handler) -> dict[str, Any]:
-        return _drop_none(handler, self)
 
 
 class RegistryObjectOut(Camel):
@@ -982,24 +1071,23 @@ INTAKE_FUTURE_MIN = 5
 DECISION_KEYS = ("status", "assignee", "complexId", "complex_id", "matchConfidence", "linkConfirmed", "linkConfirmedBy",
                  "linkConfirmedAt", "termsReview", "termsReviewBy", "termsReviewAt", "rejectedLinks", "origin", "source",
                  "id")
-# Канонический externalId по площадке: (шаблон, описание формата в ответе 422)
+# Канонический externalId по площадке: шаблон(вся строка) и описание формата в ответе 422. Цифры - только ASCII:
+# \d совпадает и с "١٢٣", и одна публикация пришла бы под двумя разными externalId
 EXTERNAL_ID_FORMATS = {
-    "telegram": (r"^-?\d{1,20}:\d{1,12}$", "«{ID канала}:{ID первого сообщения}», например 1234567890:15"),
-    "instagram": (r"^\d{1,32}$", "числовой ID медиа Graph API"),
-    "tiktok": (r"^\d{1,32}$", "числовой ID публикации"),
-    "krisha": (r"^\d{1,16}$", "числовой ID объявления"),
-    "olx": (r"^[\w.:@+=-]{1,128}$", "до 128 символов: буквы, цифры и . : @ + = -"),
-    "facebook": (r"^[\w.:@+=-]{1,128}$", "до 128 символов: буквы, цифры и . : @ + = -"),
+    "telegram": (r"-?[0-9]{1,20}:[0-9]{1,12}", "«{ID канала}:{ID первого сообщения}», например 1234567890:15"),
+    "instagram": (r"[0-9]{1,32}", "числовой ID медиа Graph API"),
+    "tiktok": (r"[0-9]{1,32}", "числовой ID публикации"),
+    "krisha": (r"[0-9]{1,16}", "числовой ID объявления"),
+    "olx": (r"[\w.:@+=-]{1,128}", "до 128 символов: буквы, цифры и . : @ + = -"),
+    "facebook": (r"[\w.:@+=-]{1,128}", "до 128 символов: буквы, цифры и . : @ + = -"),
 }
-_HTTP_URL = re.compile(r"^https?://\S+$", re.I)
-_HTTPS_URL = re.compile(r"^https://\S+$", re.I)
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 
 def normalize_external_id(platform: str, value: str) -> str:
     """Проверка формата externalId; Telegram в форме Bot API(-100XXXXXXXXXX) → положительный ID канала Telethon."""
     pattern, fmt = EXTERNAL_ID_FORMATS[platform]
-    if not re.match(pattern, value):
+    if not re.fullmatch(pattern, value):
         raise PydanticCustomError("value_error", "externalId для {platform}: ожидается {format}",
                                   {"platform": platform, "format": fmt})
     if platform == "telegram":
@@ -1011,16 +1099,23 @@ def normalize_external_id(platform: str, value: str) -> str:
     return value
 
 
-def _strip_ctrl(v: Any) -> Any:
+def strip_ctrl(v: Any) -> Any:
     """NUL и управляющие символы(кроме перевода строки и табуляции) удаляются: текст источника не отклоняется из-за них."""
     return _CTRL.sub("", v) if isinstance(v, str) else v
 
 
 def _aware(v: datetime | None, name: str) -> datetime | None:
-    if v is not None and v.tzinfo is None:
+    """Момент с часовым поясом → UTC. Без пояса или вне диапазона datetime после перевода в UTC(0001-01-01T01:00+05:00,
+    9999-12-31T23:00-05:00) - 422, а не OverflowError(500)."""
+    if v is None:
+        return None
+    if v.tzinfo is None:
         raise PydanticCustomError("value_error", "{name}: укажите часовой пояс (например, 2026-10-09T11:10:23Z)",
                                   {"name": name})
-    return v.astimezone(UTC) if v is not None else None
+    try:
+        return v.astimezone(UTC)
+    except OverflowError:
+        raise PydanticCustomError("value_error", "{name}: дата вне допустимого диапазона", {"name": name}) from None
 
 
 class IntakeMediaIn(Camel):
@@ -1034,7 +1129,7 @@ class IntakeMediaIn(Camel):
     @field_validator("url")
     @classmethod
     def _https(cls, v: str) -> str:
-        if not _HTTPS_URL.match(v):
+        if not is_http_url(v, https_only=True):
             raise PydanticCustomError("value_error", "media.url: нужна ссылка https://")
         return v
 
@@ -1047,13 +1142,13 @@ class IntakePublicationIn(Camel):
 
     platform: IntakePlatform
     external_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
-    account: Annotated[str, BeforeValidator(_strip_ctrl), StringConstraints(strip_whitespace=True, max_length=255)] = ""
+    account: Annotated[str, BeforeValidator(strip_ctrl), StringConstraints(strip_whitespace=True, max_length=255)] = ""
     url: Annotated[str, StringConstraints(strip_whitespace=True, max_length=512), AfterValidator(no_nul)] = ""
     published_at: datetime | None = None
     collected_at: datetime | None = None
     text: Annotated[str, Field(max_length=INTAKE_TEXT_MAX)] = ""
-    price: Annotated[str, BeforeValidator(_strip_ctrl), StringConstraints(strip_whitespace=True, max_length=64)] | None = None
-    reach: int | None = Field(None, ge=0)
+    price: Annotated[str, BeforeValidator(strip_ctrl), StringConstraints(strip_whitespace=True, max_length=64)] | None = None
+    reach: int | None = Field(None, ge=0, le=INT32_MAX)
     media: list[IntakeMediaIn] = Field([], max_length=INTAKE_MEDIA_MAX)
     source_id: Annotated[str, StringConstraints(pattern=r"^[a-z0-9_-]{1,32}$")] | None = None
     external_run_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64), AfterValidator(no_nul)] | None = None
@@ -1079,7 +1174,7 @@ class IntakePublicationIn(Camel):
     @field_validator("url")
     @classmethod
     def _url(cls, v: str) -> str:
-        if v and not _HTTP_URL.match(v):
+        if v and not is_http_url(v):
             raise PydanticCustomError("value_error", "url: нужна ссылка http(s):// или пустая строка")
         return v
 
@@ -1228,7 +1323,7 @@ class ComplexListOut(ComplexOut):
     # Документы основания, которые называет открытый реестр(карточка "registry"): подсказка для сверки в один клик
     basis_suggest: dict[str, "BasisSuggestionOut"] | None = None
     # Решение аналитика по "Проверке по рекламе"("сдан" / "проверено - замечаний нет"); null - оценка автоматическая
-    decision: Optional["ScreeningDecisionOut"] = None
+    decision: "ScreeningDecisionOut | None" = None
     gallery: list[GalleryPhotoOut] = []
     homeportal: bool = False  # есть карточка Homeportal в записях реестра - фото можно подгрузить оттуда
 
@@ -1321,12 +1416,12 @@ class DiscoveredOut(Camel):
 
 
 DevName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255), AfterValidator(no_nul)]
-OptDevName = Annotated[DevName | None, BeforeValidator(_blank_to_none)]
-Bin = Annotated[Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\d{12}$")] | None,
-                BeforeValidator(_blank_to_none)]
+OptDevName = Annotated[DevName | None, BeforeValidator(blank_to_none)]
+Bin = Annotated[Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[0-9]{12}$")] | None,
+                BeforeValidator(blank_to_none)]
 ShortText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=255), AfterValidator(no_nul)]
-Lat = Annotated[float | None, Field(None, ge=-90, le=90)]
-Lng = Annotated[float | None, Field(None, ge=-180, le=180)]
+Lat = Annotated[float | None, Field(ge=-90, le=90)]
+Lng = Annotated[float | None, Field(ge=-180, le=180)]
 
 
 def _pair(lat: float | None, lng: float | None) -> None:
@@ -1346,7 +1441,7 @@ class DiscoveredCreateIn(Camel):
     developer_name: OptDevName = None
     developer_bin: Bin = None
     candidate_id: Annotated[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)] | None,
-                            BeforeValidator(_blank_to_none)] = None
+                            BeforeValidator(blank_to_none)] = None
 
     @model_validator(mode="after")
     def _coords(self):
@@ -1430,10 +1525,8 @@ PhotoActivity = Literal["active", "idle", "unknown"]
 DATE_FORMAT_MSG = "дата в формате ГГГГ-ММ-ДД"
 
 
-def today_local():
+def today_local() -> Date:
     """"Сегодня" по Усть-Каменогорску(UTC+5) - даты сверки и обращений не позже него."""
-    from .risk_model import ALMATY
-
     return datetime.now(ALMATY).date()
 
 
@@ -1446,7 +1539,7 @@ def _parse_day(v: Any, *, required: bool = False) -> Any:
         if required:
             raise PydanticCustomError("value_error", "укажите дату")
         return None
-    if isinstance(v, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", v.strip()):
+    if isinstance(v, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", v.strip()):
         try:
             return Date.fromisoformat(v.strip())
         except ValueError:
@@ -1465,7 +1558,7 @@ def _not_future(v: Any) -> Any:
 
 
 def _http_url(v: str | None) -> str | None:
-    if v is not None and not _HTTP_URL.match(v):
+    if v is not None and not is_http_url(v):
         raise PydanticCustomError("value_error", "нужна ссылка, начинающаяся с http:// или https://")
     return v
 
@@ -1473,11 +1566,11 @@ def _http_url(v: str | None) -> str | None:
 Day = Annotated[Date, BeforeValidator(lambda v: _parse_day(v, required=True)), AfterValidator(_not_future)]
 OptDay = Annotated[Date | None, BeforeValidator(_parse_day), AfterValidator(_not_future)]
 SourceText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255), AfterValidator(no_nul)]
-OptSourceText = Annotated[SourceText | None, BeforeValidator(_blank_to_none)]
+OptSourceText = Annotated[SourceText | None, BeforeValidator(blank_to_none)]
 OptUrl = Annotated[Annotated[str, StringConstraints(strip_whitespace=True, max_length=512), AfterValidator(no_nul)] | None,
-                   BeforeValidator(_blank_to_none), AfterValidator(_http_url)]
+                   BeforeValidator(blank_to_none), AfterValidator(_http_url)]
 RefText = Annotated[Annotated[str, StringConstraints(strip_whitespace=True, max_length=500), AfterValidator(no_nul)] | None,
-                    BeforeValidator(_blank_to_none)]
+                    BeforeValidator(blank_to_none)]
 Subject = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000), AfterValidator(no_nul)]
 
 
@@ -1615,7 +1708,7 @@ def _min_text(n: int, msg: str):
 
 
 ActNumber = Annotated[Annotated[str, StringConstraints(strip_whitespace=True, max_length=128), AfterValidator(no_nul)] | None,
-                      BeforeValidator(_blank_to_none)]
+                      BeforeValidator(blank_to_none)]
 DecisionReason = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000), AfterValidator(no_nul),
                            AfterValidator(_min_text(10, "опишите, что проверено, — не короче 10 символов"))]
 CancelReason = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000), AfterValidator(no_nul),
@@ -1662,7 +1755,7 @@ class CoverIn(Camel):
     """Обложка карточки ЖК: src одного из фото объекта; пустой или null - снова автоматическая."""
 
     author: HumanName
-    src: str | None = Field(None, max_length=512)
+    src: Annotated[str, StringConstraints(max_length=512), AfterValidator(no_nul)] | None = None
 
 
 class DecisionCancelIn(Camel):

@@ -309,7 +309,7 @@ def test_demo_r4_unchanged(client):
 
 # ---------- снимки площадки ----------
 
-def photo(client, cid: str, data: bytes = None, name: str = "site.png", mime: str = "image/png", **fields):
+def photo(client, cid: str, data: bytes | None = None, name: str = "site.png", mime: str = "image/png", **fields):
     form = {"author": AUTHOR, "date": "2026-10-01", "source": "Выезд на площадку", "activity": "active", **fields}
     return client.post(f"/api/complexes/{cid}/photos", data={k: v for k, v in form.items() if v is not None},
                        files={"file": (name, data if data is not None else png_bytes(), mime)})
@@ -371,6 +371,27 @@ def test_photo_upload_limit_by_content_length(client):
     r = client.post("/api/complexes/c1/photos", content=b"x", headers={
         "content-type": "multipart/form-data; boundary=x", "content-length": str(media.UPLOAD_MAX + 70 * 1024)})
     assert (r.status_code, r.json()["detail"]) == (413, "Файл больше 10 МБ")
+
+
+# ---------- кнопка Homeportal ----------
+
+def test_homeportal_flag_needs_homeportal_page(client, env):
+    """Кнопка Homeportal(ComplexListOut.homeportal) - по тому же правилу, что загрузка фото(gallery.has_homeportal_pages):
+    запись источника Homeportal со ссылкой не на сайт Homeportal кнопку не даёт - иначе загрузка отвечала бы 422."""
+    live(env)
+    assert cx(client, ORDA)["homeportal"] is True
+    with SessionLocal() as db:
+        R = models.SourceRecord
+        recs = [r for r in db.scalars(select(R).where(R.source.in_(("homeportal", "homeportal_section"))))
+                if demo.complex_id(r.key) == ORDA]
+        assert recs
+        for r in recs:
+            r.source_url = "https://evil.example/homeportal.kz/ru/projects/1329"
+        db.commit()
+    assert cx(client, ORDA)["homeportal"] is False
+    assert next(c for c in client.get("/api/complexes").json() if c["id"] == ORDA)["homeportal"] is False
+    r = client.post(f"/api/complexes/{ORDA}/gallery/fetch", json={"author": AUTHOR})
+    assert r.status_code == 422 and "нет карточки Homeportal" in r.json()["detail"]
 
 
 # ---------- демо-набор без действий аналитика ----------

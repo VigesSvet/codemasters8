@@ -50,11 +50,12 @@ _NOT_PRICE = re.compile(r"взнос|займ|кредит|платеж|плат
 _NONRES_POST = re.compile(r"кладов|сақтау\s+орн|қойма|машино-?мест|коммерческ\w+\s+помещ|коммерциял|офисн\w+\s+помещ|"
                           r"нежил", re.I)
 _NONRES = re.compile(r"паркинг|автотұрақ|" + _NONRES_POST.pattern, re.I)
-_ROOMS = re.compile(r"(\d)\s*-?\s*(?:х\s*)?комн|(одно|двух|двух|трех|трёх|четырех|четырёх)комн|(студи)", re.I)
+_ROOMS = re.compile(r"(?<!\d)(\d)\s*-?\s*(?:х\s*)?комн|(одно|двух|трех|трёх|четырех|четырёх)комн|(студи)", re.I)
 _ROOM_WORDS = {"одно": 1, "двух": 2, "трех": 3, "трёх": 3, "четырех": 4, "четырёх": 4}
 _FULL = re.compile(r"100\s?%[\s-]*(?:предоплат|оплат|төлем)\w*|(?:полн\w+|единовременн\w+)\s+оплат\w*|"
                    r"скидк\w*[^.\n]{0,40}?(?:100\s?%|полн\w+\s+оплат)|(?:только|при)\s+(?:за\s+)?наличн\w+\s+рас+ч[её]т\w*|"
                    r"\(наличн\w+\s+рас+ч[её]т\w*\)", re.I)
+_FROM = re.compile(r"\bот(?![^\W\d_])", re.I)  # цена "от": отдельное слово("от450" - тоже), а не часть "работ", "отдел"
 
 
 def to_number(num: str, mult: str | None = None) -> float | None:
@@ -64,11 +65,17 @@ def to_number(num: str, mult: str | None = None) -> float | None:
     except ValueError:
         return None
     m = (mult or "").lower()
-    if m.startswith("млн") or m.startswith("миллион"):
+    if m.startswith(("млн", "миллион")):
         v *= 1_000_000
-    elif m.startswith("тыс") or m.startswith("т"):
+    elif m.startswith("т"):  # "тыс", "тысяч", "т.р."
         v *= 1_000
     return v
+
+
+def _has_from(s: str, a: int, b: int) -> bool:
+    """Слово "от" начинается в s[a:b]; границы слова - по всему тексту: срез "работ цена" с "от" в начале - не цена "от"."""
+    m = _FROM.search(s, a)
+    return m is not None and m.start() < b
 
 
 def rooms_of(text: str) -> int | None:
@@ -100,9 +107,9 @@ def _explicit(src: str, s: str) -> Obj | None:
                                    or re.match(r"\s*(?:/|за)\s*(?:1\s*)?(?:м|кв)", s[m.end():m.end() + 10], re.I)):
                 continue
             if _ok(v) and not _NONRES.search(_near(s, m.start(), m.end())):
-                pre = s[max(0, m.start() - 12):m.start()].lower()
-                return {"perM2": round(v), "method": "implied" if rx is _IMPLIED else "explicit", "source": src, "quote": quote_at(s, m.start(), m.end()),
-                        "from": "от" in pre or "от" in m.group(0).lower()[:25]}
+                return {"perM2": round(v), "method": "implied" if rx is _IMPLIED else "explicit", "source": src,
+                        "quote": quote_at(s, m.start(), m.end()),
+                        "from": _has_from(s, max(0, m.start() - 12), min(m.end(), m.start() + 25))}
     return None
 
 
@@ -110,8 +117,9 @@ def _areas(s: str) -> list[tuple[float, int, int]]:
     out = []
     for m in _AREA.finditer(s):
         pre, post = s[max(0, m.start() - 25):m.start()].lower(), s[m.end():m.end() + 16].lower()
-        if re.search(r"(?:от|до|\d)\s*$", pre) or re.match(r"\s*(?:-|–|до)\s*\d+(?:[.,]\d+)?\s*(?:м²|м2|кв)", post) or re.search(
-                r"террас|кухн|балкон|лодж|жил\.?\s*площ|санузел|проект\w*\s*—?\s*$|общая площадь проекта", pre):
+        # текст прошёл plain(): тире любого вида здесь - "-"
+        if re.search(r"(?:от|до|\d)\s*$", pre) or re.match(r"\s*(?:-|до)\s*\d+(?:[.,]\d+)?\s*(?:м²|м2|кв)", post) or re.search(
+                r"террас|кухн|балкон|лодж|жил\.?\s*площ|санузел|проект\w*\s*-?\s*$|общая площадь проекта", pre):
             continue
         out.append((float(m.group(1).replace(",", ".")), m.start(), m.end()))
     return out
@@ -152,7 +160,7 @@ def parse(ad: Obj) -> Obj | None:
             if total and area and _ok(total / area):
                 out = {"perM2": round(total / area), "method": "total_area", "total": round(total), "area": area,
                        "source": "price", "quote": f"{ad['price']} · {am.group(1)} м²",
-                       "from": ad["price"].strip().lower().startswith("от")}
+                       "from": bool(_FROM.match(ad["price"].strip()))}
     if out is None and not _NONRES_POST.search(text):
         for src, s in segs:
             out = _explicit(src, s)
@@ -167,7 +175,7 @@ def parse(ad: Obj) -> Obj | None:
                     lo, hi = min(a0, t0), max(a1, t1)
                     q = quote_at(s, lo, hi, 30) if hi - lo < 200 else f"{quote_at(s, t0, t1, 20)} … {quote_at(s, a0, a1, 20)}"
                     out = {"perM2": round(total / area), "method": "total_area", "total": round(total), "area": area,
-                           "source": src, "quote": q, "from": "от" in s[max(0, t0 - 3):t1].lower()}
+                           "source": src, "quote": q, "from": _has_from(s, max(0, t0 - 3), t1)}
     if out is None:
         return {"perM2": None, "fullPayment": full, "rooms": rooms} if full else None
     return {**out, "rooms": rooms, "fullPayment": full}
@@ -211,7 +219,7 @@ def for_ad(a: Obj, ad_id: str) -> Obj | None:
 def report(a: Obj, include_all: bool = False) -> Obj:
     rows = a["rows"]
     items = sorted((r for r in rows if include_all or r["anomaly"] or (r["fullPayment"] and r["perM2"])),
-                   key=lambda r: (not r["anomaly"], -(r["belowPct"] or -999)))
+                   key=lambda r: (not r["anomaly"], -(r["belowPct"] if r["belowPct"] is not None else -999)))
     return {"items": items, "median": a["median"], "n": a["n"], "byRooms": a["byRooms"], "threshold": THRESHOLD,
             "minGroup": MIN_GROUP, "anomalies": sum(r["anomaly"] for r in rows),
             "fullPayment": [{k: r[k] for k in ("adId", "platform", "account", "date", "fullPayment", "perM2", "anomaly")}

@@ -15,9 +15,11 @@ complexes.cover. Фото на риск и "Проверку по рекламе
 """
 import argparse
 import logging
+import re
+import threading
 import uuid
+from collections.abc import Iterable, Iterator
 from typing import Any
-from collections.abc import Iterable
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -26,17 +28,24 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from . import media, models, schemas
-from .db import get_db
+from .db import get_db, get_for_update
+from .verification import complex_or_404, complex_row, data_event, form_errors
 
 log = logging.getLogger("saq.gallery")
 router = APIRouter(tags=["gallery"])
 
 Obj = dict[str, Any]
 OPERATOR = "gallery"  # origin_ref и role фото оператора
-HP_HOST = "api.homeportal.kz"
+HP_SITE = "homeportal.kz"  # карточки объектов(ссылки записей реестра)
+HP_HOST = f"api.{HP_SITE}"  # API и файлы фото
 HP_API = f"https://{HP_HOST}/api/v1"
 HP_SOURCES = ("homeportal", "homeportal_section")
 HP_MAX = 8  # фото одного объекта Homeportal
+# записи реестра загружает открытый импорт: ссылок у ЖК может быть сколько угодно, а запросов к Homeportal - нет
+HP_PAGES_MAX = 3  # карточек Homeportal одного ЖК(у настоящих - 1-3), первые по порядку записей
+HP_FILES_MAX = 16  # загрузок фото за одну подгрузку ЖК
+_PHOTO_ID = re.compile(r"[0-9A-Za-z_-]{1,64}")
+_OBJECT_ID = re.compile(r"[0-9]{1,18}")  # id объекта в ссылке на карточку: только цифры ASCII("١٢" - тоже isdigit)
 AD_MAX = 6  # фото из рекламы в галерее ЖК
 AD_PER_POST = 2
 PLATFORMS = {"instagram": "Instagram", "telegram": "Telegram", "tiktok": "TikTok", "krisha": "Krisha.kz",
@@ -90,8 +99,12 @@ def collect(db: Session, complexes: Iterable[models.Complex],
                 items.append({"src": a.url, "kind": "operator", "source": "Фото оператора", "date": (m.get("at") or "")[:10] or None,
                               "mediaId": a.id, "by": m.get("by"), "note": m.get("note")})
             else:
+                # страница карточки - только ссылка на сайт Homeportal: фото, загруженные до проверки ссылок
+                # (_is_homeportal), могли сохранить любой адрес с "homeportal.kz"
+                page = m.get("page")
                 items.append({"src": a.url, "kind": "homeportal", "source": "Homeportal", "mediaId": a.id,
-                              "url": m.get("page"), "featured": bool(m.get("featured"))})
+                              "url": page if isinstance(page, str) and _is_homeportal(page) else None,
+                              "featured": bool(m.get("featured"))})
         for p in sorted(c.photos or [], key=lambda p: p.get("date") or "", reverse=True):
             if p.get("src"):
                 items.append({"src": p["src"], "kind": "site", "source": p.get("source") or "Фото-мониторинг",
@@ -131,26 +144,15 @@ def collect(db: Session, complexes: Iterable[models.Complex],
 
 # ---------- маршруты ----------
 
-def _complex(db: Session, cid: str, *, lock: bool = False) -> models.Complex:
-    from .verification import _complex as get
-    return get(db, cid, lock=lock)
-
-
-def _event(db: Session, who: str, what: str, cid: str) -> None:
-    db.add(models.AuditEvent(kind="data", who=who, what=what, at=models.utcnow(), complex_id=cid))
-
-
 def _row(db: Session, cid: str) -> Obj:
-    from .verification import _row as row
-    return row(db, _complex(db, cid))
+    return complex_row(db, complex_or_404(db, cid))
 
 
 def _form_author(author: str | None, note: str | None) -> schemas.GalleryUploadIn:
-    from .verification import _form_errors
     try:
         return schemas.GalleryUploadIn.model_validate({k: v for k, v in {"author": author, "note": note}.items() if v is not None})
     except ValidationError as e:
-        raise _form_errors(e) from None
+        raise form_errors(e) from None
 
 
 @router.post("/api/complexes/{cid}/gallery", response_model=schemas.ComplexListOut, response_model_by_alias=True,
@@ -162,16 +164,9 @@ def upload(cid: str, file: UploadFile = File(...), author: str | None = Form(Non
     """Фото объекта от оператора(multipart: file, author, note?): те же пределы, что у скриншота(10 МБ, JPEG / PNG /
     WEBP / GIF по сигнатуре, часовой лимит ручных загрузок). Без закреплённой обложки новое фото становится обложкой."""
     body = _form_author(author, note)
-    _complex(db, cid)
-    data = file.file.read(media.UPLOAD_MAX + 1)
-    if len(data) > media.UPLOAD_MAX:
-        raise HTTPException(413, f"Файл больше {media.UPLOAD_MAX // media.MB} МБ")
+    complex_or_404(db, cid)
     now = models.utcnow()
-    try:
-        media.check_upload_budget(db, now, len(data))
-        st = media.store_bytes(data, allowed=media.IMAGE_TYPES)
-    except media.MediaRejected as e:
-        raise HTTPException(e.status, e.detail) from None
+    st = media.accept_image_upload(db, file.file, now)
     meta = {"complexId": cid, "by": body.author, "at": models.iso(now)}
     if body.note:
         meta["note"] = body.note
@@ -180,12 +175,12 @@ def upload(cid: str, file: UploadFile = File(...), author: str | None = Form(Non
                               status="downloaded", attempts=1, mime=st.mime, size=st.size, sha256=st.sha256,
                               storage_key=st.storage_key, meta=meta, created_at=now, downloaded_at=now)
     db.add(asset)
-    c = _complex(db, cid, lock=True)
+    c = complex_or_404(db, cid, lock=True)
     what = "Фото объекта загружено оператором"
     if not (c.cover or "").strip():
         c.cover = asset.url
         what += " и выбрано обложкой карточки"
-    _event(db, body.author, f"{what}. {body.note}" if body.note else what, cid)
+    data_event(db, body.author, f"{what}. {body.note}" if body.note else what, cid)
     db.commit()
     return _row(db, cid)
 
@@ -194,7 +189,7 @@ def upload(cid: str, file: UploadFile = File(...), author: str | None = Form(Non
              responses={422: {"description": NOT_IN_GALLERY}})
 def set_cover(cid: str, body: schemas.CoverIn, db: Session = Depends(get_db)):
     """Закрепить обложку(src - одно из фото объекта) или вернуть автоматическую(src пустой)."""
-    c = _complex(db, cid, lock=True)
+    c = complex_or_404(db, cid, lock=True)
     src = (body.src or "").strip()
     if src:
         items = collect(db, [c], _attributed(db, c.id))[c.id]
@@ -210,7 +205,7 @@ def set_cover(cid: str, body: schemas.CoverIn, db: Session = Depends(get_db)):
             return _row(db, cid)
         c.cover = ""
         what = "Обложка карточки — снова автоматическая (первое фото по источникам)"
-    _event(db, body.author, what, cid)
+    data_event(db, body.author, what, cid)
     db.commit()
     return _row(db, cid)
 
@@ -222,11 +217,11 @@ def remove(cid: str, mid: str, body: schemas.AuthorIn, db: Session = Depends(get
     a = db.get(models.MediaAsset, mid)
     if a is None or a.origin_ref != OPERATOR or _key_cid(a.source_key or "") != cid:
         raise HTTPException(404, "Фото оператора не найдено")
-    c = _complex(db, cid, lock=True)
+    c = complex_or_404(db, cid, lock=True)
     if (c.cover or "") == a.url:
         c.cover = ""
     db.delete(a)
-    _event(db, body.author, "Фото объекта от оператора удалено", cid)
+    data_event(db, body.author, "Фото объекта от оператора удалено", cid)
     db.commit()
     return _row(db, cid)
 
@@ -235,7 +230,7 @@ def remove(cid: str, mid: str, body: schemas.AuthorIn, db: Session = Depends(get
              responses={422: {"description": NO_HOMEPORTAL}, 502: {"description": "Homeportal не ответил"}})
 def fetch_route(cid: str, body: schemas.AuthorIn, db: Session = Depends(get_db)):
     """Подгрузить фото карточки ЖК с Homeportal(по ссылкам записей открытого реестра)."""
-    c = _complex(db, cid)
+    c = complex_or_404(db, cid)
     pages = homeportal_pages(db, c)
     if not pages:
         raise HTTPException(422, NO_HOMEPORTAL)
@@ -243,42 +238,72 @@ def fetch_route(cid: str, body: schemas.AuthorIn, db: Session = Depends(get_db))
     if rep["errors"] and not rep["added"] and not rep["known"]:
         raise HTTPException(502, "Homeportal не отдал фото: " + "; ".join(rep["errors"][:2]))
     if rep["added"]:
-        _event(db, body.author, f"Фото объекта с Homeportal: добавлено {rep['added']} ({', '.join(pages)}) — фото или "
-                                "визуализация застройщика, не снимок площадки", cid)
+        data_event(db, body.author, _hp_event(rep["added"], pages), cid)
     db.commit()
     return _row(db, cid)
 
 
 def _attributed(db: Session, cid: str) -> dict[str, list[tuple[str, str]]]:
     from . import screening
-    out: list[tuple[str, str]] = []
-    for f in screening.load_facts(db).values():
-        kind = f.targets().get(cid)
-        if kind:
-            out.append((f.id, kind))
-    return {cid: out}
+
+    return {cid: [(f.id, kind) for _, f, kind in screening.attributed_to(db, cid)]}
 
 
 # ---------- Homeportal ----------
 
-def homeportal_pages(db: Session, c: models.Complex) -> list[str]:
-    """Ссылки на карточки Homeportal из записей открытого реестра этого ЖК(projects/{id}, Illegal-projects/{id})."""
-    from . import screening
-    _, rs = screening.registry_groups(db, [c])[c.id]
+def _host(url: str) -> str | None:
+    try:
+        return urlsplit(url).hostname
+    except ValueError:  # "https://[::1" и подобное
+        return None
+
+
+def _is_homeportal(url: str) -> bool:
+    """Ссылка на сайт Homeportal(https://homeportal.kz/... или поддомен): не подстрока "homeportal.kz" где угодно -
+    ссылка уходит в карточку фото(url) и выводится ссылкой на странице."""
+    host = _host(url) or ""
+    return url.lower().startswith(("https://", "http://")) and (host == HP_SITE or host.endswith("." + HP_SITE))
+
+
+def homeportal_page_urls(records: Iterable[Obj]) -> list[str]:
+    """Ссылки на карточки Homeportal из записей открытого реестра ЖК(registry_groups): источник homeportal или
+    homeportal_section, ссылка на сайт Homeportal(_is_homeportal) с id объекта(_api_path - без него фото не загрузить),
+    без повторов объекта(та же карточка под другой ссылкой), по порядку записей, не больше HP_PAGES_MAX."""
     out: list[str] = []
-    for r in rs:
-        url = r.get("sourceUrl") or ""
-        if r.get("source") in HP_SOURCES and "homeportal.kz" in url and url not in out:
-            out.append(url)
+    seen: set[str] = set()
+    for r in records:
+        url = r.get("sourceUrl")
+        if r.get("source") not in HP_SOURCES or not isinstance(url, str) or not _is_homeportal(url):
+            continue
+        ap = _api_path(url)
+        if ap is None or ap[0] in seen:
+            continue
+        seen.add(ap[0])
+        out.append(url)
+        if len(out) == HP_PAGES_MAX:
+            break
     return out
 
 
+def homeportal_pages(db: Session, c: models.Complex) -> list[str]:
+    """Ссылки на карточки Homeportal из записей открытого реестра этого ЖК(projects/{id}, Illegal-projects/{id})."""
+    from . import screening
+    return homeportal_page_urls(screening.registry_groups(db, [c])[c.id][1])
+
+
+def has_homeportal_pages(records: Iterable[Obj]) -> bool:
+    """Есть ли у ЖК карточка Homeportal, откуда подгружаются фото(иначе POST /api/complexes/{id}/gallery/fetch - 422
+    NO_HOMEPORTAL): по записям открытого реестра этого ЖК, то же правило, что у homeportal_page_urls."""
+    return bool(homeportal_page_urls(records))
+
+
 def _api_path(page: str) -> tuple[str, str] | None:
-    """Карточка Homeportal → (путь API, id объекта)."""
+    """Карточка Homeportal → (путь API, id объекта). id - без ведущих нулей: projects/0042 и projects/42 - один объект
+    (повтор в homeportal_page_urls)."""
     parts = [p for p in urlsplit(page).path.split("/") if p]
-    if len(parts) < 2 or not parts[-1].isdigit():
+    if len(parts) < 2 or not _OBJECT_ID.fullmatch(parts[-1]):
         return None
-    oid = parts[-1]
+    oid = str(int(parts[-1]))
     if parts[-2].lower() == "projects":
         return f"objects-detail/{oid}", oid
     if parts[-2].lower() == "illegal-projects":
@@ -291,71 +316,144 @@ def _quote_url(url: str) -> str:
     return urlunsplit((s.scheme, s.netloc, quote(s.path), s.query, ""))
 
 
-def fetch_homeportal(db: Session, c: models.Complex, pages: list[str]) -> Obj:
-    """Фото карточек Homeportal → хранилище и MediaAsset(без commit). Уже загруженные(тот же id фото) пропускаются."""
+def _images(payload: Any) -> list[Obj]:
+    """Фото из ответа API Homeportal(data.images); ответ другой формы - пусто, а не сбой всей подгрузки."""
+    data = payload.get("data") if isinstance(payload, dict) else None
+    images = data.get("images") if isinstance(data, dict) else None
+    return [im for im in images if isinstance(im, dict)][:HP_MAX] if isinstance(images, list) else []
+
+
+def _photo_key(cid: str, im: Obj, oid: str, n: int) -> str:
+    """source_key фото Homeportal: id фото источника, если он короткий и без разделителей, иначе - объект и номер."""
+    pid = im.get("id")
+    if not pid or isinstance(pid, bool) or not isinstance(pid, (int, str)) or not _PHOTO_ID.fullmatch(str(pid)):
+        pid = f"{oid}-{n}"
+    return f"homeportal:{cid}:{pid}"
+
+
+def _hp_keys(db: Session, cid: str) -> set[str]:
+    A = models.MediaAsset
+    return set(db.scalars(select(A.source_key).where(A.source_key.startswith(f"homeportal:{cid}:", autoescape=True))))
+
+
+def _hp_event(added: int, pages: list[str]) -> str:
+    return (f"Фото объекта с Homeportal: добавлено {added} ({', '.join(pages)}) — фото или визуализация застройщика, "
+            "не снимок площадки")
+
+
+def fetch_homeportal(db: Session, c: models.Complex, pages: list[str], *,
+                     stop: threading.Event | None = None) -> Obj:
+    """Фото карточек Homeportal → хранилище и MediaAsset(записи - без commit). Уже загруженные(тот же id фото)
+    пропускаются; загрузок файлов - не больше HP_FILES_MAX(остальные фото - следующей подгрузкой). Несохранённых
+    изменений у вызывающего быть не должно: читающая транзакция фиксируется до сетевых запросов(соединение не занято
+    минутами загрузки, на PostgreSQL - без "idle in transaction"). Загрузка идёт без блокировки; перед записью строка
+    ЖК блокируется и загруженные перечитываются - параллельная подгрузка того же ЖК(повторное нажатие, такт воркера)
+    не добавляет дублей. stop(остановка воркера) - загрузка прерывается перед
+    запросом карточки или на следующем блоке файла(cancel), уже загруженное не записывается(stopped = True): ЖК
+    остаётся без фото Homeportal, и следующая подгрузка(missing_only; воркер после остановки начинает её в первый же
+    такт лидера) возьмёт его целиком, а не наполовину."""
     from .integrations import http
 
-    A = models.MediaAsset
-    have = set(db.scalars(select(A.source_key).where(A.source_key.like(f"homeportal:{c.id}:%"))))
+    halted = stop.is_set if stop is not None else None
+    have = _hp_keys(db, c.id)
+    db.commit()
     rep: Obj = {"added": 0, "known": 0, "errors": []}
+    got: list[models.MediaAsset] = []  # ещё не в сессии: добавляются под блокировкой ЖК
+    files = 0  # загрузки файлов, и неудачные: предел - на время подгрузки, а не только на число фото
     with http.client(base_url=HP_API, timeout=20, headers={"Accept": "application/json"}) as cl:
         for page in pages:
             ap = _api_path(page)
             if ap is None:
                 continue
+            if files >= HP_FILES_MAX:
+                break
+            if halted is not None and halted():
+                return {**rep, "stopped": True}
             path, oid = ap
             try:
                 r = cl.get(f"{HP_API}/{path}")
                 r.raise_for_status()
-                images = ((r.json() or {}).get("data") or {}).get("images") or []
-            except Exception as e:
+                images = _images(r.json())
+            except Exception as e:  # сеть, статус, не JSON - причина в отчёт, остальные карточки грузятся
                 rep["errors"].append(f"{page}: {type(e).__name__}")
                 continue
-            for n, im in enumerate(images[:HP_MAX]):
-                link = im.get("image_link") or ""
-                key = f"homeportal:{c.id}:{im.get('id') or f'{oid}-{n}'}"
+            for n, im in enumerate(images):
+                key = _photo_key(c.id, im, oid, n)
                 if key in have:
                     rep["known"] += 1
                     continue
-                if urlsplit(link).hostname != HP_HOST:
+                link = im.get("image_link")
+                if not isinstance(link, str) or _host(link) != HP_HOST:
                     continue
+                if files >= HP_FILES_MAX:
+                    break
+                files += 1
                 try:
-                    got = http.fetch_to_temp(_quote_url(link), max_bytes=media.UPLOAD_MAX, allowed_mime=media.IMAGE_TYPES,
-                                             allowed_hosts=[HP_HOST], timeout=30)
-                    st = media.store_file(got.path, allowed=media.IMAGE_TYPES)
+                    f = http.fetch_to_temp(_quote_url(link), max_bytes=media.UPLOAD_MAX, allowed_mime=media.IMAGE_TYPES,
+                                           allowed_hosts=[HP_HOST], timeout=30, cancel=halted)
+                    st = media.store_file(f.path, allowed=media.IMAGE_TYPES)
                 except (http.DownloadError, media.MediaRejected) as e:
+                    if halted is not None and halted():  # загрузка прервана остановкой - это не ошибка Homeportal
+                        return {**rep, "stopped": True}
                     rep["errors"].append(f"{link}: {getattr(e, 'detail', None) or e}")
                     continue
                 now = models.utcnow()
-                db.add(A(id=uuid.uuid4().hex, ad_id=None, item_id=None, position=n, kind="image", role=OPERATOR,
-                         source_key=key, origin_ref=f"homeportal:{oid}", origin_url=link[:512], status="downloaded",
-                         attempts=1, mime=st.mime, size=st.size, sha256=st.sha256, storage_key=st.storage_key,
-                         meta={"complexId": c.id, "source": "Homeportal", "page": page, "featured": bool(im.get("is_featured"))},
-                         created_at=now, downloaded_at=now))
+                got.append(models.MediaAsset(
+                    id=uuid.uuid4().hex, ad_id=None, item_id=None, position=n, kind="image", role=OPERATOR,
+                    source_key=key, origin_ref=f"homeportal:{oid}", origin_url=link[:512], status="downloaded",
+                    attempts=1, mime=st.mime, size=st.size, sha256=st.sha256, storage_key=st.storage_key,
+                    meta={"complexId": c.id, "source": "Homeportal", "page": page,
+                          "featured": bool(im.get("is_featured"))},
+                    created_at=now, downloaded_at=now))
                 have.add(key)
-                rep["added"] += 1
+    if not got:
+        return rep
+    get_for_update(db, models.Complex, c.id)  # и на SQLite: голый FOR UPDATE там не блокирует
+    have = _hp_keys(db, c.id)
+    for a in got:
+        if a.source_key in have:  # успела записать параллельная подгрузка
+            rep["known"] += 1
+            continue
+        db.add(a)
+        rep["added"] += 1
     return rep
 
 
-def fetch_all(db: Session, only: list[str] | None = None, *, missing_only: bool = False) -> list[tuple[str, Obj]]:
-    """Фото карточек Homeportal по всем ЖК с такими записями(only - только эти); missing_only - только ЖК, у которых
-    фото Homeportal ещё нет(такт воркера: новые карточки реестра получают фото сами). Каждый ЖК - своей транзакцией."""
+def fetch_each(db: Session, only: list[str] | None = None, *, missing_only: bool = False,
+               stop: threading.Event | None = None, after: str | None = None) -> Iterator[tuple[models.Complex, Obj]]:
+    """Фото карточек Homeportal по ЖК с такими записями, по порядку id(only - только эти, after - только после этого
+    id: продолжение прерванного прохода): (ЖК, отчёт fetch_homeportal) после каждого ЖК. missing_only - только ЖК, у
+    которых фото Homeportal ещё нет(такт воркера: новые карточки реестра получают фото сами). Каждый ЖК - своей
+    транзакцией; записи реестра читаются один раз на весь проход. stop(остановка воркера) проверяется перед каждым ЖК
+    и внутри подгрузки(fetch_homeportal): SIGTERM не ждёт прохода по всему реестру."""
+    from . import screening
+
     A = models.MediaAsset
     have = {_key_cid(k) for k in db.scalars(select(A.source_key).where(A.source_key.like("homeportal:%")))} if missing_only else set()
-    out = []
-    for c in db.scalars(select(models.Complex).order_by(models.Complex.id)):
-        if (only and c.id not in only) or c.id in have:
-            continue
-        pages = homeportal_pages(db, c)
+    q = select(models.Complex).order_by(models.Complex.id)
+    if only:
+        q = q.where(models.Complex.id.in_(only))
+    if after is not None:
+        q = q.where(models.Complex.id > after)
+    cxs = [c for c in db.scalars(q) if c.id not in have]
+    groups = screening.registry_groups(db, cxs)
+    for c in cxs:
+        if stop is not None and stop.is_set():
+            return
+        pages = homeportal_page_urls(groups[c.id][1])
         if not pages:
             continue
-        rep = fetch_homeportal(db, c, pages)
+        rep = fetch_homeportal(db, c, pages, stop=stop)
         if rep["added"]:
-            _event(db, "Система", f"Фото объекта с Homeportal: добавлено {rep['added']} ({', '.join(pages)}) — фото или "
-                                  "визуализация застройщика, не снимок площадки", c.id)
+            data_event(db, "Система", _hp_event(rep["added"], pages), c.id)
         db.commit()
-        out.append((c.name, rep))
-    return out
+        yield c, rep
+
+
+def fetch_all(db: Session, only: list[str] | None = None, *, missing_only: bool = False,
+              stop: threading.Event | None = None) -> list[tuple[str, Obj]]:
+    """Весь проход fetch_each: [(название ЖК, отчёт)]."""
+    return [(c.name, rep) for c, rep in fetch_each(db, only, missing_only=missing_only, stop=stop)]
 
 
 def main(argv: list[str] | None = None) -> int:

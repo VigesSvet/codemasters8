@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Complex, GalleryPhoto } from '../data/types'
 import { loadSnapshot, withSnapshotGallery } from '../data/snapshot'
-import { galleryOf, photoCaption, photoTag } from '../lib/gallery'
+import { galleryOf, photoCaption, photoPage, photoTag } from '../lib/gallery'
 
 const cx = (p: Partial<Complex>) => ({ id: 'x', name: 'x', cover: '', photos: [], ...p }) as Complex
 
@@ -32,5 +32,14 @@ describe('фото объекта', () => {
       if (c.gallery!.some((p) => p.cover)) expect(c.gallery![0].cover).toBe(true)
     }
     expect(withSnapshotGallery(cx({ gallery: [{ src: '/api/media/' + 'a'.repeat(32), kind: 'homeportal', source: 'Homeportal' }] }), {}).gallery).toEqual([])
+  })
+
+  // адрес страницы приходит из записей открытого реестра: не http(s) - ссылки "страница источника" нет
+  it('страница источника - только http(s)', () => {
+    const hp = (url?: string | null) => photoPage({ src: 's', kind: 'homeportal', source: 'Homeportal', url })
+    expect(hp('https://homeportal.kz/ru/projects/953')).toBe('https://homeportal.kz/ru/projects/953')
+    for (const url of ['javascript:alert(1)//homeportal.kz/projects/953', ' JaVaScRiPt:alert(1)', 'data:text/html,1', 'homeportal.kz/ru/projects/953', '', null, undefined]) {
+      expect(hp(url)).toBeUndefined()
+    }
   })
 })

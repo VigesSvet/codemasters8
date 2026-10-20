@@ -18,6 +18,7 @@
 """
 import math
 import re
+from collections.abc import Callable
 from datetime import date, datetime
 from typing import Any
 
@@ -27,6 +28,7 @@ Obj = dict[str, Any]
 NOT_ASSESSED: Obj = MODEL["notAssessed"]
 
 _SENTENCE = re.compile(r"(?<=[.!?…])\s+|\n+")
+_ISO_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 # ---------- текст публикации ----------
@@ -55,7 +57,10 @@ def quote(text: str | None, marker: str) -> str | None:
         words = s.split()
         if len(words) <= T["quoteMaxWords"]:
             return " ".join(words)
-        wi = len(s[:i].split())
+        # номер слова, где начинается маркер: маркер с середины слова("оплат" в "предоплата") - начало этого слова
+        # уже посчитано в head, то же слово, а не следующее
+        head = s[:i]
+        wi = len(head.split()) - (1 if head and not head[-1].isspace() else 0)
         a = max(0, wi - T["quoteWordsBefore"])
         b = min(len(words), wi + T["quoteWordsAfter"])
         return ("… " if a > 0 else "") + " ".join(words[a:b]) + (" …" if b < len(words) else "")
@@ -73,12 +78,19 @@ def terms_rejected(ad: Obj) -> bool:
     return ad.get("termsReview") == "rejected"
 
 
-def _pct(x: float) -> int:
-    return math.floor(x * 100 + 0.5)
+def confidence_pct(x: float | None) -> int:
+    """Уверенность ИИ 0…1 → целые проценты, половина - вверх(как Math.round во фронтенде, а не банковское round);
+    нет значения - 0."""
+    return math.floor((x or 0) * 100 + 0.5)
 
 
 def _num(x: Any) -> Any:
     return int(x) if isinstance(x, float) and x.is_integer() else x
+
+
+def _is_num(x: Any) -> bool:
+    """Конечное число: True/False - не число(во фронтенде typeof - boolean), NaN и бесконечность - тоже."""
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
 
 
 # ---------- сборка результата ----------
@@ -109,7 +121,8 @@ def _ad_item(ad: Obj, marker: str) -> Obj:
                  url=ad.get("url"), marker=marker, quote=q, quoteFrom=("text" if in_text else "ocr") if q else None)
 
 
-def _by_date_desc(xs: list[Obj]) -> list[Obj]:
+def by_date_desc(xs: list[Obj]) -> list[Obj]:
+    """Словари API по дате, новые сверху; при равной дате - по id(порядок строк из БД не задан)."""
     return sorted(sorted(xs, key=lambda x: x["id"]), key=lambda x: x.get("date") or "", reverse=True)
 
 
@@ -117,10 +130,22 @@ def _as_date(as_of: Any) -> date:
     if as_of is None:  # "сегодня" по Усть-Каменогорску, а не по поясу процесса(как today() во фронтенде)
         return datetime.now(ALMATY).date()
     if isinstance(as_of, datetime):
-        return as_of.date()
+        # момент с поясом - дата по Усть-Каменогорску(с 19:00 UTC - уже следующий день); без пояса - как есть
+        return (as_of.astimezone(ALMATY) if as_of.tzinfo is not None else as_of).date()
     if isinstance(as_of, date):
         return as_of
     return date.fromisoformat(str(as_of)[:10])
+
+
+def _iso_day(v: Any) -> date | None:
+    """Дата "YYYY-MM-DD…" из данных карточки; другой формат или несуществующая дата - None(срок не разобран)."""
+    s = str(v or "")[:10]
+    if not _ISO_DAY.fullmatch(s):
+        return None
+    try:
+        return date.fromisoformat(s)
+    except ValueError:
+        return None
 
 
 # ---------- факторы ----------
@@ -172,7 +197,7 @@ def factor_r1(c: Obj) -> Obj:
     return _factor("R1", "unknown", "unknown", items=items)
 
 
-def _ads_factor(code: str, built: bool, linked: list[Obj], pick) -> Obj:
+def _ads_factor(code: str, built: bool, linked: list[Obj], pick: Callable[[dict[str, list[str]]], str | None]) -> Obj:
     """R2/R3: подтверждённая привязка → hit, только гипотеза привязки → unknown.
     R2 не дают публикации, по которым аналитик отклонил условия оплаты("это не предложение внести деньги").
     В доказательства "отклонено аналитиком" идут только публикации, привязанные к ЖК фактом: отклонённая публикация
@@ -211,10 +236,10 @@ def factor_r4(c: Obj, appeals: list[Obj]) -> Obj:
     own = [a for a in appeals if a.get("complexId") == c["id"] and a.get("collective") and a.get("status") != "rejected"]
     item = lambda a: _item(kind="appeal", ref=a["id"], label=a.get("subject"), source=a.get("source"), date=a.get("date"),
                            value=a.get("status"))
-    verified = _by_date_desc([a for a in own if a.get("status") == "verified"])
+    verified = by_date_desc([a for a in own if a.get("status") == "verified"])
     if verified:
         return _factor("R4", "hit", "verified", {"count": len(verified)}, [item(a) for a in verified])
-    pending = _by_date_desc([a for a in own if a.get("status") == "pending"])
+    pending = by_date_desc([a for a in own if a.get("status") == "pending"])
     if pending:
         return _factor("R4", "unknown", "pending", items=[item(a) for a in pending])
     if c.get("origin") in NOT_ASSESSED["origins"]:
@@ -234,7 +259,7 @@ def factor_r5(c: Obj) -> Obj:
     d, k = r.get("declared"), r.get("confirmed")
     items = [_item(kind="readiness", ref=key, label=label, value=_num(x.get("value")), source=x.get("source"), date=x.get("date"))
              for key, label, x in (("declared", "Заявленная готовность", d), ("confirmed", "Подтверждённая готовность", k)) if x]
-    ok = lambda x: bool(x) and isinstance(x.get("value"), (int, float)) and bool(x.get("source")) and bool(x.get("date"))
+    ok = lambda x: bool(x) and _is_num(x.get("value")) and bool(x.get("source")) and bool(x.get("date"))
     if not (ok(d) and ok(k)):
         return _factor("R5", "unknown", "incomplete", items=items)
     # округление до сотых до сравнения и вывода - одинаково с TS(round() в Python - банковское, не годится)
@@ -248,8 +273,9 @@ def factor_r6(c: Obj, as_of: date) -> Obj:
     if c.get("stage") == BUILT:
         return _factor("R6", "clear", "built")
     planned = c.get("plannedEnd")
-    if planned:
-        days = (as_of - date.fromisoformat(planned[:10])).days
+    planned_day = _iso_day(planned)
+    if planned_day is not None:  # срок в другом формате - не просрочка(и не 500 на всю оценку)
+        days = (as_of - planned_day).days
         if days >= T["overdueDays"]:
             return _factor("R6", "hit", "overdue", {"plannedEnd": fmt_date(planned), "days": days},
                            [_item(kind="deadline", ref="plannedEnd", label="Заявленный срок сдачи", date=planned)])
@@ -311,7 +337,7 @@ def assessed(c: Obj, ads: list[Obj], appeals: list[Obj]) -> bool:
     if any(a.get("complexId") == c["id"] and a.get("status") == "verified" for a in appeals):
         return True
     k = (c.get("readiness") or {}).get("confirmed")
-    if k and isinstance(k.get("value"), (int, float)) and k.get("source") and k.get("date"):
+    if k and _is_num(k.get("value")) and k.get("source") and k.get("date"):
         return True
     return any(p.get("date") and p.get("source") for p in c.get("photos") or [])
 
@@ -321,7 +347,7 @@ def score_complex(c: Obj, dev: Obj | None, ads: list[Obj], appeals: list[Obj], a
     проверенных сведений - assessed False, балл 0 и пояснение "риск не оценивается"(факторы - как есть, для справки)."""
     d = _as_date(as_of)
     built = c.get("stage") == BUILT
-    linked = _by_date_desc([a for a in ads if a.get("complexId") == c["id"] and a.get("status") != "dismissed"])
+    linked = by_date_desc([a for a in ads if a.get("complexId") == c["id"] and a.get("status") != "dismissed"])
     factors = [
         factor_r1(c),
         _ads_factor("R2", built, linked, _money_marker),
@@ -369,7 +395,7 @@ def score_ad(ad: Obj, c: Obj | None) -> Obj:
     elif c is None:
         r1 = _factor("R1", "unknown", "R1_no_complex", text=r["R1_no_complex"])
     elif not link_confirmed(ad):
-        r1 = _factor("R1", "unknown", "R1_link_unconfirmed", {"confidence": _pct(ad.get("matchConfidence") or 0)},
+        r1 = _factor("R1", "unknown", "R1_link_unconfirmed", {"confidence": confidence_pct(ad.get("matchConfidence"))},
                      text=r["R1_link_unconfirmed"])
     else:
         r1 = factor_r1(c)

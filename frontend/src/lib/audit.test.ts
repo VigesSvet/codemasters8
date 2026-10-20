@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HUMAN_KINDS, auditPath, linkLine, statusLine } from './audit'
+import { AUDIT_KIND, HUMAN_KINDS, SYSTEM, auditPath, kindOf, linkLine, statusLine } from './audit'
 
 const query = (path: string) => Object.fromEntries(new URLSearchParams(path.split('?')[1] ?? ''))
 
@@ -64,5 +64,11 @@ describe('auditPath', () => {
   it('действия людей — без системных событий и данных', () => {
     expect(HUMAN_KINDS).not.toContain('system')
     expect(HUMAN_KINDS).not.toContain('data')
+    expect(HUMAN_KINDS).not.toContain('connector')  // события подключений - только администратору
+  })
+
+  it('событие подключения - своя подпись, а не "система"', () => {
+    expect(kindOf({ kind: 'connector', who: 'Администратор' }).name).toBe('подключения')
+    expect(kindOf({ kind: 'connector', who: SYSTEM })).toBe(AUDIT_KIND.connector)
   })
 })

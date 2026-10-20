@@ -9,6 +9,11 @@ fetch_to_temp() - загрузка файла по ссылке источник
 перенаправлении и ещё раз при подключении(PublicOnlyBackend подключается к уже проверенному IP: подмена DNS между
 проверкой и подключением не проходит), не больше max_redirects перенаправлений, https→http не выполняется, учётные
 данные - только нужным хостам и только по https, общий срок загрузки, без сжатия, размер и тип файла по сигнатуре.
+allowed_hosts ограничивает исходную ссылку; перенаправление разрешённого хоста(CDN, хранилище Apify → S3) может
+вести на другой публичный хост - он проверяется так же, но учётные данные туда не уходят.
+
+Ссылка разбирается тем же разборщиком, что и запрос(httpx.URL): urlsplit и httpx по-разному понимают пробелы
+и табуляцию в ссылке и IDN, и проверка хоста по одному разбору при подключении по другому пропустила бы чужой хост.
 
 Тесты подменяют TRANSPORT(httpx.MockTransport), RESOLVER, SLEEP и MONOTONIC. Обход защиты сайтов(подмена браузера,
 cookie, решение проверок) здесь не выполняется и не допускается.
@@ -27,7 +32,7 @@ from datetime import datetime, UTC
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from collections.abc import Callable, Iterable
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urlsplit
 
 import httpcore
 import httpx
@@ -54,7 +59,8 @@ MONOTONIC: Callable[[], float] = time.monotonic
 FORBIDDEN_HEADERS = re.compile(r"^(authorization|cookie|x-api-key|x-.*-token)$", re.I)
 REDIRECTS = (301, 302, 303, 307, 308)
 _RETRYABLE = {"network", "timeout"}
-_BAD_HOST = re.compile(r"[\s\x00-\x1f\x7f]")
+# имя хоста после httpx(IDN уже в punycode): метки из букв, цифр, "-" и "_" через точку; иначе - IP-литерал
+_HOSTNAME = re.compile(r"[a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.?", re.I)
 _BOT_PATH = re.compile(r"/bot\d+:[^/]+")
 _NAT64 = ipaddress.ip_network("64:ff9b::/96")
 _NAT64_LOCAL = ipaddress.ip_network("64:ff9b:1::/48")
@@ -145,7 +151,13 @@ class PublicOnlyBackend(httpcore.SyncBackend):
 
     def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
         ips = _resolve(host, port)
-        return super().connect_tcp(ips[0], port, timeout, local_address, socket_options)
+        # адрес недоступен(AAAA первым, а в контейнере нет IPv6) - следующий проверенный; тайм-аут не перебирается
+        for ip in ips[:-1]:
+            try:
+                return super().connect_tcp(ip, port, timeout, local_address, socket_options)
+            except httpcore.ConnectError:
+                continue
+        return super().connect_tcp(ips[-1], port, timeout, local_address, socket_options)
 
     def connect_unix_socket(self, path, timeout=None, socket_options=None):  # pragma: no cover - не используется
         raise DownloadError("blocked_address", "Загрузка через локальный сокет запрещена")
@@ -177,17 +189,26 @@ def redact_url(url: str) -> str:
     return logs.redact(f"{p.scheme.lower()}://{netloc}{path}", limit=512) or ""
 
 
+def _valid_host(host: str) -> bool:
+    """Хост после httpx(raw_host) - IP-литерал или имя из меток(_HOSTNAME); "%", "\\", "/" и пробелы - нет."""
+    return bool(host) and (_literal(host) is not None or _HOSTNAME.fullmatch(host) is not None)
+
+
 def _norm_host(host: str) -> str | None:
-    h = (host or "").strip().rstrip(".").lower()
+    """Хост без регистра и конечной точки, IDN - в punycode так же, как его кодирует httpx(IDNA 2008: "faß.de" →
+    "xn--fa-hia.de", а не "fass.de" кодека idna из stdlib) - сравнивается тот хост, к которому пойдёт запрос.
+    Не имя хоста("evil.com\\.cdn.com", "a%2f.cdn.com") - None: суффикс такой строки не делает её поддоменом."""
+    h = (host or "").strip().rstrip(".")
     if not h:
         return None
     try:
-        return h.encode("idna").decode("ascii")
-    except UnicodeError:
+        h = httpx.URL(scheme="https", host=h).raw_host.decode("ascii").lower()
+    except (httpx.InvalidURL, UnicodeError):
         return None
+    return h if _valid_host(h) else None
 
 
-def host_allowed(host: str, allowed: Iterable[str]) -> bool:
+def host_allowed(host: str, allowed: Iterable[str] | None) -> bool:
     """Хост совпадает с разрешённым или является его поддоменом: "scontent-x.cdninstagram.com" ⊂ "cdninstagram.com",
     "evilcdninstagram.com" - нет. Сравнение после IDNA-кодирования, без регистра и конечной точки."""
     h = _norm_host(host)
@@ -200,32 +221,43 @@ def host_allowed(host: str, allowed: Iterable[str]) -> bool:
     return False
 
 
-def _parts(url: str):
+def _parse(url: "str | httpx.URL") -> httpx.URL:
+    if isinstance(url, httpx.URL):
+        return url
     try:
-        p = urlsplit(str(url))
-        return p, p.port
-    except ValueError:
+        return httpx.URL(str(url))
+    except httpx.InvalidURL:
         raise DownloadError("bad_url", "Некорректная ссылка на файл") from None
 
 
-def check_public(url: str, *, allow_http: bool = False) -> None:
+def _host(u: httpx.URL) -> str:
+    """Хост, к которому подключится httpx: IDN - в punycode, IPv6 - без скобок."""
+    return u.raw_host.decode("ascii", "replace")
+
+
+def _check(u: httpx.URL, allow_http: bool) -> str:
+    """check_public для уже разобранной ссылки → хост(как в _host)."""
+    if u.scheme not in ("http", "https"):
+        raise DownloadError("bad_scheme", "Ссылка на файл должна начинаться с https://")
+    if u.scheme == "http" and not allow_http:
+        raise DownloadError("bad_scheme", f"Файл по http не загружается — нужен https ({redact_url(str(u))})")
+    if u.userinfo:
+        raise DownloadError("bad_url", f"Ссылка с логином или паролем не загружается ({redact_url(str(u))})")
+    host = _host(u)
+    if not _valid_host(host):
+        raise DownloadError("bad_url", "В ссылке на файл нет корректного адреса сервера")
+    port = u.port  # порт по умолчанию для схемы httpx возвращает как None
+    if port not in (None, 80, 443):
+        raise DownloadError("bad_url", f"Порт {port} не разрешён для загрузки файлов ({redact_url(str(u))})")
+    _resolve(host, port or (443 if u.scheme == "https" else 80))
+    return host
+
+
+def check_public(url: "str | httpx.URL", *, allow_http: bool = False) -> None:
     """Ранняя проверка ссылки перед каждым запросом: https(http - только allow_http), без логина/пароля, корректный
     хост, порт не указан или 80/443, все адреса хоста публичные. При подключении PublicOnlyBackend проверяет адрес
     ещё раз."""
-    p, port = _parts(url)
-    scheme = p.scheme.lower()
-    if scheme not in ("http", "https"):
-        raise DownloadError("bad_scheme", "Ссылка на файл должна начинаться с https://")
-    if scheme == "http" and not allow_http:
-        raise DownloadError("bad_scheme", f"Файл по http не загружается — нужен https ({redact_url(url)})")
-    if "@" in p.netloc:
-        raise DownloadError("bad_url", f"Ссылка с логином или паролем не загружается ({redact_url(url)})")
-    host = p.hostname
-    if not host or _BAD_HOST.search(p.netloc):
-        raise DownloadError("bad_url", "В ссылке на файл нет корректного адреса сервера")
-    if port not in (None, 80, 443):
-        raise DownloadError("bad_url", f"Порт {port} не разрешён для загрузки файлов ({redact_url(url)})")
-    _resolve(host, port or (443 if scheme == "https" else 80))
+    _check(_parse(url), allow_http)
 
 
 # ---------- клиенты ----------
@@ -359,62 +391,64 @@ def fetch_to_temp(url: str, *, max_bytes: int, allowed_mime: Iterable[str],
     allowed_mime = set(allowed_mime)
     auth_hosts = tuple(auth_hosts or ())
     allowed = tuple(allowed_hosts) if allowed_hosts is not None else None
-    p, _ = _parts(url)
-    if allowed is not None and not host_allowed(p.hostname or "", allowed):
-        raise DownloadError("host_not_allowed", f"Хост {p.hostname or '?'} не входит в разрешённые для загрузки")
+    current, hops = _parse(url), 0
+    if allowed is not None and not host_allowed(_host(current), allowed):
+        raise DownloadError("host_not_allowed", f"Хост {_host(current) or '?'} не входит в разрешённые для загрузки")
     http_ok = allowed is not None and not auth_headers  # http - только разрешённым хостам и без учётных данных
     base = {"User-Agent": get_settings().user_agent, "Accept-Encoding": "identity", **extra}
-    current, hops = str(url), 0
     with httpx.Client(transport=download_transport(), trust_env=False, cookies=_NoCookies(),
                       timeout=_limits(timeout, deadline - start), follow_redirects=False) as c:
         while True:
+            shown = redact_url(str(current))
             left = deadline - MONOTONIC()
             if left < 0:
-                raise DownloadError("timeout", f"Загрузка не уложилась во время ({redact_url(current)})",
-                                    retryable=True)
+                raise DownloadError("timeout", f"Загрузка не уложилась во время ({shown})", retryable=True)
             if cancel is not None and cancel():
-                raise _cancelled(current)
-            cp, _ = _parts(current)
-            chost = cp.hostname or ""
-            check_public(current, allow_http=http_ok and host_allowed(chost, allowed))
+                raise _cancelled(str(current))
+            chost = _check(current, http_ok and host_allowed(_host(current), allowed))
             h = dict(base)
-            if auth_headers and cp.scheme.lower() == "https" and host_allowed(chost, auth_hosts):
+            if auth_headers and current.scheme == "https" and host_allowed(chost, auth_hosts):
                 h.update(auth_headers)
             try:
                 resp = c.send(c.build_request("GET", current, headers=h, timeout=_limits(timeout, left)), stream=True)
             except DownloadError:
                 raise
             except httpx.TimeoutException:
-                raise DownloadError("timeout", f"Источник не ответил вовремя ({redact_url(current)})") from None
+                raise DownloadError("timeout", f"Источник не ответил вовремя ({shown})") from None
             except httpx.InvalidURL:
-                raise DownloadError("bad_url", f"Некорректная ссылка на файл ({redact_url(current)})") from None
+                raise DownloadError("bad_url", f"Некорректная ссылка на файл ({shown})") from None
             except httpx.DecodingError:
-                raise DownloadError("bad_type", f"Ответ не декодируется ({redact_url(current)})") from None
+                raise DownloadError("bad_type", f"Ответ не декодируется ({shown})") from None
             except (httpx.HTTPError, OSError) as e:
                 raise DownloadError("network", f"Сетевая ошибка при загрузке ({type(e).__name__}, "
-                                               f"{redact_url(current)})") from None
+                                               f"{shown})") from None
             try:
                 if resp.status_code in REDIRECTS and resp.headers.get("location"):
-                    nxt = urljoin(current, resp.headers["location"])
-                    if cp.scheme.lower() == "https" and urlsplit(nxt).scheme.lower() == "http":
+                    # некорректный Location httpx отклоняет ещё в send(RemoteProtocolError → network); join - тем же
+                    # разбором, но и его отказ - DownloadError, а не InvalidURL вызывающему
+                    try:
+                        nxt = current.join(resp.headers["location"])
+                    except httpx.InvalidURL:
+                        raise DownloadError("bad_url", f"Некорректное перенаправление ({shown})") from None
+                    if current.scheme == "https" and nxt.scheme == "http":
                         raise DownloadError("bad_scheme", f"Перенаправление с https на http не выполняется "
-                                                          f"({redact_url(nxt)})")
+                                                          f"({redact_url(str(nxt))})")
                     hops += 1
                     if hops > max_redirects:
                         raise DownloadError("too_many_redirects", f"Слишком много перенаправлений (больше "
-                                                                  f"{max_redirects}): {redact_url(nxt)}")
+                                                                  f"{max_redirects}): {redact_url(str(nxt))}")
                     current = nxt
                     continue
                 if not 200 <= resp.status_code < 300:
                     raise DownloadError(f"http_{resp.status_code}", f"Источник ответил HTTP {resp.status_code} "
-                                                                    f"({redact_url(current)})")
+                                                                    f"({shown})")
                 enc = (resp.headers.get("content-encoding") or "").strip().lower()
                 if enc and enc != "identity":
-                    raise DownloadError("bad_type", f"Сжатый ответ ({enc}) не принимается ({redact_url(current)})")
+                    raise DownloadError("bad_type", f"Сжатый ответ ({enc}) не принимается ({shown})")
                 length = (resp.headers.get("content-length") or "").strip()
-                if length.isdigit() and int(length) > max_bytes:
-                    raise DownloadError("too_large", f"Файл больше {_mb(max_bytes)} МБ ({redact_url(current)})")
-                return _save(resp, current, max_bytes, allowed_mime, deadline, cancel)
+                if length.isascii() and length.isdigit() and int(length) > max_bytes:
+                    raise DownloadError("too_large", f"Файл больше {_mb(max_bytes)} МБ ({shown})")
+                return _save(resp, str(current), max_bytes, allowed_mime, deadline, cancel)
             finally:
                 resp.close()
 
@@ -430,8 +464,13 @@ def retry_after(headers, default: float) -> float:
     if raw is not None:
         s = str(raw).strip()
         try:
-            secs = float(int(s)) if s.isdigit() else (
-                parsedate_to_datetime(s).astimezone(UTC) - datetime.now(UTC)).total_seconds()
+            if s.isascii() and s.isdigit():  # только ASCII-цифры(RFC 9110): "١٢٠" int() принял бы как 120
+                secs = float(int(s))
+            else:
+                when = parsedate_to_datetime(s)
+                if when.tzinfo is None:  # "-0000" даёт дату без пояса; HTTP-дата всегда GMT(RFC 9110), не местное время
+                    when = when.replace(tzinfo=UTC)
+                secs = (when - datetime.now(UTC)).total_seconds()
         except (TypeError, ValueError, OverflowError):
             secs = float(default)
     return float(min(max(secs, 1.0), 86400.0))

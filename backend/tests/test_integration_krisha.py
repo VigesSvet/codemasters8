@@ -195,6 +195,22 @@ def test_window_data_parsed_without_js_and_sanitized(kr):
     assert kr.sanitize_window_data(["не объект"]) == {}
 
 
+def test_window_data_too_deep_is_not_a_crash(kr):
+    """Вложенность глубже предела интерпретатора("[[[[…" со страницы) - не RecursionError всего запуска, а "данных нет";
+    следующее присваивание по-прежнему разбирается."""
+    deep = "<script>window.data = " + "[" * 100_000 + "</script>"
+    assert kr.extract_window_data(deep) is None
+    assert kr.parse_search(deep) == ({}, [])
+    assert kr.extract_window_data(deep + '<script>window.data = {"search": {"ids": [1]}};</script>') == {
+        "search": {"ids": [1]}}
+
+
+def test_advert_photos_capped(kr):
+    photos = [{"src": f"https://photos.kcdn.kz/x/{i}-750x470.jpg"} for i in range(1000)]
+    got = kr.sanitize_window_data({"advert": {"id": 1, "photos": photos}})["advert"]["photos"]
+    assert got == photos[:kr.MAX_PHOTOS]
+
+
 def test_nb_total_with_digit_grouping(kr):
     """Живая выдача: nbTotal - строка с разделителем разрядов; общее число не теряется, мусор не принимается."""
     for value, expected in (("1 234", 1234), ("12\u00a0345", 12345), ("1\u202f000", 1000), (" 7 ", 7), (42, 42),
@@ -786,6 +802,9 @@ def test_robots_unavailable_retries_and_404_allows(client, kr, site, run_worker,
     r = run(run_worker)
     assert r.status == "running"  # 5xx robots.txt - повтор задания, выдача не запрашивалась
     assert site.requests() == [ROBOTS_URL]
+    with SessionLocal() as db:
+        job = db.scalars(select(models.Job).where(models.Job.collector == "krisha")).one()
+    assert job.last_error == "robots.txt Krisha недоступен (HTTP 503) — сбор отложен до получения правил"
     site.mock.on("GET", ROBOTS_URL, status=404)
     r = run(run_worker, now=models.utcnow() + timedelta(minutes=10))
     assert r.status == "partial" and r.items_new == 3
@@ -865,8 +884,8 @@ def test_time_up_marks_partial(client, kr, site, run_worker, monkeypatch):
 # ---------- 11. Playwright(необязательный) ----------
 
 class FakeRoute:
-    def __init__(self, url: str):
-        self.request = SimpleNamespace(url=url)
+    def __init__(self, url: str, resource_type: str = "document"):
+        self.request = SimpleNamespace(url=url, resource_type=resource_type)
         self.result = None
 
     def continue_(self):
@@ -1005,6 +1024,12 @@ def test_playwright_blocked_navigation_is_not_used(client, kr, site, run_worker,
     assert results == {"https://evil.example/x.js": "abort", "https://krisha.kz/a/show/1": "continue",
                        "https://photos.kcdn.kz/a.jpg": "continue", "https://krisha.kz.evil.example/": "abort",
                        LIVE_CDN + "1/1-750x470.webp": "continue", "https://kcdn.online.evil.example/": "abort"}
+    # нужен только ответ навигации: стили, картинки и скрипты не загружаются, http - тоже нет
+    for url, kind in (("https://krisha.kz/static/app.css", "stylesheet"), (LIVE_CDN + "1/1-750x470.webp", "image"),
+                      ("https://krisha.kz/static/app.js", "script"), ("http://krisha.kz/a/show/1", "document")):
+        route = FakeRoute(url, kind)
+        handler(route)
+        assert route.result == "abort", (url, kind)
 
 
 def test_playwright_ok_card_and_redirect_refused(client, kr, site, run_worker, ocr_stub, monkeypatch, env):
@@ -1132,3 +1157,64 @@ def test_acceptance_limit_no_endless_loop(client, kr, site, run_worker, ocr_stub
     assert len(site.mock.calls) > calls and count(models.IngestItem) == 3
     with SessionLocal() as db:
         assert db.execute(text("SELECT count(*) FROM collection_runs WHERE collector = 'krisha'")).scalar() == 2
+
+
+# ---------- перенаправления - разбором httpx; Retry-After и Content-Length - только ASCII-цифры ----------
+
+def test_redirects_parsed_like_the_request(client, kr, site, run_worker, ocr_stub, monkeypatch):
+    """Ссылку перенаправления разбирает httpx - тот же разборщик, что выполняет запрос."""
+    monkeypatch.setattr(http, "SLEEP", lambda s: None)
+    site.setup(cards="block")
+    moved = SEARCH_URL + "?das[live.rooms]=3"
+    configure(searchUrls=[moved])
+    # "\\@": urlsplit и httpx видят в такой ссылке разные хосты - логин в ссылке, переход не выполняется
+    site.mock.on("GET", moved, status=302, headers={"location": "https://krisha.kz\\@evil.example/prodazha/"})
+    r = run(run_worker)
+    assert r.status == "failed" and "перенаправляет на другой адрес" in r.error, r.error
+    assert all(c.url.host == "krisha.kz" for c in site.mock.calls if not PHOTO.search(str(c.url)))
+    # регистр схемы и хоста и явный порт 443 - тот же https://krisha.kz
+    site.mock.on("GET", moved, status=301,
+                 headers={"location": "HTTPS://KRISHA.KZ:443/prodazha/kvartiry/ust-kamenogorsk/"})
+    r = run(run_worker)
+    assert r.status == "partial" and r.items_new == 3
+    assert site.requests(r"/prodazha/")[-1] == SEARCH_URL
+
+
+def test_retry_after_ascii_digits_only():
+    assert http.retry_after({"Retry-After": " 120 "}, 900) == 120
+    assert http.retry_after({"Retry-After": "١٢٠"}, 900) == 900  # арабско-индийские цифры int() принял бы
+    assert http.retry_after({"Retry-After": "²"}, 900) == 900  # isdigit - да, int() - ValueError
+
+
+def test_content_length_unicode_digit_is_ignored(client, http_mock):
+    """Content-Length "²"(байт 0xB2 в latin-1): раньше int() бросал ValueError из fetch_to_temp, теперь заголовок
+    не учитывается - размер проверяется по телу."""
+    from app import media
+
+    body = png_bytes((1, 2, 3))
+    http_mock.on("GET", LIVE_CDN + "1/x.png",
+                 handler=lambda r: httpx.Response(200, headers=[(b"content-length", b"\xb2")], content=body))
+    f = http.fetch_to_temp(LIVE_CDN + "1/x.png", max_bytes=1 << 20, allowed_mime=media.IMAGE_TYPES)
+    try:
+        assert f.size == len(body) and f.mime == "image/png"
+    finally:
+        f.path.unlink(missing_ok=True)
+
+
+# ---------- состояние подключения ----------
+
+def test_save_state_locks_row_and_keeps_other_keys(client, kr, run_ctx, monkeypatch):
+    """save_state - чтение-изменение-запись state под блокировкой строки(service.row(lock=True)): ключ, который
+    маршрут записал в state после начала запуска, не затирается."""
+    ctx = run_ctx("krisha", state={"robots": {"text": "", "at": 0}})
+    set_row(state={"robots": {"text": "", "at": 0}, "pausedBy": "маршрут"})
+    calls: list[dict] = []
+    real = service.row
+
+    def spy(db, code, **kw):
+        calls.append(kw)
+        return real(db, code, **kw)
+    monkeypatch.setattr(service, "row", spy)
+    ctx.save_state(robots={"text": "User-agent: *", "at": 1})
+    assert calls == [{"create": True, "lock": True}]
+    assert row().state == {"robots": {"text": "User-agent: *", "at": 1}, "pausedBy": "маршрут"}

@@ -15,7 +15,7 @@ import { plain } from '../lib/plain'
 import {
   DISCOVERED_TABS, DISMISS_PRESETS, NO_DISCOVERED, STAGE_LABEL, countDiscovered, createBody, createForm, createFromDiscovered, createProblem,
   decisionText, dismissDiscovered, geoPicks, linkDiscovered, listDiscovered, mergeChecks, parseDiscoveredTab, pickComplexes, runDiscoveredGeo,
-  saleLine, signalTypesLine, sourcesLine, stageLine, type CreateForm,
+  saleLine, signalTypesLine, sourceLinks, sourcesLine, stageLine, type CreateForm,
 } from '../lib/discovered'
 import { GEO_COPY, cacheLine, candidateDistance, candidatePoint, candidateTitle, fmtDist, fmtPoint, isExact, precisionLabel } from '../lib/geo'
 import { from } from '../lib/nav'
@@ -184,6 +184,8 @@ function ObjectCard({ o, g, author, admin, ro, onGeo, onCreate, onLink, onDismis
   const decision = decisionText(o)
   const types = signalTypesLine(o.saleSignals.types)
   const src = sourcesLine(o.sources)
+  // ссылки на публикации - только http(s), остальные не показываем
+  const links = sourceLinks(o.sourceUrls)
   const lastCheck = (o.geo ?? []).find((c) => !c.purged) ?? null
   const can = !!author && !ro
   // недоступная кнопка объясняет почему
@@ -252,7 +254,7 @@ function ObjectCard({ o, g, author, admin, ro, onGeo, onCreate, onLink, onDismis
               <span>Признаки продажи</span>
               <span>{saleLine(o.saleSignals, s?.counts.windowDays)}{types && <span className="t-xs c2" style={{ display: 'block', marginTop: 2 }}>{types}</span>}
                 {o.saleSignals.lastAdAt && <span className="t-xs c2" style={{ display: 'block' }}>последняя публикация {fmtShort(o.saleSignals.lastAdAt)}</span>}</span>
-              {o.sourceUrls.length > 0 && <><span>Ссылки</span><span style={{ overflowWrap: 'anywhere' }}>{o.sourceUrls.slice(0, 3).map((u) => <a key={u} className="link t-sm" href={u} target="_blank" rel="noreferrer" style={{ display: 'block' }}>{u}</a>)}</span></>}
+              {links.length > 0 && <><span>Ссылки</span><span style={{ overflowWrap: 'anywhere' }}>{links.map((u) => <a key={u} className="link t-sm" href={u} target="_blank" rel="noreferrer" style={{ display: 'block' }}>{u}</a>)}</span></>}
             </div>
           </div>
         </div>

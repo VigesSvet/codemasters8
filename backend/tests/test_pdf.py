@@ -136,3 +136,20 @@ def test_demo_marks_and_document_provenance(client):
     assert pdf._document({"label": "Разрешение МИО", "value": "no"}).endswith("— источник не указан")
     # снимок сигнала без поля origin(созданный до блока E) - тоже демо
     assert pdf._demo({"name": "x"}) and not pdf._demo({"origin": "analyst"}) and not pdf._demo(None)
+
+
+def test_markup_is_escaped_everywhere():
+    """Текст из данных не становится разметкой ReportLab: <, > и & экранируются и в строковом значении таблицы
+    "название - значение", и в ссылках; пустой БИН застройщика не печатается как "БИН "."""
+    t = pdf._kv([("Ключ <b>", "значение <font size=40>&amp;")])
+    assert _text(t) == "Ключ <b>\nзначение <font size=40>&amp;"
+    assert pdf.link('https://x.kz/?a=1&b="2"<script>') == (
+        '<a href="https://x.kz/?a=1&amp;b=&quot;2&quot;&lt;script&gt;" color="#1a56db">'
+        'https://x.kz/?a=1&amp;b="2"&lt;script&gt;</a>')
+    assert pdf.link_text({"matchConfidence": 0.125}) == "привязка — гипотеза ИИ 13%, в балл не входит"
+    assert pdf.link_text({}) == "привязка — гипотеза ИИ 0%, в балл не входит"
+    sig_dev = {"name": "ТОО «X»", "bin": "", "origin": "analyst"}
+    row = pdf._object({"evidence": {"complex": {"name": "Y", "origin": "analyst"}, "developer": sig_dev}})
+    assert "ТОО «X»" in _text(row) and "БИН" not in _text(row)
+    # документ без значения - "нет данных"(как unknown), а не пустое место
+    assert pdf._document({"label": "Разрешение МИО", "value": None}) == "<b>Разрешение МИО</b>: нет данных — не проверялся"

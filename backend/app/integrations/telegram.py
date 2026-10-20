@@ -19,7 +19,8 @@ import asyncio
 import fcntl
 import os
 import re
-from contextlib import contextmanager
+import struct
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 from collections.abc import Callable, Iterator
@@ -42,6 +43,8 @@ SESSION_INVALID = "Сессия Telegram недействительна — по
 SESSION_BUSY = "Сессия Telegram занята другим процессом"
 TIME_UP = "Время запуска истекло — продолжим в следующий раз"
 PRIVATE_CHANNEL = "Закрытые каналы не поддерживаются — укажите публичный канал (t.me/имя)"
+OLD_FORMAT = "Файл сессии в старом формате — войдите заново"
+UNREADABLE = "Файл сессии Telegram не читается"
 NEW_MAX = 500  # новых сообщений канала за один запуск; остальные - в следующий
 ALBUM_SPAN = 9  # альбом - до 10 сообщений подряд: дочитываются ID first−9 … last+9
 RETRY_MAX = 100  # публикаций канала, файлы которых ждут повторной загрузки
@@ -49,7 +52,8 @@ RETRY_MAX = 100  # публикаций канала, файлы которых 
 _NOT_FOUND = ("No user has ", "Cannot find any entity")
 # ValueError Telethon после исчерпанных повторов(без raise_last_call_error) - временный сбой Telegram
 _UNSUCCESSFUL = "Request was unsuccessful"
-_CHANNEL =re.compile(r"^[A-Za-z][A-Za-z0-9_]{3,31}$")
+_SQLITE = b"SQLite format 3"  # сессия Telethon в старом формате(файл SQLite вместо StringSession)
+_CHANNEL = re.compile(r"^[A-Za-z][A-Za-z0-9_]{3,31}$")
 _LINK = re.compile(r"^(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me|telegram\.dog)/", re.I)
 
 
@@ -75,11 +79,16 @@ class _TimeUp(Exception):
 def make_client(session: str, api_id: int, api_hash: str):
     """Клиент Telethon на StringSession: без приёма обновлений; FloodWait до 30 с Telethon выжидает сам, дольше -
     FloodWaitError(пауза источника). raise_last_call_error: исчерпав повторы, Telethon бросает последнюю ошибку
-    Telegram(ServerError, TimedOutError…), а не безликий ValueError - сбой Telegram не похож на "канал не найден"."""
+    Telegram(ServerError, TimedOutError…), а не безликий ValueError - сбой Telegram не похож на "канал не найден".
+    Испорченный текст сессии(не base64, не та длина) - AuthExpired: нужен вход заново, а не "внутренняя ошибка"."""
     from telethon import TelegramClient
     from telethon.sessions import StringSession
 
-    return TelegramClient(StringSession(session or None), api_id, api_hash, receive_updates=False,
+    try:
+        string_session = StringSession(session or None)
+    except (ValueError, struct.error):
+        raise AuthExpired(SESSION_INVALID) from None
+    return TelegramClient(string_session, api_id, api_hash, receive_updates=False,
                           flood_sleep_threshold=30, request_retries=3, timeout=20, raise_last_call_error=True)
 
 
@@ -89,14 +98,26 @@ def new_client(session: str, s: Settings):
     return factory(session, int(s.tg_api_id or 0), s.tg_api_hash.get())
 
 
+def _local_error(e: OSError, text: str) -> NotConfigured:
+    """Сбой файловой системы с файлом сессии(каталог вместо файла, том только для чтения, ошибка диска) - не сеть:
+    иначе map_error показал бы "Нет связи с Telegram" и задание повторялось бы впустую. PermissionError сюда не
+    попадает - у него свои тексты(map_error, telegram_login)."""
+    return NotConfigured(f"{text} ({type(e).__name__})")
+
+
 @contextmanager
 def session_lock(path: Path) -> Iterator[None]:
     """Неблокирующая монопольная блокировка "<path>.lock"(0600): один процесс с сессией за раз;
     занято - SessionBusy."""
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock = Path(f"{path}.lock")
-    fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
+    except PermissionError:
+        raise
+    except OSError as e:
+        raise _local_error(e, "Каталог сессии Telegram недоступен") from e
     try:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -116,6 +137,10 @@ def _checked(path: Path) -> os.stat_result | None:
         st = path.stat()
     except FileNotFoundError:
         return None
+    except PermissionError:
+        raise
+    except OSError as e:
+        raise _local_error(e, UNREADABLE) from e
     if st.st_mode & 0o077 or st.st_uid != os.geteuid():
         raise NotConfigured("Файл сессии Telegram доступен другим пользователям — исправьте права (chmod 600) и "
                             "владельца")
@@ -129,9 +154,14 @@ def read_private(path: Path) -> str | None:
     st = _checked(path)
     if st is None or st.st_size == 0:
         return None
-    data = path.read_bytes()
-    if data.startswith(b"SQLite format 3"):
-        raise NotConfigured("Файл сессии в старом формате — войдите заново")
+    try:
+        data = path.read_bytes()
+    except PermissionError:
+        raise
+    except OSError as e:
+        raise _local_error(e, UNREADABLE) from e
+    if data.startswith(_SQLITE):
+        raise NotConfigured(OLD_FORMAT)
     value = data.decode("utf-8", "replace").strip()
     return value or None
 
@@ -190,9 +220,9 @@ def session_problem(path: Path) -> str | None:
     except NotConfigured as e:
         return e.detail
     except OSError as e:
-        return f"Файл сессии Telegram не читается ({type(e).__name__})"
-    if head.startswith(b"SQLite format 3"):
-        return "Файл сессии в старом формате — войдите заново"
+        return _local_error(e, UNREADABLE).detail
+    if head.startswith(_SQLITE):
+        return OLD_FORMAT
     return None
 
 
@@ -200,9 +230,7 @@ def session_present(path: Path) -> bool:
     """Файл сессии есть, не пустой, права и владелец в порядке(без сети и без чтения содержимого)."""
     try:
         st = _checked(Path(path))
-    except NotConfigured:
-        return False
-    except OSError:
+    except (NotConfigured, OSError):
         return False
     return st is not None and st.st_size > 0 and session_problem(path) is None
 
@@ -320,7 +348,8 @@ def map_error(e: BaseException) -> BaseException:
     if isinstance(e, ConnectorError):
         return e
     if isinstance(e, errors.FloodError):
-        secs = int(getattr(e, "seconds", 0) or 0) or 3600
+        secs = int(getattr(e, "seconds", 0) or 0)
+        secs = min(max(secs, 1), 86400) if secs else 3600  # 1 с…сутки, как http.retry_after; не указана - час
         return RateLimited(secs, f"Telegram просит подождать {secs} с (FloodWait) — сбор продолжится после паузы")
     if isinstance(e, (errors.UserDeactivatedError, errors.UserDeactivatedBanError)):
         return AuthExpired("Аккаунт Telegram сборщика удалён или заблокирован — нужен вход другим аккаунтом")
@@ -449,10 +478,8 @@ class TelegramConnector(Connector):
                 raise AuthExpired(SESSION_INVALID)
             return await body(ctx, client)
         finally:
-            try:
+            with suppress(Exception):  # отключение не меняет итог запуска
                 await client.disconnect()
-            except Exception:
-                pass
 
     # --- проверка ---
 
@@ -518,11 +545,9 @@ class TelegramConnector(Connector):
             raise BadConfig("Список каналов пуст — добавьте каналы в настройках")
         chans = {k: dict(v) for k, v in (ctx.state.get("channels") or {}).items()}
         bad: list[str] = []
-        done = 0
         try:
             for name in names:
                 self._deadline(ctx)
-                done += 1
                 try:
                     peer = await self._peer(ctx, client, name, chans)
                 except _Unavailable as e:
@@ -543,7 +568,7 @@ class TelegramConnector(Connector):
         except _TimeUp:
             ctx.mark_partial(TIME_UP)
             return
-        if done == len(names) and len(bad) == len(names):
+        if len(bad) == len(names):
             raise BadConfig(f"Ни один канал не доступен: {'; '.join(bad)}")
 
     @staticmethod
@@ -693,55 +718,51 @@ class TelegramConnector(Connector):
 
         s = ctx.settings
         ref = f"telegram:{ch_id}/{m.id}"
+
+        def missed(status: str, error: str) -> MediaIn:
+            return MediaIn(key=key, kind=kind, role=role, status=status, origin_ref=ref, error=error)
+
         timeout = float(s.tg_download_timeout_s)
         photo = getattr(m, "photo", None) is not None
         if not photo:
             size = int(getattr(getattr(m, "file", None), "size", None) or 0)
             if size > s.tg_max_video_mb * 1024 * 1024:
                 what = "Видео больше" if kind == "video" else "Файл больше"
-                return MediaIn(key=key, kind=kind, role=role, status="skipped", origin_ref=ref,
-                               error=f"{what} {s.tg_max_video_mb} МБ — не загружено")
-        path: Path | None = None
+                return missed("skipped", f"{what} {s.tg_max_video_mb} МБ — не загружено")
+        path: Path | None = None  # временный файл загрузки
+        saved: Path | None = None  # куда Telethon сохранил файл(обычно path)
         try:
             if photo:
                 data = await asyncio.wait_for(client.download_media(m, file=bytes), timeout)
                 if not data:
-                    return MediaIn(key=key, kind=kind, role=role, status="unavailable", origin_ref=ref,
-                                   error="Telegram не отдал файл")
+                    return missed("unavailable", "Telegram не отдал файл")
                 return ctx.store_media(bytes(data), key=key, kind=kind, role=role, origin_ref=ref)
             path = ctx.temp_path(".bin")
             got = await asyncio.wait_for(client.download_media(m, file=str(path)), timeout)
-            target = Path(got) if got else path
-            if target.parent.resolve() != path.parent.resolve():  # не во временном каталоге хранилища - не берём
-                Path(target).unlink(missing_ok=True)
-                return MediaIn(key=key, kind=kind, role=role, status="failed", origin_ref=ref,
-                               error="Файл сохранён не во временный каталог — отклонён")
-            if not target.is_file():
-                return MediaIn(key=key, kind=kind, role=role, status="unavailable", origin_ref=ref,
-                               error="Telegram не отдал файл")
-            if target != path:
-                path = target
-            return ctx.store_media(target, key=key, kind=kind, role=role, origin_ref=ref)
+            saved = Path(got) if got else path
+            if saved.parent.resolve() != path.parent.resolve():  # не во временном каталоге хранилища - не берём
+                return missed("failed", "Файл сохранён не во временный каталог — отклонён")
+            if not saved.is_file():
+                return missed("unavailable", "Telegram не отдал файл")
+            return ctx.store_media(saved, key=key, kind=kind, role=role, origin_ref=ref)
         except TimeoutError:
-            return MediaIn(key=key, kind=kind, role=role, status="failed", origin_ref=ref,
-                           error=f"Файл не загружен из Telegram за {timeout:g} с")
+            return missed("failed", f"Файл не загружен из Telegram за {timeout:g} с")
         except errors.FileReferenceExpiredError:
             if again:
-                return MediaIn(key=key, kind=kind, role=role, status="failed", origin_ref=ref,
-                               error="Ссылка на файл в Telegram устарела")
+                return missed("failed", "Ссылка на файл в Telegram устарела")
             fresh = await client.get_messages(peer, ids=m.id)
             if fresh is None:
-                return MediaIn(key=key, kind=kind, role=role, status="unavailable", origin_ref=ref,
-                               error="Сообщение удалено в Telegram")
+                return missed("unavailable", "Сообщение удалено в Telegram")
             return await self._download(ctx, client, peer, ch_id, fresh, key, kind, role, again=True)
         except _fatal_errors():
             raise
         except Exception as e:
-            return MediaIn(key=key, kind=kind, role=role, status="failed", origin_ref=ref,
-                           error=f"Файл не загружен из Telegram ({type(e).__name__})")
+            return missed("failed", f"Файл не загружен из Telegram ({type(e).__name__})")
         finally:
-            if path is not None:
-                path.unlink(missing_ok=True)  # частичная загрузка; сохранённый файл уже перенесён в хранилище
+            # частичная загрузка или отклонённый файл; принятый уже перенесён в хранилище
+            for p in (path, saved):
+                if p is not None:
+                    p.unlink(missing_ok=True)
 
 
 CONNECTOR = TelegramConnector()

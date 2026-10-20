@@ -5,6 +5,7 @@ import type { Complex, Developer, Discovered, DiscoveredCreateIn, DiscoveredGeoR
 import { adminCall } from './admin'
 import { apiGet, apiPost, isRouteMissing, orNoRoute } from './api'
 import { rankComplex } from './find'
+import { externalUrl } from './platform'
 import { signalName } from './screening'
 
 // ---------- Запросы ----------
@@ -85,6 +86,12 @@ export const SOURCE_LABEL: Record<string, string> = { parser: 'сборщик', 
 export function sourcesLine(sources?: Record<string, number> | null): string {
   return Object.entries(sources ?? {}).filter(([, n]) => typeof n === 'number' && n > 0)
     .map(([k, n]) => `${SOURCE_LABEL[k] ?? k} — ${n}`).join(' · ')
+}
+
+/** Ссылки объекта на публикации: только http(s)(externalUrl, как в AdDetail), без повторов, не больше max - адрес
+ *  из рекламы или от жителя не исполняется как javascript: */
+export function sourceLinks(urls?: readonly string[] | null, max = 3): string[] {
+  return [...new Set((urls ?? []).map((u) => externalUrl(u)).filter((u): u is string => !!u))].slice(0, max)
 }
 
 /** Решение по объекту: «Привязан к ЖК «X» — Иванов» / «Отклонён: причина — Иванов»; новый — null */

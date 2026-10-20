@@ -1,26 +1,32 @@
+import ipaddress
 import logging
 import re
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from datetime import date
-from typing import get_args
+from typing import ClassVar, get_args
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
+from starlette.datastructures import Headers
 
-from . import (ads_service, ai, changes, decisions, discovery, gallery, importer, logs, media, models, registry, satstage,
-               schemas, screening, signals, verification, world)
-from .ads_service import REASON_NAMES, _event, _pct, _why  # noqa: F401 - прежние имена main(журнал, гипотезы)
+from . import (ads_service, ai, auth, changes, decisions, discovery, gallery, importer, letters, logs, media, models,
+               registry, route, satstage, schemas, screening, signals, verification, world)
+from .ads_service import _event
 from .ai import evaluate, ocr as ocr_engine
+from .alerts import router as alerts_router
 from .db import get_db
 from .integrations import registry as connectors, routes as integration_routes, service as integration_service
+from .risk import confidence_pct
 from .risk_model import MODEL, T
-from . import letters, route
 from .seed import init_db
+from .sellers import router as sellers_router
 from .settings import get_settings
 from .world import audit, audit_dict, iso
 
@@ -74,38 +80,53 @@ class InternalErrors:
 class UploadLimit:
     """Загрузка файлов и тела приёма(POST /api/ocr - 10 МБ, POST /api/sources/import - 5 МБ, POST /api/media и снимок
     площадки POST /api/complexes/{id}/photos - 10 МБ, POST /api/intake/publications - 2 МБ, POST /api/intake/telegram -
-    60 МБ): тело больше предела(файл + запас на
-    разметку multipart) - 413 сразу, а не после того, как весь файл придёт по сети и ляжет во временный файл(FastAPI
-    разбирает форму до вызова обработчика, и предела на размер файла у разбора нет). По Content-Length - не читая тело;
-    без него(chunked) - по мере чтения. Точная проверка размера файла - в ocr.load, importer.parse и media.
-    413 на приёме(/api/intake/*) записывается в состояние подключения(service.record_reject)."""
+    60 МБ): тело больше предела(файл + запас на разметку multipart) - 413 сразу, а не после того, как весь файл придёт
+    по сети и ляжет во временный файл(FastAPI разбирает форму до вызова обработчика, и предела на размер файла у разбора
+    нет). Тело любого другого запроса - не больше DEFAULT: JSON читается в память целиком, и без предела один запрос
+    с огромным телом занимал бы память API. По Content-Length - не читая тело; без него(chunked) - по мере чтения.
+    Точная проверка размера файла - в ocr.load, importer.parse и media. 413 на приёме(/api/intake/*) записывается в
+    состояние подключения(service.record_reject), только если запрос несёт верный токен этого приёма: анонимный запрос
+    с большим телом не переводит подключение в "ошибку"."""
 
-    LIMITS = {"/api/ocr": (ocr_engine.MAX_BYTES + 64 * 1024, ocr_engine.TOO_BIG),
-              "/api/sources/import": (importer.MAX_BYTES + 64 * 1024, importer.TOO_BIG),
-              "/api/media": (media.UPLOAD_MAX + 64 * 1024, "Файл больше 10 МБ"),
-              "/api/intake/publications": (media.INTAKE_JSON_MAX, "Тело запроса больше 2 МБ"),
-              "/api/intake/telegram": (media.BOT_MAX_BODY, "Заявка больше 60 МБ")}
-    REJECTS = {"/api/intake/publications": "intake", "/api/intake/telegram": "telegram_bot"}
+    MARGIN = 64 * 1024  # запас на разметку multipart
+    LIMITS: ClassVar[dict[str, tuple[int, str]]] = {
+        "/api/ocr": (ocr_engine.MAX_BYTES + MARGIN, ocr_engine.TOO_BIG),
+        "/api/sources/import": (importer.MAX_BYTES + MARGIN, importer.TOO_BIG),
+        "/api/media": (media.UPLOAD_MAX + MARGIN, "Файл больше 10 МБ"),
+        "/api/intake/publications": (media.INTAKE_JSON_MAX, "Тело запроса больше 2 МБ"),
+        "/api/intake/telegram": (media.BOT_MAX_BODY, "Заявка больше 60 МБ")}
+    # самое большое JSON-тело - импорт ЖК по рекламе(200 строк со ссылками) - заметно меньше
+    DEFAULT: ClassVar[tuple[int, str]] = (16 * 1024 * 1024, "Тело запроса больше 16 МБ")
+    REJECTS: ClassVar[dict[str, str]] = {"/api/intake/publications": "intake", "/api/intake/telegram": "telegram_bot"}
+    # верный токен приёма у запроса(код подключения → проверка): без него отказ 413 не записывается
+    TRUSTED: ClassVar[dict[str, Callable[[Request], bool]]] = {"intake": auth.is_ingest,
+                                                                "telegram_bot": auth.is_service}
     PHOTO = re.compile(r"^/api/complexes/[^/]+/(photos|gallery)$")  # снимок площадки, фото объекта - как у скриншота
 
     def __init__(self, app):
         self.app = app
 
-    def _limit(self, path: str):
-        if path in self.LIMITS:
-            return self.LIMITS[path]
-        return self.LIMITS["/api/media"] if self.PHOTO.match(path) else None
+    def _limit(self, method: str, path: str) -> tuple[int, str, str | None]:
+        """(предел, текст 413, код подключения для учёта отказа или None)."""
+        if method == "POST":
+            if path in self.LIMITS:
+                return *self.LIMITS[path], self.REJECTS.get(path)
+            if self.PHOTO.match(path):
+                return *self.LIMITS["/api/media"], None
+        return *self.DEFAULT, None
 
     async def __call__(self, scope, receive, send):
-        got_limit = self._limit(scope["path"]) if scope["type"] == "http" and scope["method"] == "POST" else None
-        if got_limit is None:
+        if scope["type"] != "http":
             return await self.app(scope, receive, send)
-        limit, too_big = got_limit
-        reject = self.REJECTS.get(scope["path"])
+        limit, too_big, reject = self._limit(scope["method"], scope["path"])
+
+        async def record() -> None:
+            if reject and self.TRUSTED[reject](Request(scope)):
+                await run_in_threadpool(integration_service.record_reject, reject, 413, too_big)
+
         length = next((v for k, v in scope["headers"] if k == b"content-length"), b"")
         if length.isdigit() and int(length) > limit:
-            if reject:
-                await run_in_threadpool(integration_service.record_reject, reject, 413, too_big)
+            await record()
             return await JSONResponse({"detail": too_big}, status_code=413)(scope, receive, send)
         got = 0
 
@@ -114,39 +135,172 @@ class UploadLimit:
             message = await receive()
             got += len(message.get("body", b"")) if message["type"] == "http.request" else 0
             if got > limit:  # FastAPI пропускает HTTPException из разбора тела как есть → 413
-                if reject:
-                    await run_in_threadpool(integration_service.record_reject, reject, 413, too_big)
+                await record()
                 raise HTTPException(413, too_big)
             return message
 
-        await self.app(scope, counted, send)
+        return await self.app(scope, counted, send)
 
 
-class PublicHostGuard:
-    """Публичный адрес OLX Callback(туннель ngrok, OLX_REDIRECT_URI): через его хост доступен только путь обратного
-    вызова, остальное - 404 "Не найдено"(API наружу не открывается). Проверяются и Host, и X-Forwarded-Host; хост
-    сравнивается без порта, регистра и конечной точки("x.ngrok-free.dev." - тот же хост, как в http.host_allowed).
-    Самая внешняя обёртка приложения."""
+# host= в заголовке Forwarded(RFC 7239): "for=1.2.3.4;host=x.ngrok-free.dev;proto=https", значение может быть в кавычках
+_FORWARDED_HOST = re.compile(r'(?:^|[;,\s])host="?([^";,\s]+)', re.I)
+
+
+def _hostname(value: str) -> str:
+    """Имя хоста без порта, регистра и конечной точки("x.ngrok-free.dev." - тот же хост, как в http.host_allowed)."""
+    v = value.strip().strip('"')
+    v = v[1:].partition("]")[0] if v.startswith("[") else v.partition(":")[0]  # "[::1]:8000" - IPv6 с портом
+    return v.lower().rstrip(".")
+
+
+def _hosts(scope) -> set[str]:
+    """Имена хоста запроса: Host, каждое значение каждого X-Forwarded-Host и host= из Forwarded(почему все -
+    в PublicHostGuard)."""
+    out: set[str] = set()
+    for key, raw in scope.get("headers") or ():
+        if key in (b"host", b"x-forwarded-host"):
+            values = raw.decode("latin-1").split(",")
+        elif key == b"forwarded":
+            values = _FORWARDED_HOST.findall(raw.decode("latin-1"))
+        else:
+            continue
+        out.update(h for v in values if (h := _hostname(v)))
+    return out
+
+
+class HostAllowlist:
+    """Защита от подмены DNS(DNS rebinding): API отвечает только своим именам. Страница чужого сайта, имя которого
+    атакующий перевёл на 127.0.0.1, для браузера - тот же источник, что и API этой машины: без проверки Host она
+    читала бы и меняла всё, что открыто аналитику. Разрешены localhost и *.localhost, любой IP-адрес(подмена DNS
+    подставляет имя, а не адрес), имя сервиса api в docker compose, имена интерфейса(SAQ_WEB_HOSTS: прокси Vite
+    передаёт Host браузера как есть) и публичный хост OLX Callback(его ограничивает PublicHostGuard). Проверяются все
+    имена запроса(_hosts), другое имя хотя бы в одном - 400. Запрос без Host(HTTP/1.0 не из браузера) не проверяется.
+    Настройки читаются при каждом запросе. Самая внешняя обёртка приложения."""
+
+    SERVICE = "api"  # имя сервиса API в docker-compose.yml
+    REJECTED = "Запрос по неизвестному имени сервера отклонён"
+    HEADERS: ClassVar[dict[str, str]] = {"X-Content-Type-Options": "nosniff"}
 
     def __init__(self, app):
         self.app = app
 
-    @staticmethod
-    def _hosts(scope) -> set:
-        out = set()
-        for key in (b"x-forwarded-host", b"host"):
-            value = next((v for k, v in scope.get("headers") or [] if k == key), None)
-            if value:
-                first = value.decode("latin-1").split(",", 1)[0].strip()
-                out.add(first.split(":")[0].lower().rstrip("."))
-        return out
+    @classmethod
+    def allowed(cls, host: str, web_hosts: tuple[str, ...], public_host: str | None) -> bool:
+        if host in ("localhost", cls.SERVICE, public_host) or host.endswith(".localhost"):
+            return True
+        # ".домен" - домен и его поддомены, как в allowedHosts Vite
+        if any(host == h or (h.startswith(".") and (host == h[1:] or host.endswith(h))) for h in web_hosts):
+            return True
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            return False
+        return True
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
             s = get_settings()
-            if s.public_host and s.public_host in self._hosts(scope) and scope.get("path") != s.public_path:
-                return await JSONResponse({"detail": "Не найдено"}, status_code=404)(scope, receive, send)
+            if not all(self.allowed(h, s.web_hosts, s.public_host) for h in _hosts(scope)):
+                return await JSONResponse({"detail": self.REJECTED}, status_code=400,
+                                          headers=self.HEADERS)(scope, receive, send)
         return await self.app(scope, receive, send)
+
+
+class PublicHostGuard:
+    """Публичный адрес OLX Callback(туннель ngrok, OLX_REDIRECT_URI): через его хост доступен только путь обратного
+    вызова, остальное - 404 "Не найдено"(API наружу не открывается). Проверяются Host, каждый X-Forwarded-Host(и каждое
+    значение списка через запятую) и host= из Forwarded: прокси может дописать свой заголовок после присланного клиентом,
+    и проверка только первого значения пропускала бы API наружу. Хост сравнивается без порта, регистра и конечной
+    точки("x.ngrok-free.dev." - тот же хост, как в http.host_allowed). Путь обратного вызова открыт только для GET и
+    HEAD(браузер возвращается из OLX переходом по ссылке), другие методы - тоже 404. Ответ 404 - с nosniff и запретом
+    любого содержимого и встраивания(CSP), как у страницы обратного вызова. Стоит сразу внутри HostAllowlist."""
+
+    METHODS = frozenset({"GET", "HEAD"})
+    NOT_FOUND_HEADERS: ClassVar[dict[str, str]] = {
+        "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'", "X-Content-Type-Options": "nosniff"}
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            s = get_settings()
+            if s.public_host and s.public_host in _hosts(scope) and (
+                    scope.get("path") != s.public_path or scope.get("method") not in self.METHODS):
+                return await JSONResponse({"detail": "Не найдено"}, status_code=404,
+                                          headers=self.NOT_FOUND_HEADERS)(scope, receive, send)
+        return await self.app(scope, receive, send)
+
+
+class CrossSiteGuard:
+    """Подделка запроса с чужого сайта(CSRF): POST, PUT, PATCH и DELETE со страницы другого сайта - 403. Без проверки
+    страница любого сайта, открытая у аналитика, отправляла бы формы multipart(импорт реестра, снимки площадки, фото,
+    файлы) на открытые эндпоинты: такой запрос браузер шлёт без предварительного OPTIONS, а CORS запрещает только
+    чтение ответа, не запись.
+
+    Порядок проверки:
+    - Origin из SAQ_CORS_ORIGINS(или там "*") - разрешено: интерфейс на другом домене, указанный в настройках;
+    - есть Sec-Fetch-Site(его ставит сам браузер) - разрешены только "same-origin" и "none"(действие самого
+      пользователя). "same-site" - тоже отказ: страница на другом порту localhost для браузера "тот же сайт";
+    - Sec-Fetch-Site нет(браузер шлёт его только в защищённом контексте - https или localhost, - а интерфейс
+      открывают и по http через Tailscale; или старый браузер), есть Origin - он должен совпасть с хостом и портом из
+      Host: прокси Vite передаёт Host браузера как есть(changeOrigin: false в frontend/vite.config.ts). Схема не
+      сравнивается: за прокси с TLS браузер шлёт Origin https, хотя к API
+      запрос приходит по http, а другого сервера на том же хосте и порту нет;
+    - ни Origin, ни Sec-Fetch-Site(клиент приёма, бот заявок, curl) - разрешено: так шлёт не браузер.
+    Тело отклонённого запроса не читается: обёртка стоит снаружи UploadLimit. Настройки читаются при каждом запросе."""
+
+    METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+    SITES = frozenset({"same-origin", "none"})
+    REJECTED = "Запрос со страницы другого сайта отклонён"
+    HEADERS: ClassVar[dict[str, str]] = {"X-Content-Type-Options": "nosniff"}
+
+    def __init__(self, app):
+        self.app = app
+
+    @classmethod
+    def allowed(cls, scope) -> bool:
+        headers = Headers(scope=scope)
+        origin = (headers.get("origin") or "").strip().lower()
+        site = (headers.get("sec-fetch-site") or "").strip().lower()
+        cors = get_settings().cors_origins
+        if origin and (cors == ("*",) or origin in cors):
+            return True
+        if site:
+            return site in cls.SITES
+        if origin:
+            try:
+                own = urlsplit(origin).netloc
+            except ValueError:  # "http://[x"
+                return False
+            # "null"(песочница, file://) - без хоста, не совпадает
+            return bool(own) and own == (headers.get("host") or "").strip().lower()
+        return True
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["method"] in self.METHODS and not self.allowed(scope):
+            return await JSONResponse({"detail": self.REJECTED}, status_code=403,
+                                      headers=self.HEADERS)(scope, receive, send)
+        return await self.app(scope, receive, send)
+
+
+class SettingsCors:
+    """CORS по SAQ_CORS_ORIGINS. Пусто(по умолчанию) - CORS выключен: интерфейс ходит на /api своего адреса(прокси
+    Vite или общий веб-сервер), и страница с чужого адреса не прочитает ответы открытых эндпоинтов аналитика. Список -
+    только эти адреса, "*" - любой. Настройка читается при каждом запросе: reload_settings действует без перезапуска."""
+
+    def __init__(self, app):
+        self.app = app
+        self._cors: tuple[tuple[str, ...], CORSMiddleware] | None = None
+
+    async def __call__(self, scope, receive, send):
+        origins = get_settings().cors_origins
+        if not origins or scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        if self._cors is None or self._cors[0] != origins:
+            self._cors = (origins, CORSMiddleware(self.app, allow_origins=list(origins), allow_methods=["*"],
+                                                  allow_headers=["*"], expose_headers=["Content-Disposition"]))
+        return await self._cors[1](scope, receive, send)
 
 
 def no_nul_in_url(request: Request) -> None:
@@ -163,9 +317,10 @@ app = FastAPI(title="SAQ Qurylys API", version="0.3.0", lifespan=lifespan, depen
               description="Мониторинг рекламы долевого строительства и риск-скоринг ЖК (Усть-Каменогорск)")
 app.add_middleware(UploadLimit)
 app.add_middleware(InternalErrors)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
-                   expose_headers=["Content-Disposition"])
-app.add_middleware(PublicHostGuard)  # последней - самая внешняя
+app.add_middleware(SettingsCors)
+app.add_middleware(CrossSiteGuard)  # снаружи UploadLimit: тело отклонённого запроса не читается
+app.add_middleware(PublicHostGuard)
+app.add_middleware(HostAllowlist)  # последней - самая внешняя
 
 # Подписи для журнала
 STATUS_NAMES = {"new": "Новая", "needs_check": "Нужна проверка", "in_review": "На проверке",
@@ -220,8 +375,8 @@ def complexes(zone: schemas.Zone | None = None, screening_status: schemas.Screen
         keep = {r["complexId"] for r in world.risk_all(db, as_of) if r["assessed"] and r["zone"] == zone}
         items = [c for c in items if c.id in keep]
     r = screening.compute(db, as_of)
-    if screening_status:
-        items = [c for c in items if r.complexes[c.id]["status"] == screening_status]
+    if screening_status:  # ЖК, добавленный между чтениями списка и оценки, в оценке ещё нет - не KeyError, а пропуск
+        items = [c for c in items if (r.complexes.get(c.id) or {}).get("status") == screening_status]
     return screening.complex_rows(db, items, r)
 
 
@@ -249,7 +404,7 @@ def _then(text: str, more: str) -> str:
 @app.get("/api/complexes/{cid}", response_model=schemas.ComplexListOut, response_model_by_alias=True)
 def complex_one(cid: str, as_of: date | None = AsOf, db: Session = Depends(get_db)):
     c = _complex(db, cid)
-    return screening.complex_rows(db, [c], screening.compute(db, as_of))[0]
+    return screening.complex_rows(db, [c], screening.compute_complex(db, c, as_of))[0]
 
 
 @app.get("/api/complexes/{cid}/risk", response_model=schemas.RiskOut, response_model_by_alias=True)
@@ -363,6 +518,8 @@ def set_complex(aid: str, body: schemas.AdComplexIn, db: Session = Depends(get_d
     """Привязка публикации к ЖК аналитиком: подтверждённая привязка - факт(кто и когда - linkConfirmedBy/At,
     уверенность 100%), null - снять привязку. Решение другого аналитика, принятое тем временем, - 409(см. _decide)."""
     ad = _ad(db, aid)
+    if body.complex_id is None and ad.complex_id is None:
+        return ad  # снимать нечего - журнал не засоряем
     old = db.get(models.Complex, ad.complex_id) if ad.complex_id else None
     moved = None
     if body.complex_id is None:
@@ -390,15 +547,24 @@ def set_complex(aid: str, body: schemas.AdComplexIn, db: Session = Depends(get_d
 
 # ---------- журнал(ТЗ §7 "Контроль решений", §4 "источник и время фиксации") ----------
 
+def _visible(request: Request) -> list:
+    """События подключений(kind "connector": пояснения проверок, изменения настроек, вход в OLX) - только
+    администратору, как и полные сведения подключений(auth.is_admin); посетителю журнал отдаётся без них."""
+    return [] if auth.is_admin(request) else [models.AuditEvent.kind != "connector"]
+
+
 @app.get("/api/audit", response_model=list[schemas.AuditOut], response_model_by_alias=True)
-def audit_all(ad_id: str | None = Query(None, alias="adId"), complex_id: str | None = Query(None, alias="complexId"),
+def audit_all(request: Request, ad_id: str | None = Query(None, alias="adId"),
+              complex_id: str | None = Query(None, alias="complexId"),
               signal_id: int | None = Query(None, alias="signalId", ge=1, le=2_147_483_647),
               kind: list[str] | None = Query(None, description="Вид события; несколько — повтором параметра или через запятую"),
               limit: int = Query(200, ge=1, le=500, description="Последние N событий (отдаются по возрастанию времени)"),
-              human: bool = Query(False, description="Только действия людей: без событий «Системы» и импорта данных"),
+              human: bool = Query(False, description="Только действия людей: без событий «Системы», импорта данных "
+                                                     "и подключений"),
               db: Session = Depends(get_db)):
     E = models.AuditEvent
     where = [col == v for col, v in ((E.ad_id, ad_id), (E.complex_id, complex_id), (E.signal_id, signal_id)) if v is not None]
+    where += _visible(request)
     kinds = [k.strip() for part in kind or [] for k in part.split(",") if k.strip()]
     bad = [k for k in kinds if k not in AUDIT_KINDS]
     if bad:
@@ -409,19 +575,19 @@ def audit_all(ad_id: str | None = Query(None, alias="adId"), complex_id: str | N
     if human:  # "Последние действия" в сводке: системные события не вытесняют решения аналитиков
         where.append(E.who != "Система")
         if not kinds:
-            where.append(E.kind.notin_(("system", "data")))
+            where.append(E.kind.notin_(("system", "data", "connector")))
     return audit(db, *where, limit=limit)
 
 
 @app.get("/api/ads/{aid}/audit", response_model=list[schemas.AuditOut], response_model_by_alias=True)
-def ad_audit(aid: str, db: Session = Depends(get_db)):
-    return audit(db, models.AuditEvent.ad_id == _ad(db, aid).id)
+def ad_audit(aid: str, request: Request, db: Session = Depends(get_db)):
+    return audit(db, models.AuditEvent.ad_id == _ad(db, aid).id, *_visible(request))
 
 
 @app.get("/api/complexes/{cid}/audit", response_model=list[schemas.AuditOut], response_model_by_alias=True)
-def complex_audit(cid: str, db: Session = Depends(get_db)):
+def complex_audit(cid: str, request: Request, db: Session = Depends(get_db)):
     """Журнал объекта: сведения и их источники, публикации по ЖК, сигналы и их выгрузка, запросы сведений."""
-    return audit(db, models.AuditEvent.complex_id == _complex(db, cid).id)
+    return audit(db, models.AuditEvent.complex_id == _complex(db, cid).id, *_visible(request))
 
 
 @app.post("/api/complexes/{cid}/requests", response_model=schemas.AuditOut, response_model_by_alias=True, status_code=201)
@@ -449,7 +615,7 @@ def _ad_obj(ad: models.Ad) -> dict:
 
 
 def _conf(h: dict) -> str:
-    return f"{_pct(h['confidence'])}%" + (", низкая уверенность" if h["low"] else "")
+    return f"{confidence_pct(h['confidence'])}%" + (", низкая уверенность" if h["low"] else "")
 
 
 def _drifted(ad: models.Ad, h: dict) -> bool:
@@ -465,7 +631,7 @@ def _link_note(db: Session, cat, ad: models.Ad, shown: list[dict]) -> str | None
     if not ad.complex_id or _confirmed(ad):
         return None
     name = _complex(db, ad.complex_id).name
-    stored = f"{_pct(ad.match_confidence)}%"
+    stored = f"{confidence_pct(ad.match_confidence)}%"
     h = next((h for h in shown if h["complexId"] == ad.complex_id), None)
     if h:
         if not _drifted(ad, h):
@@ -539,10 +705,11 @@ def accept_hypothesis(aid: str, body: schemas.HypothesisIn, db: Session = Depend
         raise HTTPException(422, f"ЖК «{c.name}» ИИ для этой публикации не предлагал — выберите ЖК вручную (ручная привязка "
                                  "аналитиком)")
     if h is None:
-        conf = f"уверенность при сборе {_pct(ad.match_confidence)}%; текущий анализ эту привязку не поддерживает"
+        conf = (f"уверенность при сборе {confidence_pct(ad.match_confidence)}%; текущий анализ эту привязку "
+                "не поддерживает")
     else:
-        conf = (f"уверенность {_pct(h['confidence'])}%" + (" — низкая" if h["low"] else "")
-                + (f"; при сборе — {_pct(ad.match_confidence)}%" if current and _drifted(ad, h) else ""))
+        conf = (f"уверенность {confidence_pct(h['confidence'])}%" + (" — низкая" if h["low"] else "")
+                + (f"; при сборе — {confidence_pct(ad.match_confidence)}%" if current and _drifted(ad, h) else ""))
     old = db.get(models.Complex, ad.complex_id) if ad.complex_id and not current else None
     _decide(db, ad, complex_id=c.id, link_confirmed_by=body.author, link_confirmed_at=models.utcnow(),
             match_confidence=h["confidence"] if h else ad.match_confidence,
@@ -612,14 +779,16 @@ def ocr_status():
 
 @app.post("/api/ocr", response_model=schemas.OcrOut, response_model_by_alias=True,
           responses={413: {"description": "Файл больше 10 МБ"}, 415: {"description": "Не изображение"},
-                     422: {"description": "Файл повреждён"}})
+                     422: {"description": "Файл повреждён"}, 503: {"description": "Все распознавания заняты"}})
 def ocr(file: UploadFile = File(...)):
-    """OCR скриншота объявления(Tesseract, rus+kaz+eng) с предобработкой. Нет Tesseract - 200 с engine 'none'."""
+    """OCR скриншота объявления(Tesseract, rus+kaz+eng) с предобработкой. Нет Tesseract - 200 с engine 'none'.
+    Свободного распознавания нет дольше ocr.API_WAIT_S - 503 сразу: поток пула API не занят долгим ожиданием очереди."""
     raw = file.file.read(ocr_engine.MAX_BYTES + 1)
     try:
-        return ocr_engine.recognize(raw, file.content_type)
+        return ocr_engine.recognize(raw, file.content_type, wait=ocr_engine.API_WAIT_S)
     except ocr_engine.OcrError as e:
-        raise HTTPException(e.status, e.detail) from None
+        headers = {"Retry-After": "5"} if e.status == 503 else None
+        raise HTTPException(e.status, e.detail, headers=headers) from None
 
 
 @app.get("/api/ai/eval", response_model=schemas.AiEvalOut, response_model_by_alias=True)
@@ -637,9 +806,10 @@ def stats(as_of: date | None = AsOf, db: Session = Depends(get_db)):
             zones[r["zone"]] += 1
         else:  # карточка из открытого реестра без проверенных сведений - не "зелёная", а не оценивается
             not_assessed += 1
-    ads_all = db.scalars(select(models.Ad)).all()
-    return {"zones": zones, "notAssessed": not_assessed, "queue": sum(a.status in ("new", "needs_check") for a in ads_all),
-            "ads": len(ads_all), "signals": signals.counts(db),
+    count = select(func.count()).select_from(models.Ad)  # счётчики - в БД, без чтения всех публикаций
+    return {"zones": zones, "notAssessed": not_assessed,
+            "queue": db.scalar(count.where(models.Ad.status.in_(("new", "needs_check")))),
+            "ads": db.scalar(count), "signals": signals.counts(db),
             "screening": screening.summary(screening.compute(db, as_of), db)}
 
 
@@ -682,12 +852,8 @@ for _router in connectors.routers():
 
 # ---------- предупреждения жителям: согласование и отправка в Telegram, подписки от бота заявок(app.alerts) ----------
 
-from .alerts import router as alerts_router
-
 app.include_router(alerts_router)
 
 # ---------- кто продаёт: связанные продавцы, аномальная цена, связи застройщика - гипотезы вне балла(app.sellers) ----------
-
-from .sellers import router as sellers_router
 
 app.include_router(sellers_router)

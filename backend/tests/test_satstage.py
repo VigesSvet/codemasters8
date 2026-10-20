@@ -52,6 +52,14 @@ def test_pick_shots_latest_and_nearest_to_start():
     assert satstage.pick_shots([], "2024-01-01") == []
 
 
+def test_pick_shots_ignores_undated_and_malformed():
+    # снимок с неразборчивой датой не становится ни свежим, ни "ближайшим к началу"(раньше - расстояние 0)
+    bad = [{"id": 1, "acquired": "zzzz"}, {"id": 2, "date": "2024-13-45"}, {"id": 3}]
+    assert [(r, s["id"]) for r, s in satstage.pick_shots(bad + SHOTS, "2019-01-01")] == [("latest", 26334),
+                                                                                        ("start", 9181)]
+    assert satstage.pick_shots(bad, "2024-01-01") == []
+
+
 def test_compose_stitches_3x3_and_centres_point(tiles):
     jpeg, got = satstage.compose(26334, 49.893336, 82.618958)
     assert got == 9 and len(tiles) == 9
@@ -130,6 +138,44 @@ def test_run_without_key_sends_nothing(client, api, tiles, tmp_path):
         rep = satstage.run(db, only=[cid], index={satstage.shot_key(lat, lng): SHOTS}, store_path=tmp_path / "s.json")
     assert rep["requests"] == 0 and any("ANTHROPIC_API_KEY" in x for x in rep["skipped"]) and not api.calls
     assert not tiles and not (tmp_path / "s.json").exists()
+
+
+def test_dry_run_without_key_composes_and_saves_images(client, api, tiles, tmp_path):
+    """--dry-run запросов не шлёт - ключ не нужен; --save-images пишет склеенные снимки."""
+    cid, lat, lng, _ = demo_cx()
+    out = tmp_path / "img"
+    out.mkdir()
+    with SessionLocal() as db:
+        rep = satstage.run(db, only=[cid], index={satstage.shot_key(lat, lng): SHOTS[:1]},
+                           store_path=tmp_path / "s.json", dry_run=True, save_images=out)
+    assert rep["requests"] == 0 and rep["done"] == [f"{cid}: снимков 1 (без запроса)"] and not api.calls
+    assert len(tiles) == 9 and not (tmp_path / "s.json").exists()
+    saved = list(out.iterdir())
+    assert len(saved) == 1 and saved[0].name.startswith("26334-") and saved[0].read_bytes()[:2] == b"\xff\xd8"
+
+
+def test_save_store_mode_and_no_tmp_left(tmp_path):
+    path = tmp_path / "s.json"
+    satstage.save_store({"items": {}, "runs": []}, path)
+    assert path.stat().st_mode & 0o777 == 0o644 and json.loads(path.read_text("utf-8"))["items"] == {}
+    with pytest.raises(TypeError):
+        satstage.save_store({"items": {"x": object()}, "runs": []}, path)
+    assert [p.name for p in tmp_path.iterdir()] == ["s.json"]  # временный файл удалён, прежний файл цел
+    assert json.loads(path.read_text("utf-8"))["items"] == {}
+
+
+def test_load_store_repairs_runs(tmp_path):
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps({"items": {"c2/1/2024-01-01": "мусор"}, "runs": {"x": 1}}), "utf-8")
+    d = satstage.load_store(path)
+    assert d["runs"] == [] and not satstage._cached(d["items"], "c2/1/2024-01-01")
+
+
+@pytest.mark.parametrize("bad", ["nan", "inf", "-1"])
+def test_cli_rejects_bad_max_usd(bad, capsys):
+    with pytest.raises(SystemExit) as e:
+        satstage.main(["--max-usd", bad, "--dry-run"])
+    assert e.value.code == 2
 
 
 def test_run_limit_and_bad_reply(client, env, api, tiles, tmp_path):
@@ -223,3 +269,42 @@ def test_sat_stage_endpoint(client, monkeypatch, tmp_path):
     r = client.get("/api/complexes/c3/sat-stage")
     assert r.json()["images"] == [] and "не анализировался" in r.json()["note"]
     assert client.get("/api/complexes/nope/sat-stage").status_code == 404
+
+
+def test_compose_skips_oversized_and_foreign_tiles(monkeypatch):
+    """Тайл декодируется media.open_image: больше TILE_MAX_PIXELS или не формат хранилища(BMP) - серая клетка."""
+    def image(fmt, size=(256, 256)):
+        buf = io.BytesIO()
+        Image.new("RGB", size, (120, 110, 90)).save(buf, fmt)
+        return buf.getvalue()
+    bad = {(0, 0): image("PNG", (1100, 1100)), (1, 0): image("BMP")}
+    fx, fy = satstage.tile_of(49.9, 82.6)
+
+    def fetch(release, z, y, x):
+        return bad.get((x - int(fx), y - int(fy))) or tile_jpeg()
+    monkeypatch.setattr(satstage, "FETCH", fetch)
+    jpeg, got = satstage.compose(1, 49.9, 82.6)
+    assert got == 7 and jpeg[:2] == b"\xff\xd8"
+
+
+def test_claims_for_reads_only_attributed_ads(client, monkeypatch):
+    """Заявления о стадии - по публикациям, отнесённым к ЖК(screening.attributed_to), без чтения всех публикаций:
+    кандидат Claude высокой уверенности - да, низкой - нет."""
+    from test_discovery import claude_ad, result
+
+    from app import screening
+
+    yes = claude_ad("Каркас возведён, бронь квартир", result(signals=[("booking", "бронь квартир")],
+                                                             candidates=[("c2", "high")]))
+    no = claude_ad("Каркас возведён, рассрочка", result(signals=[("installment", "рассрочка")],
+                                                        candidates=[("c2", "low")]))
+
+    def whole_db(*a, **kw):
+        raise AssertionError("чтение всех публикаций ради одного ЖК")
+    monkeypatch.setattr(screening, "load_facts", whole_db)
+    with SessionLocal() as db:
+        claims = satstage.claims_for(db, "c2", max_claims=100)
+    mine = {(c["kind"], c["via"]) for c in claims if c["adId"] == yes}
+    assert mine == {("advanced", "rules"), ("money", "claude")}
+    assert all(c["adId"] != no for c in claims)
+    assert all(c["basis"] == "claude" for c in claims if c["adId"] == yes)

@@ -24,6 +24,8 @@ from app import settings as _settings
 for _name in _settings.ENV_NAMES:
     if _name not in ("SAQ_ENV_FILE", "MEDIA_ROOT", "TG_SESSION_PATH"):
         os.environ.pop(_name, None)  # реальные ключи разработчика в тесты не попадают
+# TestClient шлёт Host "testserver": это имя - как имя интерфейса, иначе API отклонил бы его(main.HostAllowlist)
+os.environ["SAQ_WEB_HOSTS"] = "testserver"
 
 from app import logs as _logs
 

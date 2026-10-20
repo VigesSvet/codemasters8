@@ -4,14 +4,16 @@
     python -m app.snapshot export [--out DIR] [--max-px 1024] [--quality 75]   # выгрузить из DATABASE_URL и MEDIA_ROOT
     python -m app.snapshot import [--dir DIR]                                  # загрузить в пустую БД(иначе - отказ)
 
-Выгрузка только читает: БД - одной транзакцией(PostgreSQL: REPEATABLE READ, READ ONLY), файлы - из MEDIA_ROOT.
+Выгрузка только читает: БД - одной транзакцией(PostgreSQL: REPEATABLE READ, READ ONLY; SQLite - явный BEGIN), файлы -
+из MEDIA_ROOT.
 Схему не меняет: таблица читается столбцами, которые есть и в модели, и в БД(версия схемы БД - в manifest.json).
-Результат(каталог заменяется целиком, только если всё получилось и проверка на секреты пройдена):
+Результат(каталог заменяется целиком, только если всё получилось и проверка на секреты пройдена; заменяется только
+прежний набор или пустой каталог - иначе отказ):
 - <таблица>.json - строки по возрастанию первичного ключа, ключи по алфавиту, время - ISO 8601 в UTC;
 - media/<sha256>.<ext> - изображения публикаций, уменьшенные до max-px по длинной стороне(по умолчанию 1024 px, JPEG
-  q75; PNG - только если он меньше; исходный JPEG без EXIF в пределах размера - как есть, если перекодирование не
-  экономит 10 %). Строки media_assets получают новые размер, SHA-256, MIME, ключ хранилища и width/height; исходные -
-  в meta.snapshot;
+  q75; PNG - только если он меньше; исходный JPEG без метаданных(EXIF, XMP, IPTC, комментарий) в пределах размера - как
+  есть, если перекодирование не экономит 10 %). Строки media_assets получают новые размер, SHA-256, MIME, ключ
+  хранилища и width/height; исходные - в meta.snapshot;
 - api/<имя>.json - ответы GET /api/… по этому набору(как их отдаст новое развёртывание) для офлайн-режима фронтенда и
   api/media.json - id файла → имя в media/;
 - manifest.json - формат, версия схемы, время выгрузки, число строк по таблицам, что не вошло и почему.
@@ -20,23 +22,30 @@
 удаляются - распознанный по ним текст уже в ads.ocr), задания воркера и аренды, состояния OAuth, токены, счётчики квот,
 заявки жителей(bot_submissions - персональные данные заявителей), записи открытого реестра(source_records - их
 пересоздаёт загрузка из shared/registry_ust_kamenogorsk.json; выгрузка сверяет их с файлом), кэш кандидатов 2ГИС
-(решения аналитика остаются, несостоявшиеся проверки - нет). Подключения - настройки и "включено"; статус проверки,
-ошибки, курсоры и время следующего запуска сбрасываются: новое развёртывание проверит подключения заново. Снимки
-ответов источников(ingest_*.raw, extra) ещё раз проходят ingest.scrub, тексты ошибок - logs.redact. Перед заменой
-каталога все файлы проверяются на значения секретов из настроек и на токеноподобные строки(leaks) - найдено -
-выгрузка прерывается.
+(решения аналитика остаются, несостоявшиеся проверки - нет), события подключений в журнале(вид connector и прежние
+data того же текста - migrate.LEGACY_CONNECTOR_EVENTS: аккаунты, списки источников, лимиты - сведения администратора).
+ID заявок жителей(ingest_items пространства "tgbot": прежние ID бота - "{chat_id}:{message_id}") заменяются псевдонимами
+BOT_PSEUDONYM - HMAC-SHA256 с ключом, который создаётся на одну выгрузку и нигде не сохраняется. Подключения -
+настройки и "включено"; статус проверки, ошибки, курсоры и время следующего запуска сбрасываются: новое развёртывание
+проверит подключения заново; у запусков сбора нет автора, ID и стоимости внешнего запуска(у записей приёма - его ID).
+Снимки ответов источников(ingest_*.raw, extra) ещё раз проходят ingest.scrub, тексты ошибок - logs.redact. Перед
+заменой каталога все файлы проверяются на значения секретов из настроек и на токеноподобные строки(leaks),
+ingest_items.json - на ID заявок жителей без псевдонима(bot_ids) - найдено - выгрузка прерывается.
 
 Загрузка(import и seed.start) - в одной транзакции: таблицы в порядке зависимостей с прежними первичными ключами
 (PostgreSQL: последовательности - за максимальный id), файлы - в хранилище через media.store_bytes(тип по сигнатуре,
-SHA-256 и ключ сверяются с записью), записи реестра - из shared/registry_ust_kamenogorsk.json(без нового события
-журнала: событие о загрузке реестра уже в наборе), флаг meta demo_data = purged. Непустую БД(есть строки хотя бы в
-одной таблице набора) загрузка не трогает. Набор прежней известной версии схемы загружается: столбцы, которых в нём
-нет, добавлены шагами migrate(nullable или с server_default) и получают NULL или значение по умолчанию, таблицы,
-которые добавили шаги после его версии(migrate.tables_after, например screening_decisions), - пустые; набор
-неизвестной или более новой версии - отказ(выгрузите набор заново).
+SHA-256 и ключ сверяются с записью; файл - только обычный, не ссылка), записи реестра - из
+shared/registry_ust_kamenogorsk.json(без нового события журнала: событие о загрузке реестра уже в наборе), флаг meta
+demo_data = purged. Непустую БД(есть строки хотя бы в одной таблице набора) загрузка не трогает. Файл таблицы - только
+<таблица>.json в каталоге набора, число строк сверяется с manifest.json. Набор прежней известной версии схемы
+загружается: столбцы, которых в нём нет, добавлены шагами migrate(nullable или с server_default) и получают NULL или
+значение по умолчанию, таблицы, которые добавили шаги после его версии(migrate.tables_after, например
+screening_decisions), - пустые, строки проходят переводы данных этих шагов(migrate.data_after: события подключений
+вида data → connector); набор неизвестной или более новой версии - отказ(выгрузите набор заново).
 """
 import argparse
 import hashlib
+import hmac
 import io
 import json
 import logging
@@ -57,6 +66,7 @@ from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session
 
 from . import importer, ingest, logs, media, migrate, models, registry
+from .integrations.telegram_bot import NAMESPACE as BOT_NAMESPACE
 from .risk_model import ALMATY, SHARED
 from .settings import get_settings
 
@@ -70,6 +80,10 @@ MAX_PX = 1024
 QUALITY = 75
 VIDEO_NOTE = "не включено в стартовый набор — откройте оригинал"
 CHUNK = 500
+VIEWS_TIMEOUT_S = 600  # процесс ответов API(загрузка набора в SQLite и GET /api/…) - обычно секунды
+# Псевдоним ID заявки жителя: "#" нет среди знаков ID бота(telegram_bot.TelegramIntakeIn) - псевдоним не спутать с
+# присланным ID, и повторная выгрузка загруженного набора его не меняет
+BOT_PSEUDONYM = re.compile(r"tgbot#[0-9a-f]{24}")
 Obj = dict[str, Any]
 
 
@@ -81,14 +95,17 @@ class SnapshotError(RuntimeError):
 
 @dataclass
 class Ctx:
-    """Состояние выгрузки: время, каталог файлов, сжатые изображения(исходный SHA-256 → файл набора), счётчики."""
+    """Состояние выгрузки: время, каталог файлов, сжатые изображения(исходный ключ хранилища → файл набора),
+    счётчики."""
     at: datetime
     media_dir: Path
     max_px: int = MAX_PX
     quality: int = QUALITY
-    files: dict[str, tuple[str, str, int, int, int]] = field(default_factory=dict)  # sha → (sha, mime, size, w, h)
-    dropped_media: set = field(default_factory=set)
+    files: dict[str, tuple[str, str, int, int, int]] = field(default_factory=dict)  # ключ → (sha, mime, size, w, h)
+    dropped_media: set[str] = field(default_factory=set)
     stats: dict[str, int] = field(default_factory=dict)
+    # ключ псевдонимов ID заявок жителей: только на эту выгрузку - chat_id не подобрать перебором по набору
+    bot_key: bytes = field(default_factory=lambda: os.urandom(32), repr=False)
 
     def count(self, key: str, n: int = 1) -> None:
         self.stats[key] = self.stats.get(key, 0) + n
@@ -102,14 +119,35 @@ def _collector(row: Obj, ctx: Ctx) -> Obj:
 
 
 def _run(row: Obj, ctx: Ctx) -> Obj:
+    """Без автора, ID и стоимости внешнего запуска(Apify) - их, как и в API, видит только администратор."""
     notes = [{**n, "text": logs.redact(n.get("text"), limit=None)} if isinstance(n, dict) else n
              for n in row.get("notes") or []]
-    return {**row, "error": logs.redact(row.get("error"), limit=None), "notes": notes}
+    return {**row, "error": logs.redact(row.get("error"), limit=None), "notes": notes, "requested_by": None,
+            "external_run_id": None, "cost_usd": None}
+
+
+def _audit(row: Obj, ctx: Ctx) -> Obj | None:
+    """События подключений(аккаунты, списки источников, лимиты, тексты ошибок) - сведения администратора, в набор не
+    входят; прежние(вид data до 2026.10-audit-2) - по тексту."""
+    kind = row.get("kind")
+    if kind == "connector" or migrate.legacy_connector_event(kind, row.get("who"), row.get("what")):
+        ctx.count("audit_events: события подключений — не выгружены")
+        return None
+    return row
 
 
 def _item(row: Obj, ctx: Ctx) -> Obj:
-    return {**row, "raw": ingest.scrub(row.get("raw") or {}),
-            "analysis_error": logs.redact(row.get("analysis_error"), limit=None)}
+    # ID внешнего запуска(Apify) - как у запусков сбора(_run)
+    out = {**row, "raw": ingest.scrub(row.get("raw") or {}),
+           "analysis_error": logs.redact(row.get("analysis_error"), limit=None), "external_run_id": None}
+    eid = str(row.get("external_id") or "")
+    if row.get("platform") == BOT_NAMESPACE and not BOT_PSEUDONYM.fullmatch(eid):
+        # ID заявки от бота мог быть "{chat_id}:{message_id}": chat_id - Telegram ID жителя. Псевдоним уникален, как
+        # и ID(пара platform, external_id остаётся уникальной), а ключ не попадает в набор
+        digest = hmac.new(ctx.bot_key, eid.encode(), hashlib.sha256).hexdigest()
+        out["external_id"] = f"{BOT_NAMESPACE}#{digest[:24]}"
+        ctx.count("ingest_items: ID заявок жителей — псевдонимы")
+    return out
 
 
 def _version(row: Obj, ctx: Ctx) -> Obj:
@@ -146,19 +184,22 @@ def _media(row: Obj, ctx: Ctx) -> Obj | None:
         return row
     if row["status"] != "downloaded" or not row.get("storage_key"):
         return row
-    src_sha = row.get("sha256") or ""
-    got = ctx.files.get(src_sha)
+    src_sha, src_key = row.get("sha256"), row["storage_key"]
+    # кэш - по ключу хранилища(он задан содержимым): у строк без sha256 общий ключ "" дал бы им чужой файл
+    got = ctx.files.get(src_key)
     if got is None:
         try:
-            data = media.path_of(row["storage_key"]).read_bytes()
+            data = media.path_of(src_key).read_bytes()
         except (OSError, ValueError) as e:
-            raise SnapshotError(f"Файл {row['id']} ({row['storage_key']}) не прочитан из MEDIA_ROOT: "
-                                f"{type(e).__name__}") from e
-        out, mime, w, h = compress(data, ctx.max_px, ctx.quality)
+            raise SnapshotError(f"Файл {row['id']} ({src_key}) не прочитан из MEDIA_ROOT: {type(e).__name__}") from e
+        try:
+            out, mime, w, h = compress(data, ctx.max_px, ctx.quality)
+        except Exception as e:  # PIL: повреждённый или неподдерживаемый файл; предел пикселей - MediaRejected(с detail)
+            why = e.detail if isinstance(e, media.MediaRejected) else type(e).__name__
+            raise SnapshotError(f"Файл {row['id']} ({src_key}) не обработан как изображение: {why}") from e
         sha = hashlib.sha256(out).hexdigest()
-        name = f"{sha}{media.ALLOWED[mime]}"
-        (ctx.media_dir / name).write_bytes(out)
-        got = ctx.files[src_sha] = (sha, mime, len(out), w, h)
+        (ctx.media_dir / f"{sha}{media.ALLOWED[mime]}").write_bytes(out)
+        got = ctx.files[src_key] = (sha, mime, len(out), w, h)
         ctx.count("media: исходных байт", len(data))
     sha, mime, size, w, h = got
     if sha != src_sha or "snapshot" not in meta:  # файл набора уже в наборе(повторная выгрузка) - сведения прежние
@@ -166,7 +207,7 @@ def _media(row: Obj, ctx: Ctx) -> Obj | None:
                             "sourceMime": row.get("mime"), "maxPx": ctx.max_px, "quality": ctx.quality}
     meta.update(width=w, height=h)
     ctx.count("media_assets: изображения")
-    return {**row, "sha256": sha, "mime": mime, "size": size, "storage_key": media._key(sha, mime)}
+    return {**row, "sha256": sha, "mime": mime, "size": size, "storage_key": media.storage_key(sha, mime)}
 
 
 @dataclass(frozen=True)
@@ -182,10 +223,10 @@ class Spec:
 # Порядок загрузки - по зависимостям(внешние ключи): родительские таблицы раньше
 TABLES: tuple[Spec, ...] = (
     Spec(models.Analyst), Spec(models.Developer), Spec(models.Complex), Spec(models.Ad), Spec(models.Appeal),
-    Spec(models.Signal), Spec(models.AuditEvent), Spec(models.Collector, _collector), Spec(models.CollectionRun, _run),
-    Spec(models.IngestItem, _item), Spec(models.IngestVersion, _version), Spec(models.MediaAsset, _media),
-    Spec(models.LlmAnalysis, _llm), Spec(models.GeoCheck, _geo), Spec(models.DiscoveredObject),
-    Spec(models.DiscoveredMention), Spec(models.ScreeningDecision),
+    Spec(models.Signal), Spec(models.AuditEvent, _audit), Spec(models.Collector, _collector),
+    Spec(models.CollectionRun, _run), Spec(models.IngestItem, _item), Spec(models.IngestVersion, _version),
+    Spec(models.MediaAsset, _media), Spec(models.LlmAnalysis, _llm), Spec(models.GeoCheck, _geo),
+    Spec(models.DiscoveredObject), Spec(models.DiscoveredMention), Spec(models.ScreeningDecision),
 )
 EXCLUDED: dict[str, str] = {
     "jobs": "задания воркера — состояние работы, а не данные",
@@ -205,6 +246,9 @@ ALSO_EXCLUDED = {
     "frames": "кадры видео — строки и файлы не выгружаются, распознанный текст уже в ads.ocr",
     "geoCandidates": "кэш кандидатов 2ГИС — остаются только решения аналитика",
     "collectorsRuntime": "статус, факты, курсоры и расписание подключений — новое развёртывание проверит их заново",
+    "connectorEvents": "события подключений в журнале — аккаунты, списки источников, лимиты, тексты ошибок",
+    "runsAdmin": "кто запустил сбор, ID и стоимость платных запусков — сведения администратора",
+    "botExternalIds": "ID заявок жителей (chat_id Telegram) — заменены псевдонимами",
 }
 # Ответы API для офлайн-режима фронтенда: имя файла → путь GET(asOf - дата расчёта риска и "Проверки по рекламе")
 VIEWS: tuple[tuple[str, str, bool], ...] = (
@@ -217,18 +261,23 @@ VIEWS: tuple[tuple[str, str, bool], ...] = (
 # ---------- изображения ----------
 
 KEEP_GAIN = 0.9  # исходный JPEG в пределах размера остаётся как есть, если перекодирование не экономит хотя бы 10 %
+# Сегменты JPEG, с которыми исходный файл может остаться как есть: JFIF(APP0), ICC-профиль(APP2), Adobe(APP14). EXIF и
+# XMP(APP1), IPTC(APP13), комментарий(COM) - сведения о съёмке и авторе(место, устройство), такой файл перекодируется
+BARE_JPEG = frozenset({"APP0", "APP2", "APP14"})
 
 
 def compress(data: bytes, max_px: int = MAX_PX, quality: int = QUALITY) -> tuple[bytes, str, int, int]:
     """Изображение → (байты, MIME, ширина, высота): длинная сторона не больше max_px(с учётом поворота EXIF), без
     метаданных; JPEG с качеством quality, PNG - только если он меньше JPEG(прозрачность - на белом фоне для JPEG).
-    Исходный JPEG без EXIF и не больше max_px остаётся как есть, если перекодирование не экономит 10 %(KEEP_GAIN): так
-    повторная выгрузка уже сжатого набора не меняет файлы."""
+    Исходный JPEG без метаданных(BARE_JPEG, без данных после конца изображения) и не больше max_px остаётся как есть,
+    если перекодирование не экономит 10 %(KEEP_GAIN): так повторная выгрузка уже сжатого набора не меняет файлы.
+    Декодирование - media.open_image: только форматы хранилища и предел пикселей(больше - media.MediaRejected)."""
     from PIL import Image, ImageOps
 
-    with Image.open(io.BytesIO(data)) as src:
-        src.load()
-        fmt, has_exif = src.format, bool(src.getexif())
+    with media.open_image(data) as src:
+        fmt = src.format
+        bare = (fmt == "JPEG" and not src.getexif() and data.endswith(b"\xff\xd9")
+                and all(marker in BARE_JPEG for marker, _ in getattr(src, "applist", ())))
         im = ImageOps.exif_transpose(src)
     w, h = im.size
     if max(w, h) > max_px:
@@ -242,14 +291,15 @@ def compress(data: bytes, max_px: int = MAX_PX, quality: int = QUALITY) -> tuple
     else:
         rgb = im.convert("RGB")
     buf = io.BytesIO()
-    rgb.save(buf, format="JPEG", quality=quality, optimize=True)
+    # comment="" - Pillow иначе переносит комментарий исходного файла(JPEG, GIF) из info
+    rgb.save(buf, format="JPEG", quality=quality, optimize=True, comment=b"")
     best = (buf.getvalue(), "image/jpeg")
     if fmt != "JPEG" or alpha:
         buf = io.BytesIO()
         (im if im.mode in ("RGB", "RGBA", "L", "LA", "P") else rgb).save(buf, format="PNG", optimize=True)
         if len(buf.getvalue()) < len(best[0]):
             best = (buf.getvalue(), "image/png")
-    if fmt == "JPEG" and not has_exif and (w, h) == im.size and len(best[0]) > KEEP_GAIN * len(data):
+    if bare and (w, h) == im.size and len(best[0]) > KEEP_GAIN * len(data):
         best = (data, "image/jpeg")
     return best[0], best[1], im.size[0], im.size[1]
 
@@ -281,12 +331,26 @@ def leaks(text_: str, secrets: Iterable[str] = ()) -> list[str]:
     return found
 
 
+def bot_ids(rows: Any) -> list[str]:
+    """Строки ingest_items.json пространства заявок бота, у которых ID - не псевдоним BOT_PSEUDONYM(в нём chat_id
+    жителя): название находки или пусто."""
+    if not isinstance(rows, list):
+        return []
+    bad = sum(1 for r in rows if isinstance(r, dict) and r.get("platform") == BOT_NAMESPACE
+              and not BOT_PSEUDONYM.fullmatch(str(r.get("external_id") or "")))
+    return [f"ID заявок жителей без псевдонима: {bad}"] if bad else []
+
+
 def scan(root: Path, secrets: Iterable[str] = ()) -> dict[str, list[str]]:
-    """Текстовые файлы набора(*.json) с находками leaks: относительный путь → названия находок."""
+    """Текстовые файлы набора(*.json) с находками leaks, ingest_items.json - и bot_ids: относительный путь → названия
+    находок."""
     secrets = [s for s in secrets if s]
     out: dict[str, list[str]] = {}
     for p in sorted(root.rglob("*.json")):
-        found = leaks(p.read_text(encoding="utf-8"), secrets)
+        text_ = p.read_text(encoding="utf-8")
+        found = leaks(text_, secrets)
+        if p == root / "ingest_items.json":
+            found += bot_ids(json.loads(text_))
         if found:
             out[str(p.relative_to(root))] = found
     return out
@@ -326,12 +390,12 @@ def registry_check(conn: Connection) -> Obj:
     файла, расхождение(импорт через интерфейс после сборки файла) - предупреждение в manifest.json."""
     data = importer.load_registry() or {"records": []}
     want = {(r["source"], r["sourceRecordId"]): registry._values(r) for r in data["records"]}
-    cols = list(registry.COLUMNS.values()) + ["collected_at"]
+    cols = [*registry.COLUMNS.values(), "collected_at"]
     R = models.SourceRecord
     have = {}
     if R.__tablename__ in inspect(conn).get_table_names():
         for r in conn.execute(select(R.source, R.source_record_id, *[getattr(R, c) for c in cols])):
-            have[(r[0], r[1])] = dict(zip(cols, r[2:]))
+            have[(r[0], r[1])] = dict(zip(cols, r[2:], strict=True))
     differ = sorted(f"{s}:{i}" for (s, i), v in want.items() if (s, i) in have and any(
         (models.iso(have[(s, i)][c]) != models.iso(v[c])) if c == "collected_at" else have[(s, i)][c] != v[c]
         for c in cols))
@@ -341,16 +405,36 @@ def registry_check(conn: Connection) -> Obj:
             "consistent": not differ and set(have) == set(want)}
 
 
+def _replaceable(out: Path) -> bool:
+    """Каталог out можно заменить выгрузкой: его нет, он пустой или это прежний набор(manifest.json формата FORMAT).
+    Иначе export --out с опечаткой(домашний каталог, каталог проекта) удалил бы чужие файлы."""
+    if not out.exists():
+        return True
+    if not out.is_dir():
+        return False
+    if not any(out.iterdir()):
+        return True
+    try:
+        man = manifest(out)
+    except SnapshotError:
+        return False
+    return man is not None and man.get("format") == FORMAT
+
+
 def _swap(new: Path, out: Path) -> None:
-    """Каталог набора заменяется целиком: прежний - в сторону, новый - на его место, прежний удаляется."""
-    old = out.with_name(out.name + ".old")
-    if old.exists():
-        shutil.rmtree(old)
-    if out.exists():
-        out.rename(old)
-    new.rename(out)
-    if old.exists():
-        shutil.rmtree(old)
+    """Каталог набора заменяется целиком: прежний - в сторону(под уникальным именем рядом), новый - на его место,
+    прежний удаляется. Новый не встал на место - прежний возвращается."""
+    if not out.exists():
+        new.rename(out)
+        return
+    old = Path(tempfile.mkdtemp(prefix=f".{out.name}.old-", dir=out.parent))
+    out.rename(old)  # пустой каталог old заменяется(POSIX rename)
+    try:
+        new.rename(out)
+    except BaseException:
+        old.rename(out)
+        raise
+    shutil.rmtree(old, ignore_errors=True)
 
 
 def export(eng: Engine, out: Path = DIR, *, max_px: int = MAX_PX, quality: int = QUALITY, views: bool = True,
@@ -358,6 +442,9 @@ def export(eng: Engine, out: Path = DIR, *, max_px: int = MAX_PX, quality: int =
     """Выгрузка набора из БД eng и хранилища MEDIA_ROOT в каталог out(заменяется целиком). Возвращает manifest."""
     at = models.as_utc(now) or models.utcnow().replace(microsecond=0)
     out = Path(out).resolve()
+    if not _replaceable(out):
+        raise SnapshotError(f"Каталог {out} не пустой и не похож на стартовый набор (нет {MANIFEST} формата "
+                            f"{FORMAT}) — выгрузка заменяет каталог целиком, укажите другой")
     out.parent.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix=f".{out.name}.new-", dir=out.parent))
     try:
@@ -365,26 +452,33 @@ def export(eng: Engine, out: Path = DIR, *, max_px: int = MAX_PX, quality: int =
         (work / "media").mkdir()
         ctx = Ctx(at=at, media_dir=work / "media", max_px=max_px, quality=quality)
         tables: dict[str, Obj] = {}
+        media_rows: list[Obj] = []
         with eng.connect() as conn:
             if conn.dialect.name == "postgresql":
                 conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+            elif conn.dialect.name == "sqlite":
+                # pysqlite сам не открывает транзакцию для SELECT: без BEGIN каждая таблица читалась бы отдельно и
+                # запись воркера между ними дала бы несогласованный набор(файл без публикации, строка без родителя)
+                conn.exec_driver_sql("BEGIN")
             version = _schema_version(conn)
-            if version != models.SCHEMA_VERSION and migrate.chain_from(version) is None:
+            if not _compatible(version):
                 raise SnapshotError(f"Схема БД — {version or 'без версии'}: выгрузка умеет только версии из цепочки "
                                     f"migrate (текущая {models.SCHEMA_VERSION})")
             for spec in TABLES:
                 cols, rows = _read(conn, spec.model)
                 if spec.prepare is not None:
                     rows = [x for x in (spec.prepare(r, ctx) for r in rows) if x is not None]
-                if spec.name == "media_assets" and ctx.dropped_media:
-                    rows = [{**r, "parent_id": None} if r.get("parent_id") in ctx.dropped_media else r for r in rows]
+                if spec.name == "media_assets":
+                    if ctx.dropped_media:
+                        rows = [{**r, "parent_id": None} if r.get("parent_id") in ctx.dropped_media else r
+                                for r in rows]
+                    media_rows = rows
                 (work / f"{spec.name}.json").write_text(dump(rows), encoding="utf-8")
                 tables[spec.name] = {"file": f"{spec.name}.json", "rows": len(rows), "columns": cols}
             reg = registry_check(conn)
             conn.rollback()
         files = sorted((work / "media").iterdir())
-        media_map = {r["id"]: Path(r["storage_key"]).name
-                     for r in json.loads((work / "media_assets.json").read_text(encoding="utf-8"))
+        media_map = {r["id"]: Path(r["storage_key"]).name for r in media_rows
                      if r.get("storage_key") and r.get("status") == "downloaded"}
         man: Obj = {
             "_note": "Стартовый набор SAQ Qurylys: реальные данные мониторинга (ЖК открытого реестра и известные по "
@@ -407,7 +501,7 @@ def export(eng: Engine, out: Path = DIR, *, max_px: int = MAX_PX, quality: int =
             (work / "api" / "media.json").write_text(dump(media_map), encoding="utf-8")
             build_views_subprocess(work, as_of)
             man["api"] = {"dir": "api", "asOf": as_of.isoformat(),
-                               "files": sorted(p.name for p in (work / "api").iterdir())}
+                          "files": sorted(p.name for p in (work / "api").iterdir())}
             (work / MANIFEST).write_text(dump(man), encoding="utf-8")
         found = scan(work, get_settings().secrets())
         if found:
@@ -432,26 +526,37 @@ def build_views_subprocess(src: Path, as_of: date) -> None:
         env.update(DATABASE_URL=f"sqlite:///{tmp}/views.db", MEDIA_ROOT=f"{tmp}/media", SAQ_ENV_FILE="",
                    SAQ_SHARED_DIR=str(SHARED), TG_SESSION_PATH=f"{tmp}/telegram.session")
         cmd = [sys.executable, "-m", "app.snapshot", "views", "--dir", str(src), "--as-of", as_of.isoformat()]
-        r = subprocess.run(cmd, cwd=str(Path(__file__).resolve().parents[1]), env=env, capture_output=True, text=True)
+        try:
+            r = subprocess.run(cmd, cwd=str(Path(__file__).resolve().parents[1]), env=env, capture_output=True,
+                               text=True, timeout=VIEWS_TIMEOUT_S, check=False)
+        except subprocess.TimeoutExpired as e:
+            raise SnapshotError(f"Ответы API по набору не построены: нет итога за {VIEWS_TIMEOUT_S} с") from e
         if r.returncode != 0:
             raise SnapshotError(f"Ответы API по набору не построены (код {r.returncode}): "
                                 f"{logs.redact((r.stderr or r.stdout or '').strip()[-2000:], limit=None)}")
 
 
 def build_views(src: Path, as_of: date) -> list[str]:
-    """(в отдельном процессе) Набор src → пустая БД DATABASE_URL(без файлов) → GET /api/… → src/api/<имя>.json."""
+    """(в отдельном процессе) Набор src → пустая БД DATABASE_URL(без файлов) → GET /api/… → src/api/<имя>.json.
+    БД с таблицами приложения - отказ: в рабочей БД ответы были бы по ней, а не по набору."""
     from functools import partial
 
     from fastapi.testclient import TestClient
 
     from . import seed
-    from .db import engine
+    from .db import Base, engine
     from .main import app
 
     if manifest(src) is None:
         raise SnapshotError(f"Нет набора для ответов API: {src / MANIFEST}")
+    if set(inspect(engine).get_table_names()) & set(Base.metadata.tables):
+        raise SnapshotError("Ответы API по набору строятся только в пустой временной БД (python -m app.snapshot "
+                            "export) — в этой БД уже есть таблицы приложения")
     seed.init_db(engine, start=partial(seed.start, src=src, files=False))
-    client = TestClient(app)  # без lifespan: схема и набор уже загружены
+    # без lifespan: схема и набор уже загружены. Host - localhost: имя по умолчанию "testserver" отклонил бы
+    # main.HostAllowlist - в SAQ_WEB_HOSTS рабочего сервера его нет
+    client = TestClient(app, base_url="http://localhost")
+    (src / "api").mkdir(exist_ok=True)
     names = []
     for name, path, dated in VIEWS:
         r = client.get(path, params={"asOf": as_of.isoformat()} if dated else None)
@@ -480,8 +585,17 @@ class LoadReport:
 
 
 def manifest(src: Path = DIR) -> Obj | None:
+    """manifest.json набора src; нет файла - None, не JSON-объект - SnapshotError."""
     p = Path(src) / MANIFEST
-    return json.loads(p.read_text(encoding="utf-8")) if p.is_file() else None
+    if not p.is_file():
+        return None
+    try:
+        man = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise SnapshotError(f"{p} не прочитан: {type(e).__name__}") from e
+    if not isinstance(man, dict):
+        raise SnapshotError(f"{p}: нужен JSON-объект")
+    return man
 
 
 def is_empty(db: Session) -> bool:
@@ -516,9 +630,29 @@ def _prepare(table, rows: list[Obj], name: str) -> list[Obj]:
         v = {**r, **nulls}
         for k in times:
             if v[k] is not None:
-                v[k] = models.as_utc(datetime.fromisoformat(v[k]))
+                try:
+                    v[k] = models.as_utc(datetime.fromisoformat(v[k]))
+                except (TypeError, ValueError) as e:
+                    raise SnapshotError(f"{name}.json: {k} = {str(v[k])[:40]!r} — не время ISO 8601") from e
         out.append(v)
     return out
+
+
+def _table_rows(src: Path, name: str, info: Any) -> list[Obj]:
+    """Строки таблицы набора: файл - только "<таблица>.json" в каталоге набора(путь из manifest.json не уводит за
+    него), список объектов, число строк - как в manifest.json(обрезанный или подменённый файл - отказ)."""
+    file = f"{name}.json"
+    if not isinstance(info, dict) or info.get("file") != file:
+        raise SnapshotError(f"{MANIFEST}: у таблицы {name} должен быть файл {file}")
+    try:
+        rows = json.loads((src / file).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise SnapshotError(f"{file} не прочитан: {type(e).__name__}") from e
+    if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):
+        raise SnapshotError(f"{file}: нужен список строк-объектов")
+    if info.get("rows") != len(rows):
+        raise SnapshotError(f"{file}: строк {len(rows)}, а в {MANIFEST} — {info.get('rows')}; выгрузите набор заново")
+    return rows
 
 
 def _reset_sequences(db: Session) -> None:
@@ -538,17 +672,27 @@ def _reset_sequences(db: Session) -> None:
 def _restore_files(src: Path, rows: list[Obj]) -> int:
     """Изображения набора → хранилище(media.store_bytes: тип по сигнатуре, место на диске), ключ и SHA-256 -
     сверяются."""
-    done: dict[str, str] = {}
+    done: dict[str, str] = {}  # ключ → SHA-256 записанного файла
     for r in rows:
         key = r.get("storage_key")
-        if not key or r.get("status") != "downloaded" or key in done:
+        if not key or r.get("status") != "downloaded":
             continue
-        path = src / "media" / Path(key).name
+        path = src / "media" / Path(key).name  # только имя: ключ из набора не уводит за каталог media
+        if key in done:  # файл уже записан - запись с тем же ключом должна ссылаться на него же
+            if done[key] != r.get("sha256"):
+                raise SnapshotError(f"Файл набора {path.name} не совпадает с записью {r['id']} (SHA-256 или тип)")
+            continue
+        # ссылка увела бы чтение за каталог набора, FIFO - повесил бы загрузку
+        if path.is_symlink() or (path.exists() and not path.is_file()):
+            raise SnapshotError(f"Файл набора {path.name} (запись {r['id']}) — не обычный файл (ссылка, каталог)")
         try:
             data = path.read_bytes()
         except OSError as e:
             raise SnapshotError(f"Нет файла набора {path.name} (запись {r['id']}): {type(e).__name__}") from e
-        stored = media.store_bytes(data, allowed=media.IMAGE_TYPES)
+        try:
+            stored = media.store_bytes(data, allowed=media.IMAGE_TYPES)
+        except media.MediaRejected as e:
+            raise SnapshotError(f"Файл набора {path.name} (запись {r['id']}) не принят хранилищем: {e}") from e
         if stored.storage_key != key or stored.sha256 != r.get("sha256"):
             raise SnapshotError(f"Файл набора {path.name} не совпадает с записью {r['id']} (SHA-256 или тип)")
         done[key] = stored.sha256
@@ -571,15 +715,18 @@ def load(db: Session, src: Path = DIR, *, files: bool = True) -> LoadReport:
         db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": migrate.ADVISORY_LOCK})
     if not is_empty(db):
         raise SnapshotError("БД не пустая — стартовый набор загружается только в новую БД")
+    tables = man.get("tables")
+    if not isinstance(tables, dict):
+        raise SnapshotError(f"{MANIFEST}: нет описания таблиц набора")
     rep = LoadReport(exported_at=man.get("exportedAt"), schema=man.get("schemaVersion"))
     media_rows: list[Obj] = []
     later = migrate.tables_after(man.get("schemaVersion"))
     for s in TABLES:
-        info = (man.get("tables") or {}).get(s.name)
+        info = tables.get(s.name)
         if info is None and s.name not in later:
             raise SnapshotError(f"В наборе нет таблицы {s.name}")
         # таблица, которую добавил шаг migrate после версии набора, - пустая(как после обновления схемы)
-        rows = json.loads((src / info["file"]).read_text(encoding="utf-8")) if info is not None else []
+        rows = _table_rows(src, s.name, info) if info is not None else []
         if s.name == "media_assets":  # кадры(parent_id) - после своих видео
             rows.sort(key=lambda r: r.get("parent_id") is not None)
             media_rows = rows
@@ -588,11 +735,13 @@ def load(db: Session, src: Path = DIR, *, files: bool = True) -> LoadReport:
             db.execute(s.model.__table__.insert(), values[i:i + CHUNK])
         rep.rows[s.name] = len(values)
     db.flush()
+    for fix in migrate.data_after(man.get("schemaVersion")):  # как migrate.upgrade у БД этой версии
+        fix(db.connection())
     _reset_sequences(db)
     data = importer.load_registry()
     if data and data.get("records"):
         meta = data.get("meta") or {}
-        at = datetime.fromisoformat(meta["builtAt"]) if meta.get("builtAt") else models.utcnow()
+        at = models.as_utc(datetime.fromisoformat(meta["builtAt"])) if meta.get("builtAt") else models.utcnow()
         src_name = (meta.get("builtFrom") or importer.REGISTRY.name).rsplit("/", 1)[-1]
         registry.upsert(db, data["records"], src_name, at)
         rep.registry = len(data["records"])
@@ -630,11 +779,25 @@ def import_cli(eng: Engine, src: Path) -> int:
 
     try:
         seed.init_db(eng, start=start)
-    except SnapshotError as e:
+    except (SnapshotError, migrate.SchemaError) as e:
         print(str(e), file=sys.stderr)
         return 2
     print("Загружен " + holder["rep"].line())
     return 0
+
+
+def _int_in(lo: int, hi: int) -> Callable[[str], int]:
+    """Тип аргумента argparse: целое от lo до hi(иначе - сообщение и код 2)."""
+    def parse(value: str) -> int:
+        try:
+            n: int | None = int(value)
+        except ValueError:
+            n = None
+        if n is None or not lo <= n <= hi:
+            raise argparse.ArgumentTypeError(f"нужно целое число от {lo} до {hi}")
+        return n
+
+    return parse
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -642,8 +805,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     pe = sub.add_parser("export", help="выгрузить текущие данные БД и файлы в каталог набора")
     pe.add_argument("--out", type=Path, default=DIR, help=f"каталог набора (по умолчанию {DIR})")
-    pe.add_argument("--max-px", type=int, default=MAX_PX, help=f"длинная сторона изображения, px ({MAX_PX})")
-    pe.add_argument("--quality", type=int, default=QUALITY, help=f"качество JPEG ({QUALITY})")
+    pe.add_argument("--max-px", type=_int_in(16, 10000), default=MAX_PX,
+                    help=f"длинная сторона изображения, px ({MAX_PX})")
+    pe.add_argument("--quality", type=_int_in(1, 100), default=QUALITY, help=f"качество JPEG ({QUALITY})")
     pi = sub.add_parser("import", help="загрузить набор в пустую БД (непустую — отказ)")
     pi.add_argument("--dir", type=Path, default=DIR, help=f"каталог набора (по умолчанию {DIR})")
     pv = sub.add_parser("views", help=argparse.SUPPRESS)

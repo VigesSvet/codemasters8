@@ -148,10 +148,27 @@ def test_geocode_skips_broken_items_and_duplicates(geo, dgis):
         assert [x.id for x in dgis.geocode(CONTROL, client=c, key=KEY)] == [EXACT_ID]
 
 
+def test_geocode_ignores_non_scalar_fields(geo, dgis):
+    """Поля-объекты и списки вместо строк - не repr в карточке: id-объект - кандидат пропускается, name-объект -
+    имя берётся из адреса."""
+    from app.integrations import http
+
+    odd = {**EXACT, "id": {"x": 1}}
+    named = {**NUMBER, "name": {"ru": "x"}, "purpose_name": ["Киоск"], "type": True}
+    geo.on("GET", dgis.GEOCODE, json=body([odd, named]))
+    with http.client(base_url=dgis.BASE) as c:
+        (cand,) = dgis.geocode(CONTROL, client=c, key=KEY)
+    assert (cand.id, cand.name, cand.purpose, cand.type) == (NUMBER_ID, "Усть-Каменогорск, Увалиева, 8/3а", None,
+                                                             None)
+
+
 @pytest.mark.parametrize("status, payload, headers, exc, detail, retryable, retry_after", [
     (200, error_body(400, "Parameter q is invalid"), None, "SourceError",
      "2ГИС отклонил запрос: Parameter q is invalid", False, None),
     (400, error_body(400, "Bad request"), None, "SourceError", "2ГИС отклонил запрос: Bad request", False, None),
+    # message-объект - не repr в тексте ошибки, а тип ошибки
+    (400, error_body(400, {"ru": "x"}, "paramsInvalid"), None, "SourceError", "2ГИС отклонил запрос: paramsInvalid",
+     False, None),
     (401, error_body(401, "Unauthorized"), None, "AuthExpired", "Ключ 2ГИС отклонён", False, None),
     (403, error_body(403, "Key is not valid"), None, "AuthExpired", "Ключ 2ГИС отклонён", False, None),
     (403, error_body(403, "Request limit exceeded for key"), {"Retry-After": "120"}, "RateLimited", None, False, 120),
@@ -359,6 +376,11 @@ def test_check_targets_and_validation(client, geo, dgis):
     r = post_check(client, "prestizh-sparkle-diamond", kind="registry")
     assert r.status_code == 201 and r.json()["prevPoint"] is None
     assert [c["distanceM"] for c in r.json()["candidates"]] == [None, None]
+    assert len(geo_calls(geo)) == 2
+    # объект из рекламы: id - только ASCII-цифры("²".isdigit() - True, int("²") - ошибка; было 500)
+    for tid in ("²", "١", "abc", "9" * 12):
+        r = post_check(client, tid, kind="discovered", query=CONTROL)
+        assert (r.status_code, r.json()["detail"]) == (404, "Объект из рекламы не найден"), tid
     assert len(geo_calls(geo)) == 2
 
 
@@ -681,6 +703,56 @@ def test_accept_race_on_coordinates_rolls_back(client, geo, dgis, monkeypatch):
     assert r.status_code == 409
     with SessionLocal() as db:
         assert db.get(models.GeoCheck, g["id"]).status == "candidates"
+
+
+def test_accept_lost_race_answers_by_fresh_row(client, geo, dgis, monkeypatch):
+    """Сверку очистили по сроку или удалили между чтением и UPDATE: 409 "устарели" или 404, а не "уже решили: ждёт
+    решения" и не 500."""
+    from sqlalchemy import delete, update
+
+    G = models.GeoCheck
+    g2, g3 = post_check(client, "c2").json(), post_check(client, "c3").json()
+    real = dgis._target
+
+    def purging(db, kind, tid):
+        t = real(db, kind, tid)
+        db.execute(update(G).where(G.id == g2["id"]).values(candidates=[], purged_at=models.utcnow()))
+        db.commit()  # "уборка воркера" успела раньше
+        return t
+
+    monkeypatch.setattr(dgis, "_target", purging)
+    r = client.post(f"/api/geo/checks/{g2['id']}/accept", json={"candidateId": EXACT_ID, "author": AUTHOR})
+    assert (r.status_code, r.json()["detail"]) == (409, "Кандидаты устарели — выполните сверку заново")
+
+    def deleting(db, kind, tid):
+        t = real(db, kind, tid)
+        db.execute(delete(G).where(G.id == g3["id"]))
+        db.commit()
+        return t
+
+    monkeypatch.setattr(dgis, "_target", deleting)
+    r = client.post(f"/api/geo/checks/{g3['id']}/accept", json={"candidateId": EXACT_ID, "author": AUTHOR})
+    assert (r.status_code, r.json()["detail"]) == (404, "Сверка не найдена")
+    assert audit_rows("Сверка адреса 2ГИС принята") == []
+
+
+def test_accept_decided_check_after_purge_reports_decision(client, geo, dgis):
+    """Решённая сверка после уборки кэша - "уже решили", а не "выполните сверку заново"; у "адрес не найден" - нет
+    кандидата(422)."""
+    from app import worker
+
+    g = post_check(client, "c4").json()
+    client.post(f"/api/geo/checks/{g['id']}/reject", json={"author": AUTHOR})
+    with SessionLocal() as db:
+        worker.housekeeping(db, dgis._now() + timedelta(days=8))
+    r = client.post(f"/api/geo/checks/{g['id']}/accept", json={"candidateId": EXACT_ID, "author": AUTHOR})
+    assert (r.status_code, r.json()["detail"]) == (409, f"Сверку уже решили: отклонена ({AUTHOR})")
+
+    geo.on("GET", dgis.GEOCODE, json=body([]))
+    nf = post_check(client, "c3").json()
+    assert nf["status"] == "not_found"
+    r = client.post(f"/api/geo/checks/{nf['id']}/accept", json={"candidateId": EXACT_ID, "author": AUTHOR})
+    assert (r.status_code, r.json()["detail"]) == (422, "Этого кандидата в сверке нет")
 
 
 def test_registry_target_never_modified(client, geo, dgis):

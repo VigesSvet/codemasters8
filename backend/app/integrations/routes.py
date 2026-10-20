@@ -2,11 +2,10 @@
 
 Чтение(состояние подключений, запуски, версии публикации, файлы) токена не требует и секретов не содержит; состояние
 подключений и запуски без токена администратора - урезанные(service.public_*): посетитель видит только статусы,
-расписание и счётчики. Настройка
-подключений, ручной запуск и повторный анализ ИИ(платный запрос к Claude) - только администратору(SAQ_ADMIN_TOKEN,
-проверяет сервер). Приём публикаций - по отдельному токену INTEGRATION_INGEST_TOKEN; токен проверяется ДО разбора тела
-запроса, отказы записываются в состояние подключения "Приём публикаций API". Сбор, проверки и анализ в запросе не
-выполняются: запрос ставит задание воркеру(202).
+расписание и счётчики. Настройка подключений, ручной запуск и повторный анализ ИИ(платный запрос к Claude) - только
+администратору(SAQ_ADMIN_TOKEN, проверяет сервер). Приём публикаций - по отдельному токену INTEGRATION_INGEST_TOKEN;
+токен проверяется ДО разбора тела запроса, отказы записываются в состояние подключения "Приём публикаций API". Сбор,
+проверки и анализ в запросе не выполняются: запрос ставит задание воркеру(202).
 """
 import logging
 import uuid
@@ -17,7 +16,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from .. import auth, ingest, jobs, llm, media, models, schemas
@@ -37,6 +36,7 @@ FILE_NOT_FOUND = "Файл не найден"
 REANALYZE_NOT_COLLECTED = "Повторный анализ доступен для собранных публикаций"
 REANALYZE_EMPTY = "Нечего анализировать: у публикации нет текста и OCR"
 INTAKE_NOTE = "приём публикаций API"
+MEDIA_CSP = "sandbox; default-src 'none'"  # GET /api/media/{id}: без скриптов, запросов и встраиваемого содержимого
 MEDIA_ID = Path(pattern=r"^[0-9a-f]{32}$", description="ID файла (32 шестнадцатеричных символа)")
 
 
@@ -178,7 +178,9 @@ def _intake_schema() -> dict:
 
 
 def _first_error(e: ValidationError) -> str:
-    err = e.errors(include_url=False)[0] if e.errors() else {}
+    """Первая ошибка проверки тела одной строкой "поле: сообщение" - для состояния подключения."""
+    errors = e.errors(include_url=False)
+    err = errors[0] if errors else {}
     loc = ".".join(str(x) for x in err.get("loc", ()))
     return f"{loc}: {err.get('msg', '')}" if loc else str(err.get("msg", "ошибка проверки"))
 
@@ -192,17 +194,13 @@ def _intake_sync(body: schemas.IntakePublicationIn) -> ingest.IngestResult:
                       price=body.price, reach=body.reach, raw=dict(body.raw or {}))
     raw_extra = {"_intake": {"sourceId": body.source_id, "claimedCollectedAt": models.iso(body.collected_at),
                              "externalRunId": body.external_run_id}}
-    with SessionLocal() as db:
-        try:
-            res = ingest.ingest_publication(db, pub, collector="intake", actor=COLLECTOR, note=INTAKE_NOTE,
-                                            external_run_id=body.external_run_id, raw_extra=raw_extra)
-            if res.status == "foreign":
-                db.rollback()
-            else:
-                db.commit()
-        except BaseException:
+    with SessionLocal() as db:  # исключение - откат при закрытии сессии
+        res = ingest.ingest_publication(db, pub, collector="intake", actor=COLLECTOR, note=INTAKE_NOTE,
+                                        external_run_id=body.external_run_id, raw_extra=raw_extra)
+        if res.status == "foreign":
             db.rollback()
-            raise
+        else:
+            db.commit()
     return res
 
 
@@ -317,13 +315,22 @@ def reanalyze(aid: str, body: schemas.AdminActionIn, admin: auth.Admin = Depends
         job, created = jobs.enqueue(db, "analyze", ad_id=aid, content_version=item.version,
                                     dedupe_key=f"analyze:{aid}", payload=payload, priority=llm.REANALYZE_PRIORITY)
     if not created:  # в очереди повтор загрузки или запроса, новая версия, дозапрос - теперь это повторный анализ
-        job.payload = {**(job.payload or {}), **payload}
-        job.priority = max(job.priority or 0, llm.REANALYZE_PRIORITY)
-        if models.as_utc(job.run_after) > now:
-            job.run_after = now
+        # условным UPDATE "ещё в очереди": задание, которое воркер успел захватить, выполняется без force - анализ
+        # уже идёт(200, как выше), а не 202 "повторный анализ поставлен", которого не будет
+        J = models.Job
+        res = db.execute(update(J).where(J.id == job.id, J.status == "queued")
+                         .values(payload={**(job.payload or {}), **payload},
+                                 priority=max(job.priority or 0, llm.REANALYZE_PRIORITY),
+                                 run_after=min(models.as_utc(job.run_after), now))
+                         .execution_options(synchronize_session=False))
+        if res.rowcount != 1:
+            db.expire_all()  # processing - по свежему состоянию анализа
+            return _ad_response(ad, 200)
+        db.expire(job)  # строка изменена мимо ORM
     item.analysis_status, item.analysis_stage, item.analysis_error = "queued", None, None
-    _event(db, "ai", body.author, f"Запрошен повторный анализ ИИ (модель {s.anthropic_model}): запрос "
-                                  "расходует дневной бюджет, прежний результат сохранится в истории", at=now, ad_id=aid)
+    # без модели из настроек сервера: журнал публикации открыт посетителю(модель анализа - в его результате, llm)
+    _event(db, "ai", body.author, "Запрошен повторный анализ ИИ: запрос расходует дневной бюджет, прежний результат "
+                                  "сохранится в истории", at=now, ad_id=aid)
     db.commit()
     db.refresh(ad)
     return _ad_response(ad, 202)
@@ -334,7 +341,9 @@ def reanalyze(aid: str, body: schemas.AdminActionIn, admin: auth.Admin = Depends
 @router.get("/api/media/{asset_id}", response_class=FileResponse,
             responses={200: {"description": "Файл (изображение или видео)"}, 404: {"description": FILE_NOT_FOUND}})
 def media_file(asset_id: str = MEDIA_ID, db: Session = Depends(get_db)):
-    """Сохранённый файл публикации. Только загруженные файлы; тип - по сигнатуре; браузер не угадывает тип(nosniff)."""
+    """Сохранённый файл публикации. Только загруженные файлы; тип - по сигнатуре и только из разрешённых(изображение,
+    видео), иначе application/octet-stream; браузер не угадывает тип(nosniff). CSP sandbox: даже файл, открытый
+    напрямую и показанный браузером как документ, не выполняет скрипты от имени приложения."""
     a = db.get(models.MediaAsset, asset_id)
     if a is None or a.status != "downloaded" or not a.storage_key:
         raise HTTPException(404, FILE_NOT_FOUND)
@@ -344,9 +353,10 @@ def media_file(asset_id: str = MEDIA_ID, db: Session = Depends(get_db)):
         raise HTTPException(404, FILE_NOT_FOUND) from None
     if not path.is_file():
         raise HTTPException(404, FILE_NOT_FOUND)
-    return FileResponse(path, media_type=a.mime or "application/octet-stream",
+    mime = a.mime if a.mime in media.ALLOWED else "application/octet-stream"
+    return FileResponse(path, media_type=mime,
                         headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=86400",
-                                 "Content-Disposition": "inline"})
+                                 "Content-Disposition": "inline", "Content-Security-Policy": MEDIA_CSP})
 
 
 @router.post("/api/media", response_model=schemas.MediaUploadOut, response_model_by_alias=True, status_code=201,
@@ -355,15 +365,8 @@ def media_file(asset_id: str = MEDIA_ID, db: Session = Depends(get_db)):
 def media_upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Скриншот из формы ручного ввода → хранилище. Привязывается к публикации, когда POST /api/ads указывает
     image "/api/media/{id}"; непривязанный удаляется через сутки."""
-    data = file.file.read(media.UPLOAD_MAX + 1)
-    if len(data) > media.UPLOAD_MAX:
-        raise HTTPException(413, f"Файл больше {media.UPLOAD_MAX // media.MB} МБ")
     now = models.utcnow()
-    try:
-        media.check_upload_budget(db, now, len(data))
-        st = media.store_bytes(data, allowed=media.IMAGE_TYPES)
-    except media.MediaRejected as e:
-        raise HTTPException(e.status, e.detail) from None
+    st = media.accept_image_upload(db, file.file, now)
     a = models.MediaAsset(id=uuid.uuid4().hex, ad_id=None, item_id=None, kind="image", role="attachment",
                           origin_ref="upload", status="downloaded", attempts=1, mime=st.mime, size=st.size,
                           sha256=st.sha256, storage_key=st.storage_key, meta={}, created_at=now, downloaded_at=now)

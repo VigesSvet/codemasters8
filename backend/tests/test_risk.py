@@ -280,6 +280,9 @@ EXPECT = {
     "r6_no_photos_unknown": (0, "green", True, {"R6": ("unknown", "no_photos")}),
     "r6_overdue_179_clear": (0, "green", False, {}),
     "r6_overdue_180_hit": (5, "green", False, {"R6": ("hit", "overdue")}),
+    # срок сдачи не датой YYYY-MM-DD("2025-02-30", "20250101") - не разобран, не просрочка; эталон сверяет и фронтенд
+    "r6_planned_end_not_a_date_clear": (0, "green", False, {}),
+    "r6_planned_end_compact_clear": (0, "green", False, {}),
     "o2_young_developer_flag": (0, "green", False, {}),
     "o2_developer_unknown": (0, "green", False, {}),
 }
@@ -782,6 +785,8 @@ AD_EXPECT = {
     "ad_terms_rejected": (45, "yellow", False, {"R1": ABSENT, "R2": ("clear", "R2_rejected"), "R3": ("hit", "R3_ads")}),
     "ad_terms_accepted_red": (70, "red", False, {"R1": ABSENT, "R2": ("hit", "R2_offer"), "R3": ("hit", "R3_ads")}),
     "ad_quote_from_ocr": (35, "yellow", True, {"R1": ("unknown", "unknown"), "R2": ("hit", "R2_offer"), "R3": ("hit", "R3_ads")}),
+    "ad_quote_mid_word_marker": (35, "yellow", True, {"R1": ("unknown", "unknown"), "R2": ("hit", "R2_offer"),
+                                                      "R3": ("hit", "R3_ads")}),
 }
 
 
@@ -854,6 +859,17 @@ def test_ad_long_sentence_quote_trimmed():
     assert q3.startswith("… ") and q3.endswith("до конца месяца") and "квартиры" in q3
 
 
+def test_ad_quote_mid_word_marker_window():
+    """Маркер с середины слова: окно цитаты - 8 слов до слова с маркером и 12 с ним, как у маркера с начала слова."""
+    r = run_ad("ad_quote_mid_word_marker")
+    r2, r3 = fac(r, "R2")["items"][0], fac(r, "R3")["items"][0]
+    assert (r2["marker"], r2["quote"]) == (
+        "бронирование", "… видом на реку и большой зелёный парк, а онлайн-бронирование без визита в офис работает до конца месяца")
+    assert (r3["marker"], r3["quote"]) == (
+        "продаж", "… нашем новом жилом комплексе на берегу Иртыша стартовала предпродажа просторных светлых квартир с отделкой, "
+                  "видом на реку и большой зелёный …")
+
+
 # ---------- текст публикации ----------
 
 def test_hits_drops_nested_markers():
@@ -868,6 +884,19 @@ def test_quote():
     assert quote("Без нужного слова.", "бронь") is None
     assert quote("Первое. Вторая БРОНЬ тут! Третье.", "бронь") == "Вторая БРОНЬ тут!"
     assert quote("Строка один\nбронь  на   строке два", "бронь") == "бронь на строке два"
+
+
+@pytest.mark.parametrize("marker,word", [("предоплат", "предоплата"), ("оплат", "предоплата"), ("ата", "предоплата"),
+                                         ("бронирование", "онлайн-бронирование"), ("взнос", "ВЗНОС,")])
+def test_quote_window_from_word_with_marker(marker, word):
+    """Окно цитаты отсчитывается от слова, в котором начинается маркер: с начала слова или с середины - одно и то же окно
+    (прежде маркер с середины слова сдвигал окно на слово вперёд)."""
+    words = [f"w{n}" for n in range(1, 31)]
+    s = " ".join([*words[:14], word, *words[15:]])
+    assert quote(s, marker) == f"… {' '.join(words[6:14])} {word} {' '.join(words[15:26])} …"
+    # маркер с середины первого слова предложения - окно с начала
+    first = " ".join([word, *words[1:]])
+    assert quote(first, marker) == f"{word} {' '.join(words[1:12])} …"
 
 
 def test_link_confirmed():
@@ -1149,6 +1178,37 @@ def test_as_of_accepts_datetime_and_string():
     assert score_complex(c, dev, SEED["ads"], SEED["appeals"], date(2026, 10, 15)) == base
 
 
+@pytest.mark.parametrize("utc,day", [(datetime(2026, 10, 15, 18, 59, tzinfo=UTC), "2026-10-15"),
+                                     (datetime(2026, 10, 15, 19, 0, tzinfo=UTC), "2026-10-16")])
+def test_as_of_aware_datetime_is_day_in_utc5(utc, day):
+    """Момент с поясом - дата по Усть-Каменогорску, а не дата в поясе самого момента."""
+    for name in ["r6_overdue_179_clear", "r6_overdue_180_hit"]:
+        assert run(name, as_of=utc) == run(name, as_of=day), name
+
+
+@pytest.mark.parametrize("planned", ["2025/01/01", "01.01.2025", "2025-02-30", "2025", "20250101", "нет", "2023-02-29",
+                                     "2025-13-01", "2025-00-10", "2025-01-00", "0000-01-01"])
+def test_r6_unparsable_planned_end_is_not_overdue(planned):
+    """Срок сдачи не в виде YYYY-MM-DD или несуществующая дата - не просрочка(то же правило во фронтенде, isoDay в risk.ts)
+    и не исключение на всю оценку."""
+    f = _clean()
+    f["complex"]["plannedEnd"] = planned
+    r6 = fac(score_complex(f["complex"], f["developer"], [], [], AS_OF), "R6")
+    assert r6["reason"] != "overdue"
+
+
+@pytest.mark.parametrize("value", [True, False, float("nan"), float("inf")])
+def test_r5_readiness_value_must_be_finite_number(value):
+    """True/False - не проценты(typeof во фронтенде - boolean), NaN и бесконечность - тоже: R5 "нужна проверка"."""
+    f = _clean()
+    f["complex"]["readiness"]["confirmed"]["value"] = value
+    r5 = fac(score_complex(f["complex"], f["developer"], [], [], AS_OF), "R5")
+    assert (r5["state"], r5["reason"]) == ("unknown", "incomplete")
+    reg = copy.deepcopy(CX_FX["registry_not_assessed"]["complex"])
+    reg["readiness"] = {"declared": None, "confirmed": {"value": value, "source": "Акт осмотра", "date": "2026-10-01"}}
+    assert score_complex(reg, None, [], [], AS_OF)["assessed"] is False
+
+
 def _frozen_now(utc):
     """Подмена datetime в app.risk: now(tz) отдаёт заданный момент UTC; без tz - "наивное" UTC(будто процесс в UTC)."""
     class Frozen(datetime):
@@ -1174,3 +1234,15 @@ def test_default_as_of_is_today_utc5(monkeypatch, utc, day):
     f = CX_FX["r6_overdue_179_clear"]
     expected = "hit" if day == "2026-10-16" else "clear"
     assert fac(score_complex(f["complex"], f.get("developer"), [], []), "R6")["state"] == expected
+
+
+def test_by_date_desc_newest_first_ties_by_id():
+    """Новые сверху, при равной дате - по id, без даты - в конце; общий помощник для risk, signals и letters."""
+    xs = [{"id": "a3", "date": "2026-10-01"}, {"id": "a1"}, {"id": "a2", "date": "2026-10-01"},
+          {"id": "a4", "date": "2026-10-05"}]
+    assert [x["id"] for x in risk.by_date_desc(xs)] == ["a4", "a2", "a3", "a1"]
+
+
+@pytest.mark.parametrize(("x", "pct"), [(None, 0), (0, 0), (0.125, 13), (0.5, 50), (0.994, 99), (0.995, 100), (1, 100)])
+def test_confidence_pct_rounds_half_up(x, pct):
+    assert risk.confidence_pct(x) == pct

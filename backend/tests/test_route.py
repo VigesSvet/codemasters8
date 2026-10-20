@@ -7,7 +7,6 @@ import pytest
 from app import route
 
 ANALYST, LEAD, GASK = "Нестерова А.", "Омарова Ж.", "Исаев Т."  # an1, an2(руководитель в пилоте), an3
-UTC = UTC
 
 
 def _signal(c, cid="c2"):
@@ -65,6 +64,18 @@ def test_build_stages_and_overdue_with_frozen_time():
     r = route.build(s, events, now=back + timedelta(days=30))
     assert (r["stage"], r["dueAt"], r["overdue"], r["actions"]) == ("confirmed", None, False, [])
     assert r["stages"][-2]["outcome"] == "confirmed" and r["stages"][-2]["overdue"] is True  # закрыт после срока
+
+
+def test_build_accepts_naive_event_times():
+    """Наивное время события(datetime из SQLite или ISO-строка без смещения) - UTC: раньше строка без смещения давала
+    наивный datetime, и сравнение со сроком падало(TypeError)."""
+    created = datetime(2026, 10, 19, 5, 0)  # наивное, как из SQLite
+    s = SimpleNamespace(id=1, code="S-0001", status="new", created_at=created, created_by=ANALYST, decided_at=None,
+                        decided_by=None, decision_comment=None)
+    events = [{"at": "2026-10-19T06:00:00", "who": ANALYST, "what": route.SUBMIT_WHAT, "kind": "signal"}]
+    r = route.build(s, events, now=datetime(2026, 10, 19, 7, 0, tzinfo=UTC))
+    assert (r["stage"], r["since"], r["overdue"]) == ("approval", "2026-10-19T06:00:00+00:00", False)
+    assert r["stages"][0]["startedAt"] == "2026-10-19T05:00:00+00:00"
 
 
 # ---------- переходы через API ----------

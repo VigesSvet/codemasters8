@@ -215,7 +215,8 @@ def test_changed_publication_new_version(client):
     r = client.post(f"/api/ads/{first.ad_id}/terms-review", json={"author": AUTHOR, "decision": "accepted"})
     assert r.status_code == 200
     stale = SessionLocal()
-    stale_ad = stale.get(models.Ad, first.ad_id)  # аналитик открыл карточку до новой версии
+    # аналитик открыл карточку до новой версии; ссылка держит объект в карте сессии(она хранит объекты слабо)
+    stale_ad = stale.get(models.Ad, first.ad_id)
     res = run(pub(text="Старт продаж ЖК Ульба Ривер — цены снижены", price="58 194 600 ₸",
                   media=[MediaIn(key="k1", fetch=lambda: pytest.fail("не загружать повторно"))]))
     assert (res.status, res.version, res.ad_id, res.analysis_queued) == ("updated", 2, first.ad_id, True)
@@ -245,6 +246,7 @@ def test_changed_publication_new_version(client):
 
     from app import main, schemas
 
+    assert stale_ad.decision_rev == rev0 + 1  # в устаревшей карточке - версия решений до новой версии публикации
     with pytest.raises(HTTPException) as e:
         main.terms_review(first.ad_id, schemas.TermsReviewIn(author=AUTHOR, decision="rejected"), stale)
     assert e.value.status_code == 409
@@ -331,6 +333,45 @@ def test_resolve_media_failures():
     assert "SECRETTOKEN" not in a.error and b.status == "failed"
 
 
+def test_resolve_media_keys_as_stored(client):
+    """Ключи - как при записи: повтор ключа загружается один раз, ключ с пробелами сверяется с уже загруженным."""
+    run(pub(media=[stored((8, 8, 8), "k1")]))
+    with SessionLocal() as db:
+        kn = ingest.known(db, "tiktok", EID)
+    calls = []
+
+    def fetch():
+        calls.append(1)
+        return MediaIn(key="x", stored=media.store_bytes(png_bytes((9, 9, 9))), status="downloaded")
+
+    p = ingest.resolve_media(pub(media=[MediaIn(key=" k1 ", fetch=lambda: pytest.fail("уже загружен")),
+                                        MediaIn(key="k2", fetch=fetch), MediaIn(key="k2", fetch=fetch)]), kn)
+    assert calls == [1] and [m.key for m in p.media] == ["k1", "k2"] and p.media[1].stored is not None
+
+
+def test_ad_deleted_outside_ingest_is_recreated_and_analyzed(client, run_worker, ocr_stub):
+    first = run(pub(media=[stored((10, 0, 0), "k1")]))
+    run_worker()
+    with SessionLocal() as db:
+        assert db.get(models.IngestItem, first.item_id).analyzed_version == 1
+        # публикацию удалили вместе с её журналом(иначе внешний ключ audit_events.ad_id не даст удалить)
+        db.execute(models.AuditEvent.__table__.delete().where(models.AuditEvent.ad_id == first.ad_id))
+        db.execute(models.Ad.__table__.delete().where(models.Ad.id == first.ad_id))
+        db.commit()
+    again = run(pub(media=[MediaIn(key="k1", fetch=lambda: pytest.fail("файл уже загружен"))]))
+    assert (again.status, again.ad_id, again.analysis_queued) == ("unchanged", first.ad_id, True)
+    with SessionLocal() as db:
+        ad = db.get(models.Ad, first.ad_id)
+        item = db.get(models.IngestItem, first.item_id)
+        k1 = db.scalars(select(models.MediaAsset).where(models.MediaAsset.source_key == "k1")).one()
+        assert ad.image == f"/api/media/{k1.id}" and ad.ocr is None
+        assert (item.analysis_status, item.analyzed_version) == ("queued", None)
+    run_worker()
+    with SessionLocal() as db:
+        assert db.get(models.Ad, first.ad_id).ocr  # OCR снова в публикации - анализ не пропущен как "up to date"
+        assert db.get(models.IngestItem, first.item_id).analyzed_version == 1
+
+
 def test_bot_namespace(client):
     res = run(pub(platform="instagram", external_id="555:77", namespace="tgbot", account="@altai.build"),
               collector="telegram_bot", actor=BOT, note="заявка жителя")
@@ -394,6 +435,8 @@ def test_scrub_raw(env):
     assert ingest.scrub({"a": "x-" * 1_000_000, "b": ["a." * 500_000]}) == {"truncated": True, "keys": ["a", "b"]}
     assert time.perf_counter() - t < 2
     assert ingest.scrub(None) == {} and ingest.scrub([1, 2]) == {"value": [1, 2]}
+    # множество - в постоянном порядке(хеш содержимого не зависит от PYTHONHASHSEED)
+    assert ingest.scrub({"tags": {"б", "а", "в"}}) == {"tags": ["а", "б", "в"]}
 
 
 def test_content_hash_rules():
@@ -636,6 +679,27 @@ def test_intake_validation(client, intake_on):
         assert models.as_utc(ad.collected_at) > models.utcnow() - timedelta(minutes=5)
 
 
+def test_intake_validation_edges(client, intake_on):
+    """Граничные значения - 422 с понятной причиной, а не 500: момент за пределами datetime после перевода в UTC,
+    не-ASCII цифры в числовом externalId(одна публикация под двумя ID), счётчик больше Integer, ссылка без хоста или с
+    управляющим символом. Схема http(s) - без учёта регистра."""
+    def post(**kw):
+        return client.post(INTAKE, json=body(**kw), headers=BEARER)
+
+    def msgs(r):
+        assert r.status_code == 422, r.text
+        return [d["msg"] for d in r.json()["detail"]]
+
+    assert "publishedAt: дата вне допустимого диапазона" in msgs(post(publishedAt="9999-12-31T23:00:00-05:00"))
+    assert any("externalId для krisha" in m for m in msgs(post(platform="krisha", externalId="١٢٣")))
+    assert msgs(post(reach=2**31)) and post(reach=2**31 - 1).status_code == 201
+    for url in ("https://?x", "https://a\x01b"):
+        assert "media.url: нужна ссылка https://" in msgs(post(media=[{"key": "a", "url": url}])), url
+    r = post(platform="krisha", externalId="123", url="HTTPS://krisha.kz/a")
+    assert r.status_code == 201, r.text
+    assert client.get(f"/api/ads/{r.json()['adId']}").json()["url"] == "HTTPS://krisha.kz/a"
+
+
 # ---------- файлы по ссылкам: загрузка заданием анализа ----------
 
 def test_intake_media_downloaded_by_worker(client, intake_on, run_worker, http_mock, ocr_stub):
@@ -693,6 +757,44 @@ def test_intake_media_retry_unavailable_and_budget(client, intake_on, run_worker
                                                  .where(models.MediaAsset.ad_id == r.json()["adId"]))}
     assert (x["c"].status, x["d"].status, x["d"].error) == ("downloaded", "skipped",
                                                             "Превышен объём файлов публикации (400 МБ)")
+
+
+def test_intake_media_not_in_new_version_not_downloaded(client, intake_on, run_worker, http_mock, ocr_stub):
+    """Файл, ждущий загрузки, которого в новой версии публикации уже нет, анализ не загружает."""
+    http_mock.on("GET", "https://cdn.example.com/keep.png", content=png_bytes((71, 0, 0)))
+    http_mock.on("GET", "https://cdn.example.com/drop.png", content=png_bytes((72, 0, 0)))
+    client.post(INTAKE, headers=BEARER, json=body(media=[{"key": "keep", "url": "https://cdn.example.com/keep.png"},
+                                                         {"key": "drop", "url": "https://cdn.example.com/drop.png"}]))
+    r = client.post(INTAKE, headers=BEARER, json=body(text="Новый текст", media=[
+        {"key": "keep", "url": "https://cdn.example.com/keep.png"}]))
+    assert r.json()["status"] == "updated"
+    run_worker()
+    with SessionLocal() as db:
+        x = {m.source_key: m for m in db.scalars(select(models.MediaAsset))}
+        assert (x["keep"].status, x["drop"].status, x["drop"].current) == ("downloaded", "pending", False)
+        assert db.get(models.IngestItem, r.json()["itemId"]).analysis_status == "done"
+    assert [str(c.url) for c in http_mock.calls] == ["https://cdn.example.com/keep.png"]
+
+
+def test_rules_only_keeps_new_version_queued(client, monkeypatch, run_worker, ocr_stub):
+    """Новая версия, пришедшая во время пересчёта правил, остаётся "в очереди", а не "готово"."""
+    from app import analysis
+
+    first = run(pub())
+    run_worker()
+    real = analysis._rules
+
+    def rules_then_new_version(ad_id):
+        out = real(ad_id)
+        run(pub(text="Новая версия во время пересчёта"))
+        return out
+
+    monkeypatch.setattr(analysis, "_rules", rules_then_new_version)
+    res = analysis.run_analysis(None, first.ad_id, now=models.utcnow(), rules_only=True, reason="тест")
+    assert res["rulesOnly"] is True and res["version"] == 1
+    with SessionLocal() as db:
+        item = db.get(models.IngestItem, first.item_id)
+        assert (item.version, item.analysis_status, item.analyzed_version) == (2, "queued", 1)
 
 
 def test_intake_resend_heals_failed_media(client, intake_on, run_worker, http_mock, ocr_stub):

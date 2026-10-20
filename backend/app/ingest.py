@@ -29,14 +29,16 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from . import ads_service, media, models
-from .ads_service import COLLECTOR, MEDIA_REF, Actor, local_minutes, safe_url
+from .ads_service import COLLECTOR, Actor, cover_url, safe_url
 from .ai import ocr as ocr_engine
 from .integrations.base import MediaIn, Publication
 from .integrations.http import redact_url
 from .logs import redact
 from .pdf import PLATFORMS
+from .schemas import MEDIA_REF, local_minutes, strip_ctrl
 
 log = logging.getLogger("saq.ingest")
+_URL = re.compile(r"^https?://", re.I)  # значение - ссылка(_walk: обезличивание ссылок в сырых данных)
 
 RAW_MAX = 64 * 1024
 # Ключи снимка источника, которые не сохраняются(сравнение - по ключу без регистра и не-букв:
@@ -48,8 +50,6 @@ SCRUB_PARTS = ("token", "secret", "passw", "session", "apikey", "appkey", "signa
 ATTEMPTS_MAX = 3  # попыток загрузки файла сборщиком; дальше файл остаётся "не загружен"
 KEY_MAX = 255
 _DEPTH = 40
-_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
-_URL = re.compile(r"^https?://", re.I)
 _ERRORS = {"failed": "Файл не загружен", "unavailable": "Источник не отдал файл", "skipped": "Файл пропущен"}
 
 
@@ -95,14 +95,14 @@ def normalize_text(s: Any) -> str:
     if s is None:
         return ""
     t = str(s).replace("\r\n", "\n").replace("\r", "\n")
-    return ocr_engine.clip(_CTRL.sub("", t).strip())
+    return ocr_engine.clip(strip_ctrl(t).strip())
 
 
 def _line(s: Any, limit: int) -> str:
     """Однострочное поле(аккаунт, цена): пробелы схлопнуты, без управляющих символов, не длиннее limit."""
     if s is None:
         return ""
-    return re.sub(r"\s+", " ", _CTRL.sub("", str(s))).strip()[:limit]
+    return re.sub(r"\s+", " ", strip_ctrl(str(s))).strip()[:limit]
 
 
 def _walk(v: Any, depth: int, redacting: bool) -> Any:
@@ -113,7 +113,9 @@ def _walk(v: Any, depth: int, redacting: bool) -> Any:
     if isinstance(v, Mapping):
         return {str(k)[:128]: _walk(x, depth + 1, redacting) for k, x in v.items()
                 if not (redacting and _secret_key(k))}
-    if isinstance(v, (list, tuple, set, frozenset)):
+    if isinstance(v, (set, frozenset)):  # порядок множества строк меняется от процесса к процессу(PYTHONHASHSEED)
+        v = sorted(v, key=repr)
+    if isinstance(v, (list, tuple)):
         return [_walk(x, depth + 1, redacting) for x in v]
     if isinstance(v, str):
         if not redacting:
@@ -180,6 +182,18 @@ def content_hash(pub: Publication) -> str:
 
 # ---------- что уже принято ----------
 
+def ident(namespace: str | None, external_id: Any) -> tuple[str, str]:
+    """(пространство дедупликации, внешний ID) так, как их хранит запись приёма: пространство - до 16 символов,
+    пустое - "other"; ID - без пробелов по краям. Одна нормализация для приёма и поиска(known, RunContext.touch):
+    иначе принятая публикация не находится и её файлы скачиваются повторно."""
+    return str(namespace or "other")[:16], str(external_id or "").strip()
+
+
+def pub_ident(pub: Publication) -> tuple[str, str]:
+    """ident публикации: пространство - pub.namespace, по умолчанию площадка pub.platform."""
+    return ident(pub.namespace or pub.platform, pub.external_id)
+
+
 def known(db: Session, namespace: str, external_id: str) -> Known | None:
     I, A, V = models.IngestItem, models.MediaAsset, models.IngestVersion
     item = db.scalar(select(I).where(I.platform == namespace, I.external_id == external_id))
@@ -202,9 +216,10 @@ def known(db: Session, namespace: str, external_id: str) -> Known | None:
 
 def resolve_media(pub: Publication, k: Known | None) -> Publication:
     """Сеть, без БД: ленивые загрузки(MediaIn.fetch) вызываются только для файлов, которые ещё нужны(новая публикация
-    или k.needs(key)); исключение загрузчика - файл "failed" с причиной, публикация принимается без него."""
+    или k.needs(key)); исключение загрузчика - файл "failed" с причиной, публикация принимается без него. Ключи - как
+    при записи(_unique_media): повтор ключа не загружается дважды, а k.needs сравнивает с теми же ключами, что в БД."""
     out = []
-    for m in pub.media:
+    for m in _unique_media(pub.media):
         if m.fetch is None or m.stored is not None or (k is not None and not k.needs(m.key)):
             out.append(m)
             continue
@@ -212,7 +227,7 @@ def resolve_media(pub: Publication, k: Known | None) -> Publication:
             got = m.fetch()
             if not isinstance(got, MediaIn):
                 raise TypeError("загрузчик не вернул файл")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - загрузчик сборщика: любой сбой - файл "failed", не вся публикация
             log.warning("Файл %s публикации %s не загружен: %s", m.key, pub.external_id, type(e).__name__)
             got = MediaIn(key=m.key, kind=m.kind, role=m.role, status="failed",
                           error=redact(str(e) or type(e).__name__) or "Файл не загружен")
@@ -265,14 +280,6 @@ def _apply(a: models.MediaAsset, m: MediaIn, now: datetime) -> str:
     return "none"
 
 
-def _cover(assets) -> str | None:
-    """Изображение публикации: первое загруженное текущее изображение не-обложка, затем обложка."""
-    imgs = [a for a in sorted(assets, key=lambda a: a.position)
-            if a.status == "downloaded" and a.kind == "image" and a.current]
-    pick = next((a for a in imgs if a.role != "cover"), None) or (imgs[0] if imgs else None)
-    return f"/api/media/{pick.id}" if pick else None
-
-
 def _top_assets(db: Session, item_id: int) -> dict[str, models.MediaAsset]:
     A = models.MediaAsset
     rows = db.scalars(select(A).where(A.item_id == item_id, A.parent_id.is_(None)).order_by(A.position, A.created_at))
@@ -294,7 +301,7 @@ def has_decisions(ad: models.Ad) -> bool:
 
 
 def enqueue_analysis(db: Session, ad_id: str, item: models.IngestItem | None = None, *,
-                     payload: dict | None = None, priority: int = 0) -> bool:
+                     payload: dict | None = None, priority: int = 0) -> None:
     """Задание анализа публикации(одно активное на публикацию) и состояние "в очереди" у записи приёма. payload и
     priority - у нового задания(дозапрос Claude, повторный анализ, пересчёт правил); активное задание остаётся как
     есть, но ждущий пересчёт правил(rulesOnly) становится полным анализом, если ставится обычный."""
@@ -314,15 +321,17 @@ def enqueue_analysis(db: Session, ad_id: str, item: models.IngestItem | None = N
         job.run_after = now  # ждущий повтора загрузки анализ: новое содержимое или файлы - анализировать сейчас
     if item is not None:
         item.analysis_status, item.analysis_stage, item.analysis_error = "queued", None, None
-    return True
 
 
 def _ensure_ad(db: Session, item: models.IngestItem, fields: dict, actor: Actor, at: datetime,
-               note: str | None) -> models.Ad:
+               note: str | None) -> tuple[models.Ad, bool]:
+    """(публикация записи приёма, создана ли заново). Публикацию удалили вне приёма - она создаётся заново с тем же id,
+    а запись приёма считается непроанализированной: у новой публикации нет ни OCR, ни гипотез, ни журнала анализа."""
     ad = db.get(models.Ad, item.ad_id)
-    if ad is None:  # публикацию удалили вне приёма - создаётся заново с тем же id
-        ad = ads_service.create_ad(db, fields, actor=actor, at=at, note=note, ad_id=item.ad_id)
-    return ad
+    if ad is not None:
+        return ad, False
+    item.analyzed_version = None
+    return ads_service.create_ad(db, fields, actor=actor, at=at, note=note, ad_id=item.ad_id), True
 
 
 def _update_ad(db: Session, ad: models.Ad, values: dict) -> None:
@@ -347,10 +356,9 @@ def ingest_publication(db: Session, pub: Publication, *, collector: str, run_id:
     """Публикация → БД в сессии db(без сети, без commit). Ошибка - исключение: вызывающий откатывает транзакцию,
     и публикация, запись приёма, версия и файлы не остаются наполовину."""
     I = models.IngestItem
-    eid = str(pub.external_id or "").strip()
+    ns, eid = pub_ident(pub)
     if not eid or len(eid) > 128:
         raise ValueError("Внешний ID публикации пустой или длиннее 128 символов")
-    ns = str(pub.namespace or pub.platform or "other")[:16]
     platform = str(pub.platform or "other")[:16]
     text = normalize_text(pub.text)
     account = _line(pub.account, 255)
@@ -385,7 +393,7 @@ def ingest_publication(db: Session, pub: Publication, *, collector: str, run_id:
         db.add(version_row(1))
         assets = [_new_asset(item, m, pos, now) for pos, m in enumerate(items)]
         db.add_all(assets)
-        ad.image = _cover(assets)
+        ad.image = cover_url(assets)
         enqueue_analysis(db, ad.id, item)
         db.flush()
         new, failed, pending = _count([a.status for a in assets])
@@ -399,7 +407,7 @@ def ingest_publication(db: Session, pub: Publication, *, collector: str, run_id:
         item.last_run_id = run_id
     if ext_run:
         item.external_run_id = ext_run
-    ad = _ensure_ad(db, item, ad_fields, actor, now, note)
+    ad, recreated = _ensure_ad(db, item, ad_fields, actor, now, note)
     assets = _top_assets(db, item.id)
     outcomes: list[str] = []
     retried = 0  # не загрузившиеся файлы, снова ждущие загрузки(приём через API прислал ссылку)
@@ -414,13 +422,16 @@ def ingest_publication(db: Session, pub: Publication, *, collector: str, run_id:
         if a.status != "downloaded":
             before = a.status
             outcomes.append(_apply(a, m, now))
-            retried += before in ("failed", "unavailable") and a.status == "pending"
+            if before in ("failed", "unavailable") and a.status == "pending":
+                retried += 1
 
     if item.content_hash == h:  # без изменений: только "последний раз видели" и дозагрузка файлов
         new, failed, pending = _count(outcomes)
-        if ad.image is None and new:
-            ad.image = _cover(assets.values())
-        queued = bool(new or retried) and enqueue_analysis(db, ad.id, item)
+        if ad.image is None and (new or recreated):
+            ad.image = cover_url(assets.values())
+        queued = bool(new or retried or recreated)
+        if queued:
+            enqueue_analysis(db, ad.id, item)
         db.flush()
         return IngestResult("unchanged", ad.id, item.id, item.version, new, failed, queued, media_pending=pending)
 
@@ -447,7 +458,7 @@ def ingest_publication(db: Session, pub: Publication, *, collector: str, run_id:
     by_id = {a.id: a for a in assets.values()}
     ref = MEDIA_REF.match(ad.image or "")
     if ad.image is None or (ref and ref.group(1) in by_id and not by_id[ref.group(1)].current):
-        ad.image = _cover(assets.values())
+        ad.image = cover_url(assets.values())
     what = f"Публикация изменилась в источнике ({PLATFORMS.get(platform, platform)}): версия {n}"
     if decisions:
         what += ". Решения аналитика сохранены — проверьте их по новой версии"

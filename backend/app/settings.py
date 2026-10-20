@@ -9,6 +9,7 @@
 """
 import hashlib
 import logging
+import math
 import os
 import re
 import threading
@@ -38,6 +39,12 @@ TRUE_WORDS = frozenset({"1", "true", "yes", "on"})
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 _MODEL_ID = re.compile(r"[a-z0-9][a-z0-9._-]{1,63}")
 FALSE_WORDS = frozenset({"0", "false", "no", "off"})
+# Формат токена Bot API: alerts.call токен не по формату в запрос не подставляет. [0-9], а не \d - \d в str-шаблоне
+# пропустил бы и цифры других алфавитов
+BOT_TOKEN_FORMAT = re.compile(r"[0-9]{1,20}:[A-Za-z0-9_-]{20,100}")
+# Путь обратного вызова OLX(маршрут integrations.olx, сверяется тестом): PublicHostGuard открывает через публичный
+# хост ровно путь OLX_REDIRECT_URI, и другой путь открыл бы наружу другой адрес API
+OLX_CALLBACK_PATH = "/api/integrations/olx/callback"
 
 
 class Secret:
@@ -81,6 +88,11 @@ class Settings:
     service_token: Secret = field(default_factory=_no_secret)
     allow_schema_reset: bool = False
     collected_autolink: bool = False
+    # адреса интерфейса на другом домене, которым API отвечает с CORS; пусто - CORS выключен, ("*",) - любой адрес
+    cors_origins: tuple[str, ...] = ()
+    # имена, по которым открывают интерфейс кроме localhost и IP(как allowedHosts Vite; ".домен" - и его поддомены):
+    # прокси Vite передаёт Host браузера как есть, и API отвечает только своим именам(main.HostAllowlist)
+    web_hosts: tuple[str, ...] = ()
     # "Проверка по рекламе"(app.screening): окно свежести рекламы, дней - по дате публикации
     screening_days: int = 120
     worker_poll_s: float = 5.0
@@ -184,20 +196,81 @@ class Settings:
     def public_host(self) -> str | None:
         """Хост публичного адреса OLX Callback(ngrok): через него доступен только путь обратного вызова. Без
         регистра и конечной точки("x.ngrok-free.dev." - тот же хост)."""
-        host = urlsplit(self.olx_redirect_uri).hostname if self.olx_redirect_uri else None
-        host = host.lower().rstrip(".") if host else None
-        return host or None
+        return _url_host(self.olx_redirect_uri)
 
     @property
     def public_path(self) -> str | None:
         return (urlsplit(self.olx_redirect_uri).path or "/") if self.public_host else None
 
 
+def _url_host(url: str) -> str | None:
+    """Хост адреса http(s) в нижнем регистре без конечной точки; не адрес или без хоста - None. urlsplit бросает
+    ValueError на "https://[x" - здесь это None, а не 500 на каждый запрос(PublicHostGuard читает хост в каждом)."""
+    try:
+        u = urlsplit(url)
+        host = u.hostname
+    except ValueError:
+        return None
+    if u.scheme not in ("http", "https") or not host:
+        return None
+    return host.lower().rstrip(".") or None
+
+
+def _olx_callback(url: str) -> bool:
+    """Адрес обратного вызова OLX: https, хост, путь ровно OLX_CALLBACK_PATH, без фрагмента(RFC 6749 §3.1.2) - иначе
+    опечатка в пути("/" или "/api/sources/connectors") открыла бы этот путь API через публичный хост. Управляющие
+    символы - тоже нет: urlsplit молча выбрасывает табуляцию и перевод строки, и проверку прошёл бы адрес, который
+    OLX получит с ними и не совпадёт с адресом из заявки."""
+    if not url.isprintable() or not _url_host(url):
+        return False
+    u = urlsplit(url)
+    return u.scheme == "https" and u.path == OLX_CALLBACK_PATH and "#" not in url
+
+
+_ORIGIN = re.compile(r"(https?)://([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?|\[[0-9a-f:.]+\])(?::(\d{1,5}))?/?", re.I)
+
+
+# имя хоста без схемы, порта и пути; ".домен" - домен и все его поддомены(как в allowedHosts Vite)
+_HOST_NAME = re.compile(r"\.?[a-z0-9_](?:[a-z0-9_-]*[a-z0-9_])?(?:\.[a-z0-9_](?:[a-z0-9_-]*[a-z0-9_])?)*")
+
+
+def _host_names(raw: str | None) -> tuple[tuple[str, ...], int]:
+    """SAQ_WEB_HOSTS: имена через запятую. Возвращает(имена в нижнем регистре без конечной точки и повторов, сколько
+    значений не подошло)."""
+    out: dict[str, None] = {}
+    bad = 0
+    for item in (part.strip().lower() for part in (raw or "").split(",")):
+        name = item.rstrip(".")
+        if name and _HOST_NAME.fullmatch(name):
+            out[name] = None
+        elif item:
+            bad += 1
+    return tuple(out), bad
+
+
+def _origins(raw: str | None) -> tuple[tuple[str, ...], int]:
+    """SAQ_CORS_ORIGINS: адреса через запятую в том виде, в каком браузер шлёт Origin(схема http(s), хост, порт - без
+    пути), или "*" - любой адрес. Возвращает(адреса в нижнем регистре без повторов, сколько значений не подошло)."""
+    out: dict[str, None] = {}
+    bad = 0
+    for item in (part.strip() for part in (raw or "").split(",")):
+        m = _ORIGIN.fullmatch(item)
+        if item == "*":
+            out["*"] = None
+        elif m and (m[3] is None or 0 < int(m[3]) < 65536):
+            out[f"{m[1]}://{m[2]}{':' + m[3] if m[3] else ''}".lower()] = None
+        elif item:
+            bad += 1
+    return (("*",) if "*" in out else tuple(out)), bad
+
+
 @dataclass(frozen=True)
 class _Var:
     env: str
     field: str
-    kind: str  # str | secret | token | int | float | bool | path | date | optint | optstr | ua | model | effort
+    # str | secret | token | bot_token | int | float | bool | path | date | optint | optstr | ua | model | effort |
+    # olx_callback | origins | hosts
+    kind: str
     lo: float | None = None  # нижняя граница чисел: меньше - значение по умолчанию с предупреждением
     hi: float | None = None  # верхняя граница чисел: больше - значение по умолчанию с предупреждением
 
@@ -212,6 +285,8 @@ VARS: tuple[_Var, ...] = (
     _Var("SERVICE_API_TOKEN", "service_token", "token"),
     _Var("SAQ_ALLOW_SCHEMA_RESET", "allow_schema_reset", "bool"),
     _Var("SAQ_COLLECTED_AUTOLINK", "collected_autolink", "bool"),
+    _Var("SAQ_CORS_ORIGINS", "cors_origins", "origins"),
+    _Var("SAQ_WEB_HOSTS", "web_hosts", "hosts"),
     _Var("SAQ_SCREENING_DAYS", "screening_days", "int", 1, 3650),
     _Var("SAQ_WORKER_POLL_S", "worker_poll_s", "float", 0.1),
     _Var("SAQ_WORKER_ID", "worker_id", "optstr"),
@@ -236,7 +311,7 @@ VARS: tuple[_Var, ...] = (
     _Var("TG_MAX_VIDEO_MB", "tg_max_video_mb", "int", 0),
     _Var("TG_DOWNLOAD_TIMEOUT_S", "tg_download_timeout_s", "int", 1),
     # бот заявок: API и воркер только отправляют(sendMessage), getUpdates и webhook - у самого бота
-    _Var("BOT_TOKEN", "bot_token", "secret"),
+    _Var("BOT_TOKEN", "bot_token", "bot_token"),
     # канал ГАСК для предупреждений жителям: @имя или ID вида -100…; бот - администратор канала
     _Var("TG_ALERTS_CHANNEL", "tg_alerts_channel", "str"),
     _Var("APIFY_TOKEN", "apify_token", "secret"),
@@ -256,7 +331,7 @@ VARS: tuple[_Var, ...] = (
     _Var("KRISHA_PLAYWRIGHT", "krisha_playwright", "bool"),
     _Var("OLX_CLIENT_ID", "olx_client_id", "str"),
     _Var("OLX_CLIENT_SECRET", "olx_client_secret", "secret"),
-    _Var("OLX_REDIRECT_URI", "olx_redirect_uri", "str"),
+    _Var("OLX_REDIRECT_URI", "olx_redirect_uri", "olx_callback"),
     _Var("OLX_SCOPES", "olx_scopes", "str"),
     _Var("ANTHROPIC_API_KEY", "anthropic_api_key", "secret"),
     _Var("ANTHROPIC_MODEL", "anthropic_model", "model"),
@@ -284,7 +359,6 @@ RETIRED = {"SAQ_DEMO_DATA": "демо-набора в приложении бо�
                             "(README, «Развёртывание со стартовым набором данных»); строку можно удалить из .env"}
 # Все имена, которые читает приложение(SAQ_ENV_FILE - только из реального окружения)
 ENV_NAMES: tuple[str, ...] = tuple(v.env for v in VARS) + ("SAQ_ENV_FILE",)
-TOKENS = ("SAQ_ADMIN_TOKEN", "INTEGRATION_INGEST_TOKEN", "SERVICE_API_TOKEN")
 
 
 # ---------- .env ----------
@@ -353,7 +427,7 @@ def _num(name: str, raw: str | None, default, cast, lo, warns: list, hi=None):
     except ValueError:
         warns.append(f"{name}: ожидается {'целое число' if cast is int else 'число'} — {fallback}")
         return default
-    if cast is float and v != v:  # NaN
+    if cast is float and not math.isfinite(v):  # nan, inf: "inf" секунд ожидания или долларов бюджета - не предел
         warns.append(f"{name}: ожидается число — {fallback}")
         return default
     if lo is not None and v < lo:
@@ -402,6 +476,13 @@ def _parse(environ: Mapping[str, str]) -> tuple[Settings, list[str]]:
             v = raw if raw is not None else default
         elif var.kind == "secret":
             v = Secret(raw or "")
+        elif var.kind == "bot_token":
+            # не по формату - только предупреждение: значение остаётся(маскируется в логах), отправка честно
+            # объясняет "токен в неверном формате"(alerts.TOKEN_MALFORMED), а не "токен не задан"
+            v = Secret(raw or "")
+            if raw and not BOT_TOKEN_FORMAT.fullmatch(raw):
+                warns.append(f"{var.env}: ожидается токен от @BotFather вида <число>:<ключ> — предупреждения жителям "
+                             "не будут отправляться")
         elif var.kind == "token":
             v = Secret("")
             if raw:
@@ -434,6 +515,22 @@ def _parse(environ: Mapping[str, str]) -> tuple[Settings, list[str]]:
                 else:
                     warns.append(f"{var.env}: ожидается одно из {', '.join(EFFORTS)} — используется значение по "
                                  f"умолчанию ({default})")
+        elif var.kind == "olx_callback":
+            v = default
+            if raw is not None:
+                if _olx_callback(raw):
+                    v = raw
+                else:
+                    warns.append(f"{var.env}: ожидается адрес https://<хост>{OLX_CALLBACK_PATH} — значение не "
+                                 "используется")
+        elif var.kind == "origins":
+            v, bad = _origins(raw)
+            if bad:
+                warns.append(f"{var.env}: пропущено значений не вида https://хост[:порт] или *: {bad}")
+        elif var.kind == "hosts":
+            v, bad = _host_names(raw)
+            if bad:
+                warns.append(f"{var.env}: пропущено значений не вида имя.хоста или .домен(без схемы и порта): {bad}")
         elif var.kind == "bool":
             v = _bool(var.env, raw, default, warns)
         elif var.kind == "path":

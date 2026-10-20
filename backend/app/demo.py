@@ -38,11 +38,13 @@ import re
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, UTC
+from pathlib import Path
 from typing import Any
 from collections.abc import Iterable
 
 from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from . import importer, migrate, models, registry
@@ -80,7 +82,9 @@ REF_DOCS_MAX = 3
 def complex_id(key: str) -> str:
     """"r-<ключ объекта>"; ключ длиннее 30 символов - "rh-<sha1[:16]>"(id ЖК - String(32))."""
     cid = f"r-{key}"
-    return cid if len(cid) <= ID_MAX else "rh-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
+    if len(cid) <= ID_MAX:
+        return cid
+    return "rh-" + hashlib.sha1(key.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
 
 
 def developer_id(bin_: str | None, name: str | None) -> str | None:
@@ -88,7 +92,7 @@ def developer_id(bin_: str | None, name: str | None) -> str | None:
     if bin_:
         return f"rd-{bin_}"
     org = importer.org_name(name)
-    return "rd-" + hashlib.sha1(org.encode("utf-8")).hexdigest()[:12] if org else None
+    return "rd-" + hashlib.sha1(org.encode("utf-8"), usedforsecurity=False).hexdigest()[:12] if org else None
 
 
 def display_name(name: str) -> str:
@@ -473,7 +477,7 @@ def apply(db: Session, p: Plan, *, at: datetime | None = None) -> ImportReport:
 def _version(db: Session) -> str | None:
     try:
         m = db.get(models.Meta, "schema_version")
-    except Exception:  # нет таблицы meta - БД пустая или чужая
+    except SQLAlchemyError:  # нет таблицы meta - БД пустая или чужая
         db.rollback()
         return None
     return m.value if m else None
@@ -584,12 +588,13 @@ def add_advertised_cli(eng: Engine, path: str, *, author: str | None, note: str 
     from .db import SessionLocal
 
     try:
-        raw = json.loads(open(path, encoding="utf-8").read())
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         print(f"Файл не прочитан: {type(e).__name__}: {e}", file=sys.stderr)
         return 2
     items = raw.get("items") if isinstance(raw, dict) else raw
-    note = note or (raw.get("note") if isinstance(raw, dict) else None)
+    if not note and isinstance(raw, dict) and isinstance(raw.get("note"), str):
+        note = raw["note"]
     if not isinstance(items, list) or not items:
         print("Нужен список ЖК: [{name, aliases, address, lat, lng, developerName, accounts, sourceUrls, note}] или "
               "{\"items\": [...]}", file=sys.stderr)

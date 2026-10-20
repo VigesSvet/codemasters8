@@ -428,3 +428,193 @@ def test_render_and_hashtag():
     assert alerts.chat_reason("subscriber", "1", "Forbidden: user is deactivated") == (
         "Аккаунт жителя удалён — подписка снята", True)
     assert alerts.chat_reason("subscriber", "1", "Bad Request: message is too long")[1] is False
+
+
+# ---------- граничные случаи: четыре глаза, повторы, формат токена ----------
+
+def test_same_person_check_ignores_invisible_chars_spacing_and_yo(client, ready):
+    a = draft(client, author="Алёна  Аналитик")
+    for who in ("алена аналитик", "Алёна\u200b Аналитик", " АЛЁНА   АНАЛИТИК ", "Алёна\u00a0Аналитик"):
+        r = approve(client, a["id"], who=who)
+        assert r.status_code == 409 and "другой сотрудник" in r.json()["detail"], who
+    assert alert(client, a["id"])["status"] == "pending"
+
+
+def test_read_timeout_is_not_resent(client, ready, http_mock, run_worker):
+    """Ответа на sendMessage нет(тайм-аут чтения) - сообщение могло дойти: доставка "результат неизвестен" и повторно
+    не отправляется, остальные уходят повтором задания."""
+    import httpx
+
+    from app import models
+
+    subscribe(client, "1001", "Ульбинский")
+    a = draft(client)
+    approve(client, a["id"])
+    http_mock.on("POST", SEND, handler=lambda r: ok())
+    http_mock.on("POST", SEND, handler=lambda r: (_ for _ in ()).throw(httpx.ReadTimeout("slow", request=r)),
+                 times=1)
+    run_worker()
+    assert [d[2] for d in deliveries(a["id"])] == ["failed", "pending"]
+    assert deliveries(a["id"])[0][3].startswith("Результат неизвестен: Telegram не ответил")
+    run_worker(now=models.utcnow() + timedelta(hours=2))
+    sent = [json.loads(c.content)["chat_id"] for c in http_mock.calls if c.url.path.endswith("sendMessage")]
+    assert sent == ["@gask_vko_test", "1001"]  # в канал - один раз
+    got = alert(client, a["id"])
+    assert (got["status"], got["channel"]["status"], got["subscribers"]["sent"]) == ("partial", "failed", 1)
+
+
+def test_internal_error_marks_delivery_unknown(client, ready, http_mock, run_worker, monkeypatch):
+    from app import alerts
+
+    subscribe(client, "1001", "Ульбинский")
+    a = draft(client)
+    approve(client, a["id"])
+
+    def boom(*a, **kw):
+        raise RuntimeError("bug")
+
+    monkeypatch.setattr(alerts, "send", boom)
+    run_worker()
+    assert [d[1:3] for d in deliveries(a["id"])] == [("@gask_vko_test", "failed"), ("1001", "pending")]
+    assert "внутренняя ошибка отправки" in deliveries(a["id"])[0][3]
+
+
+def test_malformed_bot_token_is_not_put_into_url(client, ready, env, http_mock, run_worker):
+    a = draft(client)
+    approve(client, a["id"])
+    env(BOT_TOKEN="123456789:AAH-test_BotToken_0123456789/../getUpdates?x=")
+    run_worker()
+    assert http_mock.calls == []
+    got = alert(client, a["id"])
+    assert got["status"] == "failed" and "неверном формате" in got["lastError"]
+    assert deliveries(a["id"])[0][2] == "pending"
+
+
+def test_malformed_bot_token_reported_before_sending(client, ready, env, http_mock):
+    """Токен не по формату виден сразу: в готовности отправки и отказом 503 при согласовании, а не после первой
+    неудачной отправки воркера; "Проверить бота и канал" отвечает проверкой(ok = false), а не 503."""
+    from app import alerts
+
+    a = draft(client)
+    env(BOT_TOKEN="123456789:short")
+    aud = client.get("/api/alerts/audience").json()
+    assert aud["configured"] is True and aud["problem"] == alerts.TOKEN_MALFORMED
+    r = approve(client, a["id"])
+    assert r.status_code == 503 and r.json()["detail"] == alerts.TOKEN_MALFORMED
+    assert alert(client, a["id"])["status"] == "pending" and deliveries(a["id"]) == []
+    r = client.post("/api/alerts/check", headers=ADMIN)
+    assert r.status_code == 200 and r.json()["ok"] is False and r.json()["detail"] == alerts.TOKEN_MALFORMED
+    assert http_mock.calls == []
+    env(BOT_TOKEN=BOT)
+    assert client.get("/api/alerts/audience").json()["problem"] is None
+
+
+def test_claim_stops_when_alert_is_no_longer_sending(client, ready):
+    """Зависший воркер после итога брошенного задания не продолжает рассылку."""
+    from app import alerts, models
+    from app.db import SessionLocal
+
+    a = draft(client)
+    approve(client, a["id"])
+    with SessionLocal() as db:
+        db.get(models.ResidentAlert, a["id"]).status = "failed"
+        db.commit()
+    assert alerts._claim(a["id"], models.utcnow()) is None
+    assert deliveries(a["id"])[0][2] == "pending"
+
+
+def test_rate_limit_retry_after_is_bounded():
+    from app import alerts
+
+    assert [alerts._Limited(v).retry_after for v in (7, 0, float("nan"), 10**400, 1e20)] == [
+        7.0, 1.0, 30.0, 86400.0, 86400.0]
+
+
+def test_chat_id_without_leading_zeros_and_trimmed_districts(client, env):
+    from app import models
+    from app.db import SessionLocal
+
+    env(SERVICE_API_TOKEN=SERVICE)
+    for bad in ("0", "042", "-0"):
+        assert client.put(f"/api/intake/telegram/subscriptions/{bad}", headers=SVC, json={}).status_code == 422, bad
+    assert client.put("/api/intake/telegram/subscriptions/-1001234", headers=SVC, json={}).status_code == 200
+    with SessionLocal() as db:  # район с пробелами по краям - тот же район(как у предупреждения в create)
+        db.get(models.Complex, "c1").district = "  Ульбинский "
+        db.commit()
+    got = client.get("/api/intake/telegram/districts", headers=SVC).json()
+    assert [x["district"] for x in got].count("Ульбинский") == 1
+    assert all(x["district"] == x["district"].strip() for x in got)
+
+
+def test_bot_token_is_checked_whole():
+    """Перевод строки в конце токена - тоже не формат(в путь запроса он не попадает)."""
+    from app import alerts
+
+    with pytest.raises(alerts._TokenRejected, match="неверном формате"):
+        alerts.call(None, BOT + "\n", "getMe", {})
+
+
+def test_write_error_is_resent(client, ready, http_mock, run_worker):
+    """Запрос не записан в соединение - Telegram его не получил: доставка снова "ожидает" и уходит повтором задания."""
+    import httpx
+
+    from app import models
+
+    a = draft(client)
+    approve(client, a["id"])
+    http_mock.on("POST", SEND, handler=lambda r: ok())
+    http_mock.on("POST", SEND, handler=lambda r: (_ for _ in ()).throw(httpx.WriteError("reset", request=r)),
+                 times=1)
+    run_worker()
+    assert deliveries(a["id"])[0][2] == "pending"
+    run_worker(now=models.utcnow() + timedelta(hours=2))
+    got = alert(client, a["id"])
+    assert (got["status"], got["channel"]["status"]) == ("sent", "sent")
+
+
+def test_batch_continuation_not_counted_as_deferral(client, ready, http_mock, run_worker, monkeypatch):
+    """Регрессия: продолжение после очередной партии(BATCH) расходовало предел отсрочек MAX_DEFERRALS вместе с 429 -
+    большое предупреждение останавливалось "Отправка откладывалась слишком много раз"."""
+    from app import alerts, jobs, models
+    from app.db import SessionLocal
+
+    monkeypatch.setattr(alerts, "BATCH", 1)
+    subscribe(client, "1001", "Ульбинский")
+    subscribe(client, "1002")
+    a = draft(client)
+    approve(client, a["id"])
+    with SessionLocal() as db:  # предел отсрочек уже исчерпан ответами 429
+        job = db.scalar(select(models.Job).where(models.Job.kind == "alert"))
+        job.payload = {**job.payload, "deferrals": jobs.MAX_DEFERRALS}
+        db.commit()
+    http_mock.on("POST", SEND, handler=lambda r: ok())
+    run_worker()
+    got = alert(client, a["id"])
+    assert (got["status"], got["lastError"], got["subscribers"]["sent"]) == ("sent", None, 2)
+    with SessionLocal() as db:
+        job = db.scalar(select(models.Job).where(models.Job.kind == "alert"))
+        assert job.status == "done" and job.payload["deferrals"] == jobs.MAX_DEFERRALS
+        assert job.payload["continuations"] == 3  # три доставки по одной: после каждой - продолжение
+
+
+def test_stop_before_any_delivery_counts_as_deferral(client, ready, http_mock):
+    """Остановка воркера до первой доставки - обычная отсрочка: продолжение без доставок не бесконечно."""
+    import threading
+
+    from app import jobs, models
+    from app.db import SessionLocal
+
+    a = draft(client)
+    approve(client, a["id"])
+    now = models.utcnow()
+    with SessionLocal() as db:
+        job = jobs.claim(db, "w-1", now)
+    stop = threading.Event()
+    stop.set()
+    jobs.execute(job.id, worker_id="w-1", now=now, stop=stop)
+    assert http_mock.calls == []
+    with SessionLocal() as db:
+        job = db.get(models.Job, job.id)
+        assert (job.status, job.attempts, job.payload.get("deferrals"), job.payload.get("continuations")) == (
+            "queued", 0, 1, None)
+    assert deliveries(a["id"])[0][2] == "pending"

@@ -8,6 +8,7 @@ BrokenConnector в реестре, а не циклическим импорто
 Ошибки подключения определяют статус источника(integration-spec §9.4, §10.4): сбой никогда не выглядит как "нет новых".
 Обход защиты сайтов не выполняется: проверка доступа/CAPTCHA - AccessBlocked, сбор останавливается до ручного действия.
 """
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -24,6 +25,19 @@ from ..settings import Settings, get_settings
 if TYPE_CHECKING:
     from ..models import Collector
     from .context import RunContext
+
+MAX_PAUSE_S = 30 * 86400  # потолок паузы от источника(ограничение частоты, отсрочка, RunContext.postpone)
+
+
+def pause_seconds(seconds: Any, default: float) -> float:
+    """Пауза от источника в секундах в пределах 0…MAX_PAUSE_S; не число или NaN - default(timedelta от NaN или
+    бесконечности упала бы при записи итога, и задание осталось бы "выполняется")."""
+    try:
+        secs = float(seconds)
+    except (TypeError, ValueError):
+        return default
+    return default if math.isnan(secs) else min(max(secs, 0.0), MAX_PAUSE_S)
+
 
 # ---------- ошибки(integration-spec §10.1) ----------
 
@@ -72,7 +86,7 @@ class RateLimited(ConnectorError):
         if isinstance(seconds, str):
             seconds, detail = None, seconds
         secs = retry_after if retry_after is not None else seconds
-        secs = 3600.0 if secs is None else max(float(secs), 0.0)
+        secs = 3600.0 if secs is None else pause_seconds(secs, 3600.0)
         super().__init__(detail or f"Ограничение частоты запросов источника — повтор через {secs:.0f} с",
                          retry_after=secs)
 
@@ -120,6 +134,7 @@ class MediaIn:
     stored: media.Stored | None = None
     status: str = "pending"  # pending | downloaded | failed | unavailable | skipped
     error: str | None = None
+    error_code: str | None = None  # код http.DownloadError(http_403, timeout…) из download_media; не хранится
     origin_url: str | None = None  # маскируется при сохранении
     origin_ref: str | None = None
     meta: dict = field(default_factory=dict)
@@ -246,7 +261,7 @@ class Connector:
                 continue
             if not isinstance(value, (list, tuple)):
                 raise ConfigError(key, "Нужен список строк", value)
-            items: list[str] = []
+            items: dict[str, None] = {}  # порядок ввода без повторов, проверка повтора - O(1)
             for raw in value:
                 if not isinstance(raw, str):
                     raise ConfigError(key, "Элементы списка — строки", value)
@@ -255,12 +270,10 @@ class Connector:
                     continue
                 if len(v) > CONFIG_MAX_LEN:
                     raise ConfigError(key, f"Элемент длиннее {CONFIG_MAX_LEN} символов: {v[:40]}…", value)
-                v = self.normalize_item(key, v)
-                if v not in items:
-                    items.append(v)
-            if len(items) > CONFIG_MAX_ITEMS:
-                raise ConfigError(key, f"Не больше {CONFIG_MAX_ITEMS} элементов", value)
-            out[key] = items
+                items.setdefault(self.normalize_item(key, v))
+                if len(items) > CONFIG_MAX_ITEMS:  # сразу, не нормализуя остаток длинного списка
+                    raise ConfigError(key, f"Не больше {CONFIG_MAX_ITEMS} элементов", value)
+            out[key] = list(items)
         return out
 
     def status_label(self, status: str) -> str:

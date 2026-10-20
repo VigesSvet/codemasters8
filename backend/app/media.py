@@ -3,29 +3,39 @@
 Ключ хранилища - "ab/cd/<sha256>.<ext>": одинаковые файлы хранятся один раз, а запись MediaAsset ссылается на ключ.
 Тип файла определяется по сигнатуре(первым байтам), а не по заявленному Content-Type или имени: HTML, SVG, PDF и
 прочее - 415. Пределы размера - MEDIA_MAX_IMAGE_MB / MEDIA_MAX_VIDEO_MB(413), свободного места -
-MEDIA_MIN_FREE_MB(507). Временные файлы загрузок - в MEDIA_ROOT/.tmp(та же файловая система, перенос - атомарный
-os.replace). Файлы отдаёт GET /api/media/{id}; загруженные вручную и так и не привязанные к публикации удаляются
-через сутки(purge_unattached), файлы без единой записи MediaAsset(запись файла прошла, приём публикации - нет) - через
-сутки после последнего использования(purge_orphans).
+MEDIA_MIN_FREE_MB(507; ручной загрузке - на MANUAL_RESERVE_MB больше). Временные файлы загрузок - в MEDIA_ROOT/.tmp(та
+же файловая система, перенос - атомарный: жёсткая ссылка os.link, которая не заменяет файл параллельного вызова, без её
+поддержки - os.replace). Файлы отдаёт GET /api/media/{id}; загруженные вручную и так и не привязанные к публикации
+удаляются через сутки(purge_unattached), файлы без единой записи MediaAsset(запись файла прошла, приём публикации -
+нет) - через сутки после последнего использования(purge_orphans). Изображения декодируются через open_image: только
+форматы хранилища и предел пикселей. Ручные загрузки ограничены за час и за сутки счётчиками
+quota_counters(reserve_upload): удаление записи их не уменьшает.
 """
 import errno
 import hashlib
+import io
 import logging
 import os
 import re
 import shutil
+import stat
 import tempfile
 import time
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from collections.abc import Iterable
+from typing import TYPE_CHECKING, BinaryIO
 
-from sqlalchemy import func, select
+from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models
 from .settings import get_settings
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 log = logging.getLogger("saq.media")
 
@@ -37,14 +47,24 @@ IMAGE_TYPES = frozenset(m for m in ALLOWED if m.startswith("image/"))
 VIDEO_TYPES = frozenset(m for m in ALLOWED if m.startswith("video/"))
 TYPE_NAMES = {"image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WEBP", "image/gif": "GIF", "video/mp4": "MP4",
               "video/quicktime": "MOV", "video/webm": "WEBM"}
+# Декодеры Pillow для изображений хранилища(open_image): имена форматов Pillow совпадают с TYPE_NAMES
+IMAGE_FORMATS = tuple(TYPE_NAMES[m] for m in ALLOWED if m in IMAGE_TYPES)
+# Предел open_image по умолчанию: с запасом для фото камер телефонов(48-50 Мп), декодированное RGBA - до ~256 МБ памяти
+IMAGE_MAX_PIXELS = 64_000_000
 # Основные бренды контейнера ISO BMFF, которые считаются MP4. HEIC/AVIF(ai.ocr.HEIF_BRANDS), 3GP и прочие - не MP4
 MP4_BRANDS = {b"isom", b"iso2", b"iso4", b"iso5", b"iso6", b"mp41", b"mp42", b"avc1", b"M4V ", b"dash", b"mmp4",
               b"MSNV"}
 UPLOAD_MAX = 10 * MB  # POST /api/media - скриншот из формы ручного ввода; снимок площадки(app.verification) - так же
-# Ручные загрузки: скриншот формы(upload - непривязанный удаляется через сутки) и снимок площадки ЖК(site - хранится)
-MANUAL_ORIGINS = ("upload", "site", "gallery")  # gallery - фото объекта от оператора(app.gallery)
-UPLOAD_HOURLY_FILES = 50  # непривязанных загрузок за час - больше нельзя(429)
+# Ручные загрузки(accept_image_upload; origin_ref записи): скриншот формы(upload - непривязанный удаляется через сутки),
+# снимок площадки ЖК(site) и фото объекта от оператора(gallery, app.gallery) - хранятся
+UPLOAD_HOURLY_FILES = 50  # ручных загрузок за час, всех вместе - больше нельзя(429)
 UPLOAD_HOURLY_BYTES = 200 * MB
+# и за сутки UTC: снимки площадки и фото объекта хранятся без срока, а часовой предел каждый час подряд - 4,8 ГБ в сутки
+UPLOAD_DAILY_FILES = 300
+UPLOAD_DAILY_BYTES = 1024 * MB  # счётчик quota_counters.count - Integer: предел меньше 2**31
+# Ручной загрузке нужно свободного места MEDIA_MIN_FREE_MB + столько: последний запас - собранным файлам и приёму
+# публикаций, которые иначе получали бы 507 из-за заполненного вручную диска
+MANUAL_RESERVE_MB = 1024
 UPLOAD_TTL = timedelta(hours=24)  # непривязанная загрузка удаляется через сутки
 BOT_MAX_FILE = 20 * MB
 BOT_MAX_FILES = 10
@@ -56,7 +76,6 @@ ORPHAN_TTL_S = 24 * 3600  # файл без записи MediaAsset удаляе
 _HEX2 = re.compile(r"^[0-9a-f]{2}$")
 _STORED_NAME = re.compile(r"^([0-9a-f]{64})(" + "|".join(re.escape(e) for e in sorted(set(ALLOWED.values()))) + r")$")
 HEAD = 64  # байт для определения типа
-_CHUNK = MB
 
 NO_SPACE = "Мало места для файлов на сервере — файл не сохранён"
 TOO_MANY_UPLOADS = "Слишком много загрузок — попробуйте позже"
@@ -73,11 +92,13 @@ class MediaRejected(Exception):
 
 @dataclass(frozen=True)
 class Stored:
-    """Сохранённый файл: ключ хранилища, SHA-256, размер в байтах, MIME по сигнатуре."""
+    """Сохранённый файл: ключ хранилища, SHA-256, размер в байтах, MIME по сигнатуре; created - файл создан этим
+    вызовом(такого в хранилище не было и его не записал параллельный вызов) - в сравнении не участвует."""
     storage_key: str
     sha256: str
     size: int
     mime: str
+    created: bool = field(default=False, compare=False)
 
 
 # ---------- каталоги ----------
@@ -153,14 +174,16 @@ def _check(head: bytes, size: int, allowed: Iterable[str]) -> str:
     return mime
 
 
-def ensure_space(nbytes: int = 0) -> None:
-    """После записи nbytes байт на диске хранилища должно остаться не меньше MEDIA_MIN_FREE_MB, иначе 507."""
+def ensure_space(nbytes: int = 0, *, reserve_mb: int = 0) -> None:
+    """После записи nbytes байт на диске хранилища должно остаться не меньше MEDIA_MIN_FREE_MB + reserve_mb мегабайт,
+    иначе 507."""
     free = shutil.disk_usage(root()).free
-    if free - nbytes < get_settings().media_min_free_mb * MB:
+    if free - nbytes < (get_settings().media_min_free_mb + reserve_mb) * MB:
         raise MediaRejected(507, NO_SPACE)
 
 
-def _key(sha: str, mime: str) -> str:
+def storage_key(sha: str, mime: str) -> str:
+    """Ключ хранилища файла по SHA-256 и MIME(из ALLOWED): "ab/cd/<sha256>.<ext>"(integration-spec §6.1)."""
     return f"{sha[:2]}/{sha[2:4]}/{sha}{ALLOWED[mime]}"
 
 
@@ -175,20 +198,24 @@ def path_of(storage_key: str) -> Path:
     return p
 
 
-def _reuse(final: Path) -> bool:
+def _reuse(final: Path, size: int) -> bool:
     """Такой файл уже есть - он и остаётся; время изменения обновляется: уборка файлов без записей(purge_orphans)
-    отсчитывает срок от последнего использования, а не от первой записи. Файла нет - False(его нужно записать)."""
+    отсчитывает срок от последнего использования, а не от первой записи. Файла нет или его размер не тот(обрезан
+    сбоем диска) - False: файл нужно записать заново, иначе хранилище вечно отдавало бы испорченную копию."""
     try:
         os.utime(final)
     except FileNotFoundError:
         return False
     except OSError:
-        return final.exists()  # время сменить нельзя(чужой владелец) - файл используется как есть
-    return True
+        pass  # время сменить нельзя(чужой владелец) - файл используется как есть, если он цел
+    try:
+        return final.stat().st_size == size
+    except OSError:
+        return False
 
 
 def _final(sha: str, mime: str) -> tuple[str, Path]:
-    key = _key(sha, mime)
+    key = storage_key(sha, mime)
     final = path_of(key)
     final.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
     return key, final
@@ -196,115 +223,240 @@ def _final(sha: str, mime: str) -> tuple[str, Path]:
 
 # ---------- запись ----------
 
-def store_bytes(data: bytes, *, allowed: Iterable[str] = ALLOWED) -> Stored:
-    """Байты → хранилище(тип по сигнатуре, предел размера, свободное место). Такой же файл уже есть - он и остаётся."""
+# os.link не поддерживается файловой системой хранилища - файл ставится заменой(os.replace)
+_NO_LINK = frozenset({errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EMLINK, errno.ENOSYS})
+
+
+def _place(tmp: Path, final: Path, size: int) -> bool:
+    """Готовый временный файл(та же файловая система) → final; True - файл создан этим вызовом. Жёсткая ссылка не
+    заменяет существующий файл: если параллельный вызов с теми же байтами успел записать свой, он и остаётся(False) -
+    так только один из них считает файл своим и может удалить его при неудаче. Существующий файл не того
+    размера(обрезан сбоем диска) заменяется целым - он уже чей-то, поэтому тоже False. Временный файл остаётся -
+    удаляет вызывающий."""
+    try:
+        os.link(tmp, final, follow_symlinks=False)
+        return True
+    except FileExistsError:
+        if not _reuse(final, size):
+            os.replace(tmp, final)
+        return False
+    except OSError as e:
+        if e.errno not in _NO_LINK:
+            raise
+    # без жёстких ссылок создание не исключительное: файл не считается своим - лишний уберёт purge_orphans
+    os.replace(tmp, final)
+    return False
+
+
+def store_bytes(data: bytes, *, allowed: Iterable[str] = ALLOWED, reserve_mb: int = 0) -> Stored:
+    """Байты → хранилище(тип по сигнатуре, предел размера, свободное место - ensure_space с запасом reserve_mb). Такой
+    же файл уже есть - он и остаётся."""
     mime = _check(data[:HEAD], len(data), allowed)
     sha = hashlib.sha256(data).hexdigest()
     key, final = _final(sha, mime)
-    if not _reuse(final):
-        ensure_space(len(data))
+    created = False
+    if not _reuse(final, len(data)):
+        ensure_space(len(data), reserve_mb=reserve_mb)
         fd, tmp = tempfile.mkstemp(dir=tmp_dir(), prefix="put-")
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(data)
             os.chmod(tmp, 0o644)
-            os.replace(tmp, final)
-        except BaseException:
+            created = _place(Path(tmp), final, len(data))
+        finally:
             Path(tmp).unlink(missing_ok=True)
-            raise
-    return Stored(key, sha, len(data), mime)
+    return Stored(key, sha, len(data), mime, created)
 
 
-def _hash_file(path: Path) -> tuple[str, bytes]:
-    h, head = hashlib.sha256(), b""
-    with open(path, "rb") as f:
-        while chunk := f.read(_CHUNK):
-            if len(head) < HEAD:
-                head += chunk[:HEAD - len(head)]
-            h.update(chunk)
-    return h.hexdigest(), head
-
-
-def _move(tmp: Path, final: Path) -> None:
-    """os.replace; другой раздел(EXDEV) - копия во временный файл хранилища и замена оттуда."""
+def _move(tmp: Path, final: Path, size: int) -> bool:
+    """Временный файл → final(_place, True - создан этим вызовом); другой раздел(EXDEV) - через копию во временный
+    файл хранилища. Исходный временный файл удаляется."""
     try:
-        os.replace(tmp, final)
-        return
+        created = _place(tmp, final, size)
     except OSError as e:
         if e.errno != errno.EXDEV:
             raise
-    fd, staged = tempfile.mkstemp(dir=tmp_dir(), prefix="mv-")
-    os.close(fd)
-    try:
-        shutil.copyfile(tmp, staged)
-        os.chmod(staged, 0o644)
-        os.replace(staged, final)
-    except BaseException:
-        Path(staged).unlink(missing_ok=True)
-        raise
+        fd, staged = tempfile.mkstemp(dir=tmp_dir(), prefix="mv-")
+        os.close(fd)
+        try:
+            shutil.copyfile(tmp, staged)
+            os.chmod(staged, 0o644)
+            created = _place(Path(staged), final, size)
+        finally:
+            Path(staged).unlink(missing_ok=True)
     tmp.unlink(missing_ok=True)
+    return created
 
 
 def store_file(tmp: Path, *, allowed: Iterable[str] = ALLOWED) -> Stored:
     """Готовый файл(загрузка во временный файл) → хранилище. Файл забирается: после вызова его нет на прежнем месте -
-    он перенесён в хранилище или удалён(такой уже есть, тип или размер не подходит)."""
+    он перенесён в хранилище или удалён(такой уже есть, тип или размер не подходит). Символьная ссылка и не обычный
+    файл(FIFO, устройство) не принимаются - 415: в хранилище попадает только сам файл, а не ссылка на чужой."""
     tmp = Path(tmp)
     try:
-        size = tmp.stat().st_size
-        with open(tmp, "rb") as f:
-            head = f.read(HEAD)
-        mime = _check(head, size, allowed)
-        sha, _ = _hash_file(tmp)
+        # O_NOFOLLOW - ссылка не открывается(ELOOP), O_NONBLOCK - открытие FIFO не ждёт писателя
+        fd = os.open(tmp, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as f:
+            st = os.fstat(f.fileno())
+            if not stat.S_ISREG(st.st_mode):
+                raise _unsupported(allowed)
+            size = st.st_size
+            mime = _check(f.read(HEAD), size, allowed)
+            f.seek(0)
+            sha = hashlib.file_digest(f, "sha256").hexdigest()
         key, final = _final(sha, mime)
-        if _reuse(final):
+        created = False
+        if _reuse(final, size):
             tmp.unlink(missing_ok=True)
         else:
             ensure_space(0)  # байты уже на диске хранилища(временный файл)
             os.chmod(tmp, 0o644)
-            _move(tmp, final)
+            created = _move(tmp, final, size)
+    except OSError as e:
+        tmp.unlink(missing_ok=True)
+        if e.errno == errno.ELOOP:
+            raise _unsupported(allowed) from None
+        raise
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
-    return Stored(key, sha, size, mime)
+    return Stored(key, sha, size, mime, created)
 
 
-def read_bytes(asset) -> bytes:
-    """Содержимое файла записи MediaAsset(по storage_key)."""
-    if not getattr(asset, "storage_key", None):
-        raise FileNotFoundError(f"у файла {getattr(asset, 'id', '?')} нет содержимого в хранилище")
-    return path_of(asset.storage_key).read_bytes()
+# ---------- изображения ----------
+
+def _too_large(max_pixels: int, size: tuple[int, int] | None = None) -> MediaRejected:
+    dims = f" ({size[0]}×{size[1]} пикселей)" if size else ""
+    return MediaRejected(413, f"Изображение больше {max_pixels / 1_000_000:g} Мп{dims}")
+
+
+def open_image(src: bytes | str | os.PathLike, *, max_pixels: int = IMAGE_MAX_PIXELS,
+               formats: Iterable[str] = IMAGE_FORMATS,
+               draft: tuple[str, tuple[int, int]] | None = None) -> "Image.Image":
+    """Изображение из байтов или файла, декодированное с пределом(как ai.ocr.load): только декодеры formats - без
+    перебора всех форматов Pillow; число пикселей по заголовку проверяется до декодирования - больше max_pixels -
+    MediaRejected(413), как и общий предел Pillow(DecompressionBombError). draft(режим, размер) - уменьшение JPEG при
+    декодировании(Image.draft) до проверки размера. Не тот формат или битый файл - исключение
+    Pillow(UnidentifiedImageError, OSError и др.). Изображение закрывает вызывающий(with)."""
+    from PIL import Image
+
+    try:
+        im = Image.open(io.BytesIO(src) if isinstance(src, bytes) else src, formats=list(formats))
+    except Image.DecompressionBombError:
+        raise _too_large(max_pixels) from None
+    try:
+        if draft is not None:
+            im.draft(*draft)
+        if im.width * im.height > max_pixels:
+            raise _too_large(max_pixels, im.size)
+        im.load()
+    except Image.DecompressionBombError:
+        im.close()
+        raise _too_large(max_pixels) from None
+    except BaseException:
+        im.close()
+        raise
+    return im
 
 
 # ---------- ручные загрузки и уборка ----------
 
-def check_upload_budget(db: Session, now: datetime, size: int = 0) -> None:
-    """Частота ручных загрузок(POST /api/media и снимки площадки POST /api/complexes/{id}/photos - общий счёт): за
-    последний час не больше UPLOAD_HOURLY_FILES файлов и UPLOAD_HOURLY_BYTES байт вместе с новым, иначе 429. Считаются все загрузки часа - и уже привязанные к публикации:
-    иначе привязка через POST /api/ads(image="/api/media/{id}") выводила бы файл из счёта и хранилище росло без
-    предела, пока не кончится место и для собранных файлов."""
-    A = models.MediaAsset
-    since = models.as_utc(now - timedelta(hours=1))
-    files, total = db.execute(select(func.count(A.id), func.coalesce(func.sum(A.size), 0))
-                              .where(A.origin_ref.in_(MANUAL_ORIGINS), A.created_at >= since)).one()
-    if files + 1 > UPLOAD_HOURLY_FILES or (total or 0) + size > UPLOAD_HOURLY_BYTES:
-        raise MediaRejected(429, TOO_MANY_UPLOADS)
+def _upload_quotas(now: datetime, size: int) -> list[tuple[str, int, int]]:
+    """Счётчики ручных загрузок(quota_counters): (имя, предел, расход) - файлы и байты за час и за сутки UTC."""
+    t = models.as_utc(now)
+    hour, day = f"{t:%Y%m%d%H}", f"{t:%Y%m%d}"
+    return [(f"upload-files:{hour}", UPLOAD_HOURLY_FILES, 1), (f"upload-bytes:{hour}", UPLOAD_HOURLY_BYTES, size),
+            (f"upload-files-day:{day}", UPLOAD_DAILY_FILES, 1), (f"upload-bytes-day:{day}", UPLOAD_DAILY_BYTES, size)]
+
+
+def reserve_upload(now: datetime, size: int) -> list[tuple[str, int]]:
+    """Лимит ручных загрузок(POST /api/media, снимок площадки, фото объекта - общий счёт): за час не больше
+    UPLOAD_HOURLY_FILES файлов и UPLOAD_HOURLY_BYTES байт, за сутки - UPLOAD_DAILY_FILES и UPLOAD_DAILY_BYTES, иначе
+    MediaRejected(429). Расход учитывается атомарно(integrations.service.reserve_quota) до записи файла: параллельные
+    загрузки не проходят все разом, а удаление записи(фото оператора) и привязка к публикации расход не возвращают -
+    иначе загрузка с удалением обходила бы лимит, пока место не кончится и для собранных файлов. Не хватило одного
+    счётчика - уже учтённые возвращаются. Возвращает учтённое(имя, расход) - для release_upload, если файл не
+    записан."""
+    from .integrations import service  # service импортирует модули приёма, которые импортируют media
+
+    taken: list[tuple[str, int]] = []
+    for name, limit, amount in _upload_quotas(now, size):
+        if not service.reserve_quota(name, limit, now, amount=amount):
+            release_upload(taken, now)
+            raise MediaRejected(429, TOO_MANY_UPLOADS)
+        taken.append((name, amount))
+    return taken
+
+
+def release_upload(taken: list[tuple[str, int]], now: datetime) -> None:
+    """Вернуть учтённый reserve_upload расход: файл не записан(отказ хранилища)."""
+    from .integrations import service
+
+    for name, amount in taken:
+        service.adjust_quota(name, -amount, now)
+
+
+def accept_image_upload(db: Session, file: BinaryIO, now: datetime) -> Stored:
+    """Ручная загрузка изображения(скриншот POST /api/media, снимок площадки, фото объекта) → хранилище: не больше
+    UPLOAD_MAX(413), только изображения по сигнатуре(415, пустой - 422), лимит ручных загрузок за час и сутки(429;
+    отказ по размеру или типу его не тратит), место на диске с запасом MANUAL_RESERVE_MB для сбора и приёма(507 -
+    учтённый расход возвращается). Отказ - HTTPException с текстом по-русски; запись MediaAsset создаёт вызывающий в
+    своей сессии db - счётчики лимита пишутся и фиксируются отдельно(reserve_upload), до записи файла."""
+    data = file.read(UPLOAD_MAX + 1)
+    if len(data) > UPLOAD_MAX:
+        raise HTTPException(413, f"Файл больше {UPLOAD_MAX // MB} МБ")
+    try:
+        _check(data[:HEAD], len(data), IMAGE_TYPES)
+        taken = reserve_upload(now, len(data))
+        try:
+            return store_bytes(data, allowed=IMAGE_TYPES, reserve_mb=MANUAL_RESERVE_MB)
+        except BaseException:
+            release_upload(taken, now)
+            raise
+    except MediaRejected as e:
+        raise HTTPException(e.status, e.detail) from None
+
+
+def _referenced(db: Session, shas: Iterable[str]) -> set[str]:
+    """Хеши, на которые ссылается хотя бы одна запись MediaAsset(запрос - частями по 500: предел параметров SQLite)."""
+    A, shas, used = models.MediaAsset, list(shas), set()
+    for i in range(0, len(shas), 500):
+        used.update(db.scalars(select(A.sha256).where(A.sha256.in_(shas[i:i + 500]))))
+    return used
+
+
+def _unlink_stale(path: Path, cutoff: float) -> bool:
+    """Удалить файл хранилища, если он не использовался с cutoff(store_* обновляет время файла при повторном
+    использовании): идущий приём, который нашёл этот файл и ещё не сохранил свою запись, его не теряет. Файл
+    использован недавно - остаётся до уборки файлов без записей(purge_orphans)."""
+    try:
+        if path.lstat().st_mtime >= cutoff:
+            return False
+        path.unlink()
+    except FileNotFoundError:
+        return False
+    return True
 
 
 def _unlink_unreferenced(db: Session, files: dict[str, str]) -> None:
-    """Файлы(sha256 → ключ хранилища), на которые больше не ссылается ни одна запись, удаляются с диска."""
-    A = models.MediaAsset
+    """Файлы(sha256 → ключ хранилища), на которые больше не ссылается ни одна запись и которые не использовались
+    ORPHAN_TTL_S секунд, удаляются с диска. Транзакцию чтения закрывает до удаления файлов."""
+    used = _referenced(db, files)
+    db.commit()
+    cutoff = time.time() - ORPHAN_TTL_S
     for sha, key in files.items():
-        if db.scalar(select(func.count(A.id)).where(A.sha256 == sha)):
+        if sha in used:
             continue
         try:
-            path_of(key).unlink(missing_ok=True)
+            _unlink_stale(path_of(key), cutoff)
         except (OSError, ValueError) as e:
             log.warning("Файл хранилища %s не удалён: %s", key, type(e).__name__)
 
 
 def purge_unattached(db: Session, now: datetime) -> int:
     """Ручные загрузки(origin_ref = upload), так и не привязанные к публикации за сутки, удаляются вместе с файлом,
-    если на файл не ссылается другая запись. Фиксирует транзакцию сам: файлы удаляются только после commit."""
+    если на файл не ссылается другая запись и его не использовали повторно за сутки(иначе файл убирает
+    purge_orphans). Фиксирует транзакцию сам: файлы удаляются только после commit."""
     A = models.MediaAsset
     cutoff = models.as_utc(now - UPLOAD_TTL)
     rows = list(db.scalars(select(A).where(A.ad_id.is_(None), A.origin_ref == "upload", A.created_at < cutoff)))
@@ -353,22 +505,15 @@ def purge_orphans(db: Session, max_age_s: float = ORPHAN_TTL_S) -> int:
         return 0
     cutoff = time.time() - max_age_s
     old = _stored_files(cutoff)
-    shas, used = list(old), set()
-    for i in range(0, len(shas), 500):
-        used.update(db.scalars(select(A.sha256).where(A.sha256.in_(shas[i:i + 500]))))
+    used = _referenced(db, old)
     db.commit()
     n = 0
-    for sha in shas:
+    for sha, paths in old.items():
         if sha in used:
             continue
-        for path in old[sha]:
+        for path in paths:
             try:
-                if path.lstat().st_mtime >= cutoff:
-                    continue  # файл только что использован повторно
-                path.unlink()
-                n += 1
-            except FileNotFoundError:
-                continue
+                n += _unlink_stale(path, cutoff)
             except OSError as e:
                 log.warning("Файл хранилища %s без записи не удалён: %s", path.name, type(e).__name__)
     return n

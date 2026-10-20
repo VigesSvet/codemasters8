@@ -6,11 +6,13 @@
 проверенных сведений(risk.assessed).
 """
 from datetime import datetime
+from itertools import batched
 from typing import Any
 from collections.abc import Iterable
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.exceptions import RequestValidationError
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -20,6 +22,8 @@ from .db import get_db
 from .models import iso
 
 router = APIRouter(tags=["sources"])
+
+CHUNK = 500  # значений в одном "IN (...)": у SQLite предел параметров запроса
 
 Obj = dict[str, Any]
 SYSTEM = "Система"
@@ -48,6 +52,17 @@ def records(db: Session, key: str | None = None) -> list[Obj]:
     if key is not None:
         q = q.where(R.key == key)
     return [_record_dict(r) for r in db.scalars(q)]
+
+
+def records_by_key(db: Session, keys: Iterable[str]) -> dict[str, list[Obj]]:
+    """Записи объектов keys по ключу, в порядке records(db, key); ключ без записей в ответ не попадает. Читаются только
+    эти объекты, а не весь реестр(карточка одного ЖК не должна стоить O(всех записей))."""
+    R = models.SourceRecord
+    out: dict[str, list[Obj]] = {}
+    for part in batched(sorted(set(keys)), CHUNK):
+        for r in db.scalars(select(R).where(R.key.in_(part)).order_by(R.key, R.row, R.id)):
+            out.setdefault(r.key, []).append(_record_dict(r))
+    return out
 
 
 def is_object(db: Session, key: str) -> bool:
@@ -84,10 +99,18 @@ def _same(row: models.SourceRecord, values: Obj) -> bool:
 
 
 def upsert(db: Session, recs: Iterable[Obj], file: str | None, at: datetime) -> dict[str, int]:
-    """Дедупликация по(source, sourceRecordId): новые - вставка, изменившиеся - обновление, прочие без изменений."""
+    """Дедупликация по(source, sourceRecordId): новые - вставка, изменившиеся - обновление, прочие без изменений.
+    Существующие строки читаются только для пар(source, sourceRecordId) из recs - не весь реестр."""
     R = models.SourceRecord
     recs = list(recs)
-    have = {(r.source, r.source_record_id): r for r in db.scalars(select(R))}
+    ids: dict[str, set[str]] = {}
+    for rec in recs:
+        ids.setdefault(rec["source"], set()).add(rec["sourceRecordId"])
+    have: dict[tuple[str, str], models.SourceRecord] = {}
+    for source, rids in ids.items():
+        for part in batched(sorted(rids), CHUNK):
+            for r in db.scalars(select(R).where(R.source == source, R.source_record_id.in_(part))):
+                have[(r.source, r.source_record_id)] = r
     n = {"created": 0, "updated": 0, "unchanged": 0}
     for rec in recs:
         values = _values(rec)
@@ -133,8 +156,13 @@ def seed(db: Session, data: Obj | None) -> models.AuditEvent | None:
 
 # ---------- объекты ----------
 
-def objects(db: Session) -> list[Obj]:
-    return importer.group(records(db))
+def counts(db: Session) -> tuple[int, int, int]:
+    """Записей, объектов и объектов без координат - те же числа, что по importer.group(records(db)), но агрегатами SQL:
+    у объекта есть координаты, если они есть хотя бы у одной его записи(importer.group)."""
+    R = models.SourceRecord
+    total, objs = db.execute(select(func.count(R.id), func.count(func.distinct(R.key)))).one()
+    geo = db.scalar(select(func.count(func.distinct(R.key))).where(R.lat.is_not(None), R.lng.is_not(None)))
+    return total, objs, objs - geo
 
 
 def _by_key(rs: Iterable[Obj]) -> dict[str, list[Obj]]:
@@ -163,9 +191,12 @@ def sources(db: Session) -> list[Obj]:
     out = [{"code": code, **importer.SOURCES[code], "records": stat[code][0], "objects": stat[code][1],
             "collectedAt": iso(stat[code][2]), "providerLoadedAt": stat[code][3]}
            for code in importer.SOURCE_ORDER if code in stat]
-    count = lambda m: db.scalar(select(func.count()).select_from(m).where(m.origin == "demo"))
-    counts = {"complexes": count(models.Complex), "developers": count(models.Developer), "ads": count(models.Ad),
-              "appeals": count(models.Appeal)}
+
+    def demo_count(m) -> int:
+        return db.scalar(select(func.count()).select_from(m).where(m.origin == "demo"))
+
+    counts = {"complexes": demo_count(models.Complex), "developers": demo_count(models.Developer),
+              "ads": demo_count(models.Ad), "appeals": demo_count(models.Appeal)}
     if any(counts.values()):  # после python -m app.demo purge демо-набора нет - и строки о нём нет
         out.append({**DEMO, "records": counts["complexes"], "objects": counts["complexes"], "collectedAt": None,
                     "providerLoadedAt": None, "counts": counts})
@@ -199,14 +230,24 @@ def registry_item(key: str, db: Session = Depends(get_db)):
     return {"object": importer.group(rs)[0], "records": _sorted(rs)}
 
 
-def _author(*values: str | None) -> str:
-    for v in values:
+_HUMAN_NAME = TypeAdapter(schemas.HumanName)
+
+
+def _author(form: str | None, query: str | None) -> str:
+    """Автор импорта: первое непустое значение(поле формы, затем ?author=), не длиннее 128 символов; не указан - SYSTEM.
+    Указанный проверяется как автор в формах(HumanName): явное "Система" в любом регистре и с любыми пробелами - 422,
+    человек не пишет в журнал от имени системы. loc ошибки - там, откуда пришло значение(body или query)."""
+    for where, v in (("body", form), ("query", query)):
         if v is not None and "\x00" in v:
-            raise RequestValidationError([{"type": "value_error", "loc": ("body", "author"), "msg": schemas.NUL_MSG,
+            raise RequestValidationError([{"type": "value_error", "loc": (where, "author"), "msg": schemas.NUL_MSG,
                                            "input": v}])
-        t = " ".join((v or "").split())
+        t = " ".join((v or "").split())[:128]
         if t:
-            return t[:128]
+            try:
+                return _HUMAN_NAME.validate_python(t)
+            except ValidationError as e:
+                raise RequestValidationError([{**err, "loc": (where, "author")}
+                                              for err in e.errors(include_url=False)]) from None
     return SYSTEM
 
 
@@ -236,11 +277,10 @@ def import_sources(file: UploadFile = File(...), author: str | None = Form(None,
     e = models.AuditEvent(kind="data", who=who, what=what, at=now)
     db.add(e)
     db.flush()
-    objs = objects(db)
-    total = db.scalar(select(func.count(models.SourceRecord.id)))
+    total, objs, without = counts(db)
     db.commit()
     return {"file": parsed.file, "format": parsed.format, "read": parsed.read, **n, "skipped": parsed.skipped,
             "duplicates": parsed.duplicates, "errors": parsed.errors, "warnings": parsed.warnings, "records": total,
-            "objects": len(objs), "withoutCoords": sum(o["lat"] is None for o in objs),
+            "objects": objs, "withoutCoords": without,
             "sources": {s: k for s in importer.SOURCE_ORDER if (k := sum(r["source"] == s for r in parsed.records))},
             "eventId": e.id}

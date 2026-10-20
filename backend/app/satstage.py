@@ -13,7 +13,7 @@
 запуск; расход пишется в лог и в runs файла.
 
 GET /api/complexes/{id}/sat-stage читает файл и сравнивает снимок с рекламой ЖК(отнесение публикаций - как в
-"Проверке по рекламе", screening.load_facts): расхождение - подсказка аналитику сверить готовность(R5) или основание
+"Проверке по рекламе", screening.attributed_to): расхождение - подсказка аналитику сверить готовность(R5) или основание
 (R1, ст. 7), баллов не добавляет: R5 требует подтверждённых значений с источником и датой, снимок и ответ модели - нет.
 """
 import argparse
@@ -36,7 +36,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import models, screening
+from . import media, models, screening
 from .db import get_db
 from .integrations import analyzer_anthropic as claude
 from .risk import hits, quote as marker_quote
@@ -52,6 +52,7 @@ TILE_URL = ("https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imag
             "tile/{release}/{z}/{y}/{x}")
 ZOOM = 17
 TILE = 256
+TILE_MAX_PIXELS = (TILE * 4) ** 2  # тайл Wayback - 256 × 256; больше 1024 × 1024 не декодируется
 CROP = 512
 RING = 56  # радиус кольца точки, пкс(≈ 65 м на 17-м масштабе в Усть-Каменогорске)
 PROMPT_VERSION = "saq-sat-1"
@@ -112,16 +113,17 @@ def shot_date(s: Obj) -> str:
 
 
 def pick_shots(shots: list[Obj], start: str | None) -> list[tuple[str, Obj]]:
-    """Свежий снимок(role latest) и снимок, ближайший к началу стройки по документам(role start), если он другой."""
-    shots = [s for s in shots if shot_date(s)]
-    if not shots:
+    """Свежий снимок(role latest) и снимок, ближайший к началу стройки по документам(role start), если он другой.
+    Снимки без даты или с неразборчивой датой не берутся: иначе такой снимок оказался бы "ближайшим"(расстояние 0)."""
+    dated = sorted(((d, s) for s in shots if (d := _day(shot_date(s))) is not None), key=lambda x: x[0], reverse=True)
+    if not dated:
         return []
-    shots = sorted(shots, key=shot_date, reverse=True)
-    out = [("latest", shots[0])]
+    latest = dated[0][1]
+    out = [("latest", latest)]
     d0 = _day(start)
     if d0 is not None:
-        near = min(shots, key=lambda s: abs((_day(shot_date(s)) or d0) - d0))
-        if near.get("id") != shots[0].get("id"):
+        near = min(dated, key=lambda x: abs(x[0] - d0))[1]
+        if near.get("id") != latest.get("id"):
             out.append(("start", near))
     return out
 
@@ -153,17 +155,19 @@ def compose(release: int, lat: float, lng: float, fetch: Callable | None = None)
     cells = [(dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
     with ThreadPoolExecutor(max_workers=9) as pool:
         raws = list(pool.map(lambda c: fetch(release, ZOOM, cy + c[1], cx + c[0]), cells))
-    for (dx, dy), raw in zip(cells, raws):
+    for (dx, dy), raw in zip(cells, raws, strict=True):
         if not raw:
             continue
         try:
-            im = Image.open(io.BytesIO(raw)).convert("RGB")
-        except Exception:
+            with media.open_image(raw, max_pixels=TILE_MAX_PIXELS) as src:
+                im = src.convert("RGB")
+        except (OSError, ValueError, media.MediaRejected) as e:  # битый или огромный тайл - серая клетка, а не сбой
+            log.debug("satstage: тайл %s/%s/%s не прочитан: %s", release, cy + dy, cx + dx, e)
             continue
         canvas.paste(im.resize((TILE, TILE)), ((dx + 1) * TILE, (dy + 1) * TILE))
         got += 1
     px, py = (fx - cx + 1) * TILE, (fy - cy + 1) * TILE
-    left, top = int(round(px - CROP / 2)), int(round(py - CROP / 2))
+    left, top = round(px - CROP / 2), round(py - CROP / 2)
     img = canvas.crop((left, top, left + CROP, top + CROP))
     d = ImageDraw.Draw(img)
     c = CROP / 2
@@ -213,7 +217,7 @@ def build_request(s: Settings, name: str, lat: float, images: list[tuple[Obj, by
     req = claude.build_request(s, system=SYSTEM_PROMPT, user="", schema=SCHEMA)
     m = metres_per_px(lat)
     blocks: list[Obj] = [{"type": "text", "text": (
-        f"ЖК «{name[:120]}». Снимков: {len(images)}. Масштаб ≈ {m:.2f} м/пкс, кадр {CROP} × {CROP} пкс "
+        f"ЖК «{_text(name, 120)}». Снимков: {len(images)}. Масштаб ≈ {m:.2f} м/пкс, кадр {CROP} × {CROP} пкс "
         f"(≈ {m * CROP:.0f} м), север сверху, кольцо радиусом ≈ {m * RING:.0f} м.")}]
     for i, (shot, jpeg) in enumerate(images, 1):
         meta = ", ".join(x for x in (f"съёмка {shot.get('acquired')}" if shot.get("acquired") else
@@ -259,7 +263,8 @@ def load_store(path: Path | None = None) -> Obj:
     try:
         d = json.loads(path.read_text("utf-8"))
         if isinstance(d, dict) and isinstance(d.get("items"), dict):
-            d.setdefault("runs", [])
+            if not isinstance(d.get("runs"), list):
+                d["runs"] = []
             return d
     except (OSError, ValueError):
         pass
@@ -272,10 +277,15 @@ def save_store(d: Obj, path: Path | None = None) -> None:
                   "ключ — «ЖК/выпуск/дата съёмки»")
     d["updatedAt"] = _now().isoformat(timespec="seconds")
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump(d, f, ensure_ascii=False, indent=1, sort_keys=True)
-        f.write("\n")
-    os.replace(tmp, path)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=1, sort_keys=True)
+            f.write("\n")
+        os.chmod(tmp, 0o644)  # mkstemp создаёт 0600 - файл поставляется и читается API, права как у обычной записи
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 def item_key(cid: str, shot: Obj) -> str:
@@ -327,22 +337,28 @@ def plans(db: Session, index: dict[str, list[Obj]], only: list[str] | None = Non
     return out, skipped
 
 
+def _cached(have: Obj, key: str) -> bool:
+    v = have.get(key)
+    return isinstance(v, dict) and v.get("promptVersion") == PROMPT_VERSION
+
+
 def run(db: Session, *, only: list[str] | None = None, limit: int = MAX_REQUESTS, max_usd: float = MAX_USD,
         force: bool = False, dry_run: bool = False, store_path: Path | None = None,
-        index: dict[str, list[Obj]] | None = None, settings: Settings | None = None) -> Obj:
-    """Один проход по ЖК: запросы только по снимкам, которых нет в файле(или все - force). Итог - счётчики и расход."""
+        index: dict[str, list[Obj]] | None = None, settings: Settings | None = None,
+        save_images: Path | None = None) -> Obj:
+    """Один проход по ЖК: запросы только по снимкам, которых нет в файле(или все - force). Итог - счётчики и расход.
+    dry_run - только скачать и склеить тайлы(ключ не нужен); save_images - каталог для склеенных снимков."""
     s = settings or get_settings()
     store = load_store(store_path)
     todo, skipped = plans(db, index if index is not None else load_index(), only)
     report: Obj = {"requests": 0, "costUsd": 0.0, "done": [], "cached": [], "failed": [], "skipped": skipped}
-    if not s.anthropic_api_key:
+    if not s.anthropic_api_key and not dry_run:
         report["skipped"].append("нет ANTHROPIC_API_KEY — запросы к модели не отправляются")
         return report
     limit = max(0, min(int(limit), MAX_REQUESTS))
     for p in todo:
         keys = [item_key(p.cid, shot) for _, shot in p.shots]
-        have = store["items"]
-        if not force and all(k in have and have[k].get("promptVersion") == PROMPT_VERSION for k in keys):
+        if not force and all(_cached(store["items"], k) for k in keys):
             report["cached"].append(p.cid)
             continue
         if report["requests"] >= limit:
@@ -353,7 +369,10 @@ def run(db: Session, *, only: list[str] | None = None, limit: int = MAX_REQUESTS
             continue
         images = []
         for role, shot in p.shots:
-            jpeg, got = compose(int(shot["id"]), p.lat, p.lng)
+            release = int(shot["id"])
+            jpeg, got = compose(release, p.lat, p.lng)
+            if save_images is not None:
+                (save_images / f"{release}-{p.lat:.5f}-{p.lng:.5f}.jpg").write_bytes(jpeg)
             if got:
                 images.append((role, shot, jpeg))
         if not images:
@@ -383,7 +402,7 @@ def run(db: Session, *, only: list[str] | None = None, limit: int = MAX_REQUESTS
             report["failed"].append(f"{p.cid}: ответ не разобран ({e})")
             continue
         at = _now().isoformat(timespec="seconds")
-        for (role, shot, _), res in zip(images, parsed):
+        for (role, shot, _), res in zip(images, parsed, strict=True):
             store["items"][item_key(p.cid, shot)] = {
                 "complexId": p.cid, "role": role, "releaseId": shot.get("id"), "releaseDate": shot.get("date"),
                 "acquired": shot.get("acquired"), "sensor": shot.get("sensor"), "res": shot.get("res"),
@@ -391,10 +410,10 @@ def run(db: Session, *, only: list[str] | None = None, limit: int = MAX_REQUESTS
                 "model": s.anthropic_model, "servedModel": reply.served_model, "promptVersion": PROMPT_VERSION,
                 "generatedAt": at, "costUsd": round(reply.cost_usd / len(images), 6), "requestImages": len(images)}
         report["done"].append(f"{p.cid}: " + "; ".join(f"{shot.get('acquired')} — {r['stage']} ({r['confidence']})"
-                                                      for (_, shot, _), r in zip(images, parsed)))
+                                                      for (_, shot, _), r in zip(images, parsed, strict=True)))
         save_store(store, store_path)
     if report["requests"]:
-        store["runs"] = (store.get("runs") or [])[-49:] + [{
+        store["runs"] = [*store["runs"][-49:], {
             "at": _now().isoformat(timespec="seconds"), "model": s.anthropic_model, "requests": report["requests"],
             "costUsd": round(report["costUsd"], 4), "failed": len(report["failed"])}]
         save_store(store, store_path)
@@ -404,13 +423,12 @@ def run(db: Session, *, only: list[str] | None = None, limit: int = MAX_REQUESTS
 
 # ---------- сравнение с рекламой ----------
 
-def _q(f: "screening.AdFacts", ad: models.Ad | None, markers: list[str]) -> list[tuple[str, str]]:
+def _q(ad: models.Ad | None, markers: list[str]) -> list[tuple[str, str]]:
+    """Маркеры словаря в тексте и OCR публикации - пары(маркер, цитата с ним)."""
     if ad is None:
         return []
-    out = []
-    for m in hits(f"{ad.text or ''} {ad.ocr or ''}", markers):
-        out.append((m, screening._short(marker_quote(ad.text, m) or marker_quote(ad.ocr, m) or m)))
-    return out
+    return [(m, screening.short(marker_quote(ad.text, m) or marker_quote(ad.ocr, m) or m))
+            for m in hits(f"{ad.text or ''} {ad.ocr or ''}", markers)]
 
 
 def claims_of(f: "screening.AdFacts", ad: models.Ad | None, basis: str) -> list[Obj]:
@@ -421,18 +439,18 @@ def claims_of(f: "screening.AdFacts", ad: models.Ad | None, basis: str) -> list[
     out: list[Obj] = []
     if f.stage == "completed" and f.stage_quote:
         out.append({**base, "kind": "completed", "quote": f.stage_quote, "via": "claude"})
-    adv = _q(f, ad, ADVANCED_MARKERS)
+    adv = _q(ad, ADVANCED_MARKERS)
     m = FRAME_RE.search(f"{ad.text or ''}\n{ad.ocr or ''}") if ad is not None and not adv else None
     if m:
-        adv = [(m.group(0), screening._short(marker_quote(ad.text, m.group(0)) or marker_quote(ad.ocr, m.group(0))
-                                             or m.group(0)))]
+        adv = [(m.group(0), screening.short(marker_quote(ad.text, m.group(0)) or marker_quote(ad.ocr, m.group(0))
+                                            or m.group(0)))]
     for _, q in adv[:1]:
         out.append({**base, "kind": "advanced", "quote": q, "via": "rules"})
     if f.stage == "under_construction" and f.stage_quote:
         out.append({**base, "kind": "building", "quote": f.stage_quote, "via": "claude"})
     elif f.building:
         out.append({**base, "kind": "building", "quote": f.building[0][1], "via": "rules"})
-    early = _q(f, ad, EARLY_MARKERS)
+    early = _q(ad, EARLY_MARKERS)
     if early:
         out.append({**base, "kind": "early", "quote": early[0][1], "via": "rules"})
     if f.concerning:
@@ -509,6 +527,7 @@ def compare(images: list[Obj], claims: list[Obj], start: str | None) -> list[Obj
     start_day = _day(start)
     for x in images:
         xd, xl = _day(x.get("acquired") or x.get("releaseDate")), LEVEL.get(x.get("stage") or "")
+        # пустая площадка(уровень 0) и "не определить" - не работы на площадке
         if start_day and xd and xl and xd < start_day and x.get("confidence") != "low":
             out.append({"kind": "before_start", "factor": None, "releaseId": x.get("releaseId"),
                         "acquired": x.get("acquired"),
@@ -543,12 +562,9 @@ CLAIM_ORDER = {"completed": 0, "advanced": 1, "early": 2, "money": 3, "building"
 def claims_for(db: Session, cid: str, max_claims: int = 12) -> list[Obj]:
     """Заявления рекламы ЖК о стадии: публикации, отнесённые к ЖК так же, как в "Проверке по рекламе"; сначала сдача,
     каркас, котлован и приём денег, затем "строится", внутри вида - новые первыми; повторы цитаты - один раз."""
-    facts = screening.load_facts(db)
-    mine = [(f, f.targets()[cid]) for f in facts.values() if cid in f.targets()]
-    ads = {a.id: a for a in db.scalars(select(models.Ad).where(models.Ad.id.in_([f.id for f, _ in mine])))} if mine else {}
     out: list[Obj] = []
-    for f, basis in mine:
-        out.extend(claims_of(f, ads.get(f.id), basis))
+    for ad, f, basis in screening.attributed_to(db, cid):
+        out.extend(claims_of(f, ad, basis))
     # заявления о стадии важнее "строится", внутри вида - новые первыми; одна цитата в разных площадках - один раз
     out.sort(key=lambda c: c.get("date") or "", reverse=True)
     out.sort(key=lambda c: CLAIM_ORDER.get(c["kind"], 9))
@@ -587,32 +603,33 @@ def sat_stage(cid: str, db: Session = Depends(get_db)):
 
 # ---------- командная строка ----------
 
+def _usd(v: str) -> float:
+    """--max-usd: неотрицательное конечное число(nan отключил бы предел расхода - сравнение с ним всегда ложно)."""
+    x = float(v)
+    if not math.isfinite(x) or x < 0:
+        raise argparse.ArgumentTypeError(f"нужно неотрицательное число, а не {v!r}")
+    return x
+
+
 def main(argv: list[str] | None = None) -> int:
     from .db import SessionLocal
 
     ap = argparse.ArgumentParser(prog="python -m app.satstage", description="Стадия стройки на снимках Wayback (ИИ)")
     ap.add_argument("--only", default="", help="ID ЖК через запятую")
     ap.add_argument("--limit", type=int, default=MAX_REQUESTS, help=f"запросов за запуск (не больше {MAX_REQUESTS})")
-    ap.add_argument("--max-usd", type=float, default=MAX_USD, help="предел расхода за запуск, $")
+    ap.add_argument("--max-usd", type=_usd, default=MAX_USD, help="предел расхода за запуск, $")
     ap.add_argument("--force", action="store_true", help="отправить и уже проанализированные снимки")
     ap.add_argument("--dry-run", action="store_true", help="скачать и склеить тайлы без запроса к модели")
     ap.add_argument("--save-images", default="", help="каталог для склеенных снимков (JPEG) — для проверки глазами")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)  # без строки на каждый тайл
-    if a.save_images:
-        out = Path(a.save_images)
-        out.mkdir(parents=True, exist_ok=True)
-        orig = compose
-
-        def saving(release, lat, lng, fetch=None):
-            jpeg, got = orig(release, lat, lng, fetch)
-            (out / f"{release}-{lat:.5f}-{lng:.5f}.jpg").write_bytes(jpeg)
-            return jpeg, got
-        globals()["compose"] = saving
+    save_images = Path(a.save_images) if a.save_images else None
+    if save_images is not None:
+        save_images.mkdir(parents=True, exist_ok=True)
     with SessionLocal() as db:
         rep = run(db, only=[x for x in a.only.split(",") if x] or None, limit=a.limit, max_usd=a.max_usd,
-                  force=a.force, dry_run=a.dry_run)
+                  force=a.force, dry_run=a.dry_run, save_images=save_images)
     for k in ("done", "cached", "failed", "skipped"):
         for x in rep[k]:
             print(f"[{k}] {x}")

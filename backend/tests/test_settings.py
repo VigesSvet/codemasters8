@@ -324,6 +324,21 @@ def test_long_log_args_clipped_and_masked(env):
     assert len(msg) == logs.LOG_ARG_MAX + 1
 
 
+def test_clipped_secret_cut_by_window_not_shown_after_shrink():
+    """Регрессия: секрет, разрезанный концом окна маскирования, не маскируется; если маскирование до него укоротило
+    текст больше чем на CLIP_WINDOW, его начало попадало в выводимые LOG_ARG_MAX символов."""
+    long_secret = "shrink-secret-" + "x" * 186
+    cut = "cut-secret-0123456789abcdefghijklmnopqrstu"
+    logs.register_secret(long_secret)
+    logs.register_secret(cut)
+    head = long_secret * 30  # 6000 символов → 90 после маскирования
+    window = logs.LOG_ARG_MAX + logs.CLIP_WINDOW
+    text = head + "a" * (window - 20 - len(head)) + cut + "b" * 1000
+    out = logs._clipped(text)
+    assert cut[:12] not in out and "shrink-secret" not in out and out.endswith("…")
+    assert len(logs._clipped("a" * (window + 10))) == logs.LOG_ARG_MAX + 1  # без маскирования - как раньше
+
+
 def test_redact_settings_and_registered_secrets(env):
     env(APIFY_TOKEN="apify_api_FakeToken0123456789")
     assert logs.redact("token apify_api_FakeToken0123456789 used") == "token *** used"
@@ -360,3 +375,111 @@ def test_uvicorn_access_formatter_still_works():
     assert isinstance(record.args, tuple) and len(record.args) == 5 and record.args[4] == 200
     line = fmt.format(record)
     assert re.search(r'127\.0\.0\.1:5000 - "GET /api/x\?token=\*\*\* HTTP/1\.1" 200', line), line
+
+
+def test_non_finite_floats_rejected(caplog):
+    """inf/nan в числах с плавающей точкой - не значение: "inf" секунд опроса или долларов бюджета снимало бы предел."""
+    caplog.set_level(logging.WARNING, logger="saq.settings")
+    s = load_settings({"SAQ_ENV_FILE": "", "SAQ_WORKER_POLL_S": "inf", "APIFY_MAX_TOTAL_CHARGE_USD": "Infinity",
+                       "KRISHA_MIN_DELAY_S": "nan", "APIFY_DAILY_BUDGET_USD": "1e400"})
+    assert (s.worker_poll_s, s.apify_max_total_charge_usd, s.krisha_min_delay_s, s.apify_daily_budget_usd) == (
+        5.0, 0.5, 5.0, 1.0)
+    text = _warnings(caplog)
+    for name in ("SAQ_WORKER_POLL_S", "APIFY_MAX_TOTAL_CHARGE_USD", "KRISHA_MIN_DELAY_S", "APIFY_DAILY_BUDGET_USD"):
+        assert f"{name}: ожидается число" in text
+
+
+def test_invalid_redirect_uri_not_used(caplog):
+    """OLX_REDIRECT_URI не адрес https с хостом и путём обратного вызова OLX - не используется(с предупреждением по
+    имени): раньше "https://[x" давал ValueError в public_host на каждом запросе к API, а опечатка в пути("/" или
+    "/api/sources/connectors") открывала бы этот путь API через публичный хост(PublicHostGuard)."""
+    caplog.set_level(logging.WARNING, logger="saq.settings")
+    cb = settings.OLX_CALLBACK_PATH
+    for bad in ("https://[x.ngrok-free.dev/cb", "x.ngrok-free.dev/api/integrations/olx/callback", "ftp://x.kz/cb",
+                "https://x.ngrok-free.dev/", "https://x.ngrok-free.dev", "https://x.ngrok-free.dev/api/sources/connectors",
+                f"https://x.ngrok-free.dev{cb}/", f"https://x.ngrok-free.dev{cb.upper()}", f"http://x.ngrok-free.dev{cb}",
+                f"http://localhost:8000{cb}", f"https://x.ngrok-free.dev{cb}#x", f"https://x.ngrok-free.dev{cb}#",
+                f"https://x.ngrok-free.dev/api/integrations/olx/../../ads{cb}", f"https://x.ngrok-free.dev{cb[:-4]}\nback",
+                f"https://x.ngrok-free.dev{cb[:-4]}\tback"):
+        caplog.clear()
+        s = load_settings({"SAQ_ENV_FILE": "", "OLX_REDIRECT_URI": bad})
+        assert (s.olx_redirect_uri, s.public_host, s.public_path) == ("", None, None), bad
+        assert s.missing("OLX_REDIRECT_URI") == ["OLX_REDIRECT_URI"]
+        assert "OLX_REDIRECT_URI: ожидается адрес" in _warnings(caplog) and bad not in _warnings(caplog)
+    assert settings._url_host("https://[x") is None and settings._url_host("http://H.kz./") == "h.kz"
+    s = load_settings({"SAQ_ENV_FILE": "", "OLX_REDIRECT_URI": f"https://X.ngrok-free.dev:443{cb}?from=olx"})
+    assert (s.public_host, s.public_path) == ("x.ngrok-free.dev", cb)
+
+
+def test_olx_callback_path_matches_route():
+    """settings.OLX_CALLBACK_PATH - путь маршрута обратного вызова OLX(settings - листовой модуль и olx не импортирует)."""
+    from app.integrations import olx
+
+    assert [(r.path, r.methods) for r in olx.router.routes if r.path == settings.OLX_CALLBACK_PATH] == [
+        (settings.OLX_CALLBACK_PATH, {"GET"})]
+
+
+def test_bot_token_format_warned_by_name(caplog):
+    """BOT_TOKEN не в формате Bot API - предупреждение при запуске(по имени, без значения). Значение остаётся: отправка
+    объясняет "токен в неверном формате" и в запрос его не подставляет(alerts.call), а в логах оно маскируется."""
+    from app import alerts
+
+    assert alerts.BOT_TOKEN_FORMAT is settings.BOT_TOKEN_FORMAT  # отправка проверяет тот же формат
+    caplog.set_level(logging.WARNING, logger="saq.settings")
+    good = "123456789:AAH-test_BotToken_0123456789abcdefXYZ"
+    assert load_settings({"SAQ_ENV_FILE": "", "BOT_TOKEN": good}).bot_token.get() == good
+    assert "BOT_TOKEN" not in _warnings(caplog)
+    for bad in ("123456789:short", "AAH-test_BotToken_0123456789abcdefXYZ", "123456789:AAH-test_BotToken_0123/../getMe",
+                "bot123456789:AAH-test_BotToken_0123456789abcdefXYZ",
+                "١٢٣٤٥٦٧٨٩:AAH-test_BotToken_0123456789abcdefXYZ"):  # цифры другого алфавита
+        caplog.clear()
+        s = load_settings({"SAQ_ENV_FILE": "", "BOT_TOKEN": bad})
+        assert s.bot_token.get() == bad and bad in s.secrets() and s.missing("BOT_TOKEN") == []
+        text = _warnings(caplog)
+        assert "BOT_TOKEN: ожидается токен от @BotFather" in text and bad not in text, bad
+
+
+def test_registered_secret_masked_after_cached_regex():
+    """Regex секретов кэшируется: значение, зарегистрированное после первого маскирования, тоже маскируется."""
+    assert logs.redact("before cached-later-secret-1") == "before cached-later-secret-1"
+    logs.register_secret("cached-later-secret-1")
+    assert logs.redact("after cached-later-secret-1") == "after ***"
+
+
+def test_token_compare():
+    from app import auth
+
+    assert auth._same("t-admin-0123456789abcdef0123", "t-admin-0123456789abcdef0123")
+    assert not auth._same("t-admin-0123456789abcdef012", "t-admin-0123456789abcdef0123")
+    assert not auth._same("", "t-admin-0123456789abcdef0123") and not auth._same("тест", "test")
+
+
+def test_cors_origins_parsed():
+    """SAQ_CORS_ORIGINS: адреса в виде Origin(нижний регистр, без пути и повторов), "*" поглощает список, не адреса -
+    пропускаются с предупреждением без значений."""
+    assert settings._origins(None) == ((), 0) and settings._origins(" , ") == ((), 0)
+    assert settings._origins("https://SAQ.example.kz/, http://localhost:5180,https://saq.example.kz") == (
+        ("https://saq.example.kz", "http://localhost:5180"), 0)
+    assert settings._origins("http://[::1]:5180") == (("http://[::1]:5180",), 0)
+    assert settings._origins("https://a.kz, *") == (("*",), 0)
+    assert settings._origins("ftp://a.kz,https://a.kz/x,https://a.kz:0,https://a.kz:70000,a.kz,https://ok.kz") == (
+        ("https://ok.kz",), 5)
+    s, warns = settings._parse({"SAQ_ENV_FILE": "", "SAQ_CORS_ORIGINS": "https://ok.kz,javascript:alert(1)"})
+    assert s.cors_origins == ("https://ok.kz",)
+    assert any("SAQ_CORS_ORIGINS" in w for w in warns) and not any("javascript" in w for w in warns)
+    assert settings._parse({"SAQ_ENV_FILE": ""})[0].cors_origins == ()
+
+
+def test_web_hosts_parsed():
+    """SAQ_WEB_HOSTS: имена интерфейса(нижний регистр, без конечной точки и повторов), ".домен" - с поддоменами, как в
+    allowedHosts Vite; значения со схемой, портом или путём пропускаются с предупреждением без значений."""
+    assert settings._host_names(None) == ((), 0) and settings._host_names(" , ") == ((), 0)
+    assert settings._host_names("SAQ-Box, .Tailnet.ts.net., saq-box,100.101.102.103") == (
+        ("saq-box", ".tailnet.ts.net", "100.101.102.103"), 0)
+    assert settings._host_names("http://a.kz,a.kz:5180,a.kz/x,a..kz,-a.kz,*.kz,.,ok.kz") == (("ok.kz",), 7)
+    s, warns = settings._parse({"SAQ_ENV_FILE": "", "SAQ_WEB_HOSTS": "ok.kz,javascript:alert(1)"})
+    assert s.web_hosts == ("ok.kz",)
+    assert any("SAQ_WEB_HOSTS" in w for w in warns) and not any("javascript" in w for w in warns)
+    assert settings._parse({"SAQ_ENV_FILE": ""})[0].web_hosts == ()
+    # тесты: TestClient шлёт Host "testserver" - conftest задаёт его именем интерфейса
+    assert settings.get_settings().web_hosts == ("testserver",)
