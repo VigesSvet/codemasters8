@@ -11,7 +11,7 @@ from .db import Base
 # Версия схемы БД. Меняется только добавлением шага в migrate.STEPS (последний шаг = SCHEMA_VERSION): база известной
 # прошлой версии обновляется на месте с резервной копией, неизвестной — пересоздаётся, только если в ней нет собранных и
 # внесённых данных (см. seed.init_db, migrate).
-SCHEMA_VERSION = "2026.10-decisions-1"
+SCHEMA_VERSION = "2026.10-alerts-1"
 
 # JSON со слежением за изменениями верхнего уровня (row.state["x"] = 1 сохраняется при commit). Код всё равно
 # переприсваивает (row.state = {**row.state, **patch}) и не меняет словари, полученные из другой сессии.
@@ -265,7 +265,7 @@ class AuditEvent(Base):
     signal_id: Mapped[Optional[int]] = mapped_column(ForeignKey("signals.id"), nullable=True, index=True)
     # system — автоматическое, data — сведения из источника, status/link/comment — работа с публикацией,
     # request — запрос сведений по ЖК, signal/export — сигнальная карточка и её выгрузка, ai — гипотеза ИИ и решения
-    # аналитика по ней (schemas.AuditKind)
+    # аналитика по ней, alert — предупреждение жителям: подготовка, согласование, итог отправки (schemas.AuditKind)
     kind: Mapped[str] = mapped_column(String(16), default="system", index=True)
     who: Mapped[str] = mapped_column(String(128))
     what: Mapped[str] = mapped_column(Text)
@@ -764,3 +764,71 @@ class ScreeningDecision(Base):
     closed_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     close_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class ResidentAlert(Base):
+    """Предупреждение жителям (app.alerts, страница «Жителям»): текст по данным ЖК готовит аналитик, согласует другой
+    сотрудник в режиме администратора, отправляет воркер — в канал ГАСК и подписчикам района в Telegram-боте.
+
+    status: pending — на согласовании (не больше одного на ЖК: частичный уникальный индекс); rejected — отклонено;
+    sending — согласовано, идёт отправка; sent — доставлено всем; partial — части получателей не доставлено; failed — не
+    доставлено никому (last_error — почему). Получатели фиксируются при согласовании (alert_deliveries)."""
+
+    __tablename__ = "resident_alerts"
+    __table_args__ = (Index("uq_resident_alerts_pending_complex", "complex_id", unique=True,
+                            sqlite_where=text("status = 'pending'"), postgresql_where=text("status = 'pending'")),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    complex_id: Mapped[str] = mapped_column(String(32), index=True)  # ЖК (без FK — новые таблицы не ссылаются на старые)
+    complex_name: Mapped[str] = mapped_column(String(255))
+    district: Mapped[str] = mapped_column(String(64), default="")  # район ЖК на момент создания: кому из подписчиков
+    template: Mapped[str] = mapped_column(String(16))  # basis | idle | ok — шаблон, с которого начат текст
+    title: Mapped[str] = mapped_column(String(128))
+    text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    created_by: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    decided_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)  # согласовал или отклонил
+    decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # отправка завершена
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    @property
+    def code(self) -> str:
+        return f"A-{self.id:04d}"
+
+
+class AlertDelivery(Base):
+    """Доставка предупреждения одному получателю: канал ГАСК (kind = channel, target — @имя или ID канала) или подписчик
+    (kind = subscriber, target — chat_id; после итога стирается — остаётся только счётчик).
+
+    status: pending — ждёт отправки; sending — отправляется (осталось после сбоя воркера — результат неизвестен,
+    повторно не отправляется); sent; failed (error — почему); skipped — житель отписался до отправки."""
+
+    __tablename__ = "alert_deliveries"
+    __table_args__ = (Index("ix_alert_deliveries_alert_status", "alert_id", "status"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    alert_id: Mapped[int] = mapped_column(ForeignKey("resident_alerts.id"))
+    kind: Mapped[str] = mapped_column(String(16))  # channel | subscriber
+    target: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    message_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # сообщение в Telegram (у канала — ссылка)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AlertSubscription(Base):
+    """Подписка жителя на предупреждения района — её регистрирует бот заявок (saq-telegram-bot) по сервисному токену.
+    Только chat_id и район ЖК (district = «*» — все районы): ни имени, ни username, ни телефона."""
+
+    __tablename__ = "alert_subscriptions"
+    __table_args__ = (UniqueConstraint("chat_id", "district", name="uq_alert_subscriptions_chat_district"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    chat_id: Mapped[str] = mapped_column(String(32), index=True)
+    district: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

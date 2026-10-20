@@ -39,7 +39,7 @@ describe('auditPath', () => {
   it('несколько видов — одним параметром через запятую, как принимает /api/audit', () => {
     const p = auditPath({ kind: HUMAN_KINDS, limit: 40 })
     expect(p.startsWith('/audit?')).toBe(true)
-    expect(query(p)).toEqual({ kind: 'status,link,ai,comment,request,signal,export', limit: '40' })
+    expect(query(p)).toEqual({ kind: 'status,link,ai,comment,request,signal,export,alert', limit: '40' })
   })
 
   it('один вид, фильтры по объекту и лимит — общий /audit', () => {
@@ -50,7 +50,7 @@ describe('auditPath', () => {
 
   it('только действия людей — фильтр на сервере до лимита (ручные добавления с гипотезами ИИ не вытесняют людей)', () => {
     expect(query(auditPath({ kind: HUMAN_KINDS, human: true, limit: 8 })))
-      .toEqual({ kind: 'status,link,ai,comment,request,signal,export', human: 'true', limit: '8' })
+      .toEqual({ kind: 'status,link,ai,comment,request,signal,export,alert', human: 'true', limit: '8' })
     expect(auditPath({ adId: 'a6', human: true })).toBe('/audit?adId=a6&human=true')
     expect(auditPath({ adId: 'a6', human: false })).toBe('/ads/a6/audit')
   })

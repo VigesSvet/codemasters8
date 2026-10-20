@@ -16,7 +16,7 @@ AppealStatus = Literal["verified", "pending", "rejected"]
 SignalStatus = Literal["new", "confirmed", "returned"]
 FactorState = Literal["hit", "clear", "unknown"]
 EvidenceKind = Literal["ad", "document", "photo", "appeal", "readiness", "deadline"]
-AuditKind = Literal["system", "data", "status", "link", "comment", "request", "signal", "export", "ai"]
+AuditKind = Literal["system", "data", "status", "link", "comment", "request", "signal", "export", "ai", "alert"]
 # Происхождение сведений (ТЗ §7 «Достоверность»): demo — вымышленный демо-набор, analyst — добавил аналитик,
 # source — запись открытого источника, collected — собрано сборщиком или прислано жителем через бота,
 # registry — карточка ЖК или застройщик, созданные по открытому реестру (app.demo): сведения источника, не проверены;

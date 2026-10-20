@@ -163,7 +163,7 @@ export const ru = {
   'nav.sources': 'Источники данных',
   'nav.sourcesSub': 'Откуда берём данные',
   'nav.residents': 'Жителям',
-  'nav.residentsSub': 'Идея: push-уведомления',
+  'nav.residentsSub': 'Предупреждения в Telegram',
   'nav.changes': 'Изменения в источниках',
   'nav.changesSub': 'Удалённые публикации, правки условий',
   'nav.adNew': 'Ручной ввод публикации',

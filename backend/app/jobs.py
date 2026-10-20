@@ -1,6 +1,7 @@
 """Задания воркера в таблице jobs (integration-spec §9.1, §9.3, §9.4): сбор (collect), проверка подключения (test),
-анализ публикации (analyze). Не больше одного активного задания на dedupe_key (частичный уникальный индекс): гонка двух
-постановок решается INSERT … ON CONFLICT DO NOTHING и повторным чтением, без SAVEPOINT.
+анализ публикации (analyze), отправка предупреждения жителям (alert, app.alerts). Не больше одного активного задания
+на dedupe_key (частичный уникальный индекс): гонка двух постановок решается INSERT … ON CONFLICT DO NOTHING и повторным
+чтением, без SAVEPOINT.
 
 Захват: на PostgreSQL — SELECT … FOR UPDATE SKIP LOCKED, на SQLite — условный UPDATE по прочитанному id (повтор до трёх
 раз). Анализ публикации, по которой уже идёт анализ, не захватывается; у захваченного анализа dedupe_key обнуляется —
@@ -35,7 +36,7 @@ from .logs import redact
 
 log = logging.getLogger("saq.jobs")
 
-PRIORITY = {"test": 10, "collect": 5, "analyze": 0}
+PRIORITY = {"test": 10, "alert": 8, "collect": 5, "analyze": 0}
 SOFT_DEADLINE_S = 1200  # RunContext.time_left(): мягкий срок одного выполнения задания
 ACTIVE = ("queued", "running")
 MAX_DEFERRALS = 240  # отсрочек одного задания (Deferred), дальше — ошибка
@@ -226,7 +227,8 @@ def _requeue(db: Session, job: models.Job, now: datetime, reason: str) -> Option
 def _abandoned(db: Session, job: models.Job, now: datetime, reason: str) -> None:
     """Задание брошено окончательно (попытки исчерпаны, воркер упал или завис). Сбор и проверка — итог как у сбоя без
     повтора (§9.4): запуск «ошибка», подключение «ошибка» с паузой, платный сбор остановлен — иначе расписание сразу
-    начало бы новый платный запуск. Анализ — «не выполнен» с событием в журнале публикации (§8 п. 11)."""
+    начало бы новый платный запуск. Анализ — «не выполнен» с событием в журнале публикации (§8 п. 11). Предупреждение
+    жителям — итог отправки по доставкам (app.alerts.abandoned): «не отправлено» или «частично» с причиной."""
     if job.kind in ("collect", "test"):
         from .integrations import registry
 
@@ -237,6 +239,11 @@ def _abandoned(db: Session, job: models.Job, now: datetime, reason: str) -> None
         _failure_outcome(db, job, conn, _Failure("internal", "failed", "error", reason), now, retry_ok=False)
         return
     fail(db, job, reason)
+    if job.kind == "alert":
+        from . import alerts
+
+        alerts.abandoned(db, job, reason, now)
+        return
     if job.run_id is not None:
         from .integrations import service
 
@@ -667,4 +674,12 @@ def _analyze(info: JobInfo, *, now: datetime, stop: Optional[threading.Event] = 
             db.commit()
 
 
-HANDLERS: dict[str, Callable[..., None]] = {"collect": _collect, "test": _test, "analyze": _analyze}
+# ---------- предупреждение жителям ----------
+
+def _alert(info: JobInfo, *, now: datetime, stop: Optional[threading.Event] = None) -> None:
+    from . import alerts
+
+    alerts.run_job(info, now=now, stop=stop)
+
+
+HANDLERS: dict[str, Callable[..., None]] = {"collect": _collect, "test": _test, "analyze": _analyze, "alert": _alert}

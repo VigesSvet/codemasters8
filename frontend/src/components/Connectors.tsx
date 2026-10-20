@@ -280,7 +280,8 @@ function AdminBar() {
   )
 }
 
-function AdminModal({ onClose }: { onClose: () => void }) {
+/** Вход в режим администратора (токен SAQ_ADMIN_TOKEN — только в этой вкладке); и на странице «Жителям» — согласовать отправку */
+export function AdminModal({ onClose }: { onClose: () => void }) {
   const { notify } = useStore()
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState(false)

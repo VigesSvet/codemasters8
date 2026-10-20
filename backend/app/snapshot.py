@@ -193,6 +193,9 @@ EXCLUDED: Dict[str, str] = {
     "integration_tokens": "токены доступа подключений — секреты",
     "quota_counters": "счётчики расхода квот и дневного бюджета",
     "bot_submissions": "заявки жителей — персональные данные заявителей",
+    "resident_alerts": "предупреждения жителям — сообщения, отправленные из этого развёртывания",
+    "alert_deliveries": "доставки предупреждений — состояние отправки",
+    "alert_subscriptions": "подписки жителей на районы — chat_id Telegram",
     "source_records": "записи открытого реестра — загрузка пересоздаёт их из shared/registry_ust_kamenogorsk.json",
     "meta": "версию схемы и флаги задаёт загрузка",
 }

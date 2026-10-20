@@ -106,6 +106,9 @@ class Settings:
     tg_edit_window: int = 30
     tg_max_video_mb: int = 50
     tg_download_timeout_s: int = 300
+    # Telegram Bot API — предупреждения жителям (app.alerts): тот же бот, что у saq-telegram-bot; только отправка
+    bot_token: Secret = field(default_factory=_no_secret)
+    tg_alerts_channel: str = ""
     # Apify / TikTok
     apify_token: Secret = field(default_factory=_no_secret)
     apify_actor_id: str = "clockworks~tiktok-scraper"
@@ -231,6 +234,10 @@ VARS: tuple[_Var, ...] = (
     _Var("TG_EDIT_WINDOW", "tg_edit_window", "int", 0),
     _Var("TG_MAX_VIDEO_MB", "tg_max_video_mb", "int", 0),
     _Var("TG_DOWNLOAD_TIMEOUT_S", "tg_download_timeout_s", "int", 1),
+    # бот заявок: API и воркер только отправляют (sendMessage), getUpdates и webhook — у самого бота
+    _Var("BOT_TOKEN", "bot_token", "secret"),
+    # канал ГАСК для предупреждений жителям: @имя или ID вида -100…; бот — администратор канала
+    _Var("TG_ALERTS_CHANNEL", "tg_alerts_channel", "str"),
     _Var("APIFY_TOKEN", "apify_token", "secret"),
     _Var("APIFY_ACTOR_ID", "apify_actor_id", "str"),
     _Var("APIFY_MAX_TOTAL_CHARGE_USD", "apify_max_total_charge_usd", "float", 0),

@@ -1,6 +1,6 @@
 // Журнал действий (T-16, T-17): подписи видов событий, темы запроса сведений, формат времени, инициалы авторов.
 import type { AdStatus, Analyst, AuditEvent, AuditKind, Complex } from '../data/types'
-import { IcBolt, IcCheck, IcComment, IcDatabase, IcDownload, IcFlag, IcLink, IcPencil, IcSend, IcSparkSearch } from '../ui/icons'
+import { IcBell, IcBolt, IcCheck, IcComment, IcDatabase, IcDownload, IcFlag, IcLink, IcPencil, IcSend, IcSparkSearch } from '../ui/icons'
 
 export const SYSTEM = 'Система'
 
@@ -15,6 +15,7 @@ export const AUDIT_KIND: Record<AuditKind, { name: string; tag: string; Icon: ty
   signal: { name: 'сигнал', tag: 'red', Icon: IcFlag },
   export: { name: 'выгрузка', tag: 'gray', Icon: IcDownload },
   ai: { name: 'ИИ', tag: 'blue', Icon: IcSparkSearch },
+  alert: { name: 'жителям', tag: 'yellow', Icon: IcBell },
 }
 /** Запись вида «система» от имени человека — его ввод (сервер так пишет «Публикация добавлена вручную»), а не действие системы */
 const MANUAL = { name: 'ввод вручную', tag: 'gray', Icon: IcPencil }
@@ -62,9 +63,10 @@ export function linkLine(from?: Pick<Complex, 'id' | 'name'>, to?: Pick<Complex,
   return from && from.id !== to.id ? `Привязка изменена: «${from.name}» → «${to.name}»` : `Привязка к ЖК «${to.name}» подтверждена аналитиком`
 }
 
-/** Действия людей для «Последних действий»: решения, привязки, решения по гипотезам ИИ, комментарии, запросы, сигналы, выгрузки.
+/** Действия людей для «Последних действий»: решения, привязки, решения по гипотезам ИИ, комментарии, запросы, сигналы, выгрузки,
+ *  предупреждения жителям (подготовка и согласование; итог отправки пишет «Система»).
  *  Гипотезы, которые ИИ записал сам от имени «Система», отсекает сервер (human), — иначе ручные добавления вытеснят людей из окна */
-export const HUMAN_KINDS: AuditKind[] = ['status', 'link', 'ai', 'comment', 'request', 'signal', 'export']
+export const HUMAN_KINDS: AuditKind[] = ['status', 'link', 'ai', 'comment', 'request', 'signal', 'export', 'alert']
 
 /** Фильтр журнала: публикация, ЖК, сигнал, вид события (один или несколько), только действия людей (без «Системы»
  *  и без событий сбора и сверки данных — фильтр на сервере, до лимита), последние N */

@@ -48,10 +48,11 @@ def _has_verification_columns() -> bool:
 
 def _to_baseline() -> None:
     """База как у версии 2026.10-sources-1: без 12 новых таблиц, llm_analyses, таблиц объектов из рекламы, решений
-    аналитика, ads.collected_at и столбцов сверки аналитиком."""
+    аналитика, предупреждений жителям, ads.collected_at и столбцов сверки аналитиком."""
     with engine.begin() as conn:
         for t in reversed(Base.metadata.sorted_tables):
-            if t.name in migrate.NEW_TABLES + migrate.LLM_TABLES + migrate.DISCOVERY_TABLES + migrate.DECISION_TABLES:
+            if t.name in migrate.NEW_TABLES + migrate.LLM_TABLES + migrate.DISCOVERY_TABLES + migrate.DECISION_TABLES \
+                    + migrate.ALERT_TABLES:
                 t.drop(conn)
         conn.execute(text("ALTER TABLE ads DROP COLUMN collected_at"))
     _drop_verification_columns()
@@ -68,12 +69,13 @@ def _backups() -> set:
 
 
 def test_fresh_db(tmp_path):
-    assert models.SCHEMA_VERSION == migrate.STEPS[-1][0] == "2026.10-decisions-1"
+    assert models.SCHEMA_VERSION == migrate.STEPS[-1][0] == "2026.10-alerts-1"
     eng = make_engine(f"sqlite:///{tmp_path}/fresh.db")
     try:
         init_db(eng)
         tables = set(inspect(eng).get_table_names())
-        assert set(migrate.NEW_TABLES + migrate.LLM_TABLES + migrate.DISCOVERY_TABLES + migrate.DECISION_TABLES) <= tables
+        assert set(migrate.NEW_TABLES + migrate.LLM_TABLES + migrate.DISCOVERY_TABLES + migrate.DECISION_TABLES
+                   + migrate.ALERT_TABLES) <= tables
         with eng.connect() as conn:
             assert _meta(conn) == models.SCHEMA_VERSION
             assert conn.execute(text("SELECT count(*) FROM ads")).scalar() == 12
@@ -95,7 +97,8 @@ def test_baseline_upgrade_keeps_data(client):
 
     init_db(engine)
 
-    assert set(migrate.NEW_TABLES + migrate.LLM_TABLES + migrate.DECISION_TABLES) <= set(inspect(engine).get_table_names())
+    assert set(migrate.NEW_TABLES + migrate.LLM_TABLES + migrate.DECISION_TABLES + migrate.ALERT_TABLES) \
+        <= set(inspect(engine).get_table_names())
     assert "collected_at" in {c["name"] for c in inspect(engine).get_columns("ads")}
     assert _has_verification_columns()
     with engine.connect() as conn:
@@ -127,14 +130,14 @@ def test_intake_upgrade_adds_llm_table_and_keeps_data(client):
         models.LlmAnalysis.__table__.drop(conn)
     _set_meta("2026.10-intake-1")
     assert "llm_analyses" not in inspect(engine).get_table_names()
-    assert migrate.chain_from("2026.10-intake-1") == migrate.STEPS[-4:]
+    assert migrate.chain_from("2026.10-intake-1") == migrate.STEPS[-5:]
     before = _backups()
 
     init_db(engine)
 
     assert "llm_analyses" in inspect(engine).get_table_names()
     with engine.connect() as conn:
-        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-decisions-1"
+        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-alerts-1"
     got = _ad(client, aid)
     assert got["origin"] == "collected" and got["processing"]["status"] == "queued" and "llm" not in got
     assert _ad(client, "a1")["status"] == "in_review"
@@ -194,7 +197,7 @@ def test_discovery_upgrade_keeps_data_and_allows_missing_coords(client):
     _coords_not_null()
     assert _nullable("complexes")["lat"] is False and _nullable("complexes")["lng"] is False
     _set_meta("2026.10-llm-1")
-    assert migrate.chain_from("2026.10-llm-1") == migrate.STEPS[-3:]
+    assert migrate.chain_from("2026.10-llm-1") == migrate.STEPS[-4:]
     before = _backups()
 
     init_db(engine)
@@ -203,7 +206,7 @@ def test_discovery_upgrade_keeps_data_and_allows_missing_coords(client):
     assert _nullable("complexes")["lat"] is True and _nullable("complexes")["lng"] is True
     assert "ix_complexes_name" in {i["name"] for i in inspect(engine).get_indexes("complexes")}
     with engine.connect() as conn:
-        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-decisions-1"
+        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-alerts-1"
     after_cx = {c["id"]: (c["name"], c["lat"], c["lng"], c["developerId"]) for c in client.get("/api/complexes").json()}
     assert after_cx == before_cx
     a1 = _ad(client, "a1")
@@ -236,14 +239,14 @@ def test_verification_upgrade_adds_columns_and_keeps_data(client):
     _drop_verification_columns()
     assert not _has_verification_columns()
     _set_meta("2026.10-discovery-1")
-    assert migrate.chain_from("2026.10-discovery-1") == migrate.STEPS[-2:]
+    assert migrate.chain_from("2026.10-discovery-1") == migrate.STEPS[-3:]
     before = _backups()
 
     init_db(engine)
 
     assert _has_verification_columns()
     with engine.connect() as conn:
-        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-decisions-1"
+        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-alerts-1"
     cxs = client.get("/api/complexes").json()
     assert {c["id"]: (c["basis"], c["inPublishedList"]) for c in cxs} == before_cx
     assert all(c["publishedListCheck"] is None and c["appealsCheck"] is None for c in cxs)
@@ -272,8 +275,8 @@ def test_decisions_upgrade_adds_table_and_keeps_data(client):
         models.ScreeningDecision.__table__.drop(conn)
     _set_meta("2026.10-verification-1")
     assert "screening_decisions" not in inspect(engine).get_table_names()
-    assert migrate.chain_from("2026.10-verification-1") == migrate.STEPS[-1:]
-    assert migrate.tables_after("2026.10-verification-1") == {"screening_decisions"}
+    assert migrate.chain_from("2026.10-verification-1") == migrate.STEPS[-2:]
+    assert migrate.tables_after("2026.10-verification-1") == {"screening_decisions", *migrate.ALERT_TABLES}
     assert "screening_decisions" in migrate.tables_after("2026.10-discovery-1")
     assert migrate.tables_after(models.SCHEMA_VERSION) == set() == migrate.tables_after("old")
     backups = _backups()
@@ -284,7 +287,7 @@ def test_decisions_upgrade_adds_table_and_keeps_data(client):
     idx = {i["name"]: i for i in inspect(engine).get_indexes("screening_decisions")}
     assert idx["uq_screening_decisions_active_complex"]["unique"]
     with engine.connect() as conn:
-        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-decisions-1"
+        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-alerts-1"
     cxs = client.get("/api/complexes").json()
     assert {c["id"]: (c["stage"], c["screening"]["status"]) for c in cxs} == before
     assert all(c["decision"] is None and c["screening"]["variant"] is None for c in cxs)
@@ -296,6 +299,41 @@ def test_decisions_upgrade_adds_table_and_keeps_data(client):
     if _sqlite_file():
         new = _backups() - backups
         assert len(new) == 1 and next(iter(new)).name.startswith(f"{_sqlite_file().name}.bak-2026.10-verification-1-")
+        for f in new:
+            f.unlink()
+
+
+def test_alerts_upgrade_adds_tables_and_keeps_data(client):
+    """2026.10-decisions-1 → 2026.10-alerts-1: таблицы предупреждений жителям, доставок и подписок добавляются на месте;
+    ЖК и журнал сохраняются, предупреждения сразу работают и защищены от пересоздания схемы."""
+    events = len(client.get("/api/complexes/c1/audit").json())
+    with engine.begin() as conn:
+        for t in reversed(Base.metadata.sorted_tables):
+            if t.name in migrate.ALERT_TABLES:
+                t.drop(conn)
+    _set_meta("2026.10-decisions-1")
+    assert not set(migrate.ALERT_TABLES) & set(inspect(engine).get_table_names())
+    assert migrate.chain_from("2026.10-decisions-1") == migrate.STEPS[-1:]
+    assert migrate.tables_after("2026.10-decisions-1") == set(migrate.ALERT_TABLES)
+    backups = _backups()
+
+    init_db(engine)
+
+    assert set(migrate.ALERT_TABLES) <= set(inspect(engine).get_table_names())
+    idx = {i["name"]: i for i in inspect(engine).get_indexes("resident_alerts")}
+    assert idx["uq_resident_alerts_pending_complex"]["unique"]
+    with engine.connect() as conn:
+        assert _meta(conn) == models.SCHEMA_VERSION == "2026.10-alerts-1"
+    assert len(client.get("/api/complexes/c1/audit").json()) == events
+    r = client.post("/api/alerts", json={"complexId": "c1", "template": "basis", "title": "Проверьте основание",
+                                         "text": "Сверьте номер гарантии ЕО в ГАСК.", "author": "Тест"})
+    assert r.status_code == 201, r.text
+    assert migrate.durable_rows(engine, set(inspect(engine).get_table_names()))["resident_alerts"] == 1
+    with engine.begin() as conn:
+        migrate._alerts_1(conn)  # идемпотентно
+    if _sqlite_file():
+        new = _backups() - backups
+        assert len(new) == 1 and next(iter(new)).name.startswith(f"{_sqlite_file().name}.bak-2026.10-decisions-1-")
         for f in new:
             f.unlink()
 
@@ -337,6 +375,10 @@ def test_durable_rows(client):
                                status="candidates", requested_by="Тест"))
         db.commit()
     assert migrate.durable_rows(engine, tables) == {"collectors": 1, "geo_checks": 1}
+    with SessionLocal() as db:
+        db.add(models.AlertSubscription(chat_id="100500", district="*"))  # подписку жителя из сида не восстановить
+        db.commit()
+    assert migrate.durable_rows(engine, tables)["alert_subscriptions"] == 1
     assert migrate.durable_rows(engine, {"ads"}) == {}  # только перечисленные таблицы
 
 

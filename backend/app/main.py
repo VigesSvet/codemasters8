@@ -680,6 +680,12 @@ app.include_router(changes.router)  # удалено в источнике и и
 for _router in connectors.routers():
     app.include_router(_router)
 
+# ---------- предупреждения жителям: согласование и отправка в Telegram, подписки от бота заявок (app.alerts) ----------
+
+from .alerts import router as alerts_router  # noqa: E402
+
+app.include_router(alerts_router)
+
 # ---------- кто продаёт: связанные продавцы, аномальная цена, связи застройщика — гипотезы вне балла (app.sellers) ----------
 
 from .sellers import router as sellers_router  # noqa: E402

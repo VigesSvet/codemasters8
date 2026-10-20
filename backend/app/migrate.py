@@ -29,6 +29,7 @@ NEW_TABLES = ("collectors", "collection_runs", "ingest_items", "ingest_versions"
 LLM_TABLES = ("llm_analyses",)  # 2026.10-llm-1
 DISCOVERY_TABLES = ("discovered_objects", "discovered_mentions")  # 2026.10-discovery-1
 DECISION_TABLES = ("screening_decisions",)  # 2026.10-decisions-1
+ALERT_TABLES = ("resident_alerts", "alert_deliveries", "alert_subscriptions")  # 2026.10-alerts-1
 ADVISORY_LOCK = 724001  # pg_advisory_xact_lock: два процесса не обновляют схему одновременно
 
 Step = tuple[str, Callable[[Connection], None]]
@@ -133,11 +134,20 @@ def _decisions_1(conn: Connection) -> None:
         Base.metadata.tables[name].create(conn, checkfirst=True)
 
 
+def _alerts_1(conn: Connection) -> None:
+    """2026.10-alerts-1: предупреждения жителям — тексты и согласование (resident_alerts), доставки в канал ГАСК и
+    подписчикам (alert_deliveries), подписки жителей на районы от бота заявок (alert_subscriptions)."""
+    for name in ALERT_TABLES:
+        Base.metadata.tables[name].create(conn, checkfirst=True)
+
+
 STEPS: list[Step] = [("2026.10-intake-1", _intake_1), ("2026.10-llm-1", _llm_1), ("2026.10-discovery-1", _discovery_1),
-                     ("2026.10-verification-1", _verification_1), ("2026.10-decisions-1", _decisions_1)]
+                     ("2026.10-verification-1", _verification_1), ("2026.10-decisions-1", _decisions_1),
+                     ("2026.10-alerts-1", _alerts_1)]
 # Таблицы, которые создаёт шаг: набор (app.snapshot) прежней версии схемы их не содержит — загружаются пустыми
 STEP_TABLES: dict[str, tuple] = {"2026.10-intake-1": NEW_TABLES, "2026.10-llm-1": LLM_TABLES,
-                                 "2026.10-discovery-1": DISCOVERY_TABLES, "2026.10-decisions-1": DECISION_TABLES}
+                                 "2026.10-discovery-1": DISCOVERY_TABLES, "2026.10-decisions-1": DECISION_TABLES,
+                                 "2026.10-alerts-1": ALERT_TABLES}
 assert STEPS[-1][0] == models.SCHEMA_VERSION, "SCHEMA_VERSION должна совпадать с последним шагом migrate.STEPS"
 
 
@@ -225,13 +235,15 @@ def upgrade(eng: Engine, version: Optional[str]) -> None:
 
 
 DURABLE_TABLES = ("ingest_items", "media_assets", "integration_tokens", "bot_submissions", "geo_checks", "llm_analyses",
-                  "discovered_objects", "screening_decisions")
+                  "discovered_objects", "screening_decisions", "resident_alerts", "alert_subscriptions")
 
 
 def durable_rows(eng: Engine, present_tables: set) -> dict[str, int]:
     """Ненулевые счётчики невосстановимых данных: ingest_items, media_assets, integration_tokens, bot_submissions,
     geo_checks, llm_analyses (оплаченные результаты анализа ИИ), discovered_objects (объекты из рекламы и решения по ним),
-    screening_decisions (решения аналитика «сдан» / «проверено — замечаний нет»); collectors с updated_by IS NOT NULL; ads с origin IN ('collected','analyst'); appeals с origin = 'analyst'
+    screening_decisions (решения аналитика «сдан» / «проверено — замечаний нет»), resident_alerts (предупреждения жителям
+    и кто их согласовал), alert_subscriptions (подписки жителей от бота); collectors с updated_by IS NOT NULL; ads с
+    origin IN ('collected','analyst'); appeals с origin = 'analyst'
     и audit_events вида data не от «Системы» (сверка сведений аналитиком, app.verification) — только если таблица/столбец
     есть."""
     out: dict[str, int] = {}
