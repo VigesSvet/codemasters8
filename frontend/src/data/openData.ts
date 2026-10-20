@@ -3,8 +3,6 @@
 import { finder, rankObject } from '../lib/find'
 import type { RegistryCard, RegistryList, RegistryObject, SourceInfo, SourceRecord } from './types'
 
-export const OFFLINE_FILE = 'shared/registry_ust_kamenogorsk.json'
-
 interface OfflineFile {
   meta: { builtAt?: string | null; builtFrom?: string | null }
   sources: { code: string; name: string; url?: string | null; note?: string | null }[]

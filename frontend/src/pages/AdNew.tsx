@@ -8,6 +8,7 @@ import { READ_ONLY } from '../data/snapshot'
 import type { Ad, Analysis, AnalyzeInput, LinkHypothesis, OcrResult, OcrStatus, Platform } from '../data/types'
 import { OCR_EMPTY, OCR_KEPT, ocrNotice, ocrOnEdit, ocrOnNewShot, ocrOnResult, pct, type OcrField } from '../lib/ai'
 import { errorText } from '../lib/api'
+import { plain } from '../lib/plain'
 import { finder, rankComplex } from '../lib/find'
 import { UPLOAD_MAX, uploadScreenshot, uploadWarning } from '../lib/media'
 import { KNOWN_PLATFORMS } from '../lib/platform'
@@ -241,8 +242,8 @@ export default function AdNew() {
                 {ro ? <span>Офлайн-копия: OCR выполняется на сервере — перепечатайте текст со скриншота вручную</span>
                   : !live ? <span>Подключаемся к серверу…</span>
                     : !ocrInfo ? <span>Проверяем OCR на сервере…</span>
-                      : ocrInfo.available ? <span>OCR: Tesseract{ocrInfo.version ? ` ${ocrInfo.version}` : ''} · языки {ocrInfo.languages.join(', ') || '—'} · офлайн, без внешних сервисов{ocrInfo.detail ? ` · ${ocrInfo.detail}` : ''}</span>
-                        : <span>OCR недоступен: {ocrInfo.detail || 'Tesseract на сервере не работает — текст со скриншота введите вручную'}</span>}
+                      : ocrInfo.available ? <span>OCR: Tesseract{ocrInfo.version ? ` ${ocrInfo.version}` : ''} · языки {ocrInfo.languages.join(', ') || '—'} · офлайн, без внешних сервисов{ocrInfo.detail ? ` · ${plain(ocrInfo.detail)}` : ''}</span>
+                        : <span>OCR недоступен: {plain(ocrInfo.detail) || 'Tesseract на сервере не работает — текст со скриншота введите вручную'}</span>}
               </div>
               {ocrBusy && (
                 <div className="ai-note" style={{ marginTop: 10 }}>Распознаём текст на сервере… Сохранить публикацию можно будет после распознавания.{' '}

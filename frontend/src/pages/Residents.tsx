@@ -10,6 +10,7 @@ import {
   deliveryLine, footer, getAlerts, getAudience, rejectAlert, retryAlert, type Audience, type ResidentAlert,
 } from '../lib/alerts'
 import { errorText } from '../lib/api'
+import { plain } from '../lib/plain'
 import { isAssessed, model } from '../lib/risk'
 import { useStore } from '../lib/store'
 import { IcCheck, IcChevronDown, IcClose, IcExternal, IcLock, IcRefresh, IcSend, IcShield } from '../ui/icons'
@@ -107,7 +108,7 @@ function ResidentsPage() {
   const pendingHere = alerts?.find((a) => a.complexId === c.id && a.status === 'pending')
   const whom = aud ? audienceLine(aud) : null
   const problems = audienceProblems(aud)
-  const why = !live ? 'Офлайн-копия: отправка — только с сервером (./dev.sh)'
+  const why = !live ? 'Офлайн-копия: отправка — только с сервером'
     : !user ? 'Войдите, чтобы подготовить предупреждение'
       : !fits ? 'Шаблон не подходит к объекту'
         : !text.trim() ? 'Введите текст'
@@ -248,7 +249,7 @@ function AlertList({ alerts, admin, configured, onAdmin, onChange }: {
     setCheck({ busy: true })
     try {
       const got = await checkBot()
-      setCheck({ text: got.detail, ok: got.ok })
+      setCheck({ text: plain(got.detail), ok: got.ok })
     } catch (e) {
       setCheck({ text: errorText(e), ok: false })
     }
@@ -313,10 +314,10 @@ function AlertCard({ a, admin, who, notify, onChange, onAdmin, configured }: {
             {a.decisionComment && <> · «{a.decisionComment}»</>}
           </div>
           {line && <div className="t-sm" style={{ marginTop: 4 }}>{line}{a.channel?.link && <> · <a className="link" href={a.channel.link} target="_blank" rel="noreferrer">в канале<IcExternal size={12} /></a></>}</div>}
-          {a.channel?.error && <div className="t-sm" style={{ marginTop: 4, color: 'var(--amber-ink)' }}>Канал: {a.channel.error}</div>}
-          {a.errors.map((e) => <div key={e.text} className="t-sm" style={{ marginTop: 4, color: 'var(--amber-ink)' }}>{e.text}: {e.count}</div>)}
-          {a.lastError && a.status === 'sending' && <div className="t-sm c2" style={{ marginTop: 4 }}>{a.lastError}</div>}
-          {a.lastError && a.status === 'failed' && !a.channel?.error && !a.errors.length && <div className="t-sm" style={{ marginTop: 4, color: 'var(--red)' }}>{a.lastError}</div>}
+          {a.channel?.error && <div className="t-sm" style={{ marginTop: 4, color: 'var(--amber-ink)' }}>Канал: {plain(a.channel.error)}</div>}
+          {a.errors.map((e) => <div key={e.text} className="t-sm" style={{ marginTop: 4, color: 'var(--amber-ink)' }}>{plain(e.text)}: {e.count}</div>)}
+          {a.lastError && a.status === 'sending' && <div className="t-sm c2" style={{ marginTop: 4 }}>{plain(a.lastError)}</div>}
+          {a.lastError && a.status === 'failed' && !a.channel?.error && !a.errors.length && <div className="t-sm" style={{ marginTop: 4, color: 'var(--red)' }}>{plain(a.lastError)}</div>}
         </div>
       </div>
       {a.status === 'pending' && (

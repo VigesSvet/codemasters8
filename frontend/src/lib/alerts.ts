@@ -4,6 +4,7 @@
 // Токен администратора уходит только в adminCall (согласовать, отклонить, повторить, проверить бота).
 import { adminCall } from './admin'
 import { apiGet, apiPost, orNoRoute, orNull } from './api'
+import { plain } from './plain'
 
 export type AlertStatus = 'pending' | 'rejected' | 'sending' | 'sent' | 'partial' | 'failed'
 export type AlertTemplate = 'basis' | 'idle' | 'ok'
@@ -85,14 +86,14 @@ export function audienceLine(a: Pick<Audience, 'channel' | 'subscribers' | 'dist
   return s || null
 }
 
-/** Что мешает отправить на согласование и потом отправить (BOT_TOKEN, канал, воркер, некому) — для подсказки в форме */
+/** Что мешает отправить на согласование и потом отправить (токен бота, канал, воркер, некому) — для подсказки в форме */
 export function audienceProblems(a: Audience | null): string[] {
   if (!a) return []
   const out: string[] = []
-  if (a.problem) out.push(a.problem)
-  if (a.channelProblem) out.push(a.channelProblem)
+  if (a.problem) out.push(plain(a.problem))
+  if (a.channelProblem) out.push(plain(a.channelProblem))
   if (!audienceLine(a)) out.push(`Некому отправить: канал ГАСК не задан, подписчиков ${a.district ? `района «${a.district}»` : 'всех районов'} в боте нет`)
-  if (!a.adminConfigured) out.push('Согласовать некому: режим администратора не настроен на сервере (SAQ_ADMIN_TOKEN)')
+  if (!a.adminConfigured) out.push('Согласовать некому: режим администратора не настроен на сервере')
   if (a.configured && !a.workerAlive) out.push('Воркер не запущен — согласованное предупреждение уйдёт, когда он запустится')
   return out
 }

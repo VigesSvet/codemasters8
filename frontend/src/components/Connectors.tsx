@@ -3,11 +3,14 @@
 // Настройка и ручной запуск — только в режиме администратора: токен SAQ_ADMIN_TOKEN вводит человек, проверяет сервер,
 // хранится он только в этой вкладке (lib/admin.ts) и уходит заголовком лишь в маршруты администратора и в чтение подключений.
 // Посетитель (без токена) получает от сервера только статусы, расписание и счётчики: способ подключения, имена ключей,
-// настройки, пояснения, ошибки, аккаунты, стоимость, заметки запусков и команды сервера ему не показываются.
+// настройки, пояснения, ошибки, аккаунты, стоимость и заметки запусков ему не показываются. Никому, и администратору тоже,
+// не показываются технические подробности сервера: способ подключения (адреса API), имена переменных, команды и пути —
+// тексты сервера проходят через plain (lib/plain.ts).
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { CollectAllResult, CollectionRun, ConfigField, Connector, ConnectorConfig, ConnectorGroup, ConnectorPatch, ConnectorsResponse } from '../data/types'
 import { checkAdmin, clearAdminToken, isAdmin, onAdminChange, setAdminToken, tokenProblem } from '../lib/admin'
 import { ApiError, errorText } from '../lib/api'
+import { plain } from '../lib/plain'
 import {
   COPY, CONFIG_META, RUN_TONE, TRIGGER_LABEL, accountState, anyBusy, blockReason, collectAll, collectAllToast, collectConnector, collectable,
   collectedLine, configList, configSummary, effectiveStatus, finishedWithData, fmtUsd, getConnectors, getRun, groupConnectors, hasNewData, hhmm,
@@ -238,7 +241,6 @@ export default function Connectors() {
                   {!data.worker?.alive && (
                     <div className="box warn t-sm" style={{ marginTop: 12, lineHeight: '20px' }}>
                       {COPY.workerDown}{data.worker?.lastSeenAt && <> Последний сигнал воркера: {when(data.worker.lastSeenAt)}.</>}
-                      {x.admin && <> {COPY.workerStart}</>}
                     </div>
                   )}
                   <AllResult />
@@ -346,7 +348,7 @@ function AllResult() {
       {skipped.length > 0 && (
         <>
           <div className="c2">Пропущено:</div>
-          <ul>{skipped.map((s) => <li key={s.code}><b>{x.nameOf(s.code)}</b> — {s.reason || 'пропущен'}</li>)}</ul>
+          <ul>{skipped.map((s) => <li key={s.code}><b>{x.nameOf(s.code)}</b> — {plain(s.reason) || 'пропущен'}</li>)}</ul>
         </>
       )}
     </div>
@@ -381,17 +383,15 @@ function ConnectorCard({ c }: { c: Connector }) {
   // OLX: токен сохранён — «Отключить аккаунт»; токен не действует (истёк, нет доступа, ошибка) — ещё и «Подключить заново»
   const acct = caps?.connect ? accountState(c) : { linked: false, relink: false }
   const missing = c.missing ?? []
-  // сессия Telegram — не ключ в .env: её создаёт вход из консоли сервера (подсказка ниже)
+  // сессия Telegram — не ключ сервера: её создаёт вход по коду на сервере (подсказка ниже)
   const { env: envMissing, session: noSession } = splitMissing(missing)
-  // команды входа — только администратору
-  const tgLogin = x.admin && c.code === 'telegram' && (noSession || s === 'expired')
-  // пояснение сервера без повторов: «Нет на сервере…» уже есть ниже, команды входа Telegram — в подсказке
+  // пояснение сервера без повторов: «Нет на сервере…» и «нужен вход в Telegram» уже есть ниже понятными словами
   const detail = c.statusDetail?.trim()
     && !(missing.length && /^Нет на сервере/i.test(c.statusDetail.trim()))
-    && !(tgLogin && c.statusDetail.includes('telegram_login'))
-    ? c.statusDetail.trim() : null
+    && !(noSession && c.statusDetail.includes('telegram_login'))
+    ? plain(c.statusDetail.trim()) : null
   const warnDetail = s === 'partial' || s === 'access_check'
-  const limitation = c.limitation?.trim() || (c.group === 'limited' ? LIMITED_NOTE : null)
+  const limitation = plain(c.limitation?.trim()) || (c.group === 'limited' ? LIMITED_NOTE : null)
 
   const start = async (a: 'test' | 'collect') => {
     if (!x.author || act) return
@@ -470,8 +470,8 @@ function ConnectorCard({ c }: { c: Connector }) {
   if (ok) rows.push([ok.label, <span key="ok" title={ok.at ?? undefined}>{when(ok.at)}</span>])
   if (c.lastError) {
     rows.push(['Последняя ошибка', freshError(c)
-      ? <span key="err" className="alog-err">{c.lastError}{c.lastErrorAt && ` · ${when(c.lastErrorAt)}`}</span>
-      : <span key="err" className="c2">{c.lastError}{c.lastErrorAt && ` · ${when(c.lastErrorAt)}`} (после неё был успешный запуск)</span>])
+      ? <span key="err" className="alog-err">{plain(c.lastError)}{c.lastErrorAt && ` · ${when(c.lastErrorAt)}`}</span>
+      : <span key="err" className="c2">{plain(c.lastError)}{c.lastErrorAt && ` · ${when(c.lastErrorAt)}`} (после неё был успешный запуск)</span>])
   }
   if (collector || c.kind === 'intake') rows.push(['Собрано', collectedLine(c.counts ?? { items: 0, ads: 0, media: 0 })])
   if (c.lastRun) rows.push(['Последний запуск', runLine(c.lastRun)])
@@ -485,7 +485,6 @@ function ConnectorCard({ c }: { c: Connector }) {
           : <span className="lnk-ico">{c.kind === 'analyzer' ? <IcSparkles size={22} /> : <IcPlugConnection size={22} />}</span>}
         <div className="who">
           <div className="t-h3">{c.name}</div>
-          {c.via && <div className="t-sm c2" style={{ marginTop: 2 }}>{c.via}</div>}
           <div className="lnk-tags">
             <span className={`tag ${toneOf(c)}`} title={detail ?? undefined}>{statusText(c)}</span>
             {collector && !c.enabled && <span className="tag gray">{COPY.disabled}</span>}
@@ -508,7 +507,6 @@ function ConnectorCard({ c }: { c: Connector }) {
       {s === 'access_check' && !detail && <div className="box warn t-sm">{COPY.accessCheck}</div>}
       {envMissing.length > 0 && <div className="t-sm c2" style={{ lineHeight: '19px' }}>{missingLine(envMissing)}</div>}
       {noSession && <div className="t-sm c2" style={{ lineHeight: '19px' }}>{COPY.noSession}</div>}
-      {tgLogin && <TelegramLogin />}
 
       {rows.length > 0 && (
         <div className="kv lnk-kv">
@@ -565,19 +563,6 @@ function Switch({ on, onChange, label, disabled, title }: { on: boolean; onChang
     <span className={disabled ? 'lnk-dis' : undefined} title={title ?? undefined} style={{ display: 'inline-flex' }}>
       <button type="button" className={`toggle ${on ? 'on' : ''}`} role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)} />
     </span>
-  )
-}
-
-/** Вход в Telegram выполняется в консоли сервера — сессия в браузер не попадает */
-function TelegramLogin() {
-  return (
-    <div className="lnk-cli">
-      Вход в Telegram — на сервере, из консоли (нужны TG_API_ID, TG_API_HASH и TG_PHONE в .env). Запросить код и ввести его:
-      <code>python -m app.integrations.telegram_login --send-code</code>
-      <code>python -m app.integrations.telegram_login --code &lt;код&gt;</code>
-      В Docker: <code>docker compose run --rm worker python -m app.integrations.telegram_login …</code>
-      С паролем двухфакторной защиты — ещё <b>--password</b>. Сессия хранится на сервере и в браузер не передаётся.
-    </div>
   )
 }
 
@@ -638,10 +623,10 @@ function RunPanel({ initial, okLine, onDone, onClose }: { initial: CollectionRun
       {fin && run.trigger === 'test' && run.status === 'succeeded' && <div>{okLine}</div>}
       {typeof run.costUsd === 'number' && <div className="t-sm">Стоимость запуска: {fmtUsd(run.costUsd)}</div>}
       {run.status === 'access_check' && <div className="box warn t-sm">{COPY.accessCheck}</div>}
-      {run.error && <div className="alog-err t-sm">{run.error}</div>}
+      {run.error && <div className="alog-err t-sm">{plain(run.error)}</div>}
       {notes.length > 0 && (
         <ul className="lnk-notes">
-          {notes.map((n, i) => <li key={`${n.at}-${i}`} className={n.level}><span className="at">{noteTime(n.at)}</span><span>{n.text}</span></li>)}
+          {notes.map((n, i) => <li key={`${n.at}-${i}`} className={n.level}><span className="at">{noteTime(n.at)}</span><span>{plain(n.text)}</span></li>)}
         </ul>
       )}
       {retry && <div className="t-sm c2">{retry[0].toUpperCase() + retry.slice(1)}</div>}
@@ -757,7 +742,7 @@ function ConfigModal({ c, onClose }: { c: Connector; onClose: () => void }) {
         {problems.length > 0 && <div className="alog-err t-sm" style={{ margin: 0 }}>{problems.join('; ')}</div>}
         {err && <div className="alog-err t-sm" style={{ margin: 0 }}>Не сохранено: {err}</div>}
         <p className="t-xs c2" style={{ lineHeight: '17px' }}>
-          Изменения пишутся в журнал от имени {x.author ?? '—'}. Ключи и токены площадок здесь не задаются — только в .env на сервере.
+          Изменения пишутся в журнал от имени {x.author ?? '—'}. Ключи и токены площадок здесь не задаются — только на сервере.
         </p>
       </div>
     </Modal>

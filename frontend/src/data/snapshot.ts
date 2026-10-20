@@ -5,13 +5,12 @@
 // vite.config.ts из shared/snapshot/media; видео в копию не входят. Риск и «Проверка по рекламе» — как их посчитал сервер.
 import type { Ad, Analyst, Appeal, Complex, Developer, Discovered, MediaRef, RiskResult, SignalSummary, SourceInfo, Stats } from './types'
 
-export const SNAPSHOT_DIR = 'shared/snapshot'
 /** Путь картинок копии на сайте */
 export const SNAPSHOT_MEDIA = '/snapshot-media/'
 /** Копия как источник данных */
 export const SNAPSHOT_NAME = 'Стартовый набор (офлайн-копия)'
 /** Действие меняет данные: в офлайн-копии недоступно */
-export const READ_ONLY = 'Офлайн-копия только для просмотра — действие доступно с сервером (запустите ./dev.sh)'
+export const READ_ONLY = 'Офлайн-копия только для просмотра — действие доступно с сервером'
 
 export type RiskRow = RiskResult & { complexId: string }
 
@@ -88,10 +87,10 @@ const FILES = import.meta.glob<unknown>(['../../../shared/snapshot/api/*.json', 
 
 const file = (name: string): Promise<unknown> => {
   const get = FILES[ROOT + name]
-  return get ? get() : Promise.reject(new Error(`Нет файла ${SNAPSHOT_DIR}/${name} — стартовый набор не выгружен`))
+  return get ? get() : Promise.reject(new Error(`Стартовый набор не выгружен: в копии нет «${name}»`))
 }
 const list = <T>(x: unknown, name: string): T[] => {
-  if (!Array.isArray(x)) throw new Error(`${SNAPSHOT_DIR}/api/${name}: ожидался список`)
+  if (!Array.isArray(x)) throw new Error(`Стартовый набор повреждён: «${name}» — не список`)
   return x as T[]
 }
 const obj = (x: unknown): Record<string, unknown> => (x && typeof x === 'object' && !Array.isArray(x) ? x as Record<string, unknown> : {})

@@ -8,6 +8,7 @@ import type {
 } from '../data/types'
 import { decisionPatch } from './ai'
 import { API, ApiError, apiDelete, apiGet, apiPatch, apiPost, apiUpload, onReach } from './api'
+import { plain } from './plain'
 import { auditPath, type AuditScope, type RequestTopic } from './audit'
 import { keepLocalPreviews } from './media'
 import { scoreAd, scoreComplex } from './risk'
@@ -159,13 +160,13 @@ interface Store {
 
 const Ctx = createContext<Store | null>(null)
 
-const NO_SIGNALS = 'Сигналы формируются и открываются на сервере — в офлайн-копии доступен только их список (запустите ./dev.sh)'
-const NO_AUDIT = 'Журнал хранится на сервере — в офлайн-копии его нет (запустите ./dev.sh)'
+const NO_SIGNALS = 'Сигналы формируются и открываются на сервере — в офлайн-копии доступен только их список'
+const NO_AUDIT = 'Журнал хранится на сервере — в офлайн-копии его нет'
 const NO_USER = 'Войдите, чтобы действовать от своего имени'
-const NO_AI = 'Анализ ИИ и OCR выполняются на сервере — в офлайн-копии доступны только сохранённые результаты (запустите ./dev.sh)'
+const NO_AI = 'Анализ ИИ и OCR выполняются на сервере — в офлайн-копии доступны только сохранённые результаты'
 /** Ошибки файла скриншота: формат, размер, битое изображение — их показывает форма */
 const FILE_ERRORS = new Set([413, 415, 422])
-const NO_VERIFY = 'Сверка сведений сохраняется на сервере — в офлайн-копии только просмотр (запустите ./dev.sh)'
+const NO_VERIFY = 'Сверка сведений сохраняется на сервере — в офлайн-копии только просмотр'
 /** Ошибки окна сверки: проверка полей, файл снимка, лимит загрузок, решение другого аналитика — их показывает окно */
 const FORM_ERRORS = new Set([409, 413, 415, 422, 429, 507])
 
@@ -235,7 +236,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   /** Ошибка операции — в баннер; status 0 — нет связи с сервером */
   const fail = (message: string, e: unknown) => {
     const err = asApiError(e)
-    setApiError({ message, detail: err.message, status: err.status, at: stamp() })
+    setApiError({ message, detail: plain(err.message), status: err.status, at: stamp() })
   }
 
   /** Применить загруженное. true — API отвечает (частичные потери — в apiError); иначе ошибка загрузки ЖК */
@@ -280,7 +281,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }, (e: unknown) => {
       if (!fresh()) return
       setMode('snapshot')
-      fail('Офлайн-копия стартового набора не загрузилась — проверьте shared/snapshot или запустите сервер (./dev.sh)', e)
+      fail('Сервер недоступен, а офлайн-копия стартового набора не загрузилась', e)
     })
   }
 
@@ -607,7 +608,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return saved(guarded('Комментарий не сохранён', () => apiPost<AuditEvent>(`/ads/${enc(adId)}/comments`, { author: who, text: body })))
       },
       requestInfo: async (complexId, topics, comment) => {
-        if (!live) throw new ApiError(0, 'Запрос сведений записывается в журнал на сервере — в офлайн-копии недоступен (запустите ./dev.sh)')
+        if (!live) throw new ApiError(0, 'Запрос сведений записывается в журнал на сервере — в офлайн-копии недоступен')
         const who = author()
         return saved(guarded('Запрос сведений не записан', () =>
           apiPost<AuditEvent>(`/complexes/${enc(complexId)}/requests`, { author: who, topics, comment: comment?.trim() || undefined })))
@@ -733,7 +734,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return got
       }, (e) => e.status === 404),
       importSource: async (file) => {
-        if (!live) throw new ApiError(0, 'Импорт выполняется на сервере — в офлайн-копии недоступен (запустите ./dev.sh)')
+        if (!live) throw new ApiError(0, 'Импорт выполняется на сервере — в офлайн-копии недоступен')
         const form = new FormData()
         form.append('file', file)
         form.append('author', author())

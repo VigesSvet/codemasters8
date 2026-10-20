@@ -8,6 +8,8 @@ import { basisText, law, lawRefs } from '../lib/law'
 import { DEMO_ORG, isDemo } from '../lib/provenance'
 import { fmtDate as day, linkConfirmed } from '../lib/risk'
 import { IcChevronLeft } from '../ui/icons'
+import { SYSTEM } from '../lib/audit'
+import { plain } from '../lib/plain'
 
 const STATE: Record<FactorState, string> = { hit: 'Подтверждён', unknown: 'Нужна проверка', clear: 'Не выявлен' }
 const OBS: Record<ObservationState, string> = { flag: 'Есть замечание', unknown: 'Нет сведений', ok: 'Без замечаний' }
@@ -188,7 +190,7 @@ function Sheet({ sig, at }: { sig: Signal; at: string }) {
           <h2>7. Журнал</h2>
           <table className="sheet-grid">
             <thead><tr><th>Когда</th><th>Кто</th><th>Событие</th></tr></thead>
-            <tbody>{sig.journal.map((e, i) => <tr key={i}><td className="nowrap"><SignalTime at={e.at} numeric /></td><td className="nowrap">{e.who}</td><td>{e.what}</td></tr>)}</tbody>
+            <tbody>{sig.journal.map((e, i) => <tr key={i}><td className="nowrap"><SignalTime at={e.at} numeric /></td><td className="nowrap">{e.who}</td><td>{e.who === SYSTEM ? plain(e.what) : e.what}</td></tr>)}</tbody>
           </table>
         </section>
 

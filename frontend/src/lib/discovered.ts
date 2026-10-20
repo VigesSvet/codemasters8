@@ -47,7 +47,7 @@ export const dismissDiscovered = (id: number, author: string, reason: string) =>
 export const DISCOVERED_TABS: readonly [DiscoveredStatus, string][] = [['new', 'Новые'], ['linked', 'Привязаны'], ['dismissed', 'Отклонены']]
 export const parseDiscoveredTab = (v?: string | null): DiscoveredStatus => (v === 'linked' || v === 'dismissed' ? v : 'new')
 /** Офлайн-копия: список — из неё, решения по объектам — с сервером */
-export const NO_DISCOVERED = 'Офлайн-копия только для просмотра — решения по объектам из рекламы доступны с сервером (запустите ./dev.sh)'
+export const NO_DISCOVERED = 'Офлайн-копия только для просмотра — решения по объектам из рекламы доступны с сервером'
 
 /** Число объектов по статусам */
 export function countDiscovered(xs: readonly Pick<Discovered, 'status'>[]): Record<DiscoveredStatus, number> {

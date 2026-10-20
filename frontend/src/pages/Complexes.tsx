@@ -3,7 +3,6 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { CoverPh } from '../components/Gallery'
 import { galleryOf, photoSrc } from '../lib/gallery'
 import { OpenDataList } from '../components/OpenData'
-import { OFFLINE_FILE } from '../data/openData'
 import { OpenDataNote, Origin } from '../components/Provenance'
 import { Disclaimer, NoScreening, ScreeningPic, ScreeningTag } from '../components/Screening'
 import { FilterPop, Modal, NeedsCheck, RiskScore, RiskZone, SafeImg, Seg } from '../components/ui'
@@ -127,7 +126,7 @@ export default function Complexes() {
         </div>
       </div>
       <div style={{ marginBottom: 24 }}><OpenDataNote /></div>
-      {mode === 'snapshot' && <div className="ai-note" style={{ marginBottom: 16 }}>{t('cx.openSnapshot', { file: OFFLINE_FILE })}</div>}
+      {mode === 'snapshot' && <div className="ai-note" style={{ marginBottom: 16 }}>{t('cx.openSnapshot')}</div>}
       {reg.data ? <>
           {reg.err && <div className="alog-err t-sm">{t('cx.notUpdated', { e: reg.err })} <button className="link" onClick={reg.retry}>{t('common.retry')}</button></div>}
           <OpenDataList data={reg.data} q={q} />

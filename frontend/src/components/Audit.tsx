@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { AuditEvent } from '../data/types'
 import { SYSTEM, fmtStamp, initialsOf, kindOf } from '../lib/audit'
+import { plain } from '../lib/plain'
 import { from as fromState, type From } from '../lib/nav'
 import { useStore } from '../lib/store'
 import { adKey } from './ui'
@@ -19,7 +20,7 @@ export function AuditItem({ e, links = ['ad', 'signal'], from }: { e: AuditEvent
     <div className="aitem">
       <span className={`ava ${e.who === SYSTEM ? 'sys' : ''}`} title={e.who}>{initialsOf(e.who, analysts)}</span>
       <div className="main">
-        <div className="t-sm what"><b className="bold">{e.who}</b> · {e.what}</div>
+        <div className="t-sm what"><b className="bold">{e.who}</b> · {e.who === SYSTEM ? plain(e.what) : e.what}</div>
         <div className="meta">
           <span className="t-xs c2 num">{fmtStamp(e.at)}</span>
           <span className={`tag ${k.tag}`}><k.Icon size={12} />{k.name}</span>

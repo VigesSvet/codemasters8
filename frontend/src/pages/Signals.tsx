@@ -84,7 +84,7 @@ export default function Signals() {
         </div>
         {mode !== 'loading' && <span className="t-sm c2">{shown.length} из {signals.length}</span>}
       </div>
-      {mode === 'snapshot' && <div className="ai-note" style={{ margin: '8px 0 16px' }}>Офлайн-копия: реестр сигналов на момент выгрузки, только просмотр. Карточка сигнала, решение по нему и PDF — с сервером (./dev.sh).</div>}
+      {mode === 'snapshot' && <div className="ai-note" style={{ margin: '8px 0 16px' }}>Офлайн-копия: реестр сигналов на момент выгрузки, только просмотр. Карточка сигнала, решение по нему и PDF — с сервером.</div>}
 
       {mode === 'loading' ? (
         <div className="empty">Загружаем сигналы…</div>

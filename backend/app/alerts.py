@@ -81,11 +81,13 @@ STATUS_LABELS = {"pending": "На согласовании", "rejected": "Отк
 TEMPLATE_LABELS = {"basis": "Проверьте основание", "idle": "Стройка стоит", "ok": "Есть в перечне"}
 
 NOT_FOUND = "Предупреждение не найдено"
-NOT_CONFIGURED = "Отправка не настроена: задайте BOT_TOKEN на сервере (токен бота заявок)"
-NOBODY = "Некому отправить: канал ГАСК не задан (TG_ALERTS_CHANNEL), подписчиков района в боте нет"
+# Тексты для человека — без имён переменных: страница «Жителям» показывает их и администратору
+NOT_CONFIGURED = "Отправка не настроена: на сервере не задан токен бота заявок"
+NOBODY = "Некому отправить: канал ГАСК не задан, подписчиков района в боте нет"
 SAME_PERSON = "Согласует другой сотрудник: автор предупреждения не может согласовать его сам"
 NO_SUBSCRIPTION = "Подписки нет"
-TOKEN_REJECTED = "Telegram не принял BOT_TOKEN (HTTP {code}) — проверьте токен бота на сервере"
+TOKEN_REJECTED = "Telegram не принял токен бота (HTTP {code}) — проверьте его в настройках сервера"
+BAD_CHANNEL = "Канал ГАСК указан неверно: нужен @имя публичного канала или его ID вида -100…"
 UNKNOWN = ("Результат неизвестен: отправка прервана сбоем воркера — сообщение могло дойти, повторно не отправляется, "
            "чтобы житель не получил его дважды")
 UNSUBSCRIBED = "Житель отписался до отправки"
@@ -229,7 +231,7 @@ def channel(s: Settings) -> tuple[Optional[str], Optional[str]]:
     if m:
         raw = "@" + m.group(1)
     if not _CHANNEL.match(raw):
-        return None, "TG_ALERTS_CHANNEL: нужен @имя публичного канала или его ID вида -100…"
+        return None, BAD_CHANNEL
     return raw, None
 
 
@@ -316,7 +318,7 @@ def chat_reason(kind: str, target: Optional[str], description: str) -> tuple[str
     d = (description or "").lower()
     if kind == "channel":
         if "chat not found" in d:
-            return f"Канал {target} не найден — проверьте TG_ALERTS_CHANNEL", False
+            return f"Канал {target} не найден — проверьте адрес канала в настройках сервера", False
         if any(x in d for x in ("not a member", "not enough rights", "administrator rights", "have no rights",
                                 "can't send messages", "kicked")):
             return (f"Бот не может публиковать в канале {target}: сделайте его администратором с правом публикации",
@@ -556,7 +558,7 @@ def check():
             return out
         if ch is None:
             out["ok"] = True
-            out["detail"] = (f"{bot}: токен принят. Канал не задан (TG_ALERTS_CHANNEL) — предупреждения получат только "
+            out["detail"] = (f"{bot}: токен принят. Канал ГАСК не задан — предупреждения получат только "
                              "подписчики бота")
             return out
         try:

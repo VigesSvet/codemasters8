@@ -202,6 +202,16 @@ def test_env_example_lists_every_name_empty():
     assert all(v == "" for v in names.values())
 
 
+def test_env_labels_cover_every_name():
+    """Интерфейс показывает вместо имён переменных их названия (shared/env_labels.json, frontend/src/lib/plain.ts):
+    у каждой переменной, которую читает приложение, есть понятное название — без имени переменной и не пустое."""
+    import json
+
+    labels = json.loads((REPO / "shared" / "env_labels.json").read_text(encoding="utf-8"))["labels"]
+    assert set(settings.ENV_NAMES) | {"DATABASE_URL"} <= set(labels)
+    assert all(v.strip() and v == v.strip() and k not in v and "_" not in v for k, v in labels.items())
+
+
 # ---------- маскирование в логах ----------
 
 @contextmanager

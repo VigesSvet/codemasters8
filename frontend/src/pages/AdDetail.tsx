@@ -16,6 +16,7 @@ import { isAdmin, onAdminChange } from '../lib/admin'
 import { linkConf, linkText, pct, visibleHypotheses, type LinkConf } from '../lib/ai'
 import { errorText } from '../lib/api'
 import { SYSTEM, fmtStamp, initialsOf } from '../lib/audit'
+import { plain } from '../lib/plain'
 import { getVersions, processingNote, stageLabel } from '../lib/connectors'
 import { CONF_LABEL, CONF_TONE, REANALYZE_HINT, amountText, costText, droppedText, legalRefArticle, legalRefText, llmState, modelText, reanalyzeAd, reanalyzeBlock, signalLabel } from '../lib/llm'
 import { STAGE_LABEL } from '../lib/discovered'
@@ -151,7 +152,7 @@ export default function AdDetail() {
     return (
       <div className="empty">
         <div className="t-h3" style={{ color: 'var(--text)', marginBottom: 6 }}>Публикация не найдена</div>
-        <div>{!live ? `Публикации «${id}» нет в офлайн-копии стартового набора — возможно, её собрали позже или ссылка устарела. Полная лента — с сервером (./dev.sh).`
+        <div>{!live ? `Публикации «${id}» нет в офлайн-копии стартового набора — возможно, её собрали позже или ссылка устарела. Полная лента — с сервером.`
           : looked?.ok ? `Публикации «${id}» нет на сервере — ссылка устарела или база была пересоздана.`
             : `Публикации «${id}» нет в ленте этой вкладки, а перечитать ленту с сервера не удалось — проверьте связь и обновите ленту.`}</div>
         <div className="row" style={{ justifyContent: 'center', gap: 8, marginTop: 16 }}>
@@ -205,7 +206,7 @@ export default function AdDetail() {
   const paras = (a.ocr ?? '').split('\n\n')
   const ocrText = paras.filter((p) => !p.startsWith(SPEECH_MARK)).join('\n\n').trim()
   const spoken = paras.filter((p) => p.startsWith(SPEECH_MARK)).map((p) => p.slice(SPEECH_MARK.length).trim()).filter(Boolean)
-  const speechNotes = [...new Set((a.media ?? []).flatMap((m) => m.speech && m.speech.status !== 'done' && m.speech.detail ? [m.speech.detail] : []))]
+  const speechNotes = [...new Set((a.media ?? []).flatMap((m) => m.speech && m.speech.status !== 'done' && m.speech.detail ? [plain(m.speech.detail)] : []))]
   /** «Обновить» у состояния анализа: перечитать ленту сейчас и снова опрашивать */
   const recheck = () => { setPoll({ id, n: 0 }); void refreshAds() }
 
@@ -400,7 +401,7 @@ export default function AdDetail() {
 
           <div className="card">
             <div className="card-head"><h3>История</h3>{mine?.events && <span className="t-sm c2">{mine.events.length} · журнал сервера</span>}</div>
-            {ro && <div className="box warn t-sm alog-note">Офлайн-копия: журнал публикации хранится на сервере и в копию не входит. История с автором и временем, комментарии и решения — с сервером (<code>./dev.sh</code>).</div>}
+            {ro && <div className="box warn t-sm alog-note">Офлайн-копия: журнал публикации хранится на сервере и в копию не входит. История с автором и временем, комментарии и решения — с сервером.</div>}
             {mine?.err && (
               <div className="alog-err t-sm">Журнал не загрузился: {mine.err} <button className="link" onClick={reload}>Повторить</button></div>
             )}

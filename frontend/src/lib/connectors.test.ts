@@ -213,9 +213,9 @@ describe('кнопки и «Обновить всё»', () => {
     expect(blockReason(conn(), 'collect', true)).toBeNull()
   })
 
-  it('не настроено на сервере — имена переменных; OLX — «заявка отправлена»', () => {
+  it('не настроено на сервере — понятные названия ключей, без имён переменных; OLX — «заявка отправлена»', () => {
     expect(blockReason(conn({ configured: false, missing: ['META_USER_ACCESS_TOKEN'] }), 'test', true))
-      .toBe('Сначала настройте подключение на сервере: META_USER_ACCESS_TOKEN')
+      .toBe('Сначала настройте подключение на сервере: токен Meta')
     expect(blockReason(conn({ code: 'olx', configured: false, capabilities: { ...caps, connect: true } }), 'connect', true)).toMatch(/^OLX не настроен: заявка отправлена/)
     expect(blockReason(conn({ capabilities: { ...caps, toggle: false } }), 'toggle', true)).toBe('У этого подключения нет сбора по расписанию')
   })
@@ -309,7 +309,7 @@ describe('строки карточки подключения', () => {
     const tg = (missing: string[]) => conn({ code: 'telegram', configured: false, missing })
     expect(blockReason(tg(['TG_SESSION_PATH']), 'test', true)).toBe('Сначала выполните вход в Telegram на сервере — авторизованной сессии нет')
     expect(blockReason(tg(['TG_API_HASH', 'TG_SESSION_PATH']), 'collect', true))
-      .toBe('Сначала настройте подключение на сервере: TG_API_HASH и выполните вход в Telegram')
+      .toBe('Сначала настройте подключение на сервере: ключ приложения Telegram и выполните вход в Telegram')
     expect(blockReason(tg([]), 'test', true)).toBe('Сначала настройте подключение на сервере')
   })
 })

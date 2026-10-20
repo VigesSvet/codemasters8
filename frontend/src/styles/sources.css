@@ -37,8 +37,6 @@
 .lnk-card .box.warn { padding: 10px 14px; border-radius: var(--r-m); line-height: 19px; }
 
 /* Подсказка входа в Telegram: команды консоли на сервере */
-.lnk-cli { padding: 10px 14px; border-radius: var(--r-m); background: var(--bg); font-size: 13px; line-height: 18px; color: var(--text-2); }
-.lnk-cli code { display: block; margin: 6px 0; padding: 6px 10px; border-radius: var(--r-s); background: #fff; color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 17px; overflow-wrap: anywhere; }
 
 .lnk-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: auto; }
 .lnk-acts .btn svg { width: 14px; height: 14px; }

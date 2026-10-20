@@ -117,13 +117,13 @@ def test_approve_needs_admin_other_person_bot_and_recipients(client, env):
     r = approve(client, a["id"], who=AUTHOR.upper())
     assert r.status_code == 409 and "другой сотрудник" in r.json()["detail"]
     r = approve(client, a["id"])
-    assert r.status_code == 503 and "BOT_TOKEN" in r.json()["detail"]
+    assert r.status_code == 503 and "токен бота заявок" in r.json()["detail"]
     env(BOT_TOKEN=BOT)
     r = approve(client, a["id"])
     assert r.status_code == 409 and "Некому отправить" in r.json()["detail"]
     env(TG_ALERTS_CHANNEL="https://t.me/bad")  # неверное имя канала — пояснение в отказе
     r = approve(client, a["id"])
-    assert r.status_code == 409 and "TG_ALERTS_CHANNEL" in r.json()["detail"]
+    assert r.status_code == 409 and "Канал ГАСК указан неверно" in r.json()["detail"]
     assert alert(client, a["id"])["status"] == "pending"
     assert count(models.Job) == 0
 
@@ -199,7 +199,7 @@ def test_subscriptions_api_for_bot(client, env):
 def test_audience_counts_and_readiness(client, env):
     r = client.get("/api/alerts/audience?district=Ульбинский").json()
     assert (r["configured"], r["adminConfigured"], r["channel"], r["subscribers"]) == (False, False, None, 0)
-    assert "BOT_TOKEN" in r["problem"] and r["workerAlive"] is False
+    assert "токен бота заявок" in r["problem"] and r["workerAlive"] is False
     env(SERVICE_API_TOKEN=SERVICE, BOT_TOKEN=BOT, SAQ_ADMIN_TOKEN=FAKE_ADMIN_TOKEN, TG_ALERTS_CHANNEL="t.me/gask_vko_test")
     subscribe(client, "1", "Ульбинский")
     subscribe(client, "2")
@@ -211,7 +211,7 @@ def test_audience_counts_and_readiness(client, env):
     assert client.get("/api/alerts/audience").json()["subscribers"] == 1  # без района — только «все районы»
     env(TG_ALERTS_CHANNEL="gask")
     r = client.get("/api/alerts/audience").json()
-    assert r["channel"] is None and "TG_ALERTS_CHANNEL" in r["channelProblem"]
+    assert r["channel"] is None and "Канал ГАСК указан неверно" in r["channelProblem"]
 
 
 # ---------- отправка ----------
@@ -314,9 +314,9 @@ def test_rejected_token_keeps_pending_and_retry_sends(client, ready, http_mock, 
                                                                            "description": "Unauthorized"}))
     run_worker()
     got = alert(client, a["id"])
-    assert got["status"] == "failed" and "Telegram не принял BOT_TOKEN (HTTP 401)" in got["lastError"]
+    assert got["status"] == "failed" and "Telegram не принял токен бота (HTTP 401)" in got["lastError"]
     assert [d[2] for d in deliveries(a["id"])] == ["pending", "pending"]
-    assert "Причина: Telegram не принял BOT_TOKEN" in journal(client)[0]["what"]
+    assert "Причина: Telegram не принял токен бота" in journal(client)[0]["what"]
     # повтор — только администратор; после исправления токена доставки уходят
     assert client.post(f"/api/alerts/{a['id']}/retry", json={"author": CHIEF}).status_code == 401
     r = client.post(f"/api/alerts/{a['id']}/retry", headers=ADMIN, json={"author": CHIEF})
@@ -369,7 +369,7 @@ def test_missing_bot_token_in_worker_fails_alert(client, ready, env, run_worker)
     env(BOT_TOKEN=None)
     run_worker()
     got = alert(client, a["id"])
-    assert got["status"] == "failed" and "BOT_TOKEN" in got["lastError"]
+    assert got["status"] == "failed" and "токен бота заявок" in got["lastError"]
     assert deliveries(a["id"])[0][2] == "pending"
     r = client.post(f"/api/alerts/{a['id']}/retry", headers=ADMIN, json={"author": CHIEF})
     assert r.status_code == 503
@@ -415,7 +415,7 @@ def test_check_bot_and_channel(client, ready, http_mock):
     assert r["ok"] is False and "Канал @gask_vko_test не найден" in r["detail"]
     http_mock.on("POST", f"{base}/getMe", handler=lambda r: tg_error(401, "Unauthorized"))
     r = client.post("/api/alerts/check", headers=ADMIN).json()
-    assert r["ok"] is False and "не принял BOT_TOKEN" in r["detail"] and BOT not in json.dumps(r)
+    assert r["ok"] is False and "не принял токен бота" in r["detail"] and BOT not in json.dumps(r)
     assert not any("sendMessage" in str(c.url) for c in http_mock.calls)  # проверка ничего не отправляет
 
 

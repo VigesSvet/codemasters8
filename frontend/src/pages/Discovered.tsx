@@ -11,6 +11,7 @@ import type { Complex, Discovered as Obj, DiscoveredStatus, Platform } from '../
 import { isAdmin, onAdminChange } from '../lib/admin'
 import { errorText } from '../lib/api'
 import { fmtStamp } from '../lib/audit'
+import { plain } from '../lib/plain'
 import {
   DISCOVERED_TABS, DISMISS_PRESETS, NO_DISCOVERED, STAGE_LABEL, countDiscovered, createBody, createForm, createFromDiscovered, createProblem,
   decisionText, dismissDiscovered, geoPicks, linkDiscovered, listDiscovered, mergeChecks, parseDiscoveredTab, pickComplexes, runDiscoveredGeo,
@@ -267,7 +268,7 @@ function ObjectCard({ o, g, author, admin, ro, onGeo, onCreate, onLink, onDismis
                 {lastCheck && <span className="t-xs c2">{cacheLine(lastCheck, fmtStamp)}{g?.cached ? ' · ответ из кэша' : ''}</span>}
               </div>
               {g?.err && <div className="ai-note err" style={{ marginTop: 8 }}>Поиск в 2ГИС не выполнен: {g.err}</div>}
-              {g?.partial?.map((x) => <div key={x.query} className="ai-note warn" style={{ marginTop: 8 }}>Запрос «{x.query}» не выполнен: {x.detail}</div>)}
+              {g?.partial?.map((x) => <div key={x.query} className="ai-note warn" style={{ marginTop: 8 }}>Запрос «{x.query}» не выполнен: {plain(x.detail)}</div>)}
               {lastCheck && !picks.length && <div className="t-sm c2" style={{ marginTop: 6 }}>2ГИС не нашёл подходящих домов — создайте карточку без координат и сверьте адрес позже</div>}
               {picks.length > 0 && (
                 <div className="ai-list">

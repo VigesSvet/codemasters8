@@ -58,7 +58,7 @@ export function SignalGate({ id, version = 0, children }: {
     </div>
   )
   if (!valid) return state('Сигнал не найден', `Нет сигнала с номером «${id ?? ''}».`)
-  if (ro) return state('Сигнал открывается с сервера', <>Сейчас открыта офлайн-копия: в ней есть только реестр сигналов, без снимка доказательств, решений и PDF. Запустите <code>./dev.sh</code>, чтобы открыть сигнал.</>)
+  if (ro) return state('Сигнал открывается с сервера', <>Сейчас открыта офлайн-копия: в ней есть только реестр сигналов, без снимка доказательств, решений и PDF. Сигнал откроется, когда сервер будет доступен.</>)
   if (res?.id !== n) return <div className="empty">Загружаем сигнал…</div>
   if (!res.sig) {
     const e = res.err
@@ -106,7 +106,7 @@ export function SignalAction({ complex, label = 'Сформировать сиг
     <div>
       <button className={`${size} ${compact ? 'g' : 'y'}`} disabled={busy || mode !== 'api' || !scored} onClick={create}><IcFlag />{busy ? 'Формируем…' : label}</button>
       {!scored && <div className="t-xs c2" style={{ marginTop: 6 }}>{NOT_ASSESSED} — сигнал не формируется</div>}
-      {scored && mode === 'snapshot' && <div className="t-xs c2" style={{ marginTop: 6 }}>Сигналы формируются на сервере — в офлайн-копии недоступно (запустите ./dev.sh)</div>}
+      {scored && mode === 'snapshot' && <div className="t-xs c2" style={{ marginTop: 6 }}>Сигналы формируются на сервере — в офлайн-копии недоступно</div>}
     </div>
   )
 }

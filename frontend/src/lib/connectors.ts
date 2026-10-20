@@ -8,6 +8,7 @@ import type {
 } from '../data/types'
 import { adminCall, adminHeaders } from './admin'
 import { ApiError, apiGet, apiPatch, apiPost, orNoRoute, orNull } from './api'
+import { envLabel, plain } from './plain'
 
 export { checkAdmin, signInAdmin } from './admin'
 
@@ -304,16 +305,16 @@ export function blockReason(c: Connector, action: Action, admin: boolean): strin
   if (action === 'configure' && !caps?.configure) return 'У этого подключения нет настроек'
   if (action === 'connect' && !caps?.connect) return 'Подключение аккаунта здесь не нужно'
   if (!c.configured && action !== 'configure') {
-    return c.code === 'olx' ? 'OLX не настроен: заявка отправлена, ключей OLX_CLIENT_ID/OLX_CLIENT_SECRET нет на сервере' : missingShort(c.missing)
+    return c.code === 'olx' ? 'OLX не настроен: заявка отправлена, ключей приложения OLX на сервере ещё нет' : missingShort(c.missing)
   }
   if (action === 'test' && effectiveStatus(c) === 'checking') return 'Проверка уже идёт'
   return null
 }
 
-/** Не переменная .env, а файл сессии: его создаёт вход в Telegram из консоли сервера */
+/** Не ключ сервера, а файл сессии: его создаёт вход в Telegram на сервере */
 const SESSION_NAMES: ReadonlySet<string> = new Set(['TG_SESSION_PATH'])
 
-/** Чего нет на сервере: env — переменные .env; session — нет авторизованной сессии Telegram (нужен вход, а не ключ) */
+/** Чего нет на сервере: env — ключи и настройки; session — нет авторизованной сессии Telegram (нужен вход, а не ключ) */
 export function splitMissing(missing: readonly string[] | undefined): { env: string[]; session: boolean } {
   const xs = missing ?? []
   return { env: xs.filter((n) => !SESSION_NAMES.has(n)), session: xs.some((n) => SESSION_NAMES.has(n)) }
@@ -321,13 +322,13 @@ export function splitMissing(missing: readonly string[] | undefined): { env: str
 
 function missingShort(missing: readonly string[] | undefined): string {
   const { env, session } = splitMissing(missing)
-  if (env.length) return `Сначала настройте подключение на сервере: ${env.join(', ')}${session ? ' и выполните вход в Telegram' : ''}`
+  if (env.length) return `Сначала настройте подключение на сервере: ${env.map(envLabel).join(', ')}${session ? ' и выполните вход в Telegram' : ''}`
   return session ? 'Сначала выполните вход в Telegram на сервере — авторизованной сессии нет' : 'Сначала настройте подключение на сервере'
 }
 
-/** «Нет на сервере: …» — имена переменных, не значения */
+/** «Нет на сервере: токен Meta» — понятные названия ключей (shared/env_labels.json), не имена переменных и не значения */
 export const missingLine = (missing: readonly string[]) =>
-  `Нет на сервере: ${missing.join(', ')}. Ключи задаются в .env на сервере и в браузер не передаются.`
+  `Нет на сервере: ${missing.map(envLabel).join(', ')}. Ключи хранятся только на сервере и в браузер не передаются.`
 
 // ---------- Настройки (Modal «Настроить») ----------
 
@@ -509,7 +510,7 @@ export function processingNote(p: Processing | null | undefined): string | null 
   if (!p) return null
   if (p.status === 'queued') return 'Анализ публикации в очереди'
   if (p.status === 'running') return p.stage ? `Идёт анализ: ${stageLabel(p.stage)}` : 'Идёт анализ публикации'
-  if (p.status === 'failed') return p.error?.trim() ? `Анализ не выполнен: ${p.error.trim()} — проверьте вручную` : 'Анализ не выполнен — проверьте вручную'
+  if (p.status === 'failed') return p.error?.trim() ? `Анализ не выполнен: ${plain(p.error.trim())} — проверьте вручную` : 'Анализ не выполнен — проверьте вручную'
   return null
 }
 
@@ -518,9 +519,7 @@ export function processingNote(p: Processing | null | undefined): string | null 
 export const COPY = {
   offline: 'Состояние подключений хранится на сервере — в офлайн-копии недоступно.',
   unavailable: 'Состояние подключений не загрузилось: нет связи с сервером или сервер без сбора публикаций.',
-  workerDown: 'Воркер сбора не запущен — проверки и сбор стоят в очереди.',
-  /** Команды запуска воркера — только администратору */
-  workerStart: 'Запуск: ./dev.sh или docker compose up -d worker.',
+  workerDown: 'Воркер сбора не запущен — проверки и сбор стоят в очереди. Его запускает ответственный за сервер.',
   adminNotConfigured: 'Администрирование подключений не настроено на сервере',
   adminButton: 'Режим администратора',
   adminField: 'Токен администратора',
@@ -541,7 +540,7 @@ export const COPY = {
   configure: 'Настроить',
   olxConnect: 'Подключить аккаунт OLX',
   olxRelink: 'Подключить заново',
-  noSession: 'Нет авторизованной сессии Telegram — выполните вход на сервере (ниже). Сессия в браузер не передаётся.',
+  noSession: 'Нет авторизованной сессии Telegram — нужен однократный вход по коду на сервере: код придёт на телефон аккаунта, вход выполняет ответственный за сервер. Сессия в браузер не передаётся.',
   collectAll: 'Обновить всё',
 } as const
 

@@ -4,7 +4,6 @@ import GeoCheck from '../components/GeoCheck'
 import MapView from '../components/MapView'
 import { OpenDataNote, Origin, SrcLink } from '../components/Provenance'
 import { PageTitle } from '../components/ui'
-import { OFFLINE_FILE } from '../data/openData'
 import type { RegistryCard as Card, SourceRecord } from '../data/types'
 import { ApiError, errorText } from '../lib/api'
 import { useFrom } from '../lib/nav'
@@ -129,7 +128,7 @@ export default function RegistryCard() {
 
       <div className="cols-r">
         <div className="stack" style={{ gap: 16 }}>
-          {mode === 'snapshot' && <div className="ai-note">Офлайн-копия: показана встроенная копия открытых данных ({OFFLINE_FILE}) — те же записи, что загружает сервер. Импорт новых файлов — с сервером (./dev.sh).</div>}
+          {mode === 'snapshot' && <div className="ai-note">Офлайн-копия: показана встроенная копия открытых данных — те же записи, что загружает сервер. Импорт новых файлов — с сервером.</div>}
           <OpenDataNote>Поля ниже — дословно как у источника, с его ссылкой и временем сбора. Разные записи одного объекта (блоки, очереди, повторы в разных реестрах) показаны по отдельности.</OpenDataNote>
           {records.map((r, i) => <RecordView key={`${r.source}:${r.sourceRecordId ?? i}`} r={r} i={i} />)}
           {/* сверка адреса в 2ГИС — только кандидаты и решение аналитика в журнал: сведения источника не меняются */}

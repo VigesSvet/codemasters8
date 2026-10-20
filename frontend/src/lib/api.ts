@@ -1,3 +1,4 @@
+import { plain } from './plain'
 // HTTP-хелперы для бэкенда FastAPI (JSON, camelCase).
 export const API: string = import.meta.env.VITE_API_URL ?? '/api'
 
@@ -134,8 +135,8 @@ export const apiDelete = <T>(path: string, body: unknown, headers?: ExtraHeaders
 export const apiUpload = <T>(path: string, form: FormData, headers?: ExtraHeaders) =>
   apiFetch<T>(path, { method: 'POST', body: form, ...(headers ? { headers } : {}) })
 
-/** Текст любой ошибки для сообщения пользователю */
-export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
+/** Текст любой ошибки для сообщения пользователю — без имён переменных, команд, путей и адресов API сервера (lib/plain.ts) */
+export const errorText = (e: unknown) => plain(e instanceof Error ? e.message : String(e))
 
 // ---------- Новые функции сервера (сбор публикаций, 2ГИС, файлы): сервер старой версии их не знает ----------
 

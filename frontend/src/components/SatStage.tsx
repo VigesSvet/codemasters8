@@ -17,7 +17,7 @@ export default function SatStage({ c, onShow }: { c: Complex; onShow?: (releaseI
   }, [c.id])
   const d = load?.id === c.id ? load.d : null
   if (!d) return null // офлайн-копия или сервер без функции — только архив снимков
-  if (!d.images.length) return <div className="ai-note">Стадия стройки на снимке ещё не определялась (гипотезы ИИ — <code>python -m app.satstage</code>).</div>
+  if (!d.images.length) return <div className="ai-note">Стадия стройки на снимке ещё не определялась: гипотез ИИ по снимкам этого ЖК пока нет.</div>
   const img = d.images.find((x) => x.role === 'latest') ?? d.images[0]
   const start = d.images.find((x) => x !== img)
   const warn = d.hints.filter((h) => DISCREPANCY.includes(h.kind))

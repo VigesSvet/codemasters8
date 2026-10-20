@@ -6,6 +6,7 @@ import type { Ad, LlmAmount, LlmAnalysis, LlmCandidate, LlmLegalRef, LlmSignalTy
 import { adminCall } from './admin'
 import { ApiError, apiPost, isRouteMissing } from './api'
 import { law, lawArticle } from './law'
+import { plain } from './plain'
 
 export const SIGNAL_LABEL: Record<LlmSignalType, string> = {
   sale: 'продажа',
@@ -42,7 +43,7 @@ export type LlmTone = 'gray' | 'blue' | 'yellow' | 'red'
 export function llmState(x: LlmAnalysis | null | undefined, fmt: (iso: string) => string = (s) => s):
   { tone: LlmTone; label: string; note: string | null } | null {
   if (!x) return null
-  const err = x.error?.trim()
+  const err = plain(x.error?.trim())
   if (x.status === 'done') return { tone: 'blue', label: 'гипотезы', note: null }
   if (x.status === 'refused') {
     return { tone: 'yellow', label: 'модель отказалась',

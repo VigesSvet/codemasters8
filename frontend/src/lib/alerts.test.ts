@@ -66,11 +66,12 @@ describe('кому уйдёт и что мешает', () => {
   it('нет токена бота, неверный канал, некому, нет администрирования, воркер не запущен', () => {
     expect(audienceProblems(null)).toEqual([])
     expect(audienceProblems(aud())).toEqual([])
-    const p = audienceProblems(aud({ configured: false, problem: 'Отправка не настроена: задайте BOT_TOKEN', channel: null,
-      channelProblem: 'TG_ALERTS_CHANNEL: нужен @имя', subscribers: 0, adminConfigured: false, workerAlive: false }))
-    expect(p).toEqual(['Отправка не настроена: задайте BOT_TOKEN', 'TG_ALERTS_CHANNEL: нужен @имя',
+    // тексты сервера — без имён переменных (сервер прежней версии мог их прислать — lib/plain.ts)
+    const p = audienceProblems(aud({ configured: false, problem: 'Отправка не настроена: задайте BOT_TOKEN на сервере', channel: null,
+      channelProblem: 'Канал ГАСК указан неверно: нужен @имя публичного канала', subscribers: 0, adminConfigured: false, workerAlive: false }))
+    expect(p).toEqual(['Отправка не настроена: задайте токен бота заявок на сервере', 'Канал ГАСК указан неверно: нужен @имя публичного канала',
       'Некому отправить: канал ГАСК не задан, подписчиков района «Ульбинский» в боте нет',
-      'Согласовать некому: режим администратора не настроен на сервере (SAQ_ADMIN_TOKEN)'])
+      'Согласовать некому: режим администратора не настроен на сервере'])
     expect(audienceProblems(aud({ workerAlive: false }))).toEqual(['Воркер не запущен — согласованное предупреждение уйдёт, когда он запустится'])
   })
 })
