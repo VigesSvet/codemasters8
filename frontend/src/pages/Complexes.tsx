@@ -29,7 +29,7 @@ type Sort = 'screening' | 'risk' | 'end' | 'progress'
 type Layer = 'control' | 'open'
 const ZONES: Zone[] = ['red', 'yellow', 'green']
 
-/** Выдача ЖК по образцу realty.yandex.ru/…/novostrojka: полоса фильтров, чипы, сортировка, карточки */
+/** Выдача ЖК: полоса фильтров, чипы, сортировка, карточки */
 export default function Complexes() {
   const { mode, complexes, ads, developers, riskOf } = useStore()
   const nav = useNavigate()

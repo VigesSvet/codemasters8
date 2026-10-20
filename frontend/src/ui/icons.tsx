@@ -1,121 +1,106 @@
-// Иконки интерфейса.
-// 1) Оригинальные SVG сервисов Яндекса (Недвижимость, Такси, Карты, Диск, Еда, Лавка) — ./yandex-svg.ts
-// 2) Чего на этих страницах нет — Gravity UI Icons (MIT), иконочная библиотека дизайн-системы Яндекса.
-import type { ComponentType, CSSProperties, SVGProps } from 'react'
+// Иконки интерфейса. Единый API: size(по умолчанию 20) и любые свойства <svg>; иконка декоративная(aria-hidden),
+// подпись даёт кнопка или текст рядом.
+// 1) Gravity UI Icons(@gravity-ui/icons, MIT) - основной набор.
+// 2) Чего в Gravity UI нет - контуры Tabler Icons(MIT, https://tabler.io/icons), перенесены сюда как данные путей.
+// Источники и лицензии - CREDITS.md.
+import type { ComponentType, SVGProps } from 'react'
 import {
-  ArrowDownToLine, ArrowUpFromLine, ArrowsRotateRight, Bell, Book, ChartColumn, Check, CircleQuestion, Database, Eye, Factory, Flag, House, Key,
-  LayoutCellsLarge, ListCheck, Megaphone, PersonWorker, Persons, Plane, ShieldCheck, Smartphone, TrafficLight, Tray, Calendar,
-  Gear, Lock, MagnifierPlus, MapPin, Play, PlugConnection, Sparkles, TriangleExclamation,
+  ArrowDownToLine, ArrowRightFromSquare, ArrowUpFromLine, ArrowUpRightFromSquare, ArrowsRotateRight, Bell, Calendar, Camera, Check, ChevronDown,
+  ChevronLeft, ChevronRight, ChevronUp, CircleExclamationFill, CircleInfo, CircleQuestion, Clock, Comment, Database, FileText, Flag, Gear, Geo, Globe,
+  House, Key, LayoutCellsLarge, Link, ListCheck, ListUl, LocationArrow, Lock, Magnifier, MagnifierPlus, MapPin, Megaphone, Minus, PaperPlane,
+  Pencil, PersonWorker, Persons, Picture, Plane, Play, PlugConnection, Plus, ShieldCheck, Sliders, Smartphone, Sparkles, SparklesFill,
+  ThunderboltFill, TriangleExclamation, Wallet, Xmark,
 } from '@gravity-ui/icons'
-import { Y } from './yandex-svg'
 
 type P = SVGProps<SVGSVGElement> & { size?: number; strokeWidth?: number | string }
 
-const y = (name: string, rotate?: number) => {
-  const d = Y[name]
-  const I = ({ size = 20, strokeWidth: _sw, style, ...rest }: P) => (
-    <svg width={size} height={size} viewBox={d.vb} fill={d.fill} aria-hidden {...rest}
-      style={{ ...(rotate ? { transform: `rotate(${rotate}deg)` } : null), ...(style as CSSProperties) }}
-      dangerouslySetInnerHTML={{ __html: d.inner }} />
-  )
-  return I
-}
+/** Иконка Gravity UI: заливка currentColor, сетка 16×16 */
 const g = (C: ComponentType<SVGProps<SVGSVGElement>>) => {
   const I = ({ size = 20, strokeWidth: _sw, ...rest }: P) => <C width={size} height={size} aria-hidden {...rest} />
   return I
 }
 
-// — Яндекс (оригинальные SVG)
-export const IcChevronRight = y('ChevronRight')
-export const IcChevronLeft = y('ChevronLeft')
-export const IcChevronDown = y('ChevronDown')
-export const IcChevronUp = y('ChevronDown', 180)
-export const IcPlus = y('Plus')
-export const IcMinus = y('Minus')
-export const IcClose = y('Close')
-export const IcCloseCircle = y('CloseCircle')
-export const IcSearch = y('Search')
-export const IcSparkSearch = y('SparkSearch')
-export const IcLocate = y('Locate')
-export const IcHeart = y('Heart')
-export const IcHeartFill = y('HeartFill')
-export const IcComment = y('Chat')
-export const IcLogout = y('Login')
-export const IcMap = y('Map')
-export const IcSliders = y('Sliders')
-export const IcFilter = y('Sliders')
-export const IcMore = y('More')
-export const IcMoreV = y('MoreV')
-export const IcClock = y('Clock')
-export const IcLayers = y('Layers')
-export const IcList = y('List')
-export const IcRuler = y('Ruler')
-export const IcGlobe = y('Globe')
-export const IcInfo = y('Info')
-export const IcStar = y('Star')
-export const IcWalk = y('Walk')
-export const IcMetro = y('Metro')
-export const IcBus = y('Bus')
-export const IcBurger = y('Burger')
-export const IcArrowRight = y('ArrowRight')
-export const IcSupport = y('Support')
-export const IcSend = y('Navigate')
-export const IcCamera = y('Camera')
-export const IcCameraAdd = y('CameraAdd')
-export const IcPhoneCall = y('Phone')
-export const IcExternal = y('Share')
-export const IcBookmark = y('Bookmark')
-export const IcPencil = y('Pencil')
-export const IcLike = y('Like')
-export const IcWarning = y('Warning')
-export const IcCalculator = y('Calculator')
-export const IcBank = y('Bank')
-export const IcCrane = y('Crane')
-export const IcWallet = y('Wallet')
-export const IcUsersFamily = y('Family')
-export const IcBriefcase = y('Briefcase')
-export const IcPicture = y('Picture')
-export const IcLink = y('Link')
-export const IcDoc = y('Doc')
-export const IcCloud = y('Cloud')
-export const IcFolder = y('Folder')
-export const IcCompare = y('Compare')
-export const IcBolt = y('Bolt')
-export const IcRoute = y('Route')
+/** Контурная иконка Tabler: сетка 24×24, линия currentColor, толщина по умолчанию 2 */
+const t = (paths: string[]) => {
+  const I = ({ size = 20, strokeWidth = 2, ...rest }: P) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden {...rest}>
+      {paths.map((d) => <path key={d} d={d} />)}
+    </svg>
+  )
+  return I
+}
 
-// — Gravity UI (MIT, Яндекс) для того, чего нет на страницах сервисов
+// - навигация и действия
+export const IcChevronRight = g(ChevronRight)
+export const IcChevronLeft = g(ChevronLeft)
+export const IcChevronDown = g(ChevronDown)
+export const IcChevronUp = g(ChevronUp)
+export const IcPlus = g(Plus)
+export const IcMinus = g(Minus)
+export const IcClose = g(Xmark)
 export const IcCheck = g(Check)
-export const IcBell = g(Bell)
-export const IcMegaphone = g(Megaphone)
+export const IcSearch = g(Magnifier)
+export const IcZoomIn = g(MagnifierPlus) // просмотр файлов публикации: "Открыть" на обложке и миниатюрах
+export const IcSliders = g(Sliders)
+export const IcList = g(ListUl)
+export const IcGrid = g(LayoutCellsLarge)
+export const IcPencil = g(Pencil)
+export const IcSend = g(PaperPlane)
+export const IcExternal = g(ArrowUpRightFromSquare)
+export const IcLink = g(Link)
 export const IcUpload = g(ArrowUpFromLine)
 export const IcDownload = g(ArrowDownToLine)
 export const IcRefresh = g(ArrowsRotateRight)
-export const IcFlag = g(Flag)
-export const IcHelp = g(CircleQuestion)
-export const IcGrid = g(LayoutCellsLarge)
-export const IcDrone = g(Plane)
-export const IcKey = g(Key)
-export const IcEye = g(Eye)
-export const IcTraffic = g(TrafficLight)
-export const IcShield = g(ShieldCheck)
-export const IcCalendar = g(Calendar)
-export const IcInbox = g(Tray)
-export const IcQueue = g(ListCheck)
-export const IcDatabase = g(Database)
-export const IcPhone = g(Smartphone)
-export const IcBook = g(Book)
-export const IcFactory = g(Factory)
-export const IcWorker = g(PersonWorker)
-export const IcBuilding = g(House)
-export const IcUsers = g(Persons)
-export const IcChart = g(ChartColumn)
-// подключения источников (страница «Источники»), сверка адреса 2ГИС
-export const IcPlugConnection = g(PlugConnection)
+export const IcLogout = g(ArrowRightFromSquare)
 export const IcPlay = g(Play)
-export const IcMapPin = g(MapPin)
-export const IcTriangleExclamation = g(TriangleExclamation)
-export const IcSparkles = g(Sparkles)
 export const IcGear = g(Gear)
 export const IcLock = g(Lock)
-// просмотр файлов публикации: «Открыть» на обложке и миниатюрах
-export const IcZoomIn = g(MagnifierPlus)
+export const IcKey = g(Key)
+
+// - карта
+export const IcMap = g(Geo)
+export const IcMapPin = g(MapPin)
+export const IcLocate = g(LocationArrow)
+export const IcGlobe = g(Globe)
+export const IcDrone = g(Plane)
+
+// - состояние и подсказки
+export const IcInfo = g(CircleInfo)
+export const IcHelp = g(CircleQuestion)
+export const IcWarning = g(CircleExclamationFill)
+export const IcTriangleExclamation = g(TriangleExclamation)
+export const IcShield = g(ShieldCheck)
+export const IcFlag = g(Flag)
+export const IcBell = g(Bell)
+export const IcClock = g(Clock)
+export const IcCalendar = g(Calendar)
+
+// - содержимое
+export const IcDoc = g(FileText)
+export const IcPicture = g(Picture)
+export const IcCamera = g(Camera)
+export const IcComment = g(Comment)
+export const IcMegaphone = g(Megaphone)
+export const IcDatabase = g(Database)
+export const IcQueue = g(ListCheck)
+export const IcPhone = g(Smartphone)
+export const IcPlugConnection = g(PlugConnection) // подключения источников(страница "Источники"), сверка адреса 2ГИС
+export const IcSparkles = g(Sparkles)
+export const IcSparkSearch = g(SparklesFill) // гипотеза ИИ
+export const IcBolt = g(ThunderboltFill)
+
+// - люди, деньги, стройка
+export const IcUsers = g(Persons)
+export const IcUsersFamily = g(Persons)
+export const IcWorker = g(PersonWorker)
+export const IcBuilding = g(House)
+export const IcWallet = g(Wallet)
+
+// - Tabler Icons(MIT): camera-plus, building-bank, crane
+export const IcCameraAdd = t([
+  'M12 20h-7a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2h1a2 2 0 0 0 2 -2a1 1 0 0 1 1 -1h6a1 1 0 0 1 1 1a2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v3.5',
+  'M16 19h6', 'M19 16v6', 'M9 13a3 3 0 1 0 6 0a3 3 0 0 0 -6 0',
+])
+export const IcBank = t(['M3 21l18 0', 'M3 10l18 0', 'M5 6l7 -3l7 3', 'M4 10l0 11', 'M20 10l0 11', 'M8 14l0 3', 'M12 14l0 3', 'M16 14l0 3'])
+export const IcCrane = t(['M6 21h6', 'M9 21v-18l-6 6h18', 'M9 3l10 6', 'M17 9v4a2 2 0 1 1 -2 2'])

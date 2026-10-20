@@ -44,7 +44,7 @@ const points = (n: number) => `${n} ${plural(n, ['балл', 'балла', 'ба
 /** Где была страница: «назад» с публикации возвращает к тому же месту (ключ — запись истории) */
 const scrolls = new Map<string, number>()
 
-/** Карточка ЖК по образцу страницы новостройки на realty.yandex.ru */
+/** Карточка ЖК: шапка объекта и вкладки разделов(основания, риск, реклама, снимки, спутник, застройщик, журнал) */
 export default function ComplexCard() {
   const { id } = useParams()
   const [sp, setSp] = useSearchParams()

@@ -16,7 +16,7 @@ const snapshotLine = (t: I18n['t'], asOf: string | null, exportedAt: string | nu
   [asOf && t('conn.dataAsOf', { date: asOf.split('-').reverse().join('.') }), exportedAt && t('conn.exportedAt', { date: fmtStamp(exportedAt) })].filter(Boolean).join(', ')
 const apiUrl = () => new URL(API, window.location.href).href
 
-/** Шапка по образцу realty.yandex.ru: логотип · город · быстрый поиск · действия, ниже вкладки с чёрным подчёркиванием */
+/** Шапка: логотип · город · быстрый поиск · действия, ниже вкладки с чёрным подчёркиванием */
 export default function Shell() {
   const { ads, toast, signals, user, logout, mode, snapshot, apiError, offline, clearError, reconnect, lastSync, stats } = useStore()
   const loc = useLocation()

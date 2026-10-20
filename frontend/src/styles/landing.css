@@ -1,5 +1,5 @@
 /* ───── Лендинг pages/Landing.tsx: в духе apple.com — крупная типографика, полноэкранные кадры продукта, бенто ───── */
-.lp { min-height: 100vh; font-family: var(--font-body, 'YS Text', Arial, sans-serif); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+.lp { min-height: 100vh; font-family: var(--font); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
 .lp h1, .lp h2, .lp h3, .lp p { margin: 0; }
 .lp img { display: block; max-width: 100%; }
 .lp-w { max-width: 1200px; margin: 0 auto; padding: 0 32px; position: relative; }

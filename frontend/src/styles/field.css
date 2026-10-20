@@ -1,5 +1,5 @@
 /* ───── Мобильный режим выезда pages/Field.tsx: mobile-first, крупные кнопки под палец, жёлтая главная кнопка как в UI-ките ───── */
-.fld { min-height: 100vh; min-height: 100dvh; background: #f2f2f4; color: var(--text); font-family: var(--font-body, 'YS Text', Arial, sans-serif); -webkit-font-smoothing: antialiased; }
+.fld { min-height: 100vh; min-height: 100dvh; background: #f2f2f4; color: var(--text); font-family: var(--font); -webkit-font-smoothing: antialiased; }
 .fld-top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 16px; padding-top: env(safe-area-inset-top);
   background: rgba(255, 255, 255, 0.86); backdrop-filter: saturate(180%) blur(18px); border-bottom: 1px solid rgba(0, 0, 0, 0.06); }
 .fld-logo { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 700; font-size: 17px; color: inherit; margin-right: auto; min-width: 0; }

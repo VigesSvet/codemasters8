@@ -9,7 +9,7 @@
 .sl-item .t { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sl-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .sl-graph { width: 100%; height: auto; display: block; background: var(--fill); border-radius: 16px; }
-.sl-graph text { font: 12px var(--font, 'YS Text', sans-serif); fill: var(--text); paint-order: stroke; stroke: var(--fill, #f3f1f1); stroke-width: 4px; }
+.sl-graph text { font: 12px var(--font); fill: var(--text); paint-order: stroke; stroke: var(--fill, #f3f1f1); stroke-width: 4px; }
 .sl-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--text-2); margin-top: 8px; }
 .sl-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
 .sl-ev { border-left: 3px solid var(--line); padding: 4px 0 4px 12px; margin: 6px 0; font-size: 14px; line-height: 20px; }

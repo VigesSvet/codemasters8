@@ -29,7 +29,7 @@ const ANALYSIS_TAG: Record<'queued' | 'running' | 'failed', [string, string, str
   failed: ['yellow', 'анализ не выполнен', 'Анализ публикации не выполнен — оценка только по тексту, проверьте вручную'],
 }
 
-/** Лента рекламы — как выдача объявлений realty.yandex.ru/…/kupit/kvartira: фильтры сверху, строки с фото */
+/** Лента рекламы: фильтры сверху, строки с фото */
 export default function Ads() {
   const { ads, complexes, adScoreOf } = useStore()
   // поиск, фильтры и сортировка — в адресе: «назад» из публикации возвращает в ту же выборку

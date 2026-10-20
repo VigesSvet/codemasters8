@@ -3,7 +3,7 @@
 .tv { --bg: #0d0e10; --line: rgba(255, 255, 255, 0.09); --mute: #8b8d93; --dim: #5d6067; --text: #ecedee;
   --red: #ff5a4a; --yellow: #f5b400; --green: #2fbf71; --gray: #6b6e75;
   position: fixed; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--bg); color: var(--text);
-  font-family: var(--font-body, 'YS Text', Arial, sans-serif); -webkit-font-smoothing: antialiased; overflow: hidden; }
+  font-family: var(--font); -webkit-font-smoothing: antialiased; overflow: hidden; }
 .tv.idle, .tv.idle * { cursor: none !important; }
 
 /* верхняя строка */

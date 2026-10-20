@@ -8,7 +8,7 @@ import { safeNext } from '../lib/session'
 import { useStore } from '../lib/store'
 import { IcCheck, IcKey } from '../ui/icons'
 
-/** Вход — как страницы входа сервисов Яндекса: фото слева, справа короткая форма с жёлтой кнопкой.
+/** Вход: фото слева, справа короткая форма с жёлтой кнопкой.
  *  Пилот: выбор сотрудника без пароля; его имя становится автором всех действий в журнале */
 export default function Login() {
   const { analysts, user, login, mode, complexes } = useStore()

@@ -141,7 +141,7 @@ function EvalCell({ v, names, got }: { v: Record<string, unknown>; names: Map<st
   )
 }
 
-/** Методика — по образцу раздела «Ипотека» на realty.yandex.ru: серая шапка с плитками, калькулятор, таблица программ.
+/** Методика: серая шапка с плитками, калькулятор, таблица факторов.
  *  Всё — из общей модели shared/risk_model.json (та же, что считает бэкенд) */
 export default function Method() {
   const { mode, complexes, riskOf, aiEval } = useStore()

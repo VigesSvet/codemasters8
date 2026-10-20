@@ -6,7 +6,7 @@ import { useT } from '../lib/i18n'
 import { PLATFORMS, platformName, type PlatformInfo } from '../lib/platform'
 import { MARKERS, NOT_ASSESSED, isAssessed } from '../lib/risk'
 import { siFacebook, siInstagram, siTelegram, siTiktok } from 'simple-icons'
-import { IcCheck, IcChevronDown, IcChevronLeft, IcChevronRight, IcChevronUp, IcClose, IcGlobe, IcHelp, IcInfo as IcInfoY } from '../ui/icons'
+import { IcCheck, IcChevronDown, IcChevronLeft, IcChevronRight, IcChevronUp, IcClose, IcGlobe, IcHelp, IcInfo } from '../ui/icons'
 
 export const zoneName: Record<Zone, string> = { red: 'Красная зона', yellow: 'Жёлтая зона', green: 'Зелёная зона' }
 export const zoneShort: Record<Zone, string> = { red: 'Красная', yellow: 'Жёлтая', green: 'Зелёная' }
@@ -210,7 +210,7 @@ export const plural = (n: number, [one, few, many]: readonly [string, string, st
  *  32 символа (UUID hex): номер — AD- и первые 8 символов (AD-3F2A9C1B); поиск по началу номера их находит */
 export const adKey = (id: string) => (id.length >= 20 ? `AD-${id.slice(0, 8).toUpperCase()}` : codeKey(id))
 
-/** Кнопка фильтра с поповером — как «Комнат ⌄» на realty.yandex.ru: круглые варианты и жёлтая кнопка «Показать N» */
+/** Кнопка фильтра с поповером: круглые варианты и жёлтая кнопка "Показать N" */
 export function FilterPop<T extends string>({ label, title, value, options, onChange, count, multi }: {
   label: string; title: string; value: T[]; options: [T, ReactNode][]; onChange: (v: T[]) => void; count: (v: T[]) => number; multi?: boolean
 }) {
@@ -240,7 +240,7 @@ export function FilterPop<T extends string>({ label, title, value, options, onCh
   )
 }
 
-/** Серая шапка раздела — как на realty.yandex.ru/ipoteka: крошки, заголовок, строка с «i», панель статистики и главный блок */
+/** Серая шапка раздела: крошки, заголовок, строка с "i", панель статистики и главный блок */
 export function Hero({ crumb, title, info, actions, board, children }: { crumb: string; title: ReactNode; info?: ReactNode; actions?: ReactNode; board?: ReactNode; children?: ReactNode }) {
   return (
     <div className="band">
@@ -248,7 +248,7 @@ export function Hero({ crumb, title, info, actions, board, children }: { crumb: 
         <div>
           <div className="crumbs"><Link to="/">SAQ Qurylys</Link><span>›</span><span>{crumb}</span></div>
           <h1 className="t-h1">{title}</h1>
-          {info && <div className="row t-body" style={{ gap: 8, marginTop: 12 }}><span style={{ color: 'var(--link)', display: 'flex' }}><IcInfoY /></span>{info}</div>}
+          {info && <div className="row t-body" style={{ gap: 8, marginTop: 12 }}><span style={{ color: 'var(--link)', display: 'flex' }}><IcInfo /></span>{info}</div>}
         </div>
         {actions && <div className="row">{actions}</div>}
       </div>

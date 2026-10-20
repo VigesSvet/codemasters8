@@ -1,20 +1,21 @@
 /* ───────────────────────────────────────────────────────────────────────────
-   SAQ UI-кит в визуальном языке сервисов Яндекса.
-   Токены сняты с realty.yandex.ru (Новостройки), taxi.yandex.ru, eda/lavka/market.
-   Иконки — оригинальные SVG сервисов Яндекса + Gravity UI. Шрифт — YS Text / YS Display.
+   SAQ UI-кит: токены, типографика и компоненты интерфейса.
+   Шрифты - Golos Text(текст и заголовки) и Roboto Condensed(узкие прописные заголовки), SIL OFL 1.1,
+   файлы и тексты лицензий - public/fonts. Иконки - src/ui/icons.tsx. Источники и лицензии - CREDITS.md.
    ─────────────────────────────────────────────────────────────────────────── */
-/* Фирменные шрифты Яндекса YS Text / YS Display (файлы с yastatic.net, см. CREDITS.md) */
-@font-face { font-family: 'YS Text'; src: url('/fonts/ys/text-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-@font-face { font-family: 'YS Text'; src: url('/fonts/ys/text-medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
-@font-face { font-family: 'YS Text'; src: url('/fonts/ys/text-bold.woff2') format('woff2'); font-weight: 600 700; font-display: swap; }
-@font-face { font-family: 'YS Text'; src: url('/fonts/ys/text-heavy.woff2') format('woff2'); font-weight: 800 900; font-display: swap; }
-@font-face { font-family: 'YS Display'; src: url('/fonts/ys/display-medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
-@font-face { font-family: 'YS Display'; src: url('/fonts/ys/display-bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
-@font-face { font-family: 'YS Display'; src: url('/fonts/ys/display-heavy.woff2') format('woff2'); font-weight: 800 900; font-display: swap; }
-@font-face { font-family: 'YS Display Cond'; src: url('/fonts/ys/display-cond-heavy.woff2') format('woff2'); font-weight: 800 900; font-display: swap; }
+/* Вариативные шрифты(ось wght), разбиты по наборам символов: браузер скачивает только нужные файлы.
+   Казахские буквы - в cyrillic-ext, знак тенге(U+20B8) - в latin-ext Golos Text. */
+@font-face { font-family: 'Golos Text'; src: url('/fonts/golos-text/golos-text-cyrillic-ext.woff2') format('woff2'); font-weight: 400 900; font-display: swap; unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F; }
+@font-face { font-family: 'Golos Text'; src: url('/fonts/golos-text/golos-text-cyrillic.woff2') format('woff2'); font-weight: 400 900; font-display: swap; unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: 'Golos Text'; src: url('/fonts/golos-text/golos-text-latin-ext.woff2') format('woff2'); font-weight: 400 900; font-display: swap; unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'Golos Text'; src: url('/fonts/golos-text/golos-text-latin.woff2') format('woff2'); font-weight: 400 900; font-display: swap; unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Roboto Condensed'; src: url('/fonts/roboto-condensed/roboto-condensed-cyrillic-ext.woff2') format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F; }
+@font-face { font-family: 'Roboto Condensed'; src: url('/fonts/roboto-condensed/roboto-condensed-cyrillic.woff2') format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: 'Roboto Condensed'; src: url('/fonts/roboto-condensed/roboto-condensed-latin-ext.woff2') format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'Roboto Condensed'; src: url('/fonts/roboto-condensed/roboto-condensed-latin.woff2') format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 
 :root {
-  /* текст — как в Недвижимости: чёрный с прозрачностью */
+  /* текст: чёрный с прозрачностью */
   --text: rgba(0, 0, 0, 0.92);
   --text-2: rgba(0, 0, 0, 0.56);
   --text-3: rgba(0, 0, 0, 0.32);
@@ -43,9 +44,10 @@
   --r-xl: 24px; --r-l: 16px; --r-m: 12px; --r-s: 8px;
   --shadow-float: 0 4px 24px rgba(0, 0, 0, 0.12);
   --shadow-card: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 4px 16px rgba(0, 0, 0, 0.05);
-  --font: 'YS Text', 'Helvetica Neue', Arial, sans-serif;
-  --font-display: 'YS Display', 'YS Text', Arial, sans-serif;
-  --font-cond: 'YS Display Cond', 'YS Display', Arial, sans-serif;
+  --font: 'Golos Text', 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'Golos Text', 'Helvetica Neue', Arial, sans-serif;
+  /* узкие прописные заголовки; знаков, которых нет в Roboto Condensed(₸), браузер берёт из Golos Text */
+  --font-cond: 'Roboto Condensed', 'Golos Text', 'Arial Narrow', Arial, sans-serif;
   --wide: 1360px;
 }
 
@@ -74,7 +76,7 @@ svg { flex: none; }
 .c3 { color: var(--text-3); }
 .bold { font-weight: 500; }
 
-/* ───── Шапка (realty.yandex.ru) ───── */
+/* ───── Шапка ───── */
 .yhead { position: sticky; top: 0; z-index: 50; background: #fff; }
 .yhead .bar { max-width: var(--wide); margin: 0 auto; padding: 0 40px; height: 68px; display: flex; align-items: center; gap: 16px; }
 .logo { display: flex; align-items: center; gap: 8px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
@@ -256,7 +258,7 @@ select.input { appearance: none; background: #fff url("data:image/svg+xml,%3Csvg
 .tile .vl { font-size: 16px; line-height: 20px; font-weight: 600; display: flex; align-items: center; gap: 2px; }
 .tile .i { position: absolute; right: 10px; top: 10px; color: var(--text-3); }
 
-/* Круглые цветные иконки категорий (Яндекс Карты) */
+/* Круглые цветные иконки категорий */
 .zone-pic { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: #fff; flex: none; }
 .zone-pic svg { width: 18px; height: 18px; }
 .zone-pic.red { background: var(--red); }
@@ -351,7 +353,7 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 .mctrl .loc button { width: 40px; height: 40px; border-radius: var(--r-m); background: #fff; display: grid; place-items: center; box-shadow: var(--shadow-float); }
 .mfoot { position: absolute; z-index: 5; left: 412px; right: 70px; bottom: 10px; display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 12px; color: var(--text-2); align-items: center; }
 
-/* Метки-ценники (как «от 19,33 млн» на карте Недвижимости) */
+/* Метки ЖК на карте: плашка с названием и баллом */
 .gpin { cursor: pointer; width: max-content; }
 .gpin .b { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: 13px; color: #fff; font-size: 13px; font-weight: 600; white-space: nowrap; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25); }
 .gpin .b::after { content: ''; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border: 5px solid transparent; border-bottom: 0; border-top-color: var(--c); }
@@ -391,7 +393,7 @@ mark.safe { background: var(--green-bg); color: var(--green-ink); }
 .ph .tl { position: absolute; left: 12px; top: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
 .ph .tr { position: absolute; right: 12px; top: 12px; }
 
-/* Карточка ЖК из выдачи Недвижимости */
+/* Карточка ЖК в выдаче */
 .gcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 36px 24px; }
 .gcard { display: flex; flex-direction: column; cursor: pointer; }
 .gcard .ph { aspect-ratio: 16 / 10; border-radius: var(--r-l); }
@@ -533,7 +535,7 @@ a.ev:hover { background: var(--fill-hover); }
 .cond { font-family: var(--font-cond); font-weight: 900; text-transform: uppercase; letter-spacing: 0; }
 .logo { font-family: var(--font-display); }
 
-/* ───── Таблица (как список программ на realty.yandex.ru/ipoteka) ───── */
+/* ───── Таблица ───── */
 .ytable { width: 100%; border-collapse: collapse; }
 .ytable th { text-align: left; font-weight: 400; font-size: 14px; color: var(--text-2); padding: 12px 16px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .ytable td { padding: 16px; border-bottom: 1px solid var(--line); font-size: 15px; vertical-align: middle; }
@@ -567,7 +569,7 @@ a.ev:hover { background: var(--fill-hover); }
 .box { background: var(--fill); border-radius: var(--r-l); padding: 20px 24px; }
 .screen .card.flat { background: var(--fill); border-radius: var(--r-l); padding: 16px 20px; border-top: 0; }
 
-/* Строка объявления (выдача «Купить квартиру» на realty.yandex.ru) */
+/* Строка объявления в ленте рекламы: фото, текст, сведения справа */
 .offer { display: grid; grid-template-columns: 280px minmax(0, 1fr) 200px; gap: 24px; padding: 24px 0; border-bottom: 1px solid var(--line); }
 .offer:first-child { padding-top: 0; }
 .offer .ph { aspect-ratio: 4 / 3; border-radius: var(--r-l); }
